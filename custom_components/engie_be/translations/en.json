@@ -2,20 +2,28 @@
     "config": {
         "step": {
             "user": {
-                "description": "Enter your ENGIE Belgium account credentials and customer number. A verification code will be sent to your registered phone number via SMS.",
+                "description": "Enter your ENGIE Belgium account credentials and customer number, and choose your preferred two-factor authentication method.",
                 "data": {
                     "username": "Email address",
                     "password": "Password",
                     "customer_number": "Customer number",
-                    "client_id": "Client ID"
+                    "client_id": "Client ID",
+                    "mfa_method": "Two-factor authentication method"
                 },
                 "data_description": {
                     "customer_number": "Your ENGIE Belgium customer/business agreement number.",
-                    "client_id": "OAuth client ID. Only change this if you know what you are doing."
+                    "client_id": "OAuth client ID. Only change this if you know what you are doing.",
+                    "mfa_method": "Choose how you want to receive your verification code."
                 }
             },
-            "mfa": {
+            "mfa_sms": {
                 "description": "Enter the 6-digit verification code that was sent to your phone via SMS.",
+                "data": {
+                    "code": "Verification code"
+                }
+            },
+            "mfa_email": {
+                "description": "Enter the 6-digit verification code that was sent to your email address.",
                 "data": {
                     "code": "Verification code"
                 }

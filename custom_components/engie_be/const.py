@@ -21,9 +21,14 @@ OAUTH_AUDIENCE = "customer"
 
 # Config entry keys (beyond homeassistant.const CONF_USERNAME / CONF_PASSWORD)
 CONF_CUSTOMER_NUMBER = "customer_number"
+CONF_MFA_METHOD = "mfa_method"
 CONF_CLIENT_ID = "client_id"
 CONF_ACCESS_TOKEN = "access_token"  # noqa: S105
 CONF_REFRESH_TOKEN = "refresh_token"  # noqa: S105
+
+# MFA method options
+MFA_METHOD_SMS = "sms"
+MFA_METHOD_EMAIL = "email"
 
 # EAN prefix for energy type detection
 GAS_EAN_PREFIX = "5414488600"
