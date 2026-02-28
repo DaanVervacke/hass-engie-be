@@ -1,4 +1,4 @@
-# ENGIE Belgium
+# ENGIE Belgium HACS integration
 
 [![HACS Custom][hacsbadge]][hacs]
 [![GitHub Release][releasebadge]][release]
@@ -61,12 +61,12 @@ Configuration is done entirely through the Home Assistant UI.
 1. Go to **Settings** > **Devices & Services** > **Add Integration**
 2. Search for **ENGIE Belgium**
 3. Enter your credentials:
-   - **Email address** -- your ENGIE Belgium login email
-   - **Password** -- your ENGIE Belgium password
-   - **Customer number** -- your ENGIE customer/business agreement number
-   - **Client ID** -- leave at the default unless you know what you're doing
-   - **Two-factor authentication method** -- choose SMS or Email
-4. Click **Submit** -- you will receive a verification code via your chosen method
+   - **Email address** - your ENGIE Belgium login email
+   - **Password** - your ENGIE Belgium password
+   - **Customer number** - your ENGIE customer/business agreement number
+   - **Client ID** - leave at the default unless you know what you're doing
+   - **Two-factor authentication method** - choose SMS or Email
+4. Click **Submit** - you will receive a verification code via your chosen method
 5. Enter the 6-digit verification code and click **Submit**
 
 The integration will authenticate, fetch your energy prices, and create the
@@ -95,7 +95,7 @@ After setup, you can configure the price update interval:
 
 ## License
 
-[MIT](LICENSE) -- Daan Vervacke ([@DaanVervacke](https://github.com/DaanVervacke))
+[MIT](LICENSE) - Daan Vervacke ([@DaanVervacke](https://github.com/DaanVervacke))
 
 ---
 
