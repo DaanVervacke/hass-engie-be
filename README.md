@@ -54,13 +54,6 @@ Each sensor also exposes the following attributes: `ean`, `from`, `to`,
 4. Search for **ENGIE Belgium** in HACS and install it
 5. Restart Home Assistant
 
-### Manual
-
-1. Download the latest release from the [releases page][release]
-2. Copy the `custom_components/engie_be` directory to your Home Assistant
-   `config/custom_components/` directory
-3. Restart Home Assistant
-
 ## Configuration
 
 Configuration is done entirely through the Home Assistant UI.
