@@ -1,0 +1,64 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "description": "Enter your Engie Belgium account credentials and customer number. An SMS with a verification code will be sent to your registered phone number.",
+                "data": {
+                    "username": "Email address",
+                    "password": "Password",
+                    "customer_number": "Customer number",
+                    "client_id": "Client ID",
+                    "mfa_method": "Two-factor authentication method"
+                },
+                "data_description": {
+                    "customer_number": "Your Engie Belgium customer/business agreement number.",
+                    "client_id": "OAuth client ID. Only change this if you know what you are doing.",
+                    "mfa_method": "Choose how you want to receive your verification code. Only SMS is supported at this time."
+                }
+            },
+            "mfa": {
+                "description": "Enter the 6-digit verification code that was sent to your phone via SMS.",
+                "data": {
+                    "code": "Verification code"
+                }
+            }
+        },
+        "error": {
+            "auth": "Invalid username or password.",
+            "connection": "Unable to connect to Engie Belgium.",
+            "unknown": "An unknown error occurred.",
+            "invalid_mfa_code": "Invalid verification code. Please try again.",
+            "mfa_email_not_supported": "Email-based two-factor authentication is not supported yet. Please select SMS."
+        },
+        "abort": {
+            "already_configured": "This account is already configured."
+        }
+    },
+    "entity": {
+        "sensor": {
+            "gas_offtake": {
+                "name": "Gas offtake price"
+            },
+            "gas_offtake_excl_vat": {
+                "name": "Gas offtake price (excl. VAT)"
+            },
+            "electricity_offtake": {
+                "name": "Electricity offtake price"
+            },
+            "electricity_offtake_excl_vat": {
+                "name": "Electricity offtake price (excl. VAT)"
+            },
+            "electricity_injection": {
+                "name": "Electricity injection price"
+            },
+            "electricity_injection_excl_vat": {
+                "name": "Electricity injection price (excl. VAT)"
+            }
+        },
+        "binary_sensor": {
+            "authentication": {
+                "name": "Authentication"
+            }
+        }
+    }
+}
