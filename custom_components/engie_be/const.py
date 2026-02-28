@@ -34,7 +34,7 @@ MFA_METHOD_EMAIL = "email"
 GAS_EAN_PREFIX = "5414488600"
 ELECTRICITY_EAN_PREFIX = "5414488200"
 
-# User-Agent strings matching the Engie mobile app (from Bruno collection)
+# User-Agent strings matching the ENGIE mobile app
 USER_AGENT_BROWSER = (
     "Mozilla/5.0 (Linux; Android 10; K) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "

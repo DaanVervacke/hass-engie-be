@@ -131,8 +131,8 @@ class EngieBeApiClient:
 
     # ------------------------------------------------------------------
     # Phase 1: start authentication (config-flow step 1 triggers this)
-    # Runs Bruno steps 1-7, returns intermediate state so the config flow
-    # can ask the user for the SMS code.
+    # Runs auth steps 1-7, returns intermediate state so the config flow
+    # can ask the user for the MFA code.
     # ------------------------------------------------------------------
 
     async def async_start_authentication(
@@ -160,7 +160,7 @@ class EngieBeApiClient:
 
     # ------------------------------------------------------------------
     # Phase 2: complete authentication (config-flow step 2 triggers this)
-    # Runs Bruno steps 8-13.
+    # Runs auth steps 8-13.
     # ------------------------------------------------------------------
 
     async def async_complete_authentication(
@@ -275,7 +275,7 @@ class EngieBeApiClient:
         mfa_method: str,
     ) -> AuthFlowState:
         """
-        Run Bruno steps 1-7 (authorize -> MFA triggered).
+        Run auth steps 1-7 (authorize -> MFA triggered).
 
         When *mfa_method* is ``sms``, step 7 fires an SMS.  When it is
         ``email``, step 7 is skipped and the ALT authenticator-switching
@@ -430,7 +430,7 @@ class EngieBeApiClient:
         *,
         mfa_method: str = MFA_METHOD_SMS,
     ) -> tuple[str, str]:
-        """Run Bruno steps 8-13 (submit MFA -> get tokens)."""
+        """Run auth steps 8-13 (submit MFA -> get tokens)."""
         session = flow_state.session
 
         if mfa_method == MFA_METHOD_SMS:
@@ -476,9 +476,10 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 10 complete: loaded passkey page")
 
         # Step 11: POST /u/passkey-enrollment (abort enrollment)
-        # Bruno uses followRedirects=true, but the redirect chain ends at
-        # a non-HTTP app-scheme URL that aiohttp cannot follow.  We skip
-        # following redirects here since the code is extracted in step 12.
+        # The Auth0 flow uses followRedirects=true, but the redirect chain
+        # ends at a non-HTTP app-scheme URL that aiohttp cannot follow.
+        # We skip following redirects here since the code is extracted in
+        # step 12.
         await self._api_wrapper(
             session=session,
             method="POST",
@@ -494,8 +495,8 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 11 complete: passkey enrollment aborted")
 
         # Step 12: GET /authorize/resume (final — extract auth code)
-        # Uses loginState (not passKeyState), exactly as in the Bruno
-        # collection.  The response body contains the authorization code.
+        # Uses loginState (not passKeyState), exactly as in the API
+        # auth flow.  The response body contains the authorization code.
         body = await self._api_wrapper(
             session=session,
             method="GET",
@@ -547,7 +548,7 @@ class EngieBeApiClient:
         flow_state: AuthFlowState,
         mfa_code: str,
     ) -> str:
-        """Submit an SMS MFA code (Bruno step 8)."""
+        """Submit an SMS MFA code (auth step 8)."""
         # Step 8: POST /u/mfa-sms-challenge (submit SMS code)
         # A wrong code returns HTTP 400; we suppress the automatic error
         # handling so we can raise a specific MfaError instead.
@@ -574,7 +575,7 @@ class EngieBeApiClient:
         mfa_code: str,
     ) -> str:
         """
-        Submit an email MFA code (Bruno step 8.ALT-5).
+        Submit an email MFA code (auth step 8.ALT-5).
 
         The authenticator switch (ALT steps 1-4) has already been
         performed during ``_run_auth_steps_1_to_7`` so only the code
@@ -608,7 +609,7 @@ class EngieBeApiClient:
         challenge_state: str,
     ) -> None:
         """
-        Run the authenticator-switching detour (Bruno ALT steps 1-4).
+        Run the authenticator-switching detour (auth ALT steps 1-4).
 
         This is called from ``_run_auth_steps_1_to_7`` when the user
         chose email MFA instead of SMS.  It navigates the Auth0 UI from
