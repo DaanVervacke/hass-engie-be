@@ -1,0 +1,682 @@
+opencollection: 1.0.0
+info:
+  name: ENGIE Belgium
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ''
+      port: ''
+      auth:
+        username: ''
+        password: ''
+      bypassProxy: ''
+  environments:
+    - name: Production
+      variables:
+        - name: ENGIE_USERNAME
+          secret: true
+        - name: ENGIE_PASSWORD
+          secret: true
+        - name: ENGIE_CUSTOMER_NUMBER
+          secret: true
+        - name: ENGIE_CLIENT_ID
+          value: R0PQyUdjO5B2tBaRnltgitVnnUmjGyld
+        - name: MFA_CODE
+          value: ''
+items:
+  - info:
+      name: 1. Authorize
+      type: http
+      seq: 1
+    http:
+      method: GET
+      url: https://account.engie.be/authorize?redirect_uri=be.engie.smart://login-callback/nl&client_id={{ENGIE_CLIENT_ID}}&response_type=code&ui_locales=nl&state={{state}}&nonce={{nonce}}&scope=openid profile roles offline_access&code_challenge={{code_challenge}}&code_challenge_method=S256&audience=customer&app_scheme=be-engie-smart&cancel_redirect=be-engie-smart://cancel-registration-redirect
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: redirect_uri
+          value: be.engie.smart://login-callback/nl
+          type: query
+        - name: client_id
+          value: '{{ENGIE_CLIENT_ID}}'
+          type: query
+        - name: response_type
+          value: code
+          type: query
+        - name: ui_locales
+          value: nl
+          type: query
+        - name: state
+          value: '{{state}}'
+          type: query
+        - name: nonce
+          value: '{{nonce}}'
+          type: query
+        - name: scope
+          value: openid profile roles offline_access
+          type: query
+        - name: code_challenge
+          value: '{{code_challenge}}'
+          type: query
+        - name: code_challenge_method
+          value: S256
+          type: query
+        - name: audience
+          value: customer
+          type: query
+        - name: app_scheme
+          value: be-engie-smart
+          type: query
+        - name: cancel_redirect
+          value: be-engie-smart://cancel-registration-redirect
+          type: query
+    runtime:
+      scripts:
+        - type: before-request
+          code: |-
+            const crypto = require('crypto');
+
+            // Helper function to encode a buffer to Base64URL format (required by PKCE)
+            function base64UrlEncode(buffer) {
+              return buffer.toString('base64')
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=/g, '');
+            }
+
+            // 1. Generate State and Nonce (Secure random hex strings)
+            const state = crypto.randomBytes(16).toString('hex');
+            const nonce = crypto.randomBytes(16).toString('hex');
+
+            // 2. Generate Code Verifier (High-entropy random string, Base64URL encoded)
+            const verifierBuffer = crypto.randomBytes(32);
+            const code_verifier = base64UrlEncode(verifierBuffer);
+
+            // 3. Generate Code Challenge (SHA-256 hash of the verifier, Base64URL encoded)
+            const challengeBuffer = crypto.createHash('sha256').update(code_verifier).digest();
+            const code_challenge = base64UrlEncode(challengeBuffer);
+
+            // 4. Save the variables to the Bruno environment/collection
+            bru.setVar("state", state);
+            bru.setVar("nonce", nonce);
+            bru.setVar("code_verifier", code_verifier);
+            bru.setVar("code_challenge", code_challenge);
+        - type: after-response
+          code: |-
+            const body = res.getBody();
+
+            const match = body.match(/state=([a-zA-Z0-9_-]+)/);
+            const state = match ? match[1] : null;
+
+            bru.setVar('authorizeState', state);
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 2. Get login screen
+      type: http
+      seq: 2
+    http:
+      method: GET
+      url: https://account.engie.be/u/login/identifier?state={{authorizeState}}&ui_locales=nl
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{authorizeState}}'
+          type: query
+        - name: ui_locales
+          value: nl
+          type: query
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 3. First login
+      type: http
+      seq: 3
+    http:
+      method: POST
+      url: https://account.engie.be/u/login/identifier?state={{authorizeState}}&ui_locales=nl
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{authorizeState}}'
+          type: query
+        - name: ui_locales
+          value: nl
+          type: query
+      body:
+        type: form-urlencoded
+        data:
+          - name: state
+            value: '{{authorizeState}}'
+          - name: allow-passkeys
+            value: 'true'
+          - name: username
+            value: '{{ENGIE_USERNAME}}'
+          - name: js-available
+            value: 'true'
+          - name: webauthn-available
+            value: 'true'
+          - name: is-brave
+            value: 'false'
+          - name: webauthn-platform-available
+            value: 'true'
+          - name: ulp-remember-me-present
+            value: 'true'
+          - name: ulp-remember-me
+            value: 'on'
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 4. Get empty page
+      type: http
+      seq: 4
+    http:
+      method: GET
+      url: https://account.engie.be/u/login/password?state={{authorizeState}}&ui_locales=nl
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{authorizeState}}'
+          type: query
+        - name: ui_locales
+          value: nl
+          type: query
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 5. Second login
+      type: http
+      seq: 5
+    http:
+      method: POST
+      url: https://account.engie.be/u/login/password?state={{authorizeState}}&ui_locales=nl
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{authorizeState}}'
+          type: query
+        - name: ui_locales
+          value: nl
+          type: query
+      body:
+        type: form-urlencoded
+        data:
+          - name: state
+            value: '{{authorizeState}}'
+          - name: username
+            value: '{{ENGIE_USERNAME}}'
+          - name: password
+            value: '{{ENGIE_PASSWORD}}'
+          - name: js-available
+            value: 'true'
+          - name: webauthn-available
+            value: 'true'
+          - name: is-brave
+            value: 'false'
+          - name: webauthn-platform-available
+            value: 'true'
+    runtime:
+      scripts:
+        - type: after-response
+          code: |-
+            const body = res.getBody();
+
+            const match = body.match(/state=([a-zA-Z0-9_-]+)/);
+            const state = match ? match[1] : null;
+
+            bru.setVar('loginState', state);
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 6. Resume authorize
+      type: http
+      seq: 6
+    http:
+      method: GET
+      url: https://account.engie.be/authorize/resume?state={{loginState}}
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{loginState}}'
+          type: query
+    runtime:
+      scripts:
+        - type: after-response
+          code: |-
+            const body = res.getBody();
+
+            const match = body.match(/state=([a-zA-Z0-9_-]+)/);
+            const state = match ? match[1] : null;
+
+            bru.setVar('smsChallengeState', state);
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 7. Get challenge screen
+      type: http
+      seq: 7
+    http:
+      method: GET
+      url: https://account.engie.be/u/mfa-sms-challenge?state={{smsChallengeState}}&ui_locales=nl
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{smsChallengeState}}'
+          type: query
+        - name: ui_locales
+          value: nl
+          type: query
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 8. Post SMS code
+      type: http
+      seq: 8
+    http:
+      method: POST
+      url: https://account.engie.be/u/mfa-sms-challenge?state={{smsChallengeState}}&ui_locales=nl
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{smsChallengeState}}'
+          type: query
+        - name: ui_locales
+          value: nl
+          type: query
+      body:
+        type: form-urlencoded
+        data:
+          - name: state
+            value: '{{smsChallengeState}}'
+          - name: code
+            value: '{{MFA_CODE}}'
+    runtime:
+      scripts:
+        - type: after-response
+          code: |-
+            const body = res.getBody();
+
+            const match = body.match(/state=([a-zA-Z0-9_-]+)/);
+            const state = match ? match[1] : null;
+
+            bru.setVar('anotherState', state);
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 9. Resume authorize
+      type: http
+      seq: 9
+    http:
+      method: GET
+      url: https://account.engie.be/authorize/resume?state={{loginState}}
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{loginState}}'
+          type: query
+    runtime:
+      scripts:
+        - type: after-response
+          code: |-
+            const body = res.getBody();
+
+            const match = body.match(/state=([a-zA-Z0-9_-]+)/);
+            const state = match ? match[1] : null;
+
+            bru.setVar('passKeyState', state);
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 10. GET passkey-enrollments
+      type: http
+      seq: 10
+    http:
+      method: GET
+      url: https://account.engie.be/u/passkey-enrollment?state={{passKeyState}}&ui_locales=nl
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{passKeyState}}'
+          type: query
+        - name: ui_locales
+          value: nl
+          type: query
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 11. Passkey enrollment
+      type: http
+      seq: 11
+    http:
+      method: POST
+      url: https://account.engie.be/u/passkey-enrollment?state={{passKeyState}}&ui_locales=nl
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{passKeyState}}'
+          type: query
+        - name: ui_locales
+          value: nl
+          type: query
+      body:
+        type: form-urlencoded
+        data:
+          - name: state
+            value: '{{passKeyState}}'
+          - name: action
+            value: abort-passkey-enrollment
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: true
+      maxRedirects: 5
+  - info:
+      name: 12. Resume authorize
+      type: http
+      seq: 12
+    http:
+      method: GET
+      url: https://account.engie.be/authorize/resume?state={{loginState}}
+      headers:
+        - name: Accept
+          value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+        - name: User-Agent
+          value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+        - name: sec-ch-ua
+          value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+        - name: sec-ch-ua-mobile
+          value: '?1'
+        - name: sec-ch-ua-platform
+          value: '"Android"'
+      params:
+        - name: state
+          value: '{{loginState}}'
+          type: query
+    runtime:
+      scripts:
+        - type: after-response
+          code: |-
+            const body = res.getBody();
+
+            const stateMatch = body.match(/state=([a-zA-Z0-9_-]+)/);
+            const codeMatch = body.match(/code=([a-zA-Z0-9_-]+)/);
+
+            const state = stateMatch ? stateMatch[1] : null;
+            const code = codeMatch ? codeMatch[1] : null;
+
+            bru.setVar('finalState', state);
+            bru.setVar('code', code);
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 13. Get access token
+      type: http
+      seq: 13
+    http:
+      method: POST
+      url: https://account.engie.be/oauth/token
+      headers:
+        - name: Accept-Encoding
+          value: gzip
+        - name: Accept
+          value: application/json
+        - name: Connection
+          value: Keep-Alive
+        - name: Content-Type
+          value: application/x-www-form-urlencoded
+        - name: Host
+          value: account.engie.be
+        - name: User-Agent
+          value: Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.251205.006)
+      body:
+        type: form-urlencoded
+        data:
+          - name: code
+            value: '{{code}}'
+          - name: grant_type
+            value: authorization_code
+          - name: redirect_uri
+            value: be.engie.smart://login-callback/nl
+          - name: code_verifier
+            value: '{{code_verifier}}'
+          - name: client_id
+            value: '{{ENGIE_CLIENT_ID}}'
+    runtime:
+      scripts:
+        - type: after-response
+          code: |-
+            const body = res.getBody();
+
+            bru.setVar('accessToken', body.access_token);
+            bru.setVar('refreshToken', body.refresh_token);
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: 14. Get prices
+      type: http
+      seq: 14
+    http:
+      method: GET
+      url: https://www.engie.be/api/engie/be/ms/billing/customer/v1/business-agreements/:customerNumber/supplier-energy-prices?maxGranularity=MONTHLY
+      headers:
+        - name: User-Agent
+          value: Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0
+        - name: Accept
+          value: application/json, application/problem+json
+        - name: authorization
+          value: Bearer {{accessToken}}
+      params:
+        - name: maxGranularity
+          value: MONTHLY
+          type: query
+        - name: customerNumber
+          value: '{{ENGIE_CUSTOMER_NUMBER}}'
+          type: path
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: false
+      maxRedirects: 5
+  - info:
+      name: Refresh token
+      type: http
+      seq: 15
+    http:
+      method: POST
+      url: https://account.engie.be/oauth/token
+      headers:
+        - name: Accept-Encoding
+          value: gzip
+        - name: Accept
+          value: application/json
+        - name: Connection
+          value: Keep-Alive
+        - name: Content-Type
+          value: application/x-www-form-urlencoded
+        - name: Host
+          value: account.engie.be
+        - name: User-Agent
+          value: Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.251205.006)
+      body:
+        type: form-urlencoded
+        data:
+          - name: refresh_token
+            value: '{{refreshToken}}'
+          - name: audience
+            value: customer
+          - name: grant_type
+            value: refresh_token
+          - name: scope
+            value: openid profile roles offline_access
+          - name: redirect_uri
+            value: be.engie.smart://login-callback/nl
+          - name: client_id
+            value: '{{ENGIE_CLIENT_ID}}'
+    runtime:
+      scripts:
+        - type: after-response
+          code: |-
+            const body = res.getBody();
+
+            bru.setVar('accessToken', body.access_token);
+            bru.setVar('refreshToken', body.refresh_token);
+    settings:
+      encodeUrl: false
+      timeout: 0
+      followRedirects: true
+      maxRedirects: 5
+bundled: true
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+    exportedAt: '2026-02-28T08:38:50.990Z'
+    exportedUsing: Bruno
