@@ -1,4 +1,4 @@
-"""ENGIE Belgium API client implementing OAuth2/PKCE with SMS MFA."""
+"""ENGIE Belgium API client implementing OAuth2/PKCE with MFA (SMS or email)."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from .const import (
     API_BASE_URL,
     AUTH_BASE_URL,
     LOGGER,
+    MFA_METHOD_SMS,
     OAUTH_AUDIENCE,
     OAUTH_SCOPES,
     REDIRECT_URI,
@@ -57,7 +58,7 @@ class AuthFlowState:
     session: aiohttp.ClientSession
     authorize_state: str
     login_state: str
-    sms_challenge_state: str
+    mfa_challenge_state: str
     code_verifier: str
 
 
@@ -111,7 +112,7 @@ class EngieBeApiClient:
     """
     ENGIE Belgium API client.
 
-    Handles the full OAuth2/PKCE + MFA authentication flow
+    Handles the full OAuth2/PKCE + MFA authentication flow (SMS or email)
     and subsequent token refresh / data retrieval.
     """
 
@@ -138,17 +139,21 @@ class EngieBeApiClient:
         self,
         username: str,
         password: str,
+        mfa_method: str = MFA_METHOD_SMS,
     ) -> AuthFlowState:
         """
         Execute auth steps 1-7 and return intermediate state.
 
-        After this method returns the user has received an SMS with a
-        verification code. The caller must collect that code and pass it
-        to ``async_complete_authentication``.
+        When *mfa_method* is ``sms`` (default) step 7 triggers an SMS.
+        When it is ``email`` the ALT authenticator-switching detour runs
+        instead (no SMS is sent).  The caller must then collect the code
+        and pass it to ``async_complete_authentication``.
         """
         auth_session = aiohttp.ClientSession()
         try:
-            return await self._run_auth_steps_1_to_7(auth_session, username, password)
+            return await self._run_auth_steps_1_to_7(
+                auth_session, username, password, mfa_method
+            )
         except Exception:
             await auth_session.close()
             raise
@@ -162,6 +167,7 @@ class EngieBeApiClient:
         self,
         flow_state: AuthFlowState,
         mfa_code: str,
+        mfa_method: str = MFA_METHOD_SMS,
     ) -> tuple[str, str]:
         """
         Submit the MFA code and exchange the authorisation code for tokens.
@@ -173,7 +179,7 @@ class EngieBeApiClient:
         """
         try:
             access_token, refresh_token = await self._run_auth_steps_8_to_13(
-                flow_state, mfa_code
+                flow_state, mfa_code, mfa_method=mfa_method
             )
         except EngieBeApiClientMfaError:
             # Keep session open — user can retry with a new code
@@ -266,8 +272,15 @@ class EngieBeApiClient:
         session: aiohttp.ClientSession,
         username: str,
         password: str,
+        mfa_method: str,
     ) -> AuthFlowState:
-        """Run Bruno steps 1-7 (authorize -> SMS sent)."""
+        """
+        Run Bruno steps 1-7 (authorize -> MFA triggered).
+
+        When *mfa_method* is ``sms``, step 7 fires an SMS.  When it is
+        ``email``, step 7 is skipped and the ALT authenticator-switching
+        detour runs instead so the user receives an email code.
+        """
         state, nonce, code_verifier, code_challenge = _generate_pkce()
 
         # Step 1: GET /authorize
@@ -378,29 +391,35 @@ class EngieBeApiClient:
             headers=_BROWSER_HEADERS,
             allow_redirects=False,
         )
-        sms_challenge_state = _extract_from_body(body, r"state=([a-zA-Z0-9_-]+)")
-        if not sms_challenge_state:
-            msg = "Failed to extract SMS challenge state"
+        mfa_challenge_state = _extract_from_body(body, r"state=([a-zA-Z0-9_-]+)")
+        if not mfa_challenge_state:
+            msg = "Failed to extract MFA challenge state"
             raise EngieBeApiClientAuthenticationError(msg)
 
-        LOGGER.debug("Auth step 6 complete: got smsChallengeState")
+        LOGGER.debug("Auth step 6 complete: got mfaChallengeState")
 
-        # Step 7: GET /u/mfa-sms-challenge (triggers SMS send)
-        await self._api_wrapper(
-            session=session,
-            method="GET",
-            url=f"{AUTH_BASE_URL}/u/mfa-sms-challenge",
-            params={"state": sms_challenge_state, "ui_locales": "nl"},
-            headers=_BROWSER_HEADERS,
-            allow_redirects=False,
-        )
-        LOGGER.debug("Auth step 7 complete: SMS sent to user")
+        if mfa_method == MFA_METHOD_SMS:
+            # Step 7: GET /u/mfa-sms-challenge (triggers SMS send)
+            await self._api_wrapper(
+                session=session,
+                method="GET",
+                url=f"{AUTH_BASE_URL}/u/mfa-sms-challenge",
+                params={"state": mfa_challenge_state, "ui_locales": "nl"},
+                headers=_BROWSER_HEADERS,
+                allow_redirects=False,
+            )
+            LOGGER.debug("Auth step 7 complete: SMS sent to user")
+        else:
+            # Email MFA: run ALT steps 1-4 to switch authenticator and
+            # trigger the email send (skips step 7 entirely so no SMS
+            # is sent).
+            await self._switch_to_email_mfa(session, mfa_challenge_state)
 
         return AuthFlowState(
             session=session,
             authorize_state=authorize_state,
             login_state=login_state,
-            sms_challenge_state=sms_challenge_state,
+            mfa_challenge_state=mfa_challenge_state,
             code_verifier=code_verifier,
         )
 
@@ -408,29 +427,17 @@ class EngieBeApiClient:
         self,
         flow_state: AuthFlowState,
         mfa_code: str,
+        *,
+        mfa_method: str = MFA_METHOD_SMS,
     ) -> tuple[str, str]:
         """Run Bruno steps 8-13 (submit MFA -> get tokens)."""
         session = flow_state.session
 
-        # Step 8: POST /u/mfa-sms-challenge (submit SMS code)
-        # A wrong code returns HTTP 400; we suppress the automatic error
-        # handling so we can raise a specific MfaError instead.
-        body = await self._api_wrapper(
-            session=session,
-            method="POST",
-            url=f"{AUTH_BASE_URL}/u/mfa-sms-challenge",
-            params={
-                "state": flow_state.sms_challenge_state,
-                "ui_locales": "nl",
-            },
-            headers=_BROWSER_HEADERS,
-            data={
-                "state": flow_state.sms_challenge_state,
-                "code": mfa_code,
-            },
-            allow_redirects=False,
-            raise_on_error=False,
-        )
+        if mfa_method == MFA_METHOD_SMS:
+            body = await self._submit_sms_mfa(flow_state, mfa_code)
+        else:
+            body = await self._submit_email_mfa(flow_state, mfa_code)
+
         # The response should contain a new state; if it doesn't the
         # code was most likely wrong (server returned 400 with the MFA
         # form again).
@@ -530,6 +537,135 @@ class EngieBeApiClient:
 
         LOGGER.debug("Auth step 13 complete: tokens obtained")
         return access_token, refresh_token
+
+    # ------------------------------------------------------------------
+    # Internal: MFA submission methods (SMS vs email)
+    # ------------------------------------------------------------------
+
+    async def _submit_sms_mfa(
+        self,
+        flow_state: AuthFlowState,
+        mfa_code: str,
+    ) -> str:
+        """Submit an SMS MFA code (Bruno step 8)."""
+        # Step 8: POST /u/mfa-sms-challenge (submit SMS code)
+        # A wrong code returns HTTP 400; we suppress the automatic error
+        # handling so we can raise a specific MfaError instead.
+        return await self._api_wrapper(
+            session=flow_state.session,
+            method="POST",
+            url=f"{AUTH_BASE_URL}/u/mfa-sms-challenge",
+            params={
+                "state": flow_state.mfa_challenge_state,
+                "ui_locales": "nl",
+            },
+            headers=_BROWSER_HEADERS,
+            data={
+                "state": flow_state.mfa_challenge_state,
+                "code": mfa_code,
+            },
+            allow_redirects=False,
+            raise_on_error=False,
+        )
+
+    async def _submit_email_mfa(
+        self,
+        flow_state: AuthFlowState,
+        mfa_code: str,
+    ) -> str:
+        """
+        Submit an email MFA code (Bruno step 8.ALT-5).
+
+        The authenticator switch (ALT steps 1-4) has already been
+        performed during ``_run_auth_steps_1_to_7`` so only the code
+        POST is needed here.
+        """
+        return await self._api_wrapper(
+            session=flow_state.session,
+            method="POST",
+            url=f"{AUTH_BASE_URL}/u/mfa-email-challenge",
+            params={
+                "state": flow_state.mfa_challenge_state,
+                "ui_locales": "nl",
+            },
+            headers=_BROWSER_HEADERS,
+            data={
+                "state": flow_state.mfa_challenge_state,
+                "code": mfa_code,
+                "action": "default",
+            },
+            allow_redirects=False,
+            raise_on_error=False,
+        )
+
+    # ------------------------------------------------------------------
+    # Internal: email MFA authenticator switch (ALT steps 1-4)
+    # ------------------------------------------------------------------
+
+    async def _switch_to_email_mfa(
+        self,
+        session: aiohttp.ClientSession,
+        challenge_state: str,
+    ) -> None:
+        """
+        Run the authenticator-switching detour (Bruno ALT steps 1-4).
+
+        This is called from ``_run_auth_steps_1_to_7`` when the user
+        chose email MFA instead of SMS.  It navigates the Auth0 UI from
+        the SMS challenge screen to the email challenge screen, which
+        triggers the email send.
+        """
+        # ALT-1: POST /u/mfa-sms-challenge with action=pick-authenticator
+        await self._api_wrapper(
+            session=session,
+            method="POST",
+            url=f"{AUTH_BASE_URL}/u/mfa-sms-challenge",
+            params={"state": challenge_state, "ui_locales": "nl"},
+            headers=_BROWSER_HEADERS,
+            data={
+                "state": challenge_state,
+                "action": "pick-authenticator",
+            },
+            allow_redirects=False,
+        )
+        LOGGER.debug("Auth ALT-1 complete: picked authenticator")
+
+        # ALT-2: GET /u/mfa-login-options (load MFA method selection)
+        await self._api_wrapper(
+            session=session,
+            method="GET",
+            url=f"{AUTH_BASE_URL}/u/mfa-login-options",
+            params={"state": challenge_state, "ui_locales": "nl"},
+            headers=_BROWSER_HEADERS,
+            allow_redirects=False,
+        )
+        LOGGER.debug("Auth ALT-2 complete: loaded login options")
+
+        # ALT-3: POST /u/mfa-login-options with action=email::1
+        await self._api_wrapper(
+            session=session,
+            method="POST",
+            url=f"{AUTH_BASE_URL}/u/mfa-login-options",
+            params={"state": challenge_state, "ui_locales": "nl"},
+            headers=_BROWSER_HEADERS,
+            data={
+                "state": challenge_state,
+                "action": "email::1",
+            },
+            allow_redirects=False,
+        )
+        LOGGER.debug("Auth ALT-3 complete: selected email MFA")
+
+        # ALT-4: GET /u/mfa-email-challenge (triggers email send)
+        await self._api_wrapper(
+            session=session,
+            method="GET",
+            url=f"{AUTH_BASE_URL}/u/mfa-email-challenge",
+            params={"state": challenge_state, "ui_locales": "nl"},
+            headers=_BROWSER_HEADERS,
+            allow_redirects=False,
+        )
+        LOGGER.debug("Auth ALT-4 complete: email challenge triggered")
 
     # ------------------------------------------------------------------
     # Generic request wrapper

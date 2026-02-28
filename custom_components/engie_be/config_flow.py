@@ -23,6 +23,7 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_CLIENT_ID,
     CONF_CUSTOMER_NUMBER,
+    CONF_MFA_METHOD,
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
@@ -30,6 +31,8 @@ from .const import (
     DOMAIN,
     LOGGER,
     MAX_UPDATE_INTERVAL_HOURS,
+    MFA_METHOD_EMAIL,
+    MFA_METHOD_SMS,
     MIN_UPDATE_INTERVAL_HOURS,
 )
 
@@ -54,7 +57,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return EngieBeOptionsFlowHandler()
 
     # ------------------------------------------------------------------
-    # Step 1: credentials + customer number
+    # Step 1: credentials + customer number + MFA method
     # ------------------------------------------------------------------
 
     async def async_step_user(
@@ -74,6 +77,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._auth_flow_state = await self._client.async_start_authentication(
                     username=user_input[CONF_USERNAME],
                     password=user_input[CONF_PASSWORD],
+                    mfa_method=user_input.get(CONF_MFA_METHOD, MFA_METHOD_SMS),
                 )
             except EngieBeApiClientAuthenticationError as exception:
                 LOGGER.warning(exception)
@@ -85,7 +89,10 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.exception(exception)
                 errors["base"] = "unknown"
             else:
-                return await self.async_step_mfa()
+                mfa_method = user_input.get(CONF_MFA_METHOD, MFA_METHOD_SMS)
+                if mfa_method == MFA_METHOD_EMAIL:
+                    return await self.async_step_mfa_email()
+                return await self.async_step_mfa_sms()
 
         return self.async_show_form(
             step_id="user",
@@ -124,20 +131,71 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             type=selector.TextSelectorType.TEXT,
                         ),
                     ),
+                    vol.Required(
+                        CONF_MFA_METHOD,
+                        default=(user_input or {}).get(CONF_MFA_METHOD, MFA_METHOD_SMS),
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(
+                                    value=MFA_METHOD_SMS,
+                                    label="SMS",
+                                ),
+                                selector.SelectOptionDict(
+                                    value=MFA_METHOD_EMAIL,
+                                    label="Email",
+                                ),
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        ),
+                    ),
                 },
             ),
             errors=errors,
         )
 
     # ------------------------------------------------------------------
-    # Step 2: MFA code entry
+    # Step 2a: SMS MFA code entry
     # ------------------------------------------------------------------
 
-    async def async_step_mfa(
+    async def async_step_mfa_sms(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """Handle the MFA code entry step."""
+        """Handle the SMS MFA code entry step."""
+        return await self._handle_mfa_step(
+            step_id="mfa_sms",
+            mfa_method=MFA_METHOD_SMS,
+            user_input=user_input,
+        )
+
+    # ------------------------------------------------------------------
+    # Step 2b: email MFA code entry
+    # ------------------------------------------------------------------
+
+    async def async_step_mfa_email(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Handle the email MFA code entry step."""
+        return await self._handle_mfa_step(
+            step_id="mfa_email",
+            mfa_method=MFA_METHOD_EMAIL,
+            user_input=user_input,
+        )
+
+    # ------------------------------------------------------------------
+    # Shared MFA handler
+    # ------------------------------------------------------------------
+
+    async def _handle_mfa_step(
+        self,
+        *,
+        step_id: str,
+        mfa_method: str,
+        user_input: dict[str, Any] | None,
+    ) -> config_entries.ConfigFlowResult:
+        """Handle MFA code entry for both SMS and email methods."""
         errors: dict[str, str] = {}
 
         if user_input is not None and self._auth_flow_state is not None:
@@ -148,6 +206,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 ) = await self._client.async_complete_authentication(
                     flow_state=self._auth_flow_state,
                     mfa_code=user_input["code"],
+                    mfa_method=mfa_method,
                 )
             except EngieBeApiClientMfaError as exception:
                 LOGGER.warning(exception)
@@ -182,7 +241,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
         return self.async_show_form(
-            step_id="mfa",
+            step_id=step_id,
             data_schema=vol.Schema(
                 {
                     vol.Required("code"): selector.TextSelector(
