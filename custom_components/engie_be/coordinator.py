@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for the Engie Belgium integration."""
+"""DataUpdateCoordinator for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator to poll energy prices from Engie Belgium."""
+    """Coordinator to poll energy prices from ENGIE Belgium."""
 
     config_entry: EngieBeConfigEntry
 
@@ -38,7 +38,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             LOGGER,
             config_entry=config_entry,
-            name="Engie Belgium",
+            name="ENGIE Belgium",
             update_interval=timedelta(hours=1),
         )
 

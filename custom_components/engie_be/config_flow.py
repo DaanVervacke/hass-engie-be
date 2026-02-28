@@ -1,4 +1,4 @@
-"""Config flow for the Engie Belgium integration."""
+"""Config flow for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ from .const import (
 
 
 class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle the config flow for Engie Belgium."""
+    """Handle the config flow for ENGIE Belgium."""
 
     VERSION = 1
 

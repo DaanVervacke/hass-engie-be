@@ -1,4 +1,4 @@
-"""Custom integration to integrate Engie Belgium with Home Assistant."""
+"""Custom integration to integrate ENGIE Belgium with Home Assistant."""
 
 from __future__ import annotations
 

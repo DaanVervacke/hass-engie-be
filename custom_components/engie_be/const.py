@@ -1,4 +1,4 @@
-"""Constants for the Engie Belgium integration."""
+"""Constants for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from logging import Logger, getLogger
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "engie_be"
-ATTRIBUTION = "Data provided by Engie Belgium"
+ATTRIBUTION = "Data provided by ENGIE Belgium"
 
 # OAuth / Auth0 endpoints
 AUTH_BASE_URL = "https://account.engie.be"

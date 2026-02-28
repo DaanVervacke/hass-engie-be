@@ -1,4 +1,4 @@
-"""Base entity for the Engie Belgium integration."""
+"""Base entity for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .coordinator import EngieBeDataUpdateCoordinator
 
 
 class EngieBeEntity(CoordinatorEntity[EngieBeDataUpdateCoordinator]):
-    """Base class for Engie Belgium entities."""
+    """Base class for ENGIE Belgium entities."""
 
     _attr_attribution = ATTRIBUTION
     _attr_has_entity_name = True
@@ -20,6 +20,6 @@ class EngieBeEntity(CoordinatorEntity[EngieBeDataUpdateCoordinator]):
         super().__init__(coordinator)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.config_entry.entry_id)},
-            manufacturer="Engie Belgium",
-            name="Engie Belgium",
+            manufacturer="ENGIE Belgium",
+            name="ENGIE Belgium",
         )

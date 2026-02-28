@@ -1,4 +1,4 @@
-"""Sensor platform for the Engie Belgium integration."""
+"""Sensor platform for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 
@@ -164,7 +164,7 @@ async def async_setup_entry(
 
 
 class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
-    """Sensor for an Engie Belgium energy price."""
+    """Sensor for an ENGIE Belgium energy price."""
 
     def __init__(
         self,

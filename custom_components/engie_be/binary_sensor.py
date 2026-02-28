@@ -1,4 +1,4 @@
-"""Binary sensor platform for the Engie Belgium integration."""
+"""Binary sensor platform for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 

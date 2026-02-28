@@ -1,4 +1,4 @@
-"""Custom types for the Engie Belgium integration."""
+"""Custom types for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ type EngieBeConfigEntry = ConfigEntry[EngieBeData]
 
 @dataclass
 class EngieBeData:
-    """Runtime data for the Engie Belgium integration."""
+    """Runtime data for the ENGIE Belgium integration."""
 
     client: EngieBeApiClient
     coordinator: EngieBeDataUpdateCoordinator

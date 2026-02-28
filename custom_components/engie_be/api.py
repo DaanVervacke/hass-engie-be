@@ -1,4 +1,4 @@
-"""Engie Belgium API client implementing OAuth2/PKCE with SMS MFA."""
+"""ENGIE Belgium API client implementing OAuth2/PKCE with SMS MFA."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ from .const import (
 
 
 class EngieBeApiClientError(Exception):
-    """Base exception for Engie Belgium API client errors."""
+    """Base exception for ENGIE Belgium API client errors."""
 
 
 class EngieBeApiClientCommunicationError(EngieBeApiClientError):
@@ -109,7 +109,7 @@ def _extract_from_body(body: str, pattern: str) -> str | None:
 
 class EngieBeApiClient:
     """
-    Engie Belgium API client.
+    ENGIE Belgium API client.
 
     Handles the full OAuth2/PKCE + MFA authentication flow
     and subsequent token refresh / data retrieval.

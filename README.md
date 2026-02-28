@@ -1,20 +1,20 @@
-# Engie Belgium HACS Integration
+# ENGIE Belgium HACS Integration
 
 [![hacs][hacsbadge]][hacs]
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
-[Engie Belgium](https://www.engie.be/). Retrieves energy price data from the
-Engie Belgium API and exposes it as sensors.
+[ENGIE Belgium](https://www.engie.be/). Retrieves energy price data from the
+ENGIE Belgium API and exposes it as sensors.
 
 ## Installation
 
 Install via [HACS](https://hacs.xyz/):
 
 1. Open HACS in your Home Assistant instance.
-2. Search for **Engie Belgium** and install.
+2. Search for **ENGIE Belgium** and install.
 3. Restart Home Assistant.
 4. Go to **Settings > Devices & Services > Add Integration** and search for
-   **Engie Belgium**.
+   **ENGIE Belgium**.
 5. Follow the configuration flow: enter your credentials, then provide the
    SMS verification code.
 
