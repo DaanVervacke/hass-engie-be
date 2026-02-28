@@ -15,7 +15,12 @@ from .api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
 )
-from .const import CONF_CUSTOMER_NUMBER, LOGGER
+from .const import (
+    CONF_CUSTOMER_NUMBER,
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL_HOURS,
+    LOGGER,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -34,12 +39,16 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         config_entry: EngieBeConfigEntry,
     ) -> None:
         """Initialise the coordinator."""
+        update_hours = config_entry.options.get(
+            CONF_UPDATE_INTERVAL,
+            DEFAULT_UPDATE_INTERVAL_HOURS,
+        )
         super().__init__(
             hass,
             LOGGER,
             config_entry=config_entry,
             name="ENGIE Belgium",
-            update_interval=timedelta(hours=1),
+            update_interval=timedelta(hours=update_hours),
         )
 
     async def _async_update_data(self) -> dict[str, Any]:

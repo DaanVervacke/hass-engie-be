@@ -23,13 +23,14 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_CLIENT_ID,
     CONF_CUSTOMER_NUMBER,
-    CONF_MFA_METHOD,
     CONF_REFRESH_TOKEN,
+    CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
+    DEFAULT_UPDATE_INTERVAL_HOURS,
     DOMAIN,
     LOGGER,
-    MFA_METHOD_EMAIL,
-    MFA_METHOD_SMS,
+    MAX_UPDATE_INTERVAL_HOURS,
+    MIN_UPDATE_INTERVAL_HOURS,
 )
 
 
@@ -45,8 +46,15 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self._auth_flow_state: AuthFlowState | None = None
         self._client: EngieBeApiClient | None = None
 
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,  # noqa: ARG004
+    ) -> EngieBeOptionsFlowHandler:
+        """Return the options flow handler."""
+        return EngieBeOptionsFlowHandler()
+
     # ------------------------------------------------------------------
-    # Step 1: credentials + customer number + MFA method
+    # Step 1: credentials + customer number
     # ------------------------------------------------------------------
 
     async def async_step_user(
@@ -57,33 +65,27 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Reject email MFA for now
-            if user_input.get(CONF_MFA_METHOD) == MFA_METHOD_EMAIL:
-                errors["base"] = "mfa_email_not_supported"
+            self._user_input = user_input
+            try:
+                self._client = EngieBeApiClient(
+                    session=async_get_clientsession(self.hass),
+                    client_id=user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+                )
+                self._auth_flow_state = await self._client.async_start_authentication(
+                    username=user_input[CONF_USERNAME],
+                    password=user_input[CONF_PASSWORD],
+                )
+            except EngieBeApiClientAuthenticationError as exception:
+                LOGGER.warning(exception)
+                errors["base"] = "auth"
+            except EngieBeApiClientCommunicationError as exception:
+                LOGGER.error(exception)
+                errors["base"] = "connection"
+            except EngieBeApiClientError as exception:
+                LOGGER.exception(exception)
+                errors["base"] = "unknown"
             else:
-                self._user_input = user_input
-                try:
-                    self._client = EngieBeApiClient(
-                        session=async_get_clientsession(self.hass),
-                        client_id=user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
-                    )
-                    self._auth_flow_state = (
-                        await self._client.async_start_authentication(
-                            username=user_input[CONF_USERNAME],
-                            password=user_input[CONF_PASSWORD],
-                        )
-                    )
-                except EngieBeApiClientAuthenticationError as exception:
-                    LOGGER.warning(exception)
-                    errors["base"] = "auth"
-                except EngieBeApiClientCommunicationError as exception:
-                    LOGGER.error(exception)
-                    errors["base"] = "connection"
-                except EngieBeApiClientError as exception:
-                    LOGGER.exception(exception)
-                    errors["base"] = "unknown"
-                else:
-                    return await self.async_step_mfa()
+                return await self.async_step_mfa()
 
         return self.async_show_form(
             step_id="user",
@@ -120,24 +122,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,
-                        ),
-                    ),
-                    vol.Required(
-                        CONF_MFA_METHOD,
-                        default=(user_input or {}).get(CONF_MFA_METHOD, MFA_METHOD_SMS),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                selector.SelectOptionDict(
-                                    value=MFA_METHOD_SMS,
-                                    label="SMS",
-                                ),
-                                selector.SelectOptionDict(
-                                    value=MFA_METHOD_EMAIL,
-                                    label="Email",
-                                ),
-                            ],
-                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                 },
@@ -209,4 +193,39 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 },
             ),
             errors=errors,
+        )
+
+
+class EngieBeOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for ENGIE Belgium."""
+
+    async def async_step_init(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Manage the integration options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_UPDATE_INTERVAL,
+                        default=self.config_entry.options.get(
+                            CONF_UPDATE_INTERVAL,
+                            DEFAULT_UPDATE_INTERVAL_HOURS,
+                        ),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=MIN_UPDATE_INTERVAL_HOURS,
+                            max=MAX_UPDATE_INTERVAL_HOURS,
+                            step=1,
+                            mode=selector.NumberSelectorMode.BOX,
+                            unit_of_measurement="hours",
+                        ),
+                    ),
+                },
+            ),
         )
