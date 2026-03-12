@@ -529,6 +529,11 @@ class EngieBeApiClient:
         )
         auth_code = _extract_from_body(body, r"code=([a-zA-Z0-9_-]+)")
         if not auth_code:
+            LOGGER.debug(
+                "Auth step 12: failed to extract code from body (%d chars): %.500s",
+                len(body),
+                body,
+            )
             msg = "Failed to extract authorization code"
             raise EngieBeApiClientAuthenticationError(msg)
 
