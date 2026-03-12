@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from logging import Logger, getLogger
+from logging import DEBUG, Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
+LOGGER.setLevel(DEBUG)
 
 DOMAIN = "engie_be"
 ATTRIBUTION = "Data provided by ENGIE Belgium"
