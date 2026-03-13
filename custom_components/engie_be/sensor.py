@@ -117,7 +117,7 @@ def _build_sensor_descriptions(
 
         configs = current_price.get("proportionalPriceConfigurations", {})
 
-        unit = "EUR/m³" if energy_type == "Gas" else "EUR/kWh"
+        unit = "EUR/kWh"
 
         for direction, icon in (
             ("offtake", "mdi:cash-minus"),
