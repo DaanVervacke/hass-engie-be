@@ -115,6 +115,10 @@ the ENGIE API.
 
 ## Configuration
 
+Before starting, there are a few things to note:
+
+This integration only works for accounts where 2FA via SMS or e-mail is already enabled. If ENGIE has not yet enforced 2FA for your account, please visit <https://www.engie.be/nl/energiedesk/usermanagement/manage-access/> and create a new separate user for this integration. New accounts have 2FA enabled by default and will work with this integration. If your account already has 2FA enabled but you still get authentication errors, please try this method as well.
+
 Configuration is done entirely through the Home Assistant UI.
 
 1. Go to **Settings** > **Devices & Services** > **Add Integration**
