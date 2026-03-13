@@ -26,6 +26,7 @@ CONF_MFA_METHOD = "mfa_method"
 CONF_CLIENT_ID = "client_id"
 CONF_ACCESS_TOKEN = "access_token"  # noqa: S105
 CONF_REFRESH_TOKEN = "refresh_token"  # noqa: S105
+CONF_DEBUG_LOGGING = "debug_logging"
 
 # MFA method options
 MFA_METHOD_SMS = "sms"
