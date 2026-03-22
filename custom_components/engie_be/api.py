@@ -540,7 +540,7 @@ class EngieBeApiClient:
                     "Auth step 12 complete: got authorization code from Location header"
                 )
             else:
-                msg = "Failed to extract authorization code from body and Location header"
+                msg = "Failed to extract auth code from body and Location header"
                 raise EngieBeApiClientAuthenticationError(msg)
 
         # Step 13: POST /oauth/token (exchange code for tokens)
