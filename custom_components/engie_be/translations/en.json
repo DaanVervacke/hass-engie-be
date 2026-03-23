@@ -2,7 +2,7 @@
     "config": {
         "step": {
             "user": {
-                "description": "Enter your ENGIE Belgium account credentials and customer number, and choose your preferred two-factor authentication method. This integration only works for accounts where 2FA via SMS or e-mail is already enabled. If ENGIE has not yet enforced 2FA for your account, please visit https://www.engie.be/nl/energiedesk/usermanagement/manage-access/ and create a new separate user for this integration. New accounts have 2FA enabled by default and will work with this integration. If your account already has 2FA enabled but you still get authentication errors, please try this method as well.",
+                "description": "Enter your ENGIE Belgium account credentials and customer number, and choose your preferred two-factor authentication method. This integration only works for accounts where 2FA via SMS or e-mail is already enabled. If ENGIE has not yet enforced 2FA for your account, please visit the [ENGIE user management page]({user_management_url}) and create a new separate user for this integration. New accounts have 2FA enabled by default and will work with this integration. If your account already has 2FA enabled but you still get authentication errors, please try this method as well.",
                 "data": {
                     "username": "Email address",
                     "password": "Password",
