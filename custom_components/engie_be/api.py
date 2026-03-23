@@ -518,21 +518,30 @@ class EngieBeApiClient:
 
         # Step 12: GET /authorize/resume (final — extract auth code)
         # Uses loginState (not passKeyState), exactly as in the API
-        # auth flow.  The response body contains the authorization code.
-        body = await self._api_wrapper(
+        # auth flow.  The response body contains the authorization code,
+        # but some responses return it only in the Location header.
+        body, resp_headers = await self._api_wrapper(
             session=session,
             method="GET",
             url=f"{AUTH_BASE_URL}/authorize/resume",
             params={"state": flow_state.login_state},
             headers=_BROWSER_HEADERS,
             allow_redirects=False,
+            include_headers=True,
         )
         auth_code = _extract_from_body(body, r"code=([a-zA-Z0-9_-]+)")
-        if not auth_code:
-            msg = "Failed to extract authorization code"
-            raise EngieBeApiClientAuthenticationError(msg)
-
-        LOGGER.debug("Auth step 12 complete: got authorization code")
+        if auth_code:
+            LOGGER.debug("Auth step 12 complete: got authorization code from body")
+        else:
+            location = resp_headers.get("Location", "")
+            auth_code = _extract_from_body(location, r"code=([a-zA-Z0-9_-]+)")
+            if auth_code:
+                LOGGER.debug(
+                    "Auth step 12 complete: got authorization code from Location header"
+                )
+            else:
+                msg = "Failed to extract auth code from body and Location header"
+                raise EngieBeApiClientAuthenticationError(msg)
 
         # Step 13: POST /oauth/token (exchange code for tokens)
         token_result = await self._api_wrapper(
@@ -706,6 +715,7 @@ class EngieBeApiClient:
         json_response: bool = False,
         allow_redirects: bool = False,
         raise_on_error: bool = True,
+        include_headers: bool = False,
     ) -> Any:
         """
         Execute an HTTP request with error handling.
@@ -713,6 +723,9 @@ class EngieBeApiClient:
         When *raise_on_error* is ``False`` the caller is responsible for
         interpreting non-success status codes (useful when a 400 has
         semantic meaning, e.g. an invalid MFA code).
+
+        When *include_headers* is ``True`` the return value is a tuple
+        of ``(body_or_json, response_headers)`` instead of just the body.
         """
         try:
             async with asyncio.timeout(30):
@@ -736,8 +749,13 @@ class EngieBeApiClient:
                         response.raise_for_status()
 
                 if json_response:
-                    return await response.json()
-                return await response.text()
+                    result = await response.json()
+                else:
+                    result = await response.text()
+
+                if include_headers:
+                    return result, dict(response.headers)
+                return result
 
         except EngieBeApiClientError:
             raise
