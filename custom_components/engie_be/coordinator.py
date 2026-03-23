@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -10,6 +10,7 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from homeassistant.util import dt as dt_util
 
 from .api import (
     EngieBeApiClientAuthenticationError,
@@ -18,7 +19,7 @@ from .api import (
 from .const import (
     CONF_CUSTOMER_NUMBER,
     CONF_UPDATE_INTERVAL,
-    DEFAULT_UPDATE_INTERVAL_HOURS,
+    DEFAULT_UPDATE_INTERVAL_MINUTES,
     LOGGER,
 )
 
@@ -39,17 +40,18 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         config_entry: EngieBeConfigEntry,
     ) -> None:
         """Initialise the coordinator."""
-        update_hours = config_entry.options.get(
+        update_minutes = config_entry.options.get(
             CONF_UPDATE_INTERVAL,
-            DEFAULT_UPDATE_INTERVAL_HOURS,
+            DEFAULT_UPDATE_INTERVAL_MINUTES,
         )
         super().__init__(
             hass,
             LOGGER,
             config_entry=config_entry,
             name="ENGIE Belgium",
-            update_interval=timedelta(hours=update_hours),
+            update_interval=timedelta(minutes=update_minutes),
         )
+        self.last_successful_fetch: datetime | None = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch energy prices from the API."""
@@ -57,8 +59,11 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         customer_number = self.config_entry.data[CONF_CUSTOMER_NUMBER]
 
         try:
-            return await client.async_get_prices(customer_number)
+            data = await client.async_get_prices(customer_number)
         except EngieBeApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(exception) from exception
         except EngieBeApiClientError as exception:
             raise UpdateFailed(exception) from exception
+
+        self.last_successful_fetch = dt_util.utcnow()
+        return data

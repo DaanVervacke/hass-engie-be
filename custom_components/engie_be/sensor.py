@@ -231,6 +231,8 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
         attrs: dict[str, Any] = {"ean": self._ean}
+        if self.coordinator.last_successful_fetch:
+            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
         price_entry = self._get_current_price_entry()
         if price_entry:
             attrs["from"] = price_entry.get("from")

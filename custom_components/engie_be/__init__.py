@@ -14,6 +14,7 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_CLIENT_ID,
     CONF_REFRESH_TOKEN,
+    CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
     LOGGER,
     TOKEN_REFRESH_INTERVAL_SECONDS,
@@ -30,6 +31,35 @@ PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.SENSOR,
 ]
+
+_HOURS_TO_MINUTES = 60
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant,
+    config_entry: EngieBeConfigEntry,
+) -> bool:
+    """Migrate config entry to a new version."""
+    if config_entry.version == 1:
+        # v1 stored update_interval in hours; v2 stores it in minutes.
+        old_interval = config_entry.options.get(CONF_UPDATE_INTERVAL)
+        if old_interval is not None:
+            new_options = {**config_entry.options}
+            new_options[CONF_UPDATE_INTERVAL] = old_interval * _HOURS_TO_MINUTES
+            hass.config_entries.async_update_entry(
+                config_entry,
+                options=new_options,
+                version=2,
+            )
+        else:
+            hass.config_entries.async_update_entry(config_entry, version=2)
+
+        LOGGER.info(
+            "Migrated config entry %s from version 1 to 2",
+            config_entry.entry_id,
+        )
+
+    return True
 
 
 async def async_setup_entry(
@@ -72,8 +102,6 @@ async def async_setup_entry(
         except EngieBeApiClientError:
             entry.runtime_data.authenticated = False
             LOGGER.warning("Scheduled token refresh failed; will retry")
-        # Poke the coordinator so binary_sensor picks up the new auth state
-        coordinator.async_set_updated_data(coordinator.data)
 
     cancel_refresh = async_track_time_interval(
         hass,
