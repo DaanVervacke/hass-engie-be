@@ -23,7 +23,7 @@ data from the ENGIE Belgium API and exposes it as sensors.
 The integration auto-detects your energy contracts and creates sensors
 accordingly. All price sensors are in **EUR/kWh** with 6 decimal precision.
 Each sensor exposes the following attributes: `ean`, `from`, `to`,
-`vat_tariff`, and `time_of_use_slot_code`.
+`vat_tariff`, `time_of_use_slot_code`, and `last_fetched`.
 
 Which sensors are created depends on your contract type. The integration reads
 the `timeOfUseSlotCode` from the API response to determine whether you have a
@@ -140,7 +140,7 @@ After setup, you can configure the price update interval:
 
 1. Go to **Settings** > **Devices & Services**
 2. Find the **ENGIE Belgium** integration and click **Configure**
-3. Set the **Update interval** (1--24 hours, default: 1 hour)
+3. Set the **Update interval** (5--1440 minutes, default: 60 minutes)
 
 ## How it works
 
@@ -151,7 +151,7 @@ After setup, you can configure the price update interval:
   refreshes tokens every 60 seconds automatically. Refresh tokens are rotated
   and persisted to the config entry.
 - **Data polling**: Energy prices are fetched at the configured interval
-  (default: every hour). The coordinator makes a single API call per update.
+  (default: every 60 minutes). The coordinator makes a single API call per update.
 - **Energy type detection**: At startup the integration calls the ENGIE
   service-points endpoint for each EAN to determine whether the contract is gas
   or electricity. If the lookup fails, a generic "Energy" label is used as

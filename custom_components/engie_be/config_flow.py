@@ -29,20 +29,20 @@ from .const import (
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
-    DEFAULT_UPDATE_INTERVAL_HOURS,
+    DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
     LOGGER,
-    MAX_UPDATE_INTERVAL_HOURS,
+    MAX_UPDATE_INTERVAL_MINUTES,
     MFA_METHOD_EMAIL,
     MFA_METHOD_SMS,
-    MIN_UPDATE_INTERVAL_HOURS,
+    MIN_UPDATE_INTERVAL_MINUTES,
 )
 
 
 class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the config flow for ENGIE Belgium."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Initialise the flow handler."""
@@ -298,15 +298,15 @@ class EngieBeOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_UPDATE_INTERVAL,
                         default=self.config_entry.options.get(
                             CONF_UPDATE_INTERVAL,
-                            DEFAULT_UPDATE_INTERVAL_HOURS,
+                            DEFAULT_UPDATE_INTERVAL_MINUTES,
                         ),
                     ): selector.NumberSelector(
                         selector.NumberSelectorConfig(
-                            min=MIN_UPDATE_INTERVAL_HOURS,
-                            max=MAX_UPDATE_INTERVAL_HOURS,
+                            min=MIN_UPDATE_INTERVAL_MINUTES,
+                            max=MAX_UPDATE_INTERVAL_MINUTES,
                             step=1,
                             mode=selector.NumberSelectorMode.BOX,
-                            unit_of_measurement="hours",
+                            unit_of_measurement="minutes",
                         ),
                     ),
                 },

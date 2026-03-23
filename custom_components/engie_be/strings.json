@@ -49,7 +49,7 @@
                     "update_interval": "Update interval"
                 },
                 "data_description": {
-                    "update_interval": "How often to fetch new price data from the ENGIE Belgium API, in hours."
+                    "update_interval": "How often to fetch new price data from the ENGIE Belgium API, in minutes."
                 }
             }
         }
