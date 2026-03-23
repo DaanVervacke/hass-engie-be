@@ -107,6 +107,9 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
+            description_placeholders={
+                "user_management_url": "https://www.engie.be/nl/energiedesk/usermanagement/manage-access/",
+            },
             data_schema=vol.Schema(
                 {
                     vol.Required(
