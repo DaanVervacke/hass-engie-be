@@ -1,7 +1,7 @@
 # ENGIE Belgium HACS integration
 
 [![HACS Custom][hacsbadge]][hacs]
-[![GitHub Release][releasebadge]][release]
+[![Codeberg Release][releasebadge]][release]
 [![License][licensebadge]](LICENSE)
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
@@ -108,7 +108,7 @@ the ENGIE API.
 
 1. Open HACS in your Home Assistant instance
 2. Click the three dots in the top right corner and select **Custom repositories**
-3. Add `https://github.com/DaanVervacke/hass-engie-be` with category **Integration**
+3. Add `https://codeberg.org/DaanVervacke/hass-engie-be` with category **Integration**
 4. Search for **ENGIE Belgium** in HACS and install it
 5. Restart Home Assistant
 
@@ -159,7 +159,7 @@ After setup, you can configure the price update interval:
 
 ## License
 
-[MIT](LICENSE) - Daan Vervacke ([@DaanVervacke](https://github.com/DaanVervacke))
+[MIT](LICENSE) - Daan Vervacke ([@DaanVervacke](https://codeberg.org/DaanVervacke))
 
 ---
 
@@ -167,6 +167,6 @@ After setup, you can configure the price update interval:
 
 [hacs]: https://github.com/hacs/integration
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg
-[release]: https://github.com/DaanVervacke/hass-engie-be/releases
+[release]: https://codeberg.org/DaanVervacke/hass-engie-be/releases
 [releasebadge]: https://img.shields.io/github/v/release/DaanVervacke/hass-engie-be
 [licensebadge]: https://img.shields.io/github/license/DaanVervacke/hass-engie-be
