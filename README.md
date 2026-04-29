@@ -190,7 +190,7 @@ filing an issue:
 1. **Enable debug logging.** Open **Settings** > **Devices & Services**,
    click the three-dot menu on the ENGIE Belgium entry, and select
    **Enable debug logging**. Reproduce the issue, then choose **Disable
-   debug logging** from the same menu — Home Assistant will offer to
+   debug logging** from the same menu, and Home Assistant will offer to
    download the captured log. Alternatively, add the following to
    `configuration.yaml` and restart Home Assistant:
 
@@ -230,7 +230,7 @@ pattern for integrations that need persisted credentials.
 
 The password is kept (rather than discarded after setup) because the
 re-authentication flow re-runs the upstream OAuth `Resource Owner
-Password Credentials` exchange to begin a new MFA challenge — without
+Password Credentials` exchange to begin a new MFA challenge. Without
 the password, every token revocation would require fully removing and
 re-adding the integration.
 
