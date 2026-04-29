@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.engie_be import _persist_tokens, async_migrate_entry
+from custom_components.engie_be import (
+    _persist_tokens,
+    async_migrate_entry,
+    async_reload_entry,
+)
 from custom_components.engie_be.api import (
     EngieBeApiClientAuthenticationError,
 )
@@ -21,6 +26,7 @@ from custom_components.engie_be.const import (
     DEFAULT_CLIENT_ID,
     DOMAIN,
 )
+from custom_components.engie_be.data import EngieBeData
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -274,3 +280,102 @@ async def test_migrate_v2_is_noop(
 
     assert entry.version == 2
     assert entry.options[CONF_UPDATE_INTERVAL] == 60
+
+
+# ---------------------------------------------------------------------------
+# Options round-trip: changing update_interval reaches the live coordinator
+# ---------------------------------------------------------------------------
+
+
+async def test_options_update_triggers_full_reload_with_new_interval(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Changing update_interval via options must rebuild the coordinator."""
+    entry = _build_entry(hass)
+    client = _make_client()
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Initial coordinator built from default 60-minute option.
+        first_coordinator = entry.runtime_data.coordinator
+        assert first_coordinator.update_interval == timedelta(minutes=60)
+
+        # Change the option; HA fires the update listener registered in setup.
+        hass.config_entries.async_update_entry(
+            entry,
+            options={CONF_UPDATE_INTERVAL: 15},
+        )
+        await hass.async_block_till_done()
+
+        # After reload, runtime_data is brand new and the coordinator
+        # is constructed with the new interval.
+        second_coordinator = entry.runtime_data.coordinator
+        assert second_coordinator is not first_coordinator
+        assert second_coordinator.update_interval == timedelta(minutes=15)
+        assert entry.options[CONF_UPDATE_INTERVAL] == 15
+
+
+async def test_token_only_data_update_does_not_trigger_reload(
+    hass: HomeAssistant,
+) -> None:
+    """Rotating tokens (entry.data) must NOT rebuild the coordinator."""
+    entry = _build_entry(hass)
+    sentinel_coordinator = MagicMock()
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        coordinator=sentinel_coordinator,
+        last_options=dict(entry.options),
+    )
+
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(return_value=True),
+    ) as mock_reload:
+        # Simulate the update listener firing after _persist_tokens rotated
+        # the tokens. Options dict is unchanged, so reload must be skipped.
+        await async_reload_entry(hass, entry)
+
+    mock_reload.assert_not_awaited()
+    # Coordinator reference must be untouched.
+    assert entry.runtime_data.coordinator is sentinel_coordinator
+
+
+async def test_options_change_after_setup_uses_async_reload(
+    hass: HomeAssistant,
+) -> None:
+    """An options dict that differs from last_options must reload the entry."""
+    entry = _build_entry(hass)
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        coordinator=MagicMock(),
+        last_options={CONF_UPDATE_INTERVAL: 60},
+    )
+    # Mutate options to simulate the options flow saving a new value before
+    # the listener fires.
+    hass.config_entries.async_update_entry(
+        entry,
+        options={CONF_UPDATE_INTERVAL: 30},
+    )
+
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(return_value=True),
+    ) as mock_reload:
+        await async_reload_entry(hass, entry)
+
+    mock_reload.assert_awaited_once_with(entry.entry_id)
