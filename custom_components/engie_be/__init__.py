@@ -6,10 +6,15 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 
-from .api import EngieBeApiClient, EngieBeApiClientError
+from .api import (
+    EngieBeApiClient,
+    EngieBeApiClientAuthenticationError,
+    EngieBeApiClientError,
+)
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_CLIENT_ID,
@@ -85,23 +90,36 @@ async def async_setup_entry(
     # Do an initial token refresh so we have a valid access token
     try:
         new_access, new_refresh = await client.async_refresh_token()
-        _persist_tokens(hass, entry, new_access, new_refresh)
-        entry.runtime_data.authenticated = True
-    except EngieBeApiClientError:
-        LOGGER.warning("Initial token refresh failed; will retry on next interval")
-        entry.runtime_data.authenticated = False
+    except EngieBeApiClientAuthenticationError as err:
+        msg = "Stored ENGIE credentials are no longer valid"
+        raise ConfigEntryAuthFailed(msg) from err
+    except EngieBeApiClientError as err:
+        msg = "Unable to refresh ENGIE access token; will retry"
+        raise ConfigEntryNotReady(msg) from err
+
+    _persist_tokens(hass, entry, new_access, new_refresh)
+    entry.runtime_data.authenticated = True
 
     # Set up recurring token refresh (every 60 seconds)
     async def _refresh_token_callback(_now: object) -> None:
         """Refresh the access token periodically."""
         try:
             new_access, new_refresh = await client.async_refresh_token()
-            _persist_tokens(hass, entry, new_access, new_refresh)
-            entry.runtime_data.authenticated = True
-            LOGGER.debug("Token refreshed successfully")
+        except EngieBeApiClientAuthenticationError:
+            entry.runtime_data.authenticated = False
+            LOGGER.warning(
+                "Scheduled token refresh rejected by ENGIE; starting reauth flow"
+            )
+            entry.async_start_reauth(hass)
+            return
         except EngieBeApiClientError:
             entry.runtime_data.authenticated = False
             LOGGER.warning("Scheduled token refresh failed; will retry")
+            return
+
+        _persist_tokens(hass, entry, new_access, new_refresh)
+        entry.runtime_data.authenticated = True
+        LOGGER.debug("Token refreshed successfully")
 
     cancel_refresh = async_track_time_interval(
         hass,

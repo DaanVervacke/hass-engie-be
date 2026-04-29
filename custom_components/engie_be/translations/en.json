@@ -29,6 +29,23 @@
                 "data": {
                     "code": "Verification code"
                 }
+            },
+            "reauth_confirm": {
+                "title": "Reauthenticate ENGIE Belgium",
+                "description": "Your stored ENGIE access has expired for {username}. Choose how you want to receive a new verification code to re-authenticate.",
+                "data": {
+                    "mfa_method": "Two-factor authentication method"
+                },
+                "data_description": {
+                    "mfa_method": "Choose how you want to receive your verification code."
+                }
+            },
+            "reauth_mfa": {
+                "title": "Enter verification code",
+                "description": "Enter the 6-digit verification code that was just sent to you to finish re-authenticating.",
+                "data": {
+                    "code": "Verification code"
+                }
             }
         },
         "error": {
@@ -38,7 +55,8 @@
             "invalid_mfa_code": "Invalid verification code. Please try again."
         },
         "abort": {
-            "already_configured": "This account is already configured."
+            "already_configured": "This account is already configured.",
+            "reauth_successful": "Re-authentication was successful."
         }
     },
     "options": {
