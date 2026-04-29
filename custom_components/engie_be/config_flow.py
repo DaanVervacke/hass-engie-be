@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -38,6 +38,9 @@ from .const import (
     MIN_UPDATE_INTERVAL_MINUTES,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 
 class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the config flow for ENGIE Belgium."""
@@ -50,6 +53,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self._user_input: dict[str, Any] = {}
         self._auth_flow_state: AuthFlowState | None = None
         self._client: EngieBeApiClient | None = None
+        self._reauth_mfa_method: str = MFA_METHOD_SMS
 
     @staticmethod
     def async_get_options_flow(
@@ -217,11 +221,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None and self._auth_flow_state is not None:
             try:
-                (
-                    access_token,
-                    refresh_token,
-                ) = await self._client.async_complete_authentication(
-                    flow_state=self._auth_flow_state,
+                access_token, refresh_token = await self._complete_mfa(
                     mfa_code=user_input["code"],
                     mfa_method=mfa_method,
                 )
@@ -238,8 +238,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.exception(exception)
                 errors["base"] = "unknown"
             else:
-                self._auth_flow_state = None
-
                 if self._user_input.get(CONF_DEBUG_LOGGING, False):
                     LOGGER.debug("Debug logging disabled after setup completed")
                     LOGGER.setLevel(logging.WARNING)
@@ -266,6 +264,153 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id=step_id,
+            data_schema=vol.Schema(
+                {
+                    vol.Required("code"): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT,
+                        ),
+                    ),
+                },
+            ),
+            errors=errors,
+        )
+
+    async def _complete_mfa(
+        self,
+        *,
+        mfa_code: str,
+        mfa_method: str,
+    ) -> tuple[str, str]:
+        """
+        Submit an MFA code and return the resulting (access, refresh) tokens.
+
+        Shared between the initial-setup flow and the reauth flow. The caller is
+        responsible for catching API exceptions and surfacing them as form errors.
+        """
+        if self._client is None or self._auth_flow_state is None:
+            msg = "MFA completion called without an active auth flow"
+            raise EngieBeApiClientError(msg)
+
+        try:
+            return await self._client.async_complete_authentication(
+                flow_state=self._auth_flow_state,
+                mfa_code=mfa_code,
+                mfa_method=mfa_method,
+            )
+        finally:
+            self._auth_flow_state = None
+
+    # ------------------------------------------------------------------
+    # Reauth flow
+    # ------------------------------------------------------------------
+
+    async def async_step_reauth(
+        self,
+        entry_data: Mapping[str, Any],  # noqa: ARG002
+    ) -> config_entries.ConfigFlowResult:
+        """Begin the reauth flow when stored credentials/tokens stop working."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Restart authentication using stored credentials, prompt for MFA method."""
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+
+        if user_input is not None:
+            mfa_method = user_input.get(CONF_MFA_METHOD, MFA_METHOD_SMS)
+            self._reauth_mfa_method = mfa_method
+
+            try:
+                self._client = EngieBeApiClient(
+                    session=async_get_clientsession(self.hass),
+                    client_id=entry.data.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+                )
+                self._auth_flow_state = await self._client.async_start_authentication(
+                    username=entry.data[CONF_USERNAME],
+                    password=entry.data[CONF_PASSWORD],
+                    mfa_method=mfa_method,
+                )
+            except EngieBeApiClientAuthenticationError as exception:
+                LOGGER.warning(exception)
+                errors["base"] = "auth"
+            except EngieBeApiClientCommunicationError as exception:
+                LOGGER.error(exception)
+                errors["base"] = "connection"
+            except EngieBeApiClientError as exception:
+                LOGGER.exception(exception)
+                errors["base"] = "unknown"
+            else:
+                return await self.async_step_reauth_mfa()
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            description_placeholders={"username": entry.data.get(CONF_USERNAME, "")},
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MFA_METHOD,
+                        default=self._reauth_mfa_method,
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(
+                                    value=MFA_METHOD_SMS,
+                                    label="SMS",
+                                ),
+                                selector.SelectOptionDict(
+                                    value=MFA_METHOD_EMAIL,
+                                    label="Email",
+                                ),
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        ),
+                    ),
+                },
+            ),
+            errors=errors,
+        )
+
+    async def async_step_reauth_mfa(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """Collect the MFA code during reauth and persist refreshed tokens."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None and self._auth_flow_state is not None:
+            try:
+                access_token, refresh_token = await self._complete_mfa(
+                    mfa_code=user_input["code"],
+                    mfa_method=self._reauth_mfa_method,
+                )
+            except EngieBeApiClientMfaError as exception:
+                LOGGER.warning(exception)
+                errors["base"] = "invalid_mfa_code"
+            except EngieBeApiClientAuthenticationError as exception:
+                LOGGER.warning(exception)
+                errors["base"] = "auth"
+            except EngieBeApiClientCommunicationError as exception:
+                LOGGER.error(exception)
+                errors["base"] = "connection"
+            except EngieBeApiClientError as exception:
+                LOGGER.exception(exception)
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(
+                    self._get_reauth_entry(),
+                    data_updates={
+                        CONF_ACCESS_TOKEN: access_token,
+                        CONF_REFRESH_TOKEN: refresh_token,
+                    },
+                    reason="reauth_successful",
+                )
+
+        return self.async_show_form(
+            step_id="reauth_mfa",
             data_schema=vol.Schema(
                 {
                     vol.Required("code"): selector.TextSelector(
