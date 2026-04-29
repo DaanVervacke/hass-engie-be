@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -24,7 +23,6 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_CLIENT_ID,
     CONF_CUSTOMER_NUMBER,
-    CONF_DEBUG_LOGGING,
     CONF_MFA_METHOD,
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
@@ -75,10 +73,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             self._user_input = user_input
-
-            if user_input.get(CONF_DEBUG_LOGGING, False):
-                LOGGER.setLevel(logging.DEBUG)
-                LOGGER.debug("Debug logging enabled via setup flow")
 
             try:
                 self._client = EngieBeApiClient(
@@ -166,10 +160,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
-                    vol.Optional(
-                        CONF_DEBUG_LOGGING,
-                        default=False,
-                    ): selector.BooleanSelector(),
                 },
             ),
             errors=errors,
@@ -238,10 +228,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.exception(exception)
                 errors["base"] = "unknown"
             else:
-                if self._user_input.get(CONF_DEBUG_LOGGING, False):
-                    LOGGER.debug("Debug logging disabled after setup completed")
-                    LOGGER.setLevel(logging.WARNING)
-
                 raw_number = self._user_input[CONF_CUSTOMER_NUMBER]
                 customer_number = f"00{raw_number.replace(' ', '')}"
 

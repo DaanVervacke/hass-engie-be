@@ -166,9 +166,11 @@ sensors are removed and no history is lost.
 If the integration is misbehaving, work through these steps before
 filing an issue:
 
-1. **Enable debug logging.** During the initial setup flow you can tick
-   **Enable debug logging** to capture verbose API traffic in the Home
-   Assistant log. To enable it after setup, add the following to
+1. **Enable debug logging.** Open **Settings** > **Devices & Services**,
+   click the three-dot menu on the ENGIE Belgium entry, and select
+   **Enable debug logging**. Reproduce the issue, then choose **Disable
+   debug logging** from the same menu — Home Assistant will offer to
+   download the captured log. Alternatively, add the following to
    `configuration.yaml` and restart Home Assistant:
 
    ```yaml
@@ -189,14 +191,33 @@ filing an issue:
      steps above.
    - *Cannot connect to the ENGIE Belgium API*: the upstream API is
      unreachable or returned an HTTP error. The coordinator will retry
-     on its next interval; check
-     [status.engie.be](https://status.engie.be) if the issue persists.
+     on its next interval.
    - *Invalid verification code*: re-trigger the MFA step and enter the
      latest code.
 
 4. **File an issue.** If the problem persists, open one at
    [github.com/DaanVervacke/hass-engie-be/issues](https://github.com/DaanVervacke/hass-engie-be/issues)
    and include the diagnostics JSON plus the relevant log lines.
+
+## Credential storage
+
+This integration stores your ENGIE email, password, customer number,
+client ID, and the latest OAuth access and refresh tokens in the
+config entry (`.storage/core.config_entries`), which Home Assistant
+keeps as plain JSON on disk. This is the standard Home Assistant
+pattern for integrations that need persisted credentials.
+
+The password is kept (rather than discarded after setup) because the
+re-authentication flow re-runs the upstream OAuth `Resource Owner
+Password Credentials` exchange to begin a new MFA challenge — without
+the password, every token revocation would require fully removing and
+re-adding the integration.
+
+If you do not want the password on disk, treat this integration the
+same as any other credential-storing HA integration: protect the host,
+restrict filesystem access, and consider full-disk encryption. The
+**Download diagnostics** payload redacts all of these fields and is
+safe to share.
 
 ## How it works
 

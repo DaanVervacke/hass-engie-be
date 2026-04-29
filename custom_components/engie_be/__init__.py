@@ -26,6 +26,7 @@ from .const import (
 )
 from .coordinator import EngieBeDataUpdateCoordinator
 from .data import EngieBeData
+from .diagnostics import _hash_ean
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -142,10 +143,11 @@ async def async_setup_entry(
             division: str = sp_data.get("division", "")
             if division:
                 service_points[ean] = division
-                LOGGER.debug("Service-point %s: division=%s", ean, division)
+                LOGGER.debug("Service-point %s: division=%s", _hash_ean(ean), division)
         except EngieBeApiClientError:
             LOGGER.warning(
-                "Failed to fetch service-point for EAN %s; using fallback", ean
+                "Failed to fetch service-point for EAN %s; using fallback",
+                _hash_ean(ean),
             )
     entry.runtime_data.service_points = service_points
 
