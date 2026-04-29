@@ -8,6 +8,12 @@ Custom [Home Assistant](https://www.home-assistant.io/) integration for
 [ENGIE Belgium](https://www.engie.be/). Retrieves your personal energy price
 data from the ENGIE Belgium API and exposes it as sensors.
 
+## A note on how this was built
+
+The ENGIE login flow was reverse-engineered by hand, and the integration
+around it was put together with AI assistance. Reviewed and tested
+before release.
+
 ## Features
 
 - Authenticates via ENGIE Belgium's OAuth2/PKCE flow with two-factor
