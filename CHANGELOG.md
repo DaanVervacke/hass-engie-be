@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-29
+
 ### Added
 - Diagnostics platform with credential redaction so users can share
   sanitized data when reporting bugs ([#37]).
@@ -21,12 +23,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Translatable exceptions, HTTP status constants, and clearer README
   sections from the audit pass ([#39]).
 - Regenerated brand assets to match the Home Assistant brand spec ([#41]).
+- Service-point lookups now run in parallel during setup, so multi-EAN
+  customers no longer pay sum-of-latencies on every reload ([#49]).
 
 ### Fixed
 - Em-dashes removed from README in favor of natural punctuation ([#46]).
 
 ### Docs
 - Disclosed AI assistance used during development ([#44]).
+- Added a CHANGELOG and linked it from the README ([#48]).
+- Bug-report template now points at the README's troubleshooting steps
+  for enabling debug logs ([#50]).
 
 ### Tests
 - Initial test scaffolding and CI wiring ([#35]).
@@ -165,3 +172,22 @@ No user-visible changes.
 [#45]: https://github.com/DaanVervacke/hass-engie-be/pull/45
 [#46]: https://github.com/DaanVervacke/hass-engie-be/pull/46
 [#47]: https://github.com/DaanVervacke/hass-engie-be/pull/47
+[#48]: https://github.com/DaanVervacke/hass-engie-be/pull/48
+[#49]: https://github.com/DaanVervacke/hass-engie-be/pull/49
+[#50]: https://github.com/DaanVervacke/hass-engie-be/pull/50
+
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.2...v0.5.0
+[0.4.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.3...v0.3.0
+[0.2.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/DaanVervacke/hass-engie-be/releases/tag/v0.1.0
