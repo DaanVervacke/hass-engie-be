@@ -20,6 +20,7 @@ from .const import (
     CONF_CUSTOMER_NUMBER,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
+    DOMAIN,
     LOGGER,
 )
 
@@ -61,9 +62,15 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             data = await client.async_get_prices(customer_number)
         except EngieBeApiClientAuthenticationError as exception:
-            raise ConfigEntryAuthFailed(exception) from exception
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+            ) from exception
         except EngieBeApiClientError as exception:
-            raise UpdateFailed(exception) from exception
+            raise UpdateFailed(
+                translation_domain=DOMAIN,
+                translation_key="cannot_connect",
+            ) from exception
 
         self.last_successful_fetch = dt_util.utcnow()
         return data

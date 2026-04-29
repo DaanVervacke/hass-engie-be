@@ -12,6 +12,8 @@
                     "debug_logging": "Enable debug logging"
                 },
                 "data_description": {
+                    "username": "Your ENGIE Belgium account email address.",
+                    "password": "Your ENGIE Belgium account password.",
                     "customer_number": "Enter your ENGIE Belgium customer number as shown in the ENGIE Smart app. The 00 prefix is added automatically.",
                     "client_id": "OAuth client ID. Only change this if you know what you are doing.",
                     "mfa_method": "Choose how you want to receive your verification code.",
@@ -22,12 +24,18 @@
                 "description": "Enter the 6-digit verification code that was sent to your phone via SMS.",
                 "data": {
                     "code": "Verification code"
+                },
+                "data_description": {
+                    "code": "The 6-digit code that ENGIE just sent you."
                 }
             },
             "mfa_email": {
                 "description": "Enter the 6-digit verification code that was sent to your email address.",
                 "data": {
                     "code": "Verification code"
+                },
+                "data_description": {
+                    "code": "The 6-digit code that ENGIE just sent you."
                 }
             },
             "reauth_confirm": {
@@ -45,6 +53,9 @@
                 "description": "Enter the 6-digit verification code that was just sent to you to finish re-authenticating.",
                 "data": {
                     "code": "Verification code"
+                },
+                "data_description": {
+                    "code": "The 6-digit code that ENGIE just sent you."
                 }
             }
         },
@@ -57,6 +68,17 @@
         "abort": {
             "already_configured": "This account is already configured.",
             "reauth_successful": "Re-authentication was successful."
+        }
+    },
+    "exceptions": {
+        "cannot_connect": {
+            "message": "Cannot connect to the ENGIE Belgium API."
+        },
+        "auth_failed": {
+            "message": "Authentication with ENGIE Belgium failed; please re-authenticate."
+        },
+        "unknown_error": {
+            "message": "An unknown error occurred while talking to the ENGIE Belgium API."
         }
     },
     "options": {
