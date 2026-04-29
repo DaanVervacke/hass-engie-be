@@ -769,11 +769,16 @@ class EngieBeApiClient:
         except EngieBeApiClientError:
             raise
         except TimeoutError as exception:
-            msg = f"Timeout communicating with Engie API - {exception}"
+            msg = (
+                f"Timeout communicating with Engie API ({exception.__class__.__name__})"
+            )
             raise EngieBeApiClientCommunicationError(msg) from exception
         except (aiohttp.ClientError, socket.gaierror) as exception:
-            msg = f"Error communicating with Engie API - {exception}"
+            msg = f"Error communicating with Engie API ({exception.__class__.__name__})"
             raise EngieBeApiClientCommunicationError(msg) from exception
         except Exception as exception:
-            msg = f"Unexpected error communicating with Engie API - {exception}"
+            msg = (
+                "Unexpected error communicating with Engie API "
+                f"({exception.__class__.__name__})"
+            )
             raise EngieBeApiClientError(msg) from exception
