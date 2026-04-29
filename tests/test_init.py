@@ -5,15 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.exceptions import ConfigEntryAuthFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.engie_be import (
-    _persist_tokens,
-    async_setup_entry,
-)
+from custom_components.engie_be import _persist_tokens
 from custom_components.engie_be.api import (
     EngieBeApiClientAuthenticationError,
 )
@@ -92,7 +87,7 @@ async def test_setup_entry_persists_refreshed_tokens(
             new=AsyncMock(return_value=None),
         ),
     ):
-        ok = await async_setup_entry(hass, entry)
+        ok = await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
     assert ok is True
@@ -108,20 +103,27 @@ async def test_setup_entry_raises_config_entry_auth_failed_on_initial_refresh(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
-    """A failing initial token refresh must raise ConfigEntryAuthFailed."""
+    """A failing initial token refresh must put the entry into a reauth state."""
     entry = _build_entry(hass)
     client = _make_client(
         refresh_side_effect=EngieBeApiClientAuthenticationError("expired"),
     )
 
-    with (
-        patch(
-            "custom_components.engie_be.EngieBeApiClient",
-            return_value=client,
-        ),
-        pytest.raises(ConfigEntryAuthFailed),
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
     ):
-        await async_setup_entry(hass, entry)
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is False
+    # ConfigEntryAuthFailed must trigger a reauth flow rather than load the entry.
+    reauth_flows = [
+        flow
+        for flow in hass.config_entries.flow.async_progress()
+        if flow["handler"] == DOMAIN and flow["context"].get("source") == "reauth"
+    ]
+    assert len(reauth_flows) == 1
 
 
 async def test_periodic_refresh_callback_starts_reauth_on_auth_error(
@@ -164,7 +166,7 @@ async def test_periodic_refresh_callback_starts_reauth_on_auth_error(
             new=AsyncMock(return_value=None),
         ),
     ):
-        await async_setup_entry(hass, entry)
+        await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
     assert len(captured) == 1, "Expected exactly one time-interval callback"
