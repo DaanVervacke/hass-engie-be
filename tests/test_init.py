@@ -81,9 +81,16 @@ async def test_setup_entry_persists_refreshed_tokens(
     entry = _build_entry(hass)
     client = _make_client(refresh_return=("fresh-access", "fresh-refresh"))
 
-    with patch(
-        "custom_components.engie_be.EngieBeApiClient",
-        return_value=client,
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         ok = await async_setup_entry(hass, entry)
         await hass.async_block_till_done()
@@ -150,6 +157,11 @@ async def test_periodic_refresh_callback_starts_reauth_on_auth_error(
         patch(
             "custom_components.engie_be.async_track_time_interval",
             side_effect=_capture_callback,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
         ),
     ):
         await async_setup_entry(hass, entry)
