@@ -255,6 +255,11 @@ safe to share.
   or electricity. If the lookup fails, a generic "Energy" label is used as
   fallback.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the version history. Notable changes
+since the last release live under the **[Unreleased]** section.
+
 ## License
 
 [MIT](LICENSE) - Daan Vervacke ([@DaanVervacke](https://github.com/DaanVervacke))
