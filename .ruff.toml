@@ -23,3 +23,17 @@ keep-runtime-typing = true
 
 [lint.mccabe]
 max-complexity = 25
+
+[lint.per-file-ignores]
+"tests/*" = [
+    "S101", # asserts are the standard idiom in pytest
+    "EM101", # short string exceptions are fine in tests
+    "EM102", # short f-string exceptions are fine in tests
+    "TRY003", # explicit messages are clearer in tests
+    "PLR2004", # magic numbers are normal in tests
+    "ANN201", # tests don't need return-type annotations
+    "D100", # tests modules don't need module docstrings
+    "D103", # individual test functions don't need docstrings
+    "D104", # tests packages don't need docstrings
+    "SLF001", # tests sometimes touch private attrs
+]
