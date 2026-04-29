@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.engie_be import _persist_tokens
+from custom_components.engie_be import _persist_tokens, async_migrate_entry
 from custom_components.engie_be.api import (
     EngieBeApiClientAuthenticationError,
 )
@@ -17,6 +17,7 @@ from custom_components.engie_be.const import (
     CONF_CLIENT_ID,
     CONF_CUSTOMER_NUMBER,
     CONF_REFRESH_TOKEN,
+    CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
     DOMAIN,
 )
@@ -199,3 +200,77 @@ def test_persist_tokens_writes_only_token_fields(
     assert entry.data[CONF_USERNAME] == "user@example.com"
     assert entry.data[CONF_PASSWORD] == "hunter2"
     assert entry.data[CONF_CUSTOMER_NUMBER] == "000000000000"
+
+
+# ---------------------------------------------------------------------------
+# Config-entry migration
+# ---------------------------------------------------------------------------
+
+
+async def test_migrate_v1_converts_hours_to_minutes(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """v1 stored update_interval in hours; migration must rewrite it to minutes."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        title="user@example.com",
+        unique_id="user_example_com",
+        data={
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "hunter2",
+            CONF_CUSTOMER_NUMBER: "000000000000",
+            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
+            CONF_ACCESS_TOKEN: "stored-access",
+            CONF_REFRESH_TOKEN: "stored-refresh",
+        },
+        options={CONF_UPDATE_INTERVAL: 2},
+    )
+    entry.add_to_hass(hass)
+
+    assert await async_migrate_entry(hass, entry) is True
+
+    assert entry.version == 2
+    assert entry.options[CONF_UPDATE_INTERVAL] == 120  # 2h -> 120min
+
+
+async def test_migrate_v1_without_interval_just_bumps_version(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A v1 entry with no stored update_interval is migrated by version bump only."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=1,
+        title="user@example.com",
+        unique_id="user_example_com",
+        data={
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "hunter2",
+            CONF_CUSTOMER_NUMBER: "000000000000",
+            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
+            CONF_ACCESS_TOKEN: "stored-access",
+            CONF_REFRESH_TOKEN: "stored-refresh",
+        },
+        options={},
+    )
+    entry.add_to_hass(hass)
+
+    assert await async_migrate_entry(hass, entry) is True
+
+    assert entry.version == 2
+    assert CONF_UPDATE_INTERVAL not in entry.options
+
+
+async def test_migrate_v2_is_noop(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A v2 entry passes straight through the migration unchanged."""
+    entry = _build_entry(hass)
+
+    assert await async_migrate_entry(hass, entry) is True
+
+    assert entry.version == 2
+    assert entry.options[CONF_UPDATE_INTERVAL] == 60

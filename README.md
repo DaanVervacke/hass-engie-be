@@ -161,6 +161,21 @@ Your stored email, password, and customer number are reused; only fresh
 access and refresh tokens are written back to the config entry. No
 sensors are removed and no history is lost.
 
+## Removing the integration
+
+This integration follows the standard Home Assistant removal flow and does
+not leave any state behind on Home Assistant or on the ENGIE side.
+
+1. Go to **Settings** > **Devices & Services**.
+2. Find the **ENGIE Belgium** card and click the three-dot menu.
+3. Select **Delete**.
+
+Removing the entry deletes its sensors and the stored credentials and
+tokens (`.storage/core.config_entries` is updated by Home Assistant). No
+cleanup is required on your ENGIE account: the integration only reads
+data and never modifies anything upstream. The OAuth refresh token in
+the deleted entry is left to expire naturally on ENGIE's side.
+
 ## Troubleshooting
 
 If the integration is misbehaving, work through these steps before
