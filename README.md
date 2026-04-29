@@ -142,6 +142,62 @@ After setup, you can configure the price update interval:
 2. Find the **ENGIE Belgium** integration and click **Configure**
 3. Set the **Update interval** (5--1440 minutes, default: 60 minutes)
 
+## Re-authentication
+
+ENGIE rotates refresh tokens regularly, and the upstream auth server can
+revoke a session at any time (for example, when the same account logs in
+elsewhere). When that happens, Home Assistant will surface a **"Repair"**
+notification asking you to re-authenticate.
+
+To complete re-authentication:
+
+1. Open **Settings** > **Devices & Services** and click the
+   **Reconfigure** prompt on the ENGIE Belgium card (or click the
+   notification).
+2. Choose how you want to receive a verification code (SMS or email).
+3. Enter the 6-digit code that ENGIE sends you.
+
+Your stored email, password, and customer number are reused; only fresh
+access and refresh tokens are written back to the config entry. No
+sensors are removed and no history is lost.
+
+## Troubleshooting
+
+If the integration is misbehaving, work through these steps before
+filing an issue:
+
+1. **Enable debug logging.** During the initial setup flow you can tick
+   **Enable debug logging** to capture verbose API traffic in the Home
+   Assistant log. To enable it after setup, add the following to
+   `configuration.yaml` and restart Home Assistant:
+
+   ```yaml
+   logger:
+     logs:
+       custom_components.engie_be: debug
+   ```
+
+2. **Download diagnostics.** Open the integration in **Settings** >
+   **Devices & Services**, click the three-dot menu on the ENGIE Belgium
+   entry, and choose **Download diagnostics**. The resulting JSON
+   redacts your password, tokens, and EAN identifiers, and is safe to
+   attach to a GitHub issue.
+
+3. **Common errors.**
+   - *Authentication with ENGIE Belgium failed*: your stored tokens
+     were rejected. Follow the [Re-authentication](#re-authentication)
+     steps above.
+   - *Cannot connect to the ENGIE Belgium API*: the upstream API is
+     unreachable or returned an HTTP error. The coordinator will retry
+     on its next interval; check
+     [status.engie.be](https://status.engie.be) if the issue persists.
+   - *Invalid verification code*: re-trigger the MFA step and enter the
+     latest code.
+
+4. **File an issue.** If the problem persists, open one at
+   [github.com/DaanVervacke/hass-engie-be/issues](https://github.com/DaanVervacke/hass-engie-be/issues)
+   and include the diagnostics JSON plus the relevant log lines.
+
 ## How it works
 
 - **Authentication**: Uses OAuth2 with PKCE (public client, no secret) through

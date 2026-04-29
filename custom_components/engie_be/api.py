@@ -9,7 +9,8 @@ import re
 import socket
 from base64 import urlsafe_b64encode
 from dataclasses import dataclass
-from typing import Any
+from http import HTTPStatus
+from typing import Any, NoReturn
 
 import aiohttp
 
@@ -45,6 +46,12 @@ class EngieBeApiClientAuthenticationError(EngieBeApiClientError):
 
 class EngieBeApiClientMfaError(EngieBeApiClientError):
     """Exception for MFA-related errors (invalid code)."""
+
+
+def _raise_auth_error(status: int) -> NoReturn:
+    """Raise an authentication error tagged with the offending HTTP status."""
+    msg = f"Authentication failed ({status})"
+    raise EngieBeApiClientAuthenticationError(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -738,14 +745,16 @@ class EngieBeApiClient:
                     allow_redirects=allow_redirects,
                 )
                 if raise_on_error:
-                    if response.status in (401, 403):
-                        msg = f"Authentication failed ({response.status})"
-                        raise EngieBeApiClientAuthenticationError(msg)  # noqa: TRY301
+                    if response.status in (
+                        HTTPStatus.UNAUTHORIZED,
+                        HTTPStatus.FORBIDDEN,
+                    ):
+                        _raise_auth_error(response.status)
 
                     # For auth-flow HTML pages, non-200/302 is likely an
                     # error but we don't raise_for_status on 3xx since we
                     # handle redirects manually.
-                    if response.status >= 400:  # noqa: PLR2004
+                    if response.status >= HTTPStatus.BAD_REQUEST:
                         response.raise_for_status()
 
                 if json_response:
