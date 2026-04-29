@@ -16,6 +16,7 @@ from custom_components.engie_be import (
 )
 from custom_components.engie_be.api import (
     EngieBeApiClientAuthenticationError,
+    EngieBeApiClientError,
 )
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
@@ -379,3 +380,92 @@ async def test_options_change_after_setup_uses_async_reload(
         await async_reload_entry(hass, entry)
 
     mock_reload.assert_awaited_once_with(entry.entry_id)
+
+
+# ---------------------------------------------------------------------------
+# Service-point fan-out: parallel fetch + per-EAN failure isolation
+# ---------------------------------------------------------------------------
+
+
+async def test_setup_entry_fetches_service_points_in_parallel(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Multi-EAN customers must get one service-point lookup per EAN."""
+    entry = _build_entry(hass)
+    client = _make_client(
+        prices_return={
+            "items": [
+                {"ean": "541448820000000001"},
+                {"ean": "541448820000000002"},
+                {"ean": "541448820000000003"},
+            ],
+        },
+    )
+
+    # Per-EAN service-point responses so we can verify the right division
+    # ends up keyed under the right EAN.
+    division_by_ean = {
+        "541448820000000001": "ELECTRICITY",
+        "541448820000000002": "GAS",
+        "541448820000000003": "ELECTRICITY",
+    }
+
+    async def _service_point(ean: str) -> dict[str, str]:
+        return {"division": division_by_ean[ean]}
+
+    client.async_get_service_point = AsyncMock(side_effect=_service_point)
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    # Every EAN must have been queried exactly once.
+    assert client.async_get_service_point.await_count == 3
+    queried = {call.args[0] for call in client.async_get_service_point.await_args_list}
+    assert queried == set(division_by_ean)
+    # Result dict must reflect each EAN's division.
+    assert entry.runtime_data.service_points == division_by_ean
+
+
+async def test_setup_entry_service_point_failure_does_not_poison_others(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """One failing service-point lookup must not block the surviving EANs."""
+    entry = _build_entry(hass)
+    client = _make_client(
+        prices_return={
+            "items": [
+                {"ean": "541448820000000001"},
+                {"ean": "541448820000000002"},
+                {"ean": "541448820000000003"},
+            ],
+        },
+    )
+
+    async def _service_point(ean: str) -> dict[str, str]:
+        if ean == "541448820000000002":
+            msg = "boom"
+            raise EngieBeApiClientError(msg)
+        return {"division": "ELECTRICITY"}
+
+    client.async_get_service_point = AsyncMock(side_effect=_service_point)
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    # Failing EAN is silently dropped; surviving EANs still resolve.
+    assert entry.runtime_data.service_points == {
+        "541448820000000001": "ELECTRICITY",
+        "541448820000000003": "ELECTRICITY",
+    }

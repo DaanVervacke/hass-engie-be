@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -132,23 +133,33 @@ async def async_setup_entry(
     # Fetch initial data and forward platforms
     await coordinator.async_config_entry_first_refresh()
 
-    # Resolve energy type for each EAN via the service-points API
+    # Resolve energy type for each EAN via the service-points API.
+    # Fetched in parallel so multi-EAN customers do not pay sum(latency).
+    eans: list[str] = [
+        item.get("ean", "")
+        for item in (coordinator.data or {}).get("items", [])
+        if item.get("ean")
+    ]
     service_points: dict[str, str] = {}
-    for item in (coordinator.data or {}).get("items", []):
-        ean: str = item.get("ean", "")
-        if not ean:
-            continue
-        try:
-            sp_data = await client.async_get_service_point(ean)
-            division: str = sp_data.get("division", "")
+    if eans:
+        results = await asyncio.gather(
+            *(client.async_get_service_point(ean) for ean in eans),
+            return_exceptions=True,
+        )
+        for ean, result in zip(eans, results, strict=True):
+            if isinstance(result, EngieBeApiClientError):
+                LOGGER.warning(
+                    "Failed to fetch service-point for EAN %s; using fallback",
+                    _hash_ean(ean),
+                )
+                continue
+            if isinstance(result, BaseException):
+                # Re-raise unexpected exceptions; only API errors are tolerated.
+                raise result
+            division: str = result.get("division", "")
             if division:
                 service_points[ean] = division
                 LOGGER.debug("Service-point %s: division=%s", _hash_ean(ean), division)
-        except EngieBeApiClientError:
-            LOGGER.warning(
-                "Failed to fetch service-point for EAN %s; using fallback",
-                _hash_ean(ean),
-            )
     entry.runtime_data.service_points = service_points
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
