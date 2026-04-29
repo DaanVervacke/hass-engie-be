@@ -1,0 +1,64 @@
+{
+  "items": [
+    {
+      "ean": "541448820000000001_ID1",
+      "prices": [
+        {
+          "from": "2000-01-01",
+          "to": "2099-12-31",
+          "vatTariff": 6.0,
+          "proportionalPriceConfigurations": {
+            "offtake": [
+              {
+                "timeOfUseSlotCode": "TOTAL_HOURS",
+                "priceValue": 0.123456,
+                "priceValueExclVAT": 0.116468
+              },
+              {
+                "timeOfUseSlotCode": "S_TOU1_OFFTAKE_PEAK",
+                "priceValue": 0.18,
+                "priceValueExclVAT": 0.169811
+              },
+              {
+                "timeOfUseSlotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                "priceValue": 0.09,
+                "priceValueExclVAT": 0.084906
+              },
+              {
+                "timeOfUseSlotCode": "EN",
+                "priceValue": 0.10,
+                "priceValueExclVAT": 0.094340
+              }
+            ],
+            "injection": [
+              {
+                "timeOfUseSlotCode": "TOTAL_HOURS",
+                "priceValue": 0.05,
+                "priceValueExclVAT": 0.047170
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "ean": "541448820000000002_ID1",
+      "prices": [
+        {
+          "from": "2000-01-01",
+          "to": "2099-12-31",
+          "vatTariff": 6.0,
+          "proportionalPriceConfigurations": {
+            "offtake": [
+              {
+                "timeOfUseSlotCode": "TOTAL_HOURS",
+                "priceValue": 0.045,
+                "priceValueExclVAT": 0.042453
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
