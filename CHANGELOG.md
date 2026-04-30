@@ -7,6 +7,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+- Bumped minimum Home Assistant version to 2026.3.0 in hacs.json. The
+  integration's brand icon now ships with the integration itself via the
+  Brands Proxy API (HA 2026.3+), so HACS shows the logo without needing
+  an entry in the upstream brands repo. Users on older Home Assistant
+  versions should stay on 0.5.0 or upgrade Home Assistant ([#53]).
+- Bumped dev/test pins to homeassistant 2026.3.4 and
+  pytest-homeassistant-custom-component 0.13.320 so CI runs at or above
+  the new minimum Home Assistant version ([#53]).
+
 ### Docs
 - README now leads with one-click "Open in HACS" and "Add Integration"
   badges, with the manual steps kept as a fallback ([#52]).
@@ -180,6 +190,7 @@ No user-visible changes.
 [#49]: https://github.com/DaanVervacke/hass-engie-be/pull/49
 [#50]: https://github.com/DaanVervacke/hass-engie-be/pull/50
 [#52]: https://github.com/DaanVervacke/hass-engie-be/pull/52
+[#53]: https://github.com/DaanVervacke/hass-engie-be/pull/53
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.5.0...HEAD
 [0.5.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.2...v0.5.0

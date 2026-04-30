@@ -1,8 +1,8 @@
-homeassistant==2026.2.3
+homeassistant==2026.3.4
 ruff==0.14.14
 
 # Test dependencies
 # pytest-homeassistant-custom-component is published only on GitHub for 0.13.x
-# Version 0.13.316 matches Home Assistant 2026.2.3
+# Version 0.13.320 matches Home Assistant 2026.3.4
 # Note: pytest-cov is pulled in transitively (==7.0.0) via this package.
-pytest-homeassistant-custom-component @ git+https://github.com/MatthewFlamm/pytest-homeassistant-custom-component@0.13.316
+pytest-homeassistant-custom-component @ git+https://github.com/MatthewFlamm/pytest-homeassistant-custom-component@0.13.320
