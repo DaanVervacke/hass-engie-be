@@ -7,6 +7,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Docs
+- README now leads with one-click "Open in HACS" and "Add Integration"
+  badges, with the manual steps kept as a fallback ([#52]).
+
 ## [0.5.0] - 2026-04-29
 
 ### Added
@@ -175,6 +179,7 @@ No user-visible changes.
 [#48]: https://github.com/DaanVervacke/hass-engie-be/pull/48
 [#49]: https://github.com/DaanVervacke/hass-engie-be/pull/49
 [#50]: https://github.com/DaanVervacke/hass-engie-be/pull/50
+[#52]: https://github.com/DaanVervacke/hass-engie-be/pull/52
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.5.0...HEAD
 [0.5.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.2...v0.5.0

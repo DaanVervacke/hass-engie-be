@@ -112,11 +112,27 @@ the ENGIE API.
 
 ### HACS (recommended)
 
-1. Open HACS in your Home Assistant instance
-2. Click the three dots in the top right corner and select **Custom repositories**
-3. Add `https://github.com/DaanVervacke/hass-engie-be` with category **Integration**
-4. Search for **ENGIE Belgium** in HACS and install it
-5. Restart Home Assistant
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=DaanVervacke&repository=hass-engie-be&category=integration)
+
+Click the badge above to open this repository in HACS, then select **Download**.
+After HACS finishes, restart Home Assistant.
+
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=engie_be)
+
+Click the badge above to open the **Add Integration** dialog for ENGIE
+Belgium. The credential form opens directly. See [Configuration](#configuration)
+for what each field expects and a note on 2FA.
+
+#### Manual steps
+
+If the badges above do not work in your browser:
+
+1. Open HACS in your Home Assistant instance.
+2. Click the three dots in the top right corner and select **Custom repositories**.
+3. Add `https://github.com/DaanVervacke/hass-engie-be` with category **Integration**.
+4. Search for **ENGIE Belgium** in HACS and install it.
+5. Restart Home Assistant.
+6. Go to **Settings** > **Devices & Services** > **Add Integration** and search for **ENGIE Belgium**.
 
 ## Configuration
 
@@ -124,18 +140,20 @@ Before starting, there are a few things to note:
 
 This integration only works for accounts where 2FA via SMS or e-mail is already enabled. If ENGIE has not yet enforced 2FA for your account, please visit <https://www.engie.be/nl/energiedesk/usermanagement/manage-access/> and create a new separate user for this integration. New accounts have 2FA enabled by default and will work with this integration. If your account already has 2FA enabled but you still get authentication errors, please try this method as well.
 
-Configuration is done entirely through the Home Assistant UI.
+Configuration is done entirely through the Home Assistant UI. If you
+haven't reached the credential form yet, use the **Add Integration**
+badge in [Installation](#hacs-recommended) or open
+**Settings** > **Devices & Services** > **Add Integration** and search
+for **ENGIE Belgium**.
 
-1. Go to **Settings** > **Devices & Services** > **Add Integration**
-2. Search for **ENGIE Belgium**
-3. Enter your credentials:
+1. Enter your credentials:
    - **Email address** - your ENGIE Belgium login email
    - **Password** - your ENGIE Belgium password
    - **Customer number** - your ENGIE customer/business agreement number
    - **Client ID** - leave at the default unless you know what you're doing
    - **Two-factor authentication method** - choose SMS or Email
-4. Click **Submit** - you will receive a verification code via your chosen method
-5. Enter the 6-digit verification code and click **Submit**
+2. Click **Submit** - you will receive a verification code via your chosen method
+3. Enter the 6-digit verification code and click **Submit**
 
 The integration will authenticate, fetch your energy prices, and create the
 appropriate sensors.
@@ -144,9 +162,11 @@ appropriate sensors.
 
 After setup, you can configure the price update interval:
 
-1. Go to **Settings** > **Devices & Services**
-2. Find the **ENGIE Belgium** integration and click **Configure**
-3. Set the **Update interval** (5--1440 minutes, default: 60 minutes)
+[![Open your Home Assistant instance and show your ENGIE Belgium integration.](https://my.home-assistant.io/badges/integration.svg)](https://my.home-assistant.io/redirect/integration/?domain=engie_be)
+
+1. Click the badge above (or go to **Settings** > **Devices & Services** and find **ENGIE Belgium**).
+2. Click **Configure**.
+3. Set the **Update interval** (5-1440 minutes, default: 60 minutes).
 
 ## Re-authentication
 
