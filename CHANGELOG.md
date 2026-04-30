@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-30
+
 ### Changed
 - Bumped minimum Home Assistant version to 2026.3.0 in hacs.json. The
   integration's brand icon now ships with the integration itself via the
@@ -139,21 +141,6 @@ No user-visible changes.
   and gas sensors, OAuth login, and email-based 2FA ([#1]).
 - HACS publication metadata ([#2]).
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.2...HEAD
-[0.4.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.1...v0.4.2
-[0.4.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.0...v0.4.1
-[0.4.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.3.1...v0.4.0
-[0.3.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.3...v0.3.0
-[0.2.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.2...v0.2.3
-[0.2.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.3...v0.2.0
-[0.1.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/DaanVervacke/hass-engie-be/releases/tag/v0.1.0
-
 [#1]: https://github.com/DaanVervacke/hass-engie-be/pull/1
 [#2]: https://github.com/DaanVervacke/hass-engie-be/pull/2
 [#4]: https://github.com/DaanVervacke/hass-engie-be/pull/4
@@ -192,7 +179,8 @@ No user-visible changes.
 [#52]: https://github.com/DaanVervacke/hass-engie-be/pull/52
 [#53]: https://github.com/DaanVervacke/hass-engie-be/pull/53
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.0...v0.4.1
