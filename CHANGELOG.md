@@ -7,6 +7,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Docs
+- Require a dedicated ENGIE account for this integration. The README,
+  the setup form, the re-authentication dialog, and the bug-report
+  template now state this as a hard requirement rather than a
+  recommendation. Signing into the same ENGIE account from engie.be
+  or the ENGIE Smart App appears to revoke the integration's refresh
+  token. A dedicated account avoids the repeated re-auth prompts
+  ([#55]).
+
 ## [0.6.0] - 2026-04-30
 
 ### Changed
@@ -178,6 +187,7 @@ No user-visible changes.
 [#50]: https://github.com/DaanVervacke/hass-engie-be/pull/50
 [#52]: https://github.com/DaanVervacke/hass-engie-be/pull/52
 [#53]: https://github.com/DaanVervacke/hass-engie-be/pull/53
+[#55]: https://github.com/DaanVervacke/hass-engie-be/pull/55
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...HEAD
 [0.6.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.5.0...v0.6.0

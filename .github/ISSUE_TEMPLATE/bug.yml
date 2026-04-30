@@ -23,6 +23,8 @@ body:
         required: true
       - label: This issue is not a duplicate issue of any [previous issues](https://github.com/DaanVervacke/hass-engie-be/issues?q=is%3Aissue+label%3A%22Bug%22+).
         required: true
+      - label: I am using a dedicated ENGIE account for this integration as required, separate from the account I use for engie.be or the ENGIE Smart App. (See the [README](https://github.com/DaanVervacke/hass-engie-be#prerequisites).)
+        required: true
 - type: textarea
   attributes:
     label: "Describe the issue"
