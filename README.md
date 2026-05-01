@@ -104,7 +104,17 @@ the ENGIE API.
 
 ## Prerequisites
 
-- An active [ENGIE Belgium](https://www.engie.be/) account
+> **Required:** This integration requires a dedicated ENGIE account.
+> Do not use the same ENGIE account you use to sign into
+> [engie.be](https://www.engie.be/) or the ENGIE Smart App. Signing
+> into the same ENGIE account from another place appears to revoke
+> the integration's refresh token, which forces Home Assistant to
+> prompt you for re-authentication. Create a separate user via the
+> [ENGIE user management page](https://www.engie.be/nl/energiedesk/usermanagement/manage-access/)
+> and grant it access to your customer number.
+
+- A dedicated [ENGIE Belgium](https://www.engie.be/) account for this
+  integration (see required callout above)
 - Your ENGIE customer number (business agreement number)
 - Access to SMS or email for two-factor authentication during setup
 
@@ -138,7 +148,11 @@ If the badges above do not work in your browser:
 
 Before starting, there are a few things to note:
 
-This integration only works for accounts where 2FA via SMS or e-mail is already enabled. If ENGIE has not yet enforced 2FA for your account, please visit <https://www.engie.be/nl/energiedesk/usermanagement/manage-access/> and create a new separate user for this integration. New accounts have 2FA enabled by default and will work with this integration. If your account already has 2FA enabled but you still get authentication errors, please try this method as well.
+**A dedicated ENGIE account is required for this integration** (see
+[Prerequisites](#prerequisites) for the reasoning). New accounts
+created via the [ENGIE user management page](https://www.engie.be/nl/energiedesk/usermanagement/manage-access/)
+have 2FA enabled by default and work out of the box. The integration
+only supports accounts where 2FA via SMS or e-mail is already enabled.
 
 Configuration is done entirely through the Home Assistant UI. If you
 haven't reached the credential form yet, use the **Add Integration**
@@ -171,9 +185,10 @@ After setup, you can configure the price update interval:
 ## Re-authentication
 
 ENGIE rotates refresh tokens regularly, and the upstream auth server can
-revoke a session at any time (for example, when the same account logs in
-elsewhere). When that happens, Home Assistant will surface a **"Repair"**
-notification asking you to re-authenticate.
+revoke a session at any time. The most common trigger is the same ENGIE
+account being used elsewhere (engie.be web, ENGIE Smart App). If you see
+the **"Repair"** notification frequently, see
+[Prerequisites](#prerequisites) for the dedicated-account recommendation.
 
 To complete re-authentication:
 
@@ -183,7 +198,7 @@ To complete re-authentication:
 2. Choose how you want to receive a verification code (SMS or email).
 3. Enter the 6-digit code that ENGIE sends you.
 
-Your stored email, password, and customer number are reused; only fresh
+Your stored email, password, and customer number are reused. Only fresh
 access and refresh tokens are written back to the config entry. No
 sensors are removed and no history is lost.
 
@@ -229,7 +244,10 @@ filing an issue:
 3. **Common errors.**
    - *Authentication with ENGIE Belgium failed*: your stored tokens
      were rejected. Follow the [Re-authentication](#re-authentication)
-     steps above.
+     steps above. If this happens repeatedly, the most common cause is
+     sharing your ENGIE account between this integration and engie.be
+     or the ENGIE Smart App. A dedicated account is required. See
+     [Prerequisites](#prerequisites).
    - *Cannot connect to the ENGIE Belgium API*: the upstream API is
      unreachable or returned an HTTP error. The coordinator will retry
      on its next interval.

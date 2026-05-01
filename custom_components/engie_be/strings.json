@@ -2,7 +2,7 @@
     "config": {
         "step": {
             "user": {
-                "description": "Enter your ENGIE Belgium account credentials and customer number, and choose your preferred two-factor authentication method. This integration only works for accounts where 2FA via SMS or e-mail is already enabled. If ENGIE has not yet enforced 2FA for your account, please visit the [ENGIE user management page]({user_management_url}) and create a new separate user for this integration. New accounts have 2FA enabled by default and will work with this integration. If your account already has 2FA enabled but you still get authentication errors, please try this method as well.",
+                "description": "Enter your ENGIE Belgium credentials, customer number, and two-factor authentication method. **A dedicated ENGIE account is required**: signing into the same account from engie.be or the ENGIE Smart App appears to revoke the integration's session and force you to re-authenticate. Create a separate user via the [ENGIE user management page]({user_management_url}). New accounts have 2FA enabled by default and work out of the box.",
                 "data": {
                     "username": "Email address",
                     "password": "Password",
@@ -13,7 +13,7 @@
                 "data_description": {
                     "username": "Your ENGIE Belgium account email address.",
                     "password": "Your ENGIE Belgium account password.",
-                    "customer_number": "Enter your ENGIE Belgium customer number as shown in the ENGIE Smart app. The 00 prefix is added automatically.",
+                    "customer_number": "Enter your ENGIE Belgium customer number as shown in the ENGIE Smart App. The 00 prefix is added automatically.",
                     "client_id": "OAuth client ID. Only change this if you know what you are doing.",
                     "mfa_method": "Choose how you want to receive your verification code."
                 }
@@ -38,7 +38,7 @@
             },
             "reauth_confirm": {
                 "title": "Reauthenticate ENGIE Belgium",
-                "description": "Your stored ENGIE access has expired for {username}. Choose how you want to receive a new verification code to re-authenticate.",
+                "description": "Your stored ENGIE access has expired for {username}. Choose how you want to receive a new verification code to re-authenticate. If this prompt keeps reappearing, the most common cause is sharing your ENGIE account between this integration and engie.be or the ENGIE Smart App. A dedicated ENGIE account is required for this integration. See the integration documentation.",
                 "data": {
                     "mfa_method": "Two-factor authentication method"
                 },
@@ -73,7 +73,7 @@
             "message": "Cannot connect to the ENGIE Belgium API."
         },
         "auth_failed": {
-            "message": "Authentication with ENGIE Belgium failed; please re-authenticate."
+            "message": "Authentication with ENGIE Belgium failed. Please re-authenticate."
         },
         "unknown_error": {
             "message": "An unknown error occurred while talking to the ENGIE Belgium API."
