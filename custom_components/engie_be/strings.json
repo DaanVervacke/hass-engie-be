@@ -195,6 +195,18 @@
             },
             "energy_injection_superoffpeak_excl_vat": {
                 "name": "Energy super off-peak injection price (excl. VAT)"
+            },
+            "captar_monthly_peak_power": {
+                "name": "Captar monthly peak power"
+            },
+            "captar_monthly_peak_energy": {
+                "name": "Captar monthly peak energy"
+            },
+            "captar_monthly_peak_start": {
+                "name": "Captar monthly peak start"
+            },
+            "captar_monthly_peak_end": {
+                "name": "Captar monthly peak end"
             }
         },
         "binary_sensor": {

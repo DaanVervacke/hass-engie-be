@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "prices_sample.json"
+_PEAKS_FIXTURE_PATH = Path(__file__).parent / "fixtures" / "peaks_2026_04.json"
 
 
 def _build_entry(
@@ -77,17 +78,23 @@ async def test_async_update_data_returns_payload_on_success(
     """A successful API call returns the payload and stamps last_successful_fetch."""
     entry = _build_entry(hass)
     payload = json.loads(_FIXTURE_PATH.read_text())
+    peaks_payload = json.loads(_PEAKS_FIXTURE_PATH.read_text())
 
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=payload)
+    client.async_get_monthly_peaks = AsyncMock(return_value=peaks_payload)
     _attach_runtime(entry, client)
 
     coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
     result = await coordinator._async_update_data()
 
-    assert result == payload
+    # The prices payload is returned with the peaks wrapper merged under "peaks".
+    assert result["items"] == payload["items"]
+    assert result["peaks"]["data"] == peaks_payload
+    assert result["peaks"]["is_fallback"] is False
     assert coordinator.last_successful_fetch is not None
     client.async_get_prices.assert_awaited_once_with("000000000000")
+    client.async_get_monthly_peaks.assert_awaited_once()
 
 
 async def test_async_update_data_raises_config_entry_auth_failed_on_auth_error(

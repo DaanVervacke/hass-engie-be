@@ -96,6 +96,29 @@ time-of-use slot codes.
 > Injection sensors are only created when injection data is present in the API
 > response.
 
+### Capacity tariff (captar)
+
+Four sensors expose the monthly peak window used for the Belgian
+capacity-tariff calculation. Values come from the ENGIE
+`b2c-energy-insights` peaks endpoint.
+
+| Sensor name | Entity ID | Description |
+|-------------|-----------|-------------|
+| Captar monthly peak power | `sensor.engie_belgium_captar_monthly_peak_power` | Highest 15-minute average power for the month, in kW |
+| Captar monthly peak energy | `sensor.engie_belgium_captar_monthly_peak_energy` | Energy consumed during that 15-minute window, in kWh |
+| Captar monthly peak start | `sensor.engie_belgium_captar_monthly_peak_start` | Start timestamp of the 15-minute peak window |
+| Captar monthly peak end | `sensor.engie_belgium_captar_monthly_peak_end` | End timestamp of the 15-minute peak window |
+
+The ENGIE API only returns a monthly peak after the first 15-minute peak
+of the month has been recorded, which means the current month is empty
+during the first day or so. While that is the case, the integration
+falls back to the previous month so the sensors stay populated. Two
+attributes on each sensor make the source explicit:
+
+- `peak_month`: the `YYYY-MM` the displayed value covers.
+- `peak_is_fallback`: `true` when the value is carried over from the
+  previous month, `false` once the current month has its own peak.
+
 ### Authentication
 
 A binary connectivity sensor (`binary_sensor.engie_belgium_authentication`) is
