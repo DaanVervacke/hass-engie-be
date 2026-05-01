@@ -224,7 +224,10 @@ _CAPTAR_MONTHLY_PEAK_ENERGY = SensorEntityDescription(
     icon="mdi:lightning-bolt",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.MEASUREMENT,
+    # No state_class: this is a snapshot of one 15-min peak window's energy,
+    # not a measurement, total, or total_increasing. HA rejects ENERGY +
+    # MEASUREMENT at runtime; TOTAL would require last_reset semantics that
+    # don't fit a sliding monthly peak.
     suggested_display_precision=3,
 )
 _CAPTAR_MONTHLY_PEAK_START = SensorEntityDescription(
@@ -330,7 +333,9 @@ class EngieBeMonthlyPeakValueSensor(_EngieBePeakSensorBase):
             return None
         try:
             return float(value)
-        except TypeError, ValueError:
+        except TypeError:
+            return None
+        except ValueError:
             return None
 
 

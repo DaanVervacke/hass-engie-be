@@ -16,6 +16,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   the integration keeps the last-known values so the sensors stay
   populated until the next successful poll ([#58]).
 
+### Fixed
+- Drop `state_class=measurement` from the captar monthly-peak energy
+  sensor. Home Assistant rejects the `energy` device class combined
+  with the `measurement` state class at runtime and emits a warning.
+  The peak energy value is a snapshot of one 15-minute window, not a
+  cumulative or sliding measurement, so no state class is the correct
+  fit ([#58]).
+- Replace a Py2-style `except TypeError, ValueError:` clause with two
+  explicit `except` clauses so the integration imports cleanly on
+  Python 3 ([#58]).
+
 ## [0.6.1] - 2026-05-01
 
 ### Docs
