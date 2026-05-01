@@ -14,25 +14,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   `b2c-energy-insights` peaks endpoint and is fetched on every
   coordinator poll. If the peaks endpoint is temporarily unavailable,
   the integration keeps the last-known values so the sensors stay
-  populated until the next successful poll ([#58]).
-
-### Fixed
-- Captar monthly-peak sensors no longer report `unknown` for the first
-  few days of every month. The ENGIE peaks endpoint omits
-  `peakOfTheMonth` until the first 15-minute peak of the new month is
-  recorded. The coordinator now falls back to the previous month's
-  peak so the sensors stay populated, and exposes two new attributes
-  (`peak_month` and `peak_is_fallback`) so users can distinguish
-  current-month from carried-over values ([#58]).
-- Drop `state_class=measurement` from the captar monthly-peak energy
-  sensor. Home Assistant rejects the `energy` device class combined
-  with the `measurement` state class at runtime and emits a warning.
-  The peak energy value is a snapshot of one 15-minute window, not a
-  cumulative or sliding measurement, so no state class is the correct
-  fit ([#58]).
-- Replace a Py2-style `except TypeError, ValueError:` clause with two
-  explicit `except` clauses so the integration imports cleanly on
-  Python 3 ([#58]).
+  populated until the next successful poll. Because the endpoint
+  omits the monthly peak until the first 15-minute peak of the new
+  month is recorded, the coordinator falls back to the previous
+  month while the current month is still empty. Each sensor exposes
+  two attributes (`peak_month` and `peak_is_fallback`) so the source
+  of the displayed value is explicit ([#58]).
 
 ## [0.6.1] - 2026-05-01
 
