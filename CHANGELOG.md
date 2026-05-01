@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-05-01
+
 ### Docs
 - Require a dedicated ENGIE account for this integration. The README,
   the setup form, the re-authentication dialog, and the bug-report
@@ -189,7 +191,8 @@ No user-visible changes.
 [#53]: https://github.com/DaanVervacke/hass-engie-be/pull/53
 [#55]: https://github.com/DaanVervacke/hass-engie-be/pull/55
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.1...v0.4.2
