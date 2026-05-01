@@ -7,6 +7,7 @@ import hashlib
 import os
 import re
 import socket
+import uuid
 from base64 import urlsafe_b64encode
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -21,6 +22,7 @@ from .const import (
     MFA_METHOD_SMS,
     OAUTH_AUDIENCE,
     OAUTH_SCOPES,
+    PEAKS_BASE_URL,
     PREMISES_BASE_URL,
     REDIRECT_URI,
     USER_AGENT_BROWSER,
@@ -289,6 +291,37 @@ class EngieBeApiClient:
             method="GET",
             url=url,
             headers=headers,
+            json_response=True,
+        )
+
+    async def async_get_monthly_peaks(
+        self,
+        customer_number: str,
+        year: int,
+        month: int,
+    ) -> dict[str, Any]:
+        """
+        Fetch capacity-tariff (captar) peaks for a given month.
+
+        Returns the parsed JSON response which contains the monthly peak
+        and an array of daily peaks for the requested month.
+        """
+        url = (
+            f"{PEAKS_BASE_URL}/private/customers/me/contract-accounts/"
+            f"{customer_number.replace(' ', '')}/energy-insights/peaks"
+        )
+        headers = {
+            "User-Agent": USER_AGENT_NATIVE,
+            "Accept": "application/json, application/problem+json",
+            "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
+        }
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            params={"year": str(year), "month": str(month)},
             json_response=True,
         )
 

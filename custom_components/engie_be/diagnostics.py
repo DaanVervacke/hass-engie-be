@@ -48,10 +48,12 @@ def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
         for item in items
         if isinstance(item, dict) and isinstance(item.get("ean"), str) and item["ean"]
     ]
+    peaks = data.get("peaks") if isinstance(data.get("peaks"), dict) else None
     return {
         "item_count": len(items),
         "ean_hashes": ean_hashes,
         "top_level_keys": sorted(data.keys()),
+        "peaks_present": peaks is not None,
     }
 
 

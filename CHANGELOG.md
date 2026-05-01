@@ -7,6 +7,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+- Four new capacity-tariff (captar) sensors that expose the current
+  month's peak power and energy plus the start and end timestamps of
+  that monthly peak window. Data comes from the ENGIE
+  `b2c-energy-insights` peaks endpoint and is fetched on every
+  coordinator poll. If the peaks endpoint is temporarily unavailable,
+  the integration keeps the last-known values so the sensors stay
+  populated until the next successful poll ([#57]).
+
 ## [0.6.1] - 2026-05-01
 
 ### Docs
@@ -190,6 +199,7 @@ No user-visible changes.
 [#52]: https://github.com/DaanVervacke/hass-engie-be/pull/52
 [#53]: https://github.com/DaanVervacke/hass-engie-be/pull/53
 [#55]: https://github.com/DaanVervacke/hass-engie-be/pull/55
+[#57]: https://github.com/DaanVervacke/hass-engie-be/pull/57
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.1...HEAD
 [0.6.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...v0.6.1

@@ -62,6 +62,7 @@ def _make_client(
     refresh_side_effect: Exception | None = None,
     prices_return: dict[str, Any] | None = None,
     service_point_return: dict[str, Any] | None = None,
+    peaks_return: dict[str, Any] | None = None,
 ) -> MagicMock:
     """Build a MagicMock EngieBeApiClient with the given async return values."""
     client = MagicMock()
@@ -72,6 +73,9 @@ def _make_client(
     client.async_get_prices = AsyncMock(return_value=prices_return or {"items": []})
     client.async_get_service_point = AsyncMock(
         return_value=service_point_return or {"division": "ELECTRICITY"},
+    )
+    client.async_get_monthly_peaks = AsyncMock(
+        return_value=peaks_return or {"peakOfTheMonth": None, "dailyPeaks": []},
     )
     return client
 

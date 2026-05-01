@@ -6,10 +6,12 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.const import UnitOfEnergy, UnitOfPower
 
 from .const import LOGGER
 from .entity import EngieBeEntity
@@ -189,7 +191,7 @@ async def async_setup_entry(
     sensor_defs = _build_sensor_descriptions(
         coordinator.data, entry.runtime_data.service_points
     )
-    async_add_entities(
+    entities: list[SensorEntity] = [
         EngieBeEnergySensor(
             coordinator=coordinator,
             entity_description=desc,
@@ -198,7 +200,169 @@ async def async_setup_entry(
             slot_code=slot_code,
         )
         for desc, ean, value_key, slot_code in sensor_defs
-    )
+    ]
+    entities.extend(_build_peak_sensors(coordinator))
+    async_add_entities(entities)
+
+
+# ---------------------------------------------------------------------------
+# Capacity-tariff (captar) peak sensors
+# ---------------------------------------------------------------------------
+
+_CAPTAR_MONTHLY_PEAK_POWER = SensorEntityDescription(
+    key="captar_monthly_peak_power",
+    translation_key="captar_monthly_peak_power",
+    icon="mdi:flash",
+    native_unit_of_measurement=UnitOfPower.KILO_WATT,
+    device_class=SensorDeviceClass.POWER,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=3,
+)
+_CAPTAR_MONTHLY_PEAK_ENERGY = SensorEntityDescription(
+    key="captar_monthly_peak_energy",
+    translation_key="captar_monthly_peak_energy",
+    icon="mdi:lightning-bolt",
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=3,
+)
+_CAPTAR_MONTHLY_PEAK_START = SensorEntityDescription(
+    key="captar_monthly_peak_start",
+    translation_key="captar_monthly_peak_start",
+    icon="mdi:clock-start",
+    device_class=SensorDeviceClass.TIMESTAMP,
+)
+_CAPTAR_MONTHLY_PEAK_END = SensorEntityDescription(
+    key="captar_monthly_peak_end",
+    translation_key="captar_monthly_peak_end",
+    icon="mdi:clock-end",
+    device_class=SensorDeviceClass.TIMESTAMP,
+)
+
+
+def _build_peak_sensors(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> list[SensorEntity]:
+    """Build the four monthly capacity-tariff peak sensors for the entry."""
+    return [
+        EngieBeMonthlyPeakValueSensor(
+            coordinator,
+            _CAPTAR_MONTHLY_PEAK_POWER,
+            field="peakKW",
+        ),
+        EngieBeMonthlyPeakValueSensor(
+            coordinator,
+            _CAPTAR_MONTHLY_PEAK_ENERGY,
+            field="peakKWh",
+        ),
+        EngieBeMonthlyPeakTimestampSensor(
+            coordinator,
+            _CAPTAR_MONTHLY_PEAK_START,
+            field="start",
+        ),
+        EngieBeMonthlyPeakTimestampSensor(
+            coordinator,
+            _CAPTAR_MONTHLY_PEAK_END,
+            field="end",
+        ),
+    ]
+
+
+def _peaks_payload(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any] | None:
+    """Return the ``peaks`` sub-payload from coordinator data, or ``None``."""
+    if not isinstance(coordinator.data, dict):
+        return None
+    peaks = coordinator.data.get("peaks")
+    return peaks if isinstance(peaks, dict) else None
+
+
+class _EngieBePeakSensorBase(EngieBeEntity, SensorEntity):
+    """Common base for capacity-tariff peak sensors."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        entity_description: SensorEntityDescription,
+    ) -> None:
+        """Initialise the peak sensor with its coordinator and description."""
+        super().__init__(coordinator)
+        self.entity_description = entity_description
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}_{entity_description.key}"
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return last-fetched timestamp for cross-referencing peak freshness."""
+        attrs: dict[str, Any] = {}
+        if self.coordinator.last_successful_fetch:
+            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
+        return attrs
+
+
+class EngieBeMonthlyPeakValueSensor(_EngieBePeakSensorBase):
+    """Numeric monthly capacity-tariff peak value (kW or kWh)."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        entity_description: SensorEntityDescription,
+        field: str,
+    ) -> None:
+        """Track which numeric field of ``peakOfTheMonth`` to expose."""
+        super().__init__(coordinator, entity_description)
+        self._field = field
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the configured numeric field of the monthly peak."""
+        peaks = _peaks_payload(self.coordinator)
+        if peaks is None:
+            return None
+        monthly = peaks.get("peakOfTheMonth")
+        if not isinstance(monthly, dict):
+            return None
+        value = monthly.get(self._field)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except TypeError, ValueError:
+            return None
+
+
+class EngieBeMonthlyPeakTimestampSensor(_EngieBePeakSensorBase):
+    """Start or end timestamp of the monthly capacity-tariff peak window."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        entity_description: SensorEntityDescription,
+        field: str,
+    ) -> None:
+        """Track which timestamp field (``start`` or ``end``) to expose."""
+        super().__init__(coordinator, entity_description)
+        self._field = field
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the parsed ISO 8601 timestamp, or ``None`` if unavailable."""
+        peaks = _peaks_payload(self.coordinator)
+        if peaks is None:
+            return None
+        monthly = peaks.get("peakOfTheMonth")
+        if not isinstance(monthly, dict):
+            return None
+        raw = monthly.get(self._field)
+        if not isinstance(raw, str):
+            return None
+        try:
+            return datetime.fromisoformat(raw)
+        except ValueError:
+            return None
 
 
 class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
