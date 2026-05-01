@@ -14,7 +14,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   `b2c-energy-insights` peaks endpoint and is fetched on every
   coordinator poll. If the peaks endpoint is temporarily unavailable,
   the integration keeps the last-known values so the sensors stay
-  populated until the next successful poll ([#57]).
+  populated until the next successful poll ([#58]).
 
 ## [0.6.1] - 2026-05-01
 
@@ -199,7 +199,7 @@ No user-visible changes.
 [#52]: https://github.com/DaanVervacke/hass-engie-be/pull/52
 [#53]: https://github.com/DaanVervacke/hass-engie-be/pull/53
 [#55]: https://github.com/DaanVervacke/hass-engie-be/pull/55
-[#57]: https://github.com/DaanVervacke/hass-engie-be/pull/57
+[#58]: https://github.com/DaanVervacke/hass-engie-be/pull/58
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.1...HEAD
 [0.6.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...v0.6.1
