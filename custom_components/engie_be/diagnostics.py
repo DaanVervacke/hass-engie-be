@@ -48,12 +48,32 @@ def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
         for item in items
         if isinstance(item, dict) and isinstance(item.get("ean"), str) and item["ean"]
     ]
-    peaks = data.get("peaks") if isinstance(data.get("peaks"), dict) else None
+    peaks_wrapper = data.get("peaks") if isinstance(data.get("peaks"), dict) else None
+    peaks_inner = (
+        peaks_wrapper.get("data")
+        if isinstance(peaks_wrapper, dict)
+        and isinstance(peaks_wrapper.get("data"), dict)
+        else None
+    )
+    if peaks_wrapper is not None:
+        year = peaks_wrapper.get("year")
+        month = peaks_wrapper.get("month")
+        peaks_month = (
+            f"{year:04d}-{month:02d}"
+            if isinstance(year, int) and isinstance(month, int)
+            else None
+        )
+        peaks_is_fallback = bool(peaks_wrapper.get("is_fallback", False))
+    else:
+        peaks_month = None
+        peaks_is_fallback = None
     return {
         "item_count": len(items),
         "ean_hashes": ean_hashes,
         "top_level_keys": sorted(data.keys()),
-        "peaks_present": peaks is not None,
+        "peaks_present": peaks_inner is not None,
+        "peaks_month": peaks_month,
+        "peaks_is_fallback": peaks_is_fallback,
     }
 
 

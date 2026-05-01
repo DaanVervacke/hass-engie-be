@@ -17,6 +17,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   populated until the next successful poll ([#58]).
 
 ### Fixed
+- Captar monthly-peak sensors no longer report `unknown` for the first
+  few days of every month. The ENGIE peaks endpoint omits
+  `peakOfTheMonth` until the first 15-minute peak of the new month is
+  recorded. The coordinator now falls back to the previous month's
+  peak so the sensors stay populated, and exposes two new attributes
+  (`peak_month` and `peak_is_fallback`) so users can distinguish
+  current-month from carried-over values ([#58]).
 - Drop `state_class=measurement` from the captar monthly-peak energy
   sensor. Home Assistant rejects the `energy` device class combined
   with the `measurement` state class at runtime and emits a warning.

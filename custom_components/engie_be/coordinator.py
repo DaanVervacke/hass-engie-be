@@ -75,15 +75,51 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Fetch current-month captar peaks. Failures here must not block
         # price updates; we keep the last-known peaks payload so existing
         # peak sensors remain populated until the next successful poll.
+        # When the current month has no ``peakOfTheMonth`` yet (typical in
+        # the first day or two of a new month before ENGIE has recorded a
+        # 15-minute interval), we fall back to the previous month so users
+        # still see a meaningful value.
         today = dt_util.now()
-        previous_peaks: dict[str, Any] | None = None
+        previous_peaks_wrapper: dict[str, Any] | None = None
         if isinstance(self.data, dict):
-            previous_peaks = self.data.get("peaks")
+            existing = self.data.get("peaks")
+            if isinstance(existing, dict):
+                previous_peaks_wrapper = existing
+
+        peaks_wrapper = await self._async_fetch_peaks_with_fallback(
+            client,
+            customer_number,
+            today.year,
+            today.month,
+            previous_peaks_wrapper,
+        )
+
+        if peaks_wrapper is not None:
+            data["peaks"] = peaks_wrapper
+
+        self.last_successful_fetch = dt_util.utcnow()
+        return data
+
+    async def _async_fetch_peaks_with_fallback(
+        self,
+        client: Any,
+        customer_number: str,
+        year: int,
+        month: int,
+        previous_wrapper: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """
+        Fetch current-month peaks, falling back to the previous month.
+
+        Returns a wrapper dict ``{"data", "year", "month", "is_fallback"}``
+        so consumers know which month the displayed value reflects.
+        Returns ``None`` when no data could be obtained at all.
+        """
         try:
-            peaks: dict[str, Any] | None = await client.async_get_monthly_peaks(
+            current = await client.async_get_monthly_peaks(
                 customer_number,
-                today.year,
-                today.month,
+                year,
+                month,
             )
         except EngieBeApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(
@@ -95,10 +131,66 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "Failed to fetch monthly peaks, keeping last-known values: %s",
                 exception,
             )
-            peaks = previous_peaks
+            return previous_wrapper
 
-        if peaks is not None:
-            data["peaks"] = peaks
+        if isinstance(current, dict) and isinstance(
+            current.get("peakOfTheMonth"),
+            dict,
+        ):
+            return {
+                "data": current,
+                "year": year,
+                "month": month,
+                "is_fallback": False,
+            }
 
-        self.last_successful_fetch = dt_util.utcnow()
-        return data
+        prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+        try:
+            previous = await client.async_get_monthly_peaks(
+                customer_number,
+                prev_year,
+                prev_month,
+            )
+        except EngieBeApiClientAuthenticationError as exception:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+            ) from exception
+        except EngieBeApiClientError as exception:
+            LOGGER.warning(
+                "Current month has no peak yet and fallback to %d-%02d failed: %s",
+                prev_year,
+                prev_month,
+                exception,
+            )
+            return {
+                "data": current if isinstance(current, dict) else None,
+                "year": year,
+                "month": month,
+                "is_fallback": False,
+            }
+
+        if isinstance(previous, dict) and isinstance(
+            previous.get("peakOfTheMonth"),
+            dict,
+        ):
+            LOGGER.debug(
+                "Current month %d-%02d has no peak yet; using fallback %d-%02d",
+                year,
+                month,
+                prev_year,
+                prev_month,
+            )
+            return {
+                "data": previous,
+                "year": prev_year,
+                "month": prev_month,
+                "is_fallback": True,
+            }
+
+        return {
+            "data": current if isinstance(current, dict) else None,
+            "year": year,
+            "month": month,
+            "is_fallback": False,
+        }

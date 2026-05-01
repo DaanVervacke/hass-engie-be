@@ -88,9 +88,10 @@ async def test_async_update_data_returns_payload_on_success(
     coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
     result = await coordinator._async_update_data()
 
-    # The prices payload is returned with the peaks dict merged under "peaks".
+    # The prices payload is returned with the peaks wrapper merged under "peaks".
     assert result["items"] == payload["items"]
-    assert result["peaks"] == peaks_payload
+    assert result["peaks"]["data"] == peaks_payload
+    assert result["peaks"]["is_fallback"] is False
     assert coordinator.last_successful_fetch is not None
     client.async_get_prices.assert_awaited_once_with("000000000000")
     client.async_get_monthly_peaks.assert_awaited_once()
