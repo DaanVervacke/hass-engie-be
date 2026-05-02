@@ -14,12 +14,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   the event description. Fallback months are flagged in the description
   so the source of the displayed value is explicit. The entity reads from
   the existing coordinator payload, so no extra API calls are made
-  ([#NN]).
+  ([#61]).
 
 ### Changed
 - Internal refactor: payload-shape helpers for the captar peaks payload
   moved from `sensor.py` into a new shared `_peaks` module so the new
-  calendar platform can reuse them ([#NN]).
+  calendar platform can reuse them ([#61]).
 
 ## [0.7.0] - 2026-05-02
 
@@ -231,6 +231,7 @@ No user-visible changes.
 [#55]: https://github.com/DaanVervacke/hass-engie-be/pull/55
 [#58]: https://github.com/DaanVervacke/hass-engie-be/pull/58
 [#59]: https://github.com/DaanVervacke/hass-engie-be/pull/59
+[#61]: https://github.com/DaanVervacke/hass-engie-be/pull/61
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.1...HEAD
 [0.6.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...v0.6.1
