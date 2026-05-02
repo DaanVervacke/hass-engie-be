@@ -31,6 +31,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   hosts the captar event provider used by the new calendar platform
   ([#61]).
 
+### Chore
+- All entity platforms (`binary_sensor`, `calendar`, `sensor`) now
+  declare `PARALLEL_UPDATES = 0` to make the coordinator-centralised
+  update model explicit, per Home Assistant integration quality scale
+  guidance ([#61]).
+
 ## [0.7.0] - 2026-05-02
 
 ### Added

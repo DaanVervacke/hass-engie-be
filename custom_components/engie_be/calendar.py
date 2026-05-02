@@ -21,6 +21,9 @@ from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from ._peaks import captar_peak_events
 from .entity import EngieBeEntity
 
+# Coordinator centralises updates; entities never poll individually.
+PARALLEL_UPDATES = 0
+
 if TYPE_CHECKING:
     from datetime import datetime
 

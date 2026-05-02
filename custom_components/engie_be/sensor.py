@@ -17,6 +17,9 @@ from ._peaks import peaks_meta, peaks_payload
 from .const import LOGGER
 from .entity import EngieBeEntity
 
+# Coordinator centralises updates; entities never poll individually.
+PARALLEL_UPDATES = 0
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
