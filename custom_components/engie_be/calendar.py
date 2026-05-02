@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 
-from ._peaks import peaks_meta, peaks_payload
+from ._peaks import peaks_payload
 from .entity import EngieBeEntity
 
 if TYPE_CHECKING:
@@ -81,13 +81,6 @@ class EngieBeCaptarPeakCalendar(EngieBeEntity, CalendarEntity):
             description_parts.append(f"Peak power: {peak_kw} kW")
         if peak_kwh is not None:
             description_parts.append(f"Peak energy: {peak_kwh} kWh")
-
-        meta = peaks_meta(self.coordinator)
-        if meta is not None and meta.get("is_fallback"):
-            description_parts.append(
-                f"Fallback: showing {meta['year']:04d}-{meta['month']:02d} "
-                "while current month is unavailable.",
-            )
 
         description = "\n".join(description_parts) or None
         return CalendarEvent(

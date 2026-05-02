@@ -11,9 +11,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - New calendar entity `calendar.engie_belgium_captar_monthly_peak` that
   exposes the monthly capacity-tariff peak window as a single calendar
   event titled "Captar monthly peak", with peak power and peak energy in
-  the event description. Fallback months are flagged in the description
-  so the source of the displayed value is explicit. The entity reads from
-  the existing coordinator payload, so no extra API calls are made
+  the event description. Fallback-month provenance is intentionally not
+  duplicated in the description because the existing `peak_is_fallback`
+  sensor attribute already covers that. The entity reads from the
+  existing coordinator payload, so no extra API calls are made
   ([#61]).
 
 ### Changed

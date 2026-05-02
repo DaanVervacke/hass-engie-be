@@ -133,9 +133,10 @@ attributes on each sensor make the source explicit:
 A companion calendar entity (`calendar.engie_belgium_captar_monthly_peak`)
 exposes the same monthly peak window as a single calendar event titled
 "Captar monthly peak", with the peak power and energy in the event
-description. Fallback months are flagged in the description so the source is
-visible in any calendar dashboard. The entity is always created and reads
-from the same coordinator payload, so it adds no extra API calls.
+description. The entity is always created and reads from the same
+coordinator payload, so it adds no extra API calls. Fallback-month
+provenance is not duplicated in the description because the
+`peak_is_fallback` sensor attribute already covers that.
 
 ### Authentication
 

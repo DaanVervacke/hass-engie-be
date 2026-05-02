@@ -74,8 +74,13 @@ def test_event_returns_none_when_peaks_missing() -> None:
     assert calendar.event is None
 
 
-def test_event_marks_fallback_in_description() -> None:
-    """Fallback months annotate the event description."""
+def test_event_fallback_does_not_annotate_description() -> None:
+    """
+    Fallback months do not add anything to the event description.
+
+    The provenance is already exposed via the ``peak_is_fallback`` sensor
+    attribute, so the calendar description stays focused on peak values.
+    """
     coordinator = _make_coordinator(
         {"peaks": _wrap(_peaks(), year=2026, month=3, is_fallback=True)},
     )
@@ -83,7 +88,9 @@ def test_event_marks_fallback_in_description() -> None:
     event = calendar.event
     assert event is not None
     assert event.description is not None
-    assert "Fallback: showing 2026-03" in event.description
+    assert "Fallback" not in event.description
+    assert "Peak power: 3.50000000 kW" in event.description
+    assert "Peak energy: 0.87500000 kWh" in event.description
 
 
 async def test_async_get_events_returns_event_when_overlapping() -> None:
