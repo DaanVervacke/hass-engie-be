@@ -213,11 +213,6 @@
             "authentication": {
                 "name": "Authentication"
             }
-        },
-        "calendar": {
-            "calendar": {
-                "name": "Calendar"
-            }
         }
     }
 }
