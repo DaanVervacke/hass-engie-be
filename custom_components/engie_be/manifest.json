@@ -10,5 +10,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/DaanVervacke/hass-engie-be/issues",
   "quality_scale": "bronze",
-  "version": "0.6.1"
+  "version": "0.7.0"
 }

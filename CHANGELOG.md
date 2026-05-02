@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-02
+
 ### Added
 - Four new capacity-tariff (captar) sensors that expose the current
   month's peak power and energy plus the start and end timestamps of
