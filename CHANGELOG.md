@@ -21,6 +21,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   two attributes (`peak_month` and `peak_is_fallback`) so the source
   of the displayed value is explicit ([#58]).
 
+### Docs
+- README updated to describe the captar feature outside the per-PR
+  section: intro, features list, sensors intro, configuration
+  walkthrough, and how-it-works now mention the second endpoint and
+  the captar sensors. The captar section gained a one-paragraph caveat
+  covering always-created behaviour, per-EAN emission, the deliberate
+  non-Energy-dashboard choice, and the intentional omission of daily
+  peak entries ([#59]).
+
 ## [0.6.1] - 2026-05-01
 
 ### Docs
@@ -205,6 +214,7 @@ No user-visible changes.
 [#53]: https://github.com/DaanVervacke/hass-engie-be/pull/53
 [#55]: https://github.com/DaanVervacke/hass-engie-be/pull/55
 [#58]: https://github.com/DaanVervacke/hass-engie-be/pull/58
+[#59]: https://github.com/DaanVervacke/hass-engie-be/pull/59
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.1...HEAD
 [0.6.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...v0.6.1
