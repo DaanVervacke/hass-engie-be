@@ -23,9 +23,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Docs
 - README updated to describe the captar feature outside the per-PR
-  section: intro, Features list, Sensors-intro, Configuration
-  walkthrough, and How-it-works now mention the second endpoint and
-  the captar sensors. Captar section gained a one-paragraph caveat
+  section: intro, features list, sensors intro, configuration
+  walkthrough, and how-it-works now mention the second endpoint and
+  the captar sensors. The captar section gained a one-paragraph caveat
   covering always-created behaviour, per-EAN emission, the deliberate
   non-Energy-dashboard choice, and the intentional omission of daily
   peak entries ([#59]).
