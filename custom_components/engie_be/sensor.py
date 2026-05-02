@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 
+from ._peaks import peaks_meta, peaks_payload
 from .const import LOGGER
 from .entity import EngieBeEntity
 
@@ -272,44 +273,6 @@ def _build_peak_sensors(
     ]
 
 
-def _peaks_payload(
-    coordinator: EngieBeDataUpdateCoordinator,
-) -> dict[str, Any] | None:
-    """
-    Return the inner peaks dict from coordinator data, or ``None``.
-
-    The coordinator wraps the API response as
-    ``{"data", "year", "month", "is_fallback"}``. This helper unwraps it.
-    """
-    if not isinstance(coordinator.data, dict):
-        return None
-    wrapper = coordinator.data.get("peaks")
-    if not isinstance(wrapper, dict):
-        return None
-    payload = wrapper.get("data")
-    return payload if isinstance(payload, dict) else None
-
-
-def _peaks_meta(
-    coordinator: EngieBeDataUpdateCoordinator,
-) -> dict[str, Any] | None:
-    """Return ``{year, month, is_fallback}`` for the active peaks payload."""
-    if not isinstance(coordinator.data, dict):
-        return None
-    wrapper = coordinator.data.get("peaks")
-    if not isinstance(wrapper, dict):
-        return None
-    year = wrapper.get("year")
-    month = wrapper.get("month")
-    if not isinstance(year, int) or not isinstance(month, int):
-        return None
-    return {
-        "year": year,
-        "month": month,
-        "is_fallback": bool(wrapper.get("is_fallback", False)),
-    }
-
-
 class _EngieBePeakSensorBase(EngieBeEntity, SensorEntity):
     """Common base for capacity-tariff peak sensors."""
 
@@ -331,7 +294,7 @@ class _EngieBePeakSensorBase(EngieBeEntity, SensorEntity):
         attrs: dict[str, Any] = {}
         if self.coordinator.last_successful_fetch:
             attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
-        meta = _peaks_meta(self.coordinator)
+        meta = peaks_meta(self.coordinator)
         if meta is not None:
             attrs["peak_month"] = f"{meta['year']:04d}-{meta['month']:02d}"
             attrs["peak_is_fallback"] = meta["is_fallback"]
@@ -354,7 +317,7 @@ class EngieBeMonthlyPeakValueSensor(_EngieBePeakSensorBase):
     @property
     def native_value(self) -> float | None:
         """Return the configured numeric field of the monthly peak."""
-        peaks = _peaks_payload(self.coordinator)
+        peaks = peaks_payload(self.coordinator)
         if peaks is None:
             return None
         monthly = peaks.get("peakOfTheMonth")
@@ -387,7 +350,7 @@ class EngieBeMonthlyPeakTimestampSensor(_EngieBePeakSensorBase):
     @property
     def native_value(self) -> datetime | None:
         """Return the parsed ISO 8601 timestamp, or ``None`` if unavailable."""
-        peaks = _peaks_payload(self.coordinator)
+        peaks = peaks_payload(self.coordinator)
         if peaks is None:
             return None
         monthly = peaks.get("peakOfTheMonth")

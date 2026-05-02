@@ -7,6 +7,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+- New calendar entity `calendar.engie_belgium_captar_monthly_peak` that
+  exposes the monthly capacity-tariff peak window as a single calendar
+  event titled "Captar monthly peak", with peak power and peak energy in
+  the event description. Fallback months are flagged in the description
+  so the source of the displayed value is explicit. The entity reads from
+  the existing coordinator payload, so no extra API calls are made
+  ([#NN]).
+
+### Changed
+- Internal refactor: payload-shape helpers for the captar peaks payload
+  moved from `sensor.py` into a new shared `_peaks` module so the new
+  calendar platform can reuse them ([#NN]).
+
 ## [0.7.0] - 2026-05-02
 
 ### Added

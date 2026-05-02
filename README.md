@@ -130,6 +130,13 @@ attributes on each sensor make the source explicit:
 - `peak_is_fallback`: `true` when the value is carried over from the
   previous month, `false` once the current month has its own peak.
 
+A companion calendar entity (`calendar.engie_belgium_captar_monthly_peak`)
+exposes the same monthly peak window as a single calendar event titled
+"Captar monthly peak", with the peak power and energy in the event
+description. Fallback months are flagged in the description so the source is
+visible in any calendar dashboard. The entity is always created and reads
+from the same coordinator payload, so it adds no extra API calls.
+
 ### Authentication
 
 A binary connectivity sensor (`binary_sensor.engie_belgium_authentication`) is
