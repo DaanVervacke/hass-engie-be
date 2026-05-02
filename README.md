@@ -6,7 +6,8 @@
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
 [ENGIE Belgium](https://www.engie.be/). Retrieves your personal energy price
-data from the ENGIE Belgium API and exposes it as sensors.
+data and monthly capacity-tariff peaks from the ENGIE Belgium API and exposes
+them as sensors.
 
 ## A note on how this was built
 
@@ -22,18 +23,22 @@ before release.
 - Detects gas and electricity contracts via the ENGIE service-points endpoint
 - Creates price sensors per energy type, direction (offtake / injection), and
   tariff rate (single-rate, dual-rate, or tri-rate contracts)
+- Tracks the monthly capacity-tariff (captar) peak window per electricity service point
 - Configurable update interval via the integration options
 
 ## Sensors
 
-The integration auto-detects your energy contracts and creates sensors
-accordingly. All price sensors are in **EUR/kWh** with 6 decimal precision.
-Each sensor exposes the following attributes: `ean`, `from`, `to`,
-`vat_tariff`, `time_of_use_slot_code`, and `last_fetched`.
+The integration auto-detects your energy contracts and creates price sensors
+accordingly. Capacity-tariff peak sensors are created independently when peaks
+data is available; see [Capacity tariff (captar)](#capacity-tariff-captar).
 
-Which sensors are created depends on your contract type. The integration reads
-the `timeOfUseSlotCode` from the API response to determine whether you have a
-single-rate, dual-rate (peak / off-peak), or tri-rate
+**Price sensors** are in **EUR/kWh** with 6 decimal precision. Each one exposes
+the following attributes: `ean`, `from`, `to`, `vat_tariff`,
+`time_of_use_slot_code`, and `last_fetched`.
+
+Which price sensors are created depends on your contract type. The integration
+reads the `timeOfUseSlotCode` from the API response to determine whether you
+have a single-rate, dual-rate (peak / off-peak), or tri-rate
 (peak / off-peak / super off-peak) contract.
 
 ### Gas
@@ -108,6 +113,12 @@ capacity-tariff calculation. Values come from the ENGIE
 | Captar monthly peak energy | `sensor.engie_belgium_captar_monthly_peak_energy` | Energy consumed during that 15-minute window, in kWh |
 | Captar monthly peak start | `sensor.engie_belgium_captar_monthly_peak_start` | Start timestamp of the 15-minute peak window |
 | Captar monthly peak end | `sensor.engie_belgium_captar_monthly_peak_end` | End timestamp of the 15-minute peak window |
+
+These sensors are always created when peaks data is available, are emitted per
+electricity EAN, and are not intended as Energy-dashboard sources (the kW and
+kWh values use `state_class=measurement` because they describe a 15-minute peak
+window, not a cumulative counter). Daily peak entries returned by the same
+endpoint are intentionally not exposed as sensors.
 
 The ENGIE API only returns a monthly peak after the first 15-minute peak
 of the month has been recorded, which means the current month is empty
@@ -192,8 +203,8 @@ for **ENGIE Belgium**.
 2. Click **Submit** - you will receive a verification code via your chosen method
 3. Enter the 6-digit verification code and click **Submit**
 
-The integration will authenticate, fetch your energy prices, and create the
-appropriate sensors.
+The integration will authenticate, fetch your energy prices and capacity-tariff
+peaks, and create the appropriate sensors.
 
 ### Options
 
@@ -309,8 +320,11 @@ safe to share.
 - **Token refresh**: Access tokens expire in ~2 minutes. The integration
   refreshes tokens every 60 seconds automatically. Refresh tokens are rotated
   and persisted to the config entry.
-- **Data polling**: Energy prices are fetched at the configured interval
-  (default: every 60 minutes). The coordinator makes a single API call per update.
+- **Data polling**: Energy prices and the current month's capacity-tariff peak
+  are fetched at the configured interval (default: every 60 minutes). The
+  coordinator polls two endpoints per update; if the peaks endpoint fails
+  transiently, the previous value is preserved so the captar sensors stay
+  populated.
 - **Energy type detection**: At startup the integration calls the ENGIE
   service-points endpoint for each EAN to determine whether the contract is gas
   or electricity. If the lookup fails, a generic "Energy" label is used as
