@@ -35,13 +35,25 @@ def _wrap(
     }
 
 
-def _make_coordinator(data: dict | None) -> MagicMock:
+def _make_coordinator(
+    data: dict | None,
+    *,
+    history: list[dict] | None = None,
+) -> MagicMock:
     """Build a MagicMock coordinator stub with the given ``.data``."""
     coordinator = MagicMock()
     coordinator.data = data
     coordinator.last_successful_fetch = None
     coordinator.config_entry = MagicMock()
     coordinator.config_entry.entry_id = "test_entry_id"
+    if history is None:
+        coordinator.config_entry.runtime_data = None
+    else:
+        store = MagicMock()
+        store.peaks = list(history)
+        runtime = MagicMock()
+        runtime.peaks_store = store
+        coordinator.config_entry.runtime_data = runtime
     return coordinator
 
 
@@ -125,3 +137,61 @@ async def test_async_get_events_returns_empty_when_no_providers_yield() -> None:
         end_date=datetime.fromisoformat("2026-04-30T23:59:59+02:00"),
     )
     assert events == []
+
+
+async def test_async_get_events_returns_history_plus_current_month() -> None:
+    """History entries from the store are surfaced alongside the live month."""
+    history = [
+        {
+            "year": 2026,
+            "month": 2,
+            "start": "2026-02-10T18:00:00+01:00",
+            "end": "2026-02-10T18:15:00+01:00",
+            "peakKW": "2.10000000",
+            "peakKWh": "0.52500000",
+        },
+        {
+            "year": 2026,
+            "month": 3,
+            "start": "2026-03-12T19:00:00+01:00",
+            "end": "2026-03-12T19:15:00+01:00",
+            "peakKW": "2.80000000",
+            "peakKWh": "0.70000000",
+        },
+    ]
+    coordinator = _make_coordinator({"peaks": _wrap(_peaks())}, history=history)
+    calendar = EngieBeCalendar(coordinator)
+    events = await calendar.async_get_events(
+        hass=MagicMock(),
+        start_date=datetime.fromisoformat("2026-01-01T00:00:00+01:00"),
+        end_date=datetime.fromisoformat("2026-04-30T23:59:59+02:00"),
+    )
+    starts = sorted(event.start.isoformat() for event in events)
+    assert starts == [
+        "2026-02-10T18:00:00+01:00",
+        "2026-03-12T19:00:00+01:00",
+        "2026-04-15T18:00:00+02:00",
+    ]
+
+
+async def test_history_does_not_duplicate_current_month() -> None:
+    """A history entry for the active month is not duplicated by the live payload."""
+    history = [
+        {
+            "year": 2026,
+            "month": 4,
+            "start": "2026-04-15T18:00:00+02:00",
+            "end": "2026-04-15T18:15:00+02:00",
+            "peakKW": "3.50000000",
+            "peakKWh": "0.87500000",
+        },
+    ]
+    coordinator = _make_coordinator({"peaks": _wrap(_peaks())}, history=history)
+    calendar = EngieBeCalendar(coordinator)
+    events = await calendar.async_get_events(
+        hass=MagicMock(),
+        start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
+        end_date=datetime.fromisoformat("2026-04-30T23:59:59+02:00"),
+    )
+    assert len(events) == 1
+    assert events[0].start == datetime.fromisoformat("2026-04-15T18:00:00+02:00")

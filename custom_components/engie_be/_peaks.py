@@ -61,32 +61,64 @@ def captar_peak_events(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> list[CalendarEvent]:
     """
-    Return calendar events for the monthly captar peak window.
+    Return calendar events for every known captar peak window.
 
-    Returns a single event when the coordinator has a valid
-    ``peakOfTheMonth`` payload, otherwise an empty list.
+    Combines persisted historical peaks (from the per-entry peak store)
+    with the current month's peak window from the live coordinator
+    payload. Entries are deduplicated by ``(year, month)`` so the live
+    payload does not produce a duplicate event when the store already
+    has it.
     """
-    peaks = peaks_payload(coordinator)
-    if peaks is None:
-        return []
-    monthly = peaks.get("peakOfTheMonth")
-    if not isinstance(monthly, dict):
-        return []
-    start_raw = monthly.get("start")
-    end_raw = monthly.get("end")
+    events_by_key: dict[tuple[int, int], CalendarEvent] = {}
+
+    runtime = getattr(coordinator.config_entry, "runtime_data", None)
+    store = getattr(runtime, "peaks_store", None) if runtime is not None else None
+    if store is not None:
+        for entry in store.peaks:
+            event = _build_event(
+                entry.get("start"),
+                entry.get("end"),
+                entry.get("peakKW"),
+                entry.get("peakKWh"),
+            )
+            if event is not None:
+                events_by_key[(entry["year"], entry["month"])] = event
+
+    meta = peaks_meta(coordinator)
+    payload = peaks_payload(coordinator)
+    if meta is not None and isinstance(payload, dict):
+        monthly = payload.get("peakOfTheMonth")
+        if isinstance(monthly, dict):
+            event = _build_event(
+                monthly.get("start"),
+                monthly.get("end"),
+                monthly.get("peakKW"),
+                monthly.get("peakKWh"),
+            )
+            if event is not None:
+                events_by_key[(meta["year"], meta["month"])] = event
+
+    return list(events_by_key.values())
+
+
+def _build_event(
+    start_raw: Any,
+    end_raw: Any,
+    peak_kw: Any,
+    peak_kwh: Any,
+) -> CalendarEvent | None:
+    """Build a single captar ``CalendarEvent`` from raw fields."""
     if not isinstance(start_raw, str) or not isinstance(end_raw, str):
-        return []
+        return None
     try:
         start = datetime.fromisoformat(start_raw)
         end = datetime.fromisoformat(end_raw)
     except ValueError:
-        return []
+        return None
     if start.tzinfo is None or end.tzinfo is None:
         # CalendarEntity requires tz-aware datetimes for timed events.
-        return []
+        return None
 
-    peak_kw = monthly.get("peakKW")
-    peak_kwh = monthly.get("peakKWh")
     description_parts: list[str] = []
     if peak_kw is not None:
         description_parts.append(f"Peak power: {peak_kw} kW")
@@ -94,11 +126,9 @@ def captar_peak_events(
         description_parts.append(f"Peak energy: {peak_kwh} kWh")
     description = "\n".join(description_parts) or None
 
-    return [
-        CalendarEvent(
-            start=start,
-            end=end,
-            summary=_CAPTAR_EVENT_SUMMARY,
-            description=description,
-        ),
-    ]
+    return CalendarEvent(
+        start=start,
+        end=end,
+        summary=_CAPTAR_EVENT_SUMMARY,
+        description=description,
+    )

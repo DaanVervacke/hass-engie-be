@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
     from .api import EngieBeApiClient
     from .coordinator import EngieBeDataUpdateCoordinator
+    from .store import EngieBePeaksStore
 
 
 type EngieBeConfigEntry = ConfigEntry[EngieBeData]
@@ -24,3 +25,4 @@ class EngieBeData:
     authenticated: bool = field(default=False)
     last_options: dict[str, Any] = field(default_factory=dict)
     service_points: dict[str, str] = field(default_factory=dict)
+    peaks_store: EngieBePeaksStore | None = field(default=None)

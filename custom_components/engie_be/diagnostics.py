@@ -89,6 +89,7 @@ async def async_get_config_entry_diagnostics(
     """Return diagnostics for a config entry."""
     runtime = entry.runtime_data
     coordinator = runtime.coordinator if runtime is not None else None
+    peaks_store = getattr(runtime, "peaks_store", None) if runtime is not None else None
 
     return {
         "entry": {
@@ -101,6 +102,9 @@ async def async_get_config_entry_diagnostics(
             "authenticated": getattr(runtime, "authenticated", None),
             "service_points": _summarise_service_points(
                 getattr(runtime, "service_points", {}) or {},
+            ),
+            "peaks_history": (
+                peaks_store.summary() if peaks_store is not None else None
             ),
         },
         "coordinator": {

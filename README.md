@@ -133,7 +133,10 @@ attributes on each sensor make the source explicit:
 A general calendar entity (`calendar.engie_belgium`) aggregates ENGIE
 events into one place. Today it surfaces the monthly captar peak window
 as a single event titled "Captar monthly peak", with the peak power and
-energy in the event description. New event types added to the
+energy in the event description. Past months are persisted across
+restarts in a small per-config-entry store, so the calendar keeps
+showing previous monthly peaks even after the ENGIE API has rolled over
+to a new month and dropped the old value. New event types added to the
 integration in the future will appear on the same calendar without
 spawning extra entities. The calendar reads from the existing
 coordinator payload, so it adds no extra API calls. Fallback-month
