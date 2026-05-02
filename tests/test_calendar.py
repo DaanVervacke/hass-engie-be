@@ -1,4 +1,4 @@
-"""Tests for the captar monthly peak calendar entity."""
+"""Tests for the ENGIE Belgium aggregated calendar entity."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 from homeassistant.components.calendar import CalendarEvent
 
-from custom_components.engie_be.calendar import EngieBeCaptarPeakCalendar
+from custom_components.engie_be.calendar import EngieBeCalendar
 
 _PEAKS_FIXTURE = Path(__file__).parent / "fixtures" / "peaks_2026_04.json"
 
@@ -48,29 +48,28 @@ def _make_coordinator(data: dict | None) -> MagicMock:
 def test_calendar_unique_id_namespaced_to_entry() -> None:
     """The calendar carries a stable per-entry unique_id."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
-    calendar = EngieBeCaptarPeakCalendar(coordinator)
-    assert calendar.unique_id == "test_entry_id_captar_monthly_peak"
+    calendar = EngieBeCalendar(coordinator)
+    assert calendar.unique_id == "test_entry_id_calendar"
 
 
-def test_event_property_returns_built_event() -> None:
-    """``event`` exposes the monthly peak window as a ``CalendarEvent``."""
+def test_event_property_returns_captar_peak() -> None:
+    """``event`` exposes the captar peak window as a ``CalendarEvent``."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
-    calendar = EngieBeCaptarPeakCalendar(coordinator)
+    calendar = EngieBeCalendar(coordinator)
     event = calendar.event
     assert isinstance(event, CalendarEvent)
     assert event.summary == "Captar monthly peak"
     assert event.start == datetime.fromisoformat("2026-04-15T18:00:00+02:00")
     assert event.end == datetime.fromisoformat("2026-04-15T18:15:00+02:00")
-    # Description includes both numeric peak fields.
     assert event.description is not None
     assert "Peak power: 3.50000000 kW" in event.description
     assert "Peak energy: 0.87500000 kWh" in event.description
 
 
-def test_event_returns_none_when_peaks_missing() -> None:
-    """``event`` is ``None`` when the coordinator has no peaks payload."""
+def test_event_returns_none_when_no_providers_yield_events() -> None:
+    """``event`` is ``None`` when no provider yields anything."""
     coordinator = _make_coordinator({"items": []})
-    calendar = EngieBeCaptarPeakCalendar(coordinator)
+    calendar = EngieBeCalendar(coordinator)
     assert calendar.event is None
 
 
@@ -84,19 +83,17 @@ def test_event_fallback_does_not_annotate_description() -> None:
     coordinator = _make_coordinator(
         {"peaks": _wrap(_peaks(), year=2026, month=3, is_fallback=True)},
     )
-    calendar = EngieBeCaptarPeakCalendar(coordinator)
+    calendar = EngieBeCalendar(coordinator)
     event = calendar.event
     assert event is not None
     assert event.description is not None
     assert "Fallback" not in event.description
-    assert "Peak power: 3.50000000 kW" in event.description
-    assert "Peak energy: 0.87500000 kWh" in event.description
 
 
 async def test_async_get_events_returns_event_when_overlapping() -> None:
     """``async_get_events`` returns the event when its window overlaps."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
-    calendar = EngieBeCaptarPeakCalendar(coordinator)
+    calendar = EngieBeCalendar(coordinator)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
@@ -109,7 +106,7 @@ async def test_async_get_events_returns_event_when_overlapping() -> None:
 async def test_async_get_events_returns_empty_outside_window() -> None:
     """``async_get_events`` returns ``[]`` when the window does not overlap."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
-    calendar = EngieBeCaptarPeakCalendar(coordinator)
+    calendar = EngieBeCalendar(coordinator)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-05-01T00:00:00+02:00"),
@@ -118,10 +115,10 @@ async def test_async_get_events_returns_empty_outside_window() -> None:
     assert events == []
 
 
-async def test_async_get_events_returns_empty_when_peaks_missing() -> None:
-    """``async_get_events`` returns ``[]`` when no peaks payload exists."""
+async def test_async_get_events_returns_empty_when_no_providers_yield() -> None:
+    """``async_get_events`` returns ``[]`` when no provider yields anything."""
     coordinator = _make_coordinator({"items": []})
-    calendar = EngieBeCaptarPeakCalendar(coordinator)
+    calendar = EngieBeCalendar(coordinator)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),

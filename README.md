@@ -130,10 +130,12 @@ attributes on each sensor make the source explicit:
 - `peak_is_fallback`: `true` when the value is carried over from the
   previous month, `false` once the current month has its own peak.
 
-A companion calendar entity (`calendar.engie_belgium_captar_monthly_peak`)
-exposes the same monthly peak window as a single calendar event titled
-"Captar monthly peak", with the peak power and energy in the event
-description. The entity is always created and reads from the same
+A general calendar entity (`calendar.engie_belgium`) aggregates ENGIE
+events into one place. Today it surfaces the monthly captar peak window
+as a single event titled "Captar monthly peak", with the peak power and
+energy in the event description. New event types added to the
+integration in the future will appear on the same calendar without
+spawning extra entities. The calendar reads from the existing
 coordinator payload, so it adds no extra API calls. Fallback-month
 provenance is not duplicated in the description because the
 `peak_is_fallback` sensor attribute already covers that.

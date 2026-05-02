@@ -1,33 +1,42 @@
 """
 Calendar platform for the ENGIE Belgium integration.
 
-Surfaces the monthly capacity-tariff (captar) peak window as a single calendar
-event so users can see when their billable peak occurred without opening any
-extra dashboard cards.
+A single calendar entity (``calendar.engie_belgium``) aggregates all
+ENGIE-related events. Today this is just the monthly capacity-tariff (captar)
+peak window, but new event types can be added without spawning a new
+calendar entity by registering an additional ``EventProvider`` below.
 
-The data is sourced from the existing coordinator payload at
-``coordinator.data["peaks"]["data"]["peakOfTheMonth"]``. No additional API
-calls are made by this platform.
+Each ``EventProvider`` is a callable that takes the coordinator and returns
+zero or more ``CalendarEvent`` instances. The data is sourced from the
+existing coordinator payload, so no additional API calls are made.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 
-from ._peaks import peaks_payload
+from ._peaks import captar_peak_events
 from .entity import EngieBeEntity
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
     from .coordinator import EngieBeDataUpdateCoordinator
     from .data import EngieBeConfigEntry
 
-_EVENT_SUMMARY = "Captar monthly peak"
+EventProvider = Callable[["EngieBeDataUpdateCoordinator"], list[CalendarEvent]]
+
+# Add new event sources by appending a provider here. Each provider returns
+# zero or more CalendarEvent objects from the coordinator payload.
+EVENT_PROVIDERS: list[EventProvider] = [
+    captar_peak_events,
+]
 
 
 async def async_setup_entry(
@@ -37,63 +46,50 @@ async def async_setup_entry(
 ) -> None:
     """Set up the calendar platform."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities([EngieBeCaptarPeakCalendar(coordinator)])
+    async_add_entities([EngieBeCalendar(coordinator)])
 
 
-class EngieBeCaptarPeakCalendar(EngieBeEntity, CalendarEntity):
-    """Calendar entity exposing the monthly captar peak window."""
+class EngieBeCalendar(EngieBeEntity, CalendarEntity):
+    """Aggregated calendar entity for ENGIE Belgium events."""
 
-    _attr_translation_key = "captar_monthly_peak"
-    _attr_icon = "mdi:calendar-clock"
+    _attr_translation_key = "calendar"
+    _attr_icon = "mdi:calendar"
 
     def __init__(self, coordinator: EngieBeDataUpdateCoordinator) -> None:
         """Initialise the calendar entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = (
-            f"{coordinator.config_entry.entry_id}_captar_monthly_peak"
-        )
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_calendar"
 
-    def _build_event(self) -> CalendarEvent | None:
-        """Build the single peak event from coordinator data."""
-        peaks = peaks_payload(self.coordinator)
-        if peaks is None:
-            return None
-        monthly = peaks.get("peakOfTheMonth")
-        if not isinstance(monthly, dict):
-            return None
-        start_raw = monthly.get("start")
-        end_raw = monthly.get("end")
-        if not isinstance(start_raw, str) or not isinstance(end_raw, str):
-            return None
-        try:
-            start = datetime.fromisoformat(start_raw)
-            end = datetime.fromisoformat(end_raw)
-        except ValueError:
-            return None
-        if start.tzinfo is None or end.tzinfo is None:
-            # CalendarEntity requires tz-aware datetimes for timed events.
-            return None
-
-        peak_kw = monthly.get("peakKW")
-        peak_kwh = monthly.get("peakKWh")
-        description_parts: list[str] = []
-        if peak_kw is not None:
-            description_parts.append(f"Peak power: {peak_kw} kW")
-        if peak_kwh is not None:
-            description_parts.append(f"Peak energy: {peak_kwh} kWh")
-
-        description = "\n".join(description_parts) or None
-        return CalendarEvent(
-            start=start,
-            end=end,
-            summary=_EVENT_SUMMARY,
-            description=description,
-        )
+    def _all_events(self) -> list[CalendarEvent]:
+        """Collect events from every registered provider."""
+        events: list[CalendarEvent] = []
+        for provider in EVENT_PROVIDERS:
+            events.extend(provider(self.coordinator))
+        return events
 
     @property
     def event(self) -> CalendarEvent | None:
-        """Return the next or current upcoming event."""
-        return self._build_event()
+        """
+        Return the current or next upcoming event across all providers.
+
+        Active events (``start <= now < end``) win over future ones; among
+        future events the soonest ``start`` wins.
+        """
+        events = self._all_events()
+        if not events:
+            return None
+        from homeassistant.util import dt as dt_util  # noqa: PLC0415
+
+        now = dt_util.utcnow()
+        active = [e for e in events if e.start <= now < e.end]
+        if active:
+            return min(active, key=lambda e: e.start)
+        upcoming = [e for e in events if e.start >= now]
+        if upcoming:
+            return min(upcoming, key=lambda e: e.start)
+        # Otherwise return the most recent past event so users can still see
+        # the last billable peak in card-style frontends.
+        return max(events, key=lambda e: e.end)
 
     async def async_get_events(
         self,
@@ -101,10 +97,9 @@ class EngieBeCaptarPeakCalendar(EngieBeEntity, CalendarEntity):
         start_date: datetime,
         end_date: datetime,
     ) -> list[CalendarEvent]:
-        """Return all events within the requested window."""
-        event = self._build_event()
-        if event is None:
-            return []
-        if event.end <= start_date or event.start >= end_date:
-            return []
-        return [event]
+        """Return all events overlapping the requested window."""
+        return [
+            event
+            for event in self._all_events()
+            if event.end > start_date and event.start < end_date
+        ]

@@ -215,8 +215,8 @@
             }
         },
         "calendar": {
-            "captar_monthly_peak": {
-                "name": "Captar monthly peak"
+            "calendar": {
+                "name": "Calendar"
             }
         }
     }

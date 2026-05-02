@@ -8,19 +8,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [Unreleased]
 
 ### Added
-- New calendar entity `calendar.engie_belgium_captar_monthly_peak` that
-  exposes the monthly capacity-tariff peak window as a single calendar
-  event titled "Captar monthly peak", with peak power and peak energy in
-  the event description. Fallback-month provenance is intentionally not
-  duplicated in the description because the existing `peak_is_fallback`
-  sensor attribute already covers that. The entity reads from the
-  existing coordinator payload, so no extra API calls are made
-  ([#61]).
+- New aggregated calendar entity `calendar.engie_belgium` that surfaces
+  ENGIE-related events in one place. The first event type is the monthly
+  capacity-tariff peak window ("Captar monthly peak"), with peak power
+  and peak energy in the event description. The entity is built around
+  a provider-list pattern so future event types (outage windows, billing
+  dates, contract renewals) can plug in without spawning extra calendar
+  entities. Fallback-month provenance is intentionally not duplicated in
+  the description because the existing `peak_is_fallback` sensor
+  attribute already covers that. The entity reads from the existing
+  coordinator payload, so no extra API calls are made ([#61]).
 
 ### Changed
 - Internal refactor: payload-shape helpers for the captar peaks payload
-  moved from `sensor.py` into a new shared `_peaks` module so the new
-  calendar platform can reuse them ([#61]).
+  moved from `sensor.py` into a new shared `_peaks` module that also
+  hosts the captar event provider used by the new calendar platform
+  ([#61]).
 
 ## [0.7.0] - 2026-05-02
 
