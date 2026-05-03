@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -127,9 +128,20 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return
 
+        try:
+            payload = json.dumps(response, ensure_ascii=False, sort_keys=True)
+        except (TypeError, ValueError) as exception:
+            LOGGER.warning(
+                "happy-hour-event response could not be JSON-serialised "
+                "(%s); raw value: %r",
+                exception,
+                response,
+            )
+            return
+
         LOGGER.warning(
-            "happy-hour-event response (please share with the integration author): %r",
-            response,
+            "happy-hour-event response (please share with the integration author): %s",
+            payload,
         )
 
     def _record_peak_history(self, peaks_wrapper: dict[str, Any]) -> None:
