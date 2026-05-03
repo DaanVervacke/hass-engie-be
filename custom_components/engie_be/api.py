@@ -27,6 +27,7 @@ from .const import (
     AUTH_BASE_URL,
     BUSINESS_AGREEMENTS_BASE_URL,
     EPEX_BASE_URL,
+    HAPPY_HOUR_BASE_URL,
     LOGGER,
     MFA_METHOD_SMS,
     OAUTH_AUDIENCE,
@@ -1015,6 +1016,35 @@ class EngieBeApiClient:
                 f"({exception.__class__.__name__})"
             )
             raise EngieBeApiClientCommunicationError(msg) from exception
+
+    async def async_get_happy_hour_event(
+        self,
+        customer_number: str,
+    ) -> Any:
+        """
+        Fetch the happy-hour event payload for a given customer.
+
+        Debug-only helper for the ``debug/happy-hour-event`` branch.
+        Returns the raw parsed JSON (or text, if not JSON) so it can be
+        logged verbatim and shared with the integration author.
+        """
+        url = (
+            f"{HAPPY_HOUR_BASE_URL}/business-agreements/"
+            f"{customer_number.replace(' ', '')}/happy-hour-event"
+        )
+        headers = {
+            "User-Agent": USER_AGENT_NATIVE,
+            "Accept": "application/json, application/problem+json",
+            "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
+        }
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            json_response=True,
+        )
 
     # ------------------------------------------------------------------
     # Internal: auth flow step implementations
