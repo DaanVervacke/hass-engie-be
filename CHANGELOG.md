@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-05-03
+
 ### Added
 - New aggregated calendar entity `calendar.engie_belgium` that surfaces
   ENGIE-related events in one place. The first event type is the monthly
@@ -249,7 +251,9 @@ No user-visible changes.
 [#59]: https://github.com/DaanVervacke/hass-engie-be/pull/59
 [#61]: https://github.com/DaanVervacke/hass-engie-be/pull/61
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.2...v0.5.0
