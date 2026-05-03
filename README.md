@@ -133,9 +133,7 @@ attributes on each sensor make the source explicit:
 The integration adds a calendar entity (`calendar.engie_belgium`) that
 shows your monthly capacity-tariff peak as a single event titled
 "Captar monthly peak", with the peak power and energy in the event
-description. Past months stick around across restarts, so you can look
-back at previous peaks even though ENGIE itself only ever returns the
-current month.
+description.
 
 ### Authentication
 
