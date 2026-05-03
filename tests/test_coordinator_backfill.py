@@ -103,6 +103,9 @@ def _make_client(
     client.async_get_monthly_peaks = AsyncMock(
         return_value={"peakOfTheMonth": None, "dailyPeaks": []},
     )
+    # Debug-only probe (debug/happy-hour-event branch); stub so coordinator
+    # doesn't try to await a bare MagicMock.
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
     if relations_side_effect is not None:
         client.async_get_customer_account_relations = AsyncMock(
             side_effect=relations_side_effect,

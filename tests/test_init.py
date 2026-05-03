@@ -130,6 +130,9 @@ def _make_client(  # noqa: PLR0913 - kwargs-only test helper, one knob per endpo
     # EngieBeEpexCoordinator at first refresh; default to an empty
     # timeSeries so the parser returns an empty payload without raising.
     client.async_get_epex_prices = AsyncMock(return_value={"timeSeries": []})
+    # Debug-only probe (debug/happy-hour-event branch); stub so coordinator
+    # doesn't try to await a bare MagicMock.
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
     return client
 
 
