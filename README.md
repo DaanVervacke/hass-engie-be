@@ -130,18 +130,12 @@ attributes on each sensor make the source explicit:
 - `peak_is_fallback`: `true` when the value is carried over from the
   previous month, `false` once the current month has its own peak.
 
-A general calendar entity (`calendar.engie_belgium`) aggregates ENGIE
-events into one place. Today it surfaces the monthly captar peak window
-as a single event titled "Captar monthly peak", with the peak power and
-energy in the event description. Past months are persisted across
-restarts in a small per-config-entry store, so the calendar keeps
-showing previous monthly peaks even after the ENGIE API has rolled over
-to a new month and dropped the old value. New event types added to the
-integration in the future will appear on the same calendar without
-spawning extra entities. The calendar reads from the existing
-coordinator payload, so it adds no extra API calls. Fallback-month
-provenance is not duplicated in the description because the
-`peak_is_fallback` sensor attribute already covers that.
+The integration adds a calendar entity (`calendar.engie_belgium`) that
+shows your monthly capacity-tariff peak as a single event titled
+"Captar monthly peak", with the peak power and energy in the event
+description. Past months stick around across restarts, so you can look
+back at previous peaks even though ENGIE itself only ever returns the
+current month.
 
 ### Authentication
 
