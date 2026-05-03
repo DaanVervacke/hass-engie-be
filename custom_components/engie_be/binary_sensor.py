@@ -12,6 +12,9 @@ from homeassistant.components.binary_sensor import (
 
 from .entity import EngieBeEntity
 
+# Coordinator centralises updates; entities never poll individually.
+PARALLEL_UPDATES = 0
+
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddEntitiesCallback

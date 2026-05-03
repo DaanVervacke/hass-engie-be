@@ -130,6 +130,11 @@ attributes on each sensor make the source explicit:
 - `peak_is_fallback`: `true` when the value is carried over from the
   previous month, `false` once the current month has its own peak.
 
+The integration adds a calendar entity (`calendar.engie_belgium`) that
+shows your monthly capacity-tariff peak as a single event titled
+"Captar monthly peak", with the peak power and energy in the event
+description.
+
 ### Authentication
 
 A binary connectivity sensor (`binary_sensor.engie_belgium_authentication`) is

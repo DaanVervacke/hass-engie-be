@@ -28,6 +28,7 @@ from .const import (
 from .coordinator import EngieBeDataUpdateCoordinator
 from .data import EngieBeData
 from .diagnostics import _hash_ean
+from .store import EngieBePeaksStore
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
+    Platform.CALENDAR,
     Platform.SENSOR,
 ]
 
@@ -82,11 +84,13 @@ async def async_setup_entry(
     )
 
     coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
+    peaks_store = await _async_init_peaks_store(hass, entry.entry_id)
 
     entry.runtime_data = EngieBeData(
         client=client,
         coordinator=coordinator,
         last_options=dict(entry.options),
+        peaks_store=peaks_store,
     )
 
     # Do an initial token refresh so we have a valid access token
@@ -196,3 +200,13 @@ def _persist_tokens(
     updated_data[CONF_ACCESS_TOKEN] = access_token
     updated_data[CONF_REFRESH_TOKEN] = refresh_token
     hass.config_entries.async_update_entry(entry, data=updated_data)
+
+
+async def _async_init_peaks_store(
+    hass: HomeAssistant,
+    entry_id: str,
+) -> EngieBePeaksStore:
+    """Build and load the persistent peaks-history store for one entry."""
+    store = EngieBePeaksStore(hass, entry_id)
+    await store.async_load()
+    return store

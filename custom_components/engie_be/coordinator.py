@@ -96,9 +96,41 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if peaks_wrapper is not None:
             data["peaks"] = peaks_wrapper
+            self._record_peak_history(peaks_wrapper)
 
         self.last_successful_fetch = dt_util.utcnow()
         return data
+
+    def _record_peak_history(self, peaks_wrapper: dict[str, Any]) -> None:
+        """Persist the current month's peak window if it is not a fallback."""
+        if peaks_wrapper.get("is_fallback"):
+            return
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        store = getattr(runtime, "peaks_store", None) if runtime is not None else None
+        if store is None:
+            return
+        payload = peaks_wrapper.get("data")
+        if not isinstance(payload, dict):
+            return
+        monthly = payload.get("peakOfTheMonth")
+        if not isinstance(monthly, dict):
+            return
+        start = monthly.get("start")
+        end = monthly.get("end")
+        if not isinstance(start, str) or not isinstance(end, str):
+            return
+        year = peaks_wrapper.get("year")
+        month = peaks_wrapper.get("month")
+        if not isinstance(year, int) or not isinstance(month, int):
+            return
+        store.upsert(
+            year=year,
+            month=month,
+            start=start,
+            end=end,
+            peak_kw=monthly.get("peakKW"),
+            peak_kwh=monthly.get("peakKWh"),
+        )
 
     async def _async_fetch_peaks_with_fallback(
         self,

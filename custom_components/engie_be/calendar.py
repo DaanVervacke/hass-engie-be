@@ -1,0 +1,108 @@
+"""
+Calendar platform for the ENGIE Belgium integration.
+
+A single calendar entity (``calendar.engie_belgium``) aggregates all
+ENGIE-related events. Today this is just the monthly capacity-tariff (captar)
+peak window, but new event types can be added without spawning a new
+calendar entity by registering an additional ``EventProvider`` below.
+
+Each ``EventProvider`` is a callable that takes the coordinator and returns
+zero or more ``CalendarEvent`` instances. The data is sourced from the
+existing coordinator payload, so no additional API calls are made.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+from homeassistant.components.calendar import CalendarEntity, CalendarEvent
+
+from ._peaks import captar_peak_events
+from .entity import EngieBeEntity
+
+# Coordinator centralises updates; entities never poll individually.
+PARALLEL_UPDATES = 0
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
+    from .coordinator import EngieBeDataUpdateCoordinator
+    from .data import EngieBeConfigEntry
+
+EventProvider = Callable[["EngieBeDataUpdateCoordinator"], list[CalendarEvent]]
+
+# Add new event sources by appending a provider here. Each provider returns
+# zero or more CalendarEvent objects from the coordinator payload.
+EVENT_PROVIDERS: list[EventProvider] = [
+    captar_peak_events,
+]
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,  # noqa: ARG001
+    entry: EngieBeConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the calendar platform."""
+    coordinator = entry.runtime_data.coordinator
+    async_add_entities([EngieBeCalendar(coordinator)])
+
+
+class EngieBeCalendar(EngieBeEntity, CalendarEntity):
+    """Aggregated calendar entity for ENGIE Belgium events."""
+
+    _attr_name = None
+    _attr_icon = "mdi:calendar"
+
+    def __init__(self, coordinator: EngieBeDataUpdateCoordinator) -> None:
+        """Initialise the calendar entity."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_calendar"
+
+    def _all_events(self) -> list[CalendarEvent]:
+        """Collect events from every registered provider."""
+        events: list[CalendarEvent] = []
+        for provider in EVENT_PROVIDERS:
+            events.extend(provider(self.coordinator))
+        return events
+
+    @property
+    def event(self) -> CalendarEvent | None:
+        """
+        Return the current or next upcoming event across all providers.
+
+        Active events (``start <= now < end``) win over future ones; among
+        future events the soonest ``start`` wins.
+        """
+        events = self._all_events()
+        if not events:
+            return None
+        from homeassistant.util import dt as dt_util  # noqa: PLC0415
+
+        now = dt_util.utcnow()
+        active = [e for e in events if e.start <= now < e.end]
+        if active:
+            return min(active, key=lambda e: e.start)
+        upcoming = [e for e in events if e.start >= now]
+        if upcoming:
+            return min(upcoming, key=lambda e: e.start)
+        # Otherwise return the most recent past event so users can still see
+        # the last billable peak in card-style frontends.
+        return max(events, key=lambda e: e.end)
+
+    async def async_get_events(
+        self,
+        hass: HomeAssistant,  # noqa: ARG002
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[CalendarEvent]:
+        """Return all events overlapping the requested window."""
+        return [
+            event
+            for event in self._all_events()
+            if event.end > start_date and event.start < end_date
+        ]

@@ -7,6 +7,36 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+- New aggregated calendar entity `calendar.engie_belgium` that surfaces
+  ENGIE-related events in one place. The first event type is the monthly
+  capacity-tariff peak window ("Captar monthly peak"), with peak power
+  and peak energy in the event description. Past monthly peaks are
+  persisted across restarts in a small per-config-entry store, so the
+  calendar keeps surfacing previous months even after the ENGIE API has
+  rolled over to a new month and dropped the old value. The entity is
+  built around a provider-list pattern so future event types (outage
+  windows, billing dates, contract renewals) can plug in without
+  spawning extra calendar entities. Fallback-month provenance is
+  intentionally not duplicated in the description because the existing
+  `peak_is_fallback` sensor attribute already covers that. The entity
+  reads from the existing coordinator payload, so no extra API calls are
+  made. Diagnostics gained a `peaks_history` summary
+  (`count`, `oldest`, `newest`, `latest_peakKW`) for visibility into the
+  persisted store ([#61]).
+
+### Changed
+- Internal refactor: payload-shape helpers for the captar peaks payload
+  moved from `sensor.py` into a new shared `_peaks` module that also
+  hosts the captar event provider used by the new calendar platform
+  ([#61]).
+
+### Chore
+- All entity platforms (`binary_sensor`, `calendar`, `sensor`) now
+  declare `PARALLEL_UPDATES = 0` to make the coordinator-centralised
+  update model explicit, per Home Assistant integration quality scale
+  guidance ([#61]).
+
 ## [0.7.0] - 2026-05-02
 
 ### Added
@@ -217,6 +247,7 @@ No user-visible changes.
 [#55]: https://github.com/DaanVervacke/hass-engie-be/pull/55
 [#58]: https://github.com/DaanVervacke/hass-engie-be/pull/58
 [#59]: https://github.com/DaanVervacke/hass-engie-be/pull/59
+[#61]: https://github.com/DaanVervacke/hass-engie-be/pull/61
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.1...HEAD
 [0.6.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...v0.6.1
