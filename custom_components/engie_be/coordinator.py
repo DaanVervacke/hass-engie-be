@@ -98,8 +98,39 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["peaks"] = peaks_wrapper
             self._record_peak_history(peaks_wrapper)
 
+        # Debug-only: probe the happy-hour-event endpoint and log the
+        # raw response so users can share it with the integration author.
+        # This branch (`debug/happy-hour-event`) is not meant to be merged.
+        await self._async_log_happy_hour_event(client, customer_number)
+
         self.last_successful_fetch = dt_util.utcnow()
         return data
+
+    async def _async_log_happy_hour_event(
+        self,
+        client: Any,
+        customer_number: str,
+    ) -> None:
+        """Fetch the happy-hour-event endpoint and log the raw response."""
+        try:
+            response = await client.async_get_happy_hour_event(customer_number)
+        except EngieBeApiClientAuthenticationError as exception:
+            LOGGER.warning(
+                "happy-hour-event probe failed (auth): %s",
+                exception,
+            )
+            return
+        except EngieBeApiClientError as exception:
+            LOGGER.warning(
+                "happy-hour-event probe failed: %s",
+                exception,
+            )
+            return
+
+        LOGGER.warning(
+            "happy-hour-event response (please share with the integration author): %r",
+            response,
+        )
 
     def _record_peak_history(self, peaks_wrapper: dict[str, Any]) -> None:
         """Persist the current month's peak window if it is not a fallback."""

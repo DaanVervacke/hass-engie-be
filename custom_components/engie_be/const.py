@@ -14,6 +14,7 @@ AUTH_BASE_URL = "https://account.engie.be"
 API_BASE_URL = "https://www.engie.be/api/engie/be/ms/billing/customer/v1"
 PREMISES_BASE_URL = "https://www.engie.be/api/engie/be/ms/premises/customer/v1"
 PEAKS_BASE_URL = "https://api.engie.be/engie/ms/b2c-energy-insights/v1"
+HAPPY_HOUR_BASE_URL = "https://api.engie.be/engie/ms/energy-insights/customer/v1"
 
 # OAuth configuration (public mobile-app client, no secret needed)
 DEFAULT_CLIENT_ID = "R0PQyUdjO5B2tBaRnltgitVnnUmjGyld"
