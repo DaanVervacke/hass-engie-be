@@ -56,7 +56,7 @@
             },
             "select_accounts": {
                 "title": "Choose customer accounts",
-                "description": "Authentication for {username} succeeded. Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own price sensors. You can add or remove accounts later from the integration page.",
+                "description": "Authentication for {username} succeeded. Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own sensors. You can add or remove accounts later from the integration page.",
                 "data": {
                     "selected_accounts": "Customer accounts"
                 },
@@ -86,7 +86,7 @@
             "step": {
                 "user": {
                     "title": "Choose customer accounts",
-                    "description": "Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own price sensors.",
+                    "description": "Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own sensors.",
                     "data": {
                         "selected_accounts": "Customer accounts"
                     },

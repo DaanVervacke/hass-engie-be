@@ -2,18 +2,16 @@
     "config": {
         "step": {
             "user": {
-                "description": "Enter your ENGIE Belgium credentials, customer number, and two-factor authentication method. **A dedicated ENGIE account is required**: signing into the same account from engie.be or the ENGIE Smart App appears to revoke the integration's session and force you to re-authenticate. Create a separate user via the [ENGIE user management page]({user_management_url}). New accounts have 2FA enabled by default and work out of the box.",
+                "description": "Enter your ENGIE Belgium credentials and two-factor authentication method. **A dedicated ENGIE account is required**: signing into the same account from engie.be or the ENGIE Smart App appears to revoke the integration's session and force you to re-authenticate. Create a separate user via the [ENGIE user management page]({user_management_url}). New accounts have 2FA enabled by default and work out of the box.",
                 "data": {
                     "username": "Email address",
                     "password": "Password",
-                    "customer_number": "Customer number",
                     "client_id": "Client ID",
                     "mfa_method": "Two-factor authentication method"
                 },
                 "data_description": {
                     "username": "Your ENGIE Belgium account email address.",
                     "password": "Your ENGIE Belgium account password.",
-                    "customer_number": "Enter your ENGIE Belgium customer number as shown in the ENGIE Smart App. The 00 prefix is added automatically.",
                     "client_id": "OAuth client ID. Only change this if you know what you are doing.",
                     "mfa_method": "Choose how you want to receive your verification code."
                 }
@@ -58,7 +56,7 @@
             },
             "select_accounts": {
                 "title": "Choose customer accounts",
-                "description": "Authentication for {username} succeeded. Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own price sensors. You can add or remove accounts later from the integration page.",
+                "description": "Authentication for {username} succeeded. Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own sensors. You can add or remove accounts later from the integration page.",
                 "data": {
                     "selected_accounts": "Customer accounts"
                 },
@@ -77,6 +75,36 @@
         "abort": {
             "already_configured": "This account is already configured.",
             "reauth_successful": "Re-authentication was successful."
+        }
+    },
+    "config_subentries": {
+        "customer_account": {
+            "initiate_flow": {
+                "user": "Add customer account"
+            },
+            "entry_type": "Customer account",
+            "step": {
+                "user": {
+                    "title": "Choose customer accounts",
+                    "description": "Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own sensors.",
+                    "data": {
+                        "selected_accounts": "Customer accounts"
+                    },
+                    "data_description": {
+                        "selected_accounts": "Select one or more customer accounts to configure."
+                    }
+                }
+            },
+            "error": {
+                "no_accounts_selected": "Select at least one customer account."
+            },
+            "abort": {
+                "no_accounts_available": "All customer accounts on this login are already configured.",
+                "auth": "Authentication with ENGIE Belgium failed while loading customer accounts.",
+                "connection": "Unable to connect to ENGIE Belgium while loading customer accounts.",
+                "unknown": "An unknown error occurred while loading customer accounts.",
+                "already_configured": "This customer account is already configured."
+            }
         }
     },
     "exceptions": {
@@ -218,11 +246,23 @@
             },
             "captar_monthly_peak_end": {
                 "name": "Captar monthly peak end"
+            },
+            "epex_current": {
+                "name": "EPEX current price"
+            },
+            "epex_low_today": {
+                "name": "EPEX lowest price today"
+            },
+            "epex_high_today": {
+                "name": "EPEX highest price today"
             }
         },
         "binary_sensor": {
             "authentication": {
                 "name": "Authentication"
+            },
+            "epex_negative": {
+                "name": "EPEX price is negative"
             }
         }
     }

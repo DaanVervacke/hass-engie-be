@@ -62,6 +62,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   correlate which subentry a log line refers to.
 
 ### Fixed
+- `translations/en.json` had drifted out of sync with `strings.json`
+  over several feature batches: the entire
+  `config_subentries.customer_account` block was missing (so the
+  **Add customer account** dialog showed the raw `selected_accounts`
+  key instead of a proper field label), the `config.step.user`
+  description still mentioned a removed customer-number field with
+  two stale field labels, and the four EPEX entities
+  (`binary_sensor.epex_negative`, `sensor.epex_current`,
+  `sensor.epex_high_today`, `sensor.epex_low_today`) had no friendly
+  names. The translations file is now a literal mirror of
+  `strings.json`. Tweaked the picker description to read "its own
+  sensors" instead of "its own price sensors" since the new
+  customer-account device exposes binary, peak, and EPEX sensors
+  alongside the price sensors.
 - The initial-setup flow now correctly chains into the customer-account
   picker. The previous implementation set `next_flow` on the parent
   flow result pointing at a `CONFIG_SUBENTRIES_FLOW`, which Home
