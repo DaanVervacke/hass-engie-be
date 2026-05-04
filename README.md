@@ -24,6 +24,8 @@ before release.
 - Creates price sensors per energy type, direction (offtake / injection), and
   tariff rate (single-rate, dual-rate, or tri-rate contracts)
 - Tracks the monthly capacity-tariff (captar) peak window per electricity service point
+- Auto-detects ENGIE's dynamic (EPEX-indexed) electricity tariff and exposes
+  day-ahead wholesale prices (current / lowest today / highest today)
 - Configurable update interval via the integration options
 
 ## Sensors
@@ -134,6 +136,59 @@ The integration adds a calendar entity (`calendar.engie_belgium`) that
 shows your monthly capacity-tariff peak as a single event titled
 "Captar monthly peak", with the peak power and energy in the event
 description.
+
+### Dynamic tariff (EPEX-indexed)
+
+Customers on ENGIE's dynamic (EPEX-indexed) electricity contract do not
+have fixed monthly tariffs. The integration auto-detects this case --
+when the ENGIE supplier-prices endpoint returns an empty list of items,
+the account is considered dynamic -- and exposes three additional
+sensors that surface day-ahead wholesale prices fetched from the public
+EPEX endpoint. These sensors are shared across all electricity EANs on
+the entry (the wholesale price is identical for every meter) and only
+report a value while the account is dynamic.
+
+| Sensor name | Entity ID | Description |
+|-------------|-----------|-------------|
+| EPEX current price | `sensor.engie_belgium_epex_current_price` | Wholesale price for the slot covering the current instant |
+| EPEX lowest price today | `sensor.engie_belgium_epex_lowest_price_today` | Lowest wholesale price across today's slots (Brussels-local day) |
+| EPEX highest price today | `sensor.engie_belgium_epex_highest_price_today` | Highest wholesale price across today's slots (Brussels-local day) |
+
+All three sensors are in **EUR/kWh** (4 decimals). The current-price
+sensor advances on the next coordinator refresh after the slot
+boundary; tomorrow's prices appear once ENGIE publishes them, typically
+shortly after 13:15 Europe/Brussels. The integration keeps the last
+known payload across publication delays and transient errors instead of
+wiping the sensors.
+
+The current-price sensor exposes the full today / tomorrow slate as
+attributes for plotting:
+
+```yaml
+type: custom:apexcharts-card
+graph_span: 24h
+span:
+  start: day
+header:
+  show: true
+  title: EPEX day-ahead (today)
+series:
+  - entity: sensor.engie_belgium_epex_current_price
+    type: column
+    data_generator: |
+      return entity.attributes.today.map(s => [new Date(s.start).getTime(), s.value]);
+```
+
+Per-slot attribute keys are `start`, `end`, `value` (EUR/kWh), and
+`value_eur_per_mwh`. A `slot_duration_minutes` attribute is also
+exposed so dashboards can adapt without code changes if ENGIE later
+switches to 15-minute slots. The `epex_lowest_price_today` and
+`epex_highest_price_today` sensors expose the `slot_start` and
+`slot_end` of the chosen extremum on their `extra_state_attributes`.
+
+> Wholesale prices can be **negative** during periods of oversupply;
+> none of the EPEX sensors use `state_class=total_increasing`, so this
+> is reported faithfully.
 
 ### Authentication
 

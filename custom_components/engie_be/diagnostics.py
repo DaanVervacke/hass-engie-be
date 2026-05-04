@@ -13,7 +13,10 @@ from .const import (
     CONF_CLIENT_ID,
     CONF_CUSTOMER_NUMBER,
     CONF_REFRESH_TOKEN,
+    KEY_EPEX,
+    KEY_IS_DYNAMIC,
 )
+from .data import EpexPayload
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -74,6 +77,27 @@ def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
         "peaks_present": peaks_inner is not None,
         "peaks_month": peaks_month,
         "peaks_is_fallback": peaks_is_fallback,
+        "is_dynamic": bool(data.get(KEY_IS_DYNAMIC, False)),
+        "epex": _summarise_epex(data.get(KEY_EPEX)),
+    }
+
+
+def _summarise_epex(payload: Any) -> dict[str, Any] | None:
+    """Return a privacy-safe summary of the cached EPEX payload."""
+    if not isinstance(payload, EpexPayload):
+        return None
+    slots = payload.slots
+    return {
+        "slot_count": len(slots),
+        "slot_duration_minutes": slots[0].duration_minutes if slots else None,
+        "first_slot_start": slots[0].start.isoformat() if slots else None,
+        "last_slot_end": slots[-1].end.isoformat() if slots else None,
+        "publication_time": (
+            payload.publication_time.isoformat()
+            if payload.publication_time is not None
+            else None
+        ),
+        "market_date": payload.market_date,
     }
 
 

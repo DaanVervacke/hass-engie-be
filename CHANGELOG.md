@@ -7,6 +7,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+- Support for ENGIE's dynamic (EPEX-indexed) electricity tariff. Dynamic
+  contracts are auto-detected at the account level: when ENGIE returns
+  an empty `items` list from the supplier-prices endpoint (the documented
+  signal that no fixed monthly tariff applies), the integration switches
+  to fetching day-ahead wholesale prices from the public EPEX endpoint
+  and exposes three new sensors per config entry: `EPEX current price`,
+  `EPEX lowest price today`, and `EPEX highest price today`. Prices are
+  reported in EUR/kWh (raw EUR/MWh kept as an attribute) and the today /
+  tomorrow hourly slot arrays are exposed as attributes for plotting in
+  ApexCharts and similar dashboard cards. The current-price sensor
+  follows the active hour automatically on the next coordinator refresh;
+  tomorrow's slate appears once ENGIE publishes it (typically around
+  13:15 Europe/Brussels). Slots carry an explicit `duration_minutes`
+  field so a future switch to 15-minute granularity is non-breaking.
+  When the EPEX endpoint returns 404 (tomorrow not yet published) or a
+  transient error, the integration keeps the last-known payload rather
+  than wiping the sensors.
+
 ## [0.7.1] - 2026-05-03
 
 ### Added
