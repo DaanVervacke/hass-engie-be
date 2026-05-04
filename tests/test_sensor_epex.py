@@ -84,10 +84,11 @@ def _make_epex_coordinator(
     """
     Build a MagicMock EPEX coordinator stub.
 
-    ``EngieBeEpexCoordinator.data`` is now an ``EpexPayload | None``
+    ``    EngieBeEpexCoordinator.data`` is now an ``EpexPayload | None``
     (no longer a dict with KEY_EPEX/KEY_IS_DYNAMIC). The current sensor
     reads ``last_update_success_time`` for the ``last_fetched`` attr,
-    which is a built-in DataUpdateCoordinator field.
+    which is a custom property on ``EngieBeEpexCoordinator`` set on
+    every successful parse.
     """
     coordinator = MagicMock()
     coordinator.data = payload

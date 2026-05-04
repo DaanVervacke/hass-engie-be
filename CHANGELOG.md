@@ -72,6 +72,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   correlate which subentry a log line refers to.
 
 ### Fixed
+- EPEX sensors (`current price`, `lowest price today`, `highest price today`)
+  no longer crash on first state write with `AttributeError: 'EngieBeEpexCoordinator'
+  object has no attribute 'last_update_success_time'`. The attribute was
+  referenced by the sensors' `extra_state_attributes` (for the `last_fetched`
+  attribute) but never actually set on the coordinator; it is now tracked
+  explicitly on every successful EPEX fetch and exposed as a property. The
+  bug only surfaced when the EPEX entities were registered fresh (e.g. on
+  a brand-new dynamic account); existing entities masked it because HA
+  skipped the initial state write.
 - Adding or removing a customer-account subentry after initial setup
   no longer leaves the parent entry in a half-wired state. Home
   Assistant fires update listeners on subentry changes but does not

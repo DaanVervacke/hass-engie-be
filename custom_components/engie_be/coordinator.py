@@ -434,6 +434,12 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
             name=f"{DOMAIN} EPEX",
             update_interval=timedelta(minutes=update_minutes),
         )
+        self._last_update_success_time: datetime | None = None
+
+    @property
+    def last_update_success_time(self) -> datetime | None:
+        """Return the UTC timestamp of the last successful EPEX fetch."""
+        return self._last_update_success_time
 
     async def _async_update_data(self) -> EpexPayload | None:
         """
@@ -478,13 +484,15 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
             return previous
 
         try:
-            return _parse_epex_response(raw)
+            parsed = _parse_epex_response(raw)
         except (KeyError, TypeError, ValueError) as exception:
             LOGGER.warning(
                 "Failed to parse EPEX response, keeping last-known payload: %s",
                 exception,
             )
             return previous
+        self._last_update_success_time = dt_util.utcnow()
+        return parsed
 
 
 def _parse_epex_response(raw: Any) -> EpexPayload:
