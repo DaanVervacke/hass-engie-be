@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for the ENGIE Belgium integration."""
+"""DataUpdateCoordinators for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 
@@ -26,15 +26,16 @@ from .const import (
     EPEX_MWH_TO_KWH,
     EPEX_SLOT_DURATION_MINUTES,
     EPEX_TZ,
-    KEY_EPEX,
     KEY_IS_DYNAMIC,
     LOGGER,
 )
 from .data import EpexPayload, EpexSlot
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
 
+    from .api import EngieBeApiClient
     from .data import EngieBeConfigEntry
 
 # Brussels timezone is treated as a module-level constant: it never
@@ -45,7 +46,13 @@ _BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
 
 
 class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Coordinator to poll energy prices from ENGIE Belgium."""
+    """
+    Coordinator for one ENGIE customer account (subentry).
+
+    Polls supplier energy prices and capacity-tariff peaks for a single
+    ``customerAccountNumber``. EPEX day-ahead prices are account-agnostic
+    and live in :class:`EngieBeEpexCoordinator` on the parent entry.
+    """
 
     config_entry: EngieBeConfigEntry
 
@@ -53,8 +60,9 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self,
         hass: HomeAssistant,
         config_entry: EngieBeConfigEntry,
+        subentry: ConfigSubentry,
     ) -> None:
-        """Initialise the coordinator."""
+        """Initialise the per-subentry coordinator."""
         update_minutes = config_entry.options.get(
             CONF_UPDATE_INTERVAL,
             DEFAULT_UPDATE_INTERVAL_MINUTES,
@@ -63,15 +71,23 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             LOGGER,
             config_entry=config_entry,
-            name="ENGIE Belgium",
+            name=f"{DOMAIN} customer {subentry.title}",
             update_interval=timedelta(minutes=update_minutes),
         )
+        self.subentry = subentry
+        self.customer_number: str = subentry.data[CONF_CUSTOMER_NUMBER]
         self.last_successful_fetch: datetime | None = None
 
+    @property
+    def is_dynamic(self) -> bool:
+        """Return True when this account is on a dynamic (EPEX-indexed) tariff."""
+        data = self.data
+        return bool(isinstance(data, dict) and data.get(KEY_IS_DYNAMIC))
+
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch energy prices, capacity-tariff peaks and (when applicable) EPEX."""
+        """Fetch energy prices and capacity-tariff peaks for this account."""
         client = self.config_entry.runtime_data.client
-        customer_number = self.config_entry.data[CONF_CUSTOMER_NUMBER]
+        customer_number = self.customer_number
 
         try:
             data = await client.async_get_prices(customer_number)
@@ -90,7 +106,8 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # account is on a dynamic (EPEX-indexed) tariff: ENGIE returns
         # 200 with ``{"items":[]}`` because there are no fixed monthly
         # rates to expose. Detection is therefore at the account level,
-        # not per-EAN.
+        # not per-EAN, and is recorded on the per-subentry coordinator
+        # so the platform layer can gate EPEX entity creation on it.
         items = data.get("items") if isinstance(data, dict) else None
         is_dynamic = isinstance(items, list) and len(items) == 0
         data[KEY_IS_DYNAMIC] = is_dynamic
@@ -121,21 +138,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["peaks"] = peaks_wrapper
             self._record_peak_history(peaks_wrapper)
 
-        # Fetch EPEX day-ahead prices for dynamic accounts only.  On
-        # non-dynamic accounts we drop any previously cached payload so
-        # sensors don't expose stale data after a contract change.
-        previous_epex: EpexPayload | None = None
-        if isinstance(self.data, dict):
-            previous_epex_raw = self.data.get(KEY_EPEX)
-            if isinstance(previous_epex_raw, EpexPayload):
-                previous_epex = previous_epex_raw
-
-        if is_dynamic:
-            epex_payload = await self._async_fetch_epex(previous_epex)
-            data[KEY_EPEX] = epex_payload
-        else:
-            data[KEY_EPEX] = None
-
         self.last_successful_fetch = dt_util.utcnow()
         return data
 
@@ -144,7 +146,16 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if peaks_wrapper.get("is_fallback"):
             return
         runtime = getattr(self.config_entry, "runtime_data", None)
-        store = getattr(runtime, "peaks_store", None) if runtime is not None else None
+        subentry_data = (
+            runtime.subentry_data.get(self.subentry.subentry_id)
+            if runtime is not None
+            else None
+        )
+        store = (
+            getattr(subentry_data, "peaks_store", None)
+            if subentry_data is not None
+            else None
+        )
         if store is None:
             return
         payload = peaks_wrapper.get("data")
@@ -172,7 +183,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_fetch_peaks_with_fallback(
         self,
-        client: Any,
+        client: EngieBeApiClient,
         customer_number: str,
         year: int,
         month: int,
@@ -265,20 +276,53 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "is_fallback": False,
         }
 
-    async def _async_fetch_epex(
+
+class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
+    """
+    Coordinator for EPEX day-ahead wholesale prices.
+
+    EPEX prices are public, login-scoped at most (the integration uses the
+    public endpoint), and identical for every customer of a given parent
+    :class:`ConfigEntry`. They are therefore polled once per parent entry
+    rather than once per subentry, regardless of how many customer
+    accounts the user owns. The coordinator is created unconditionally;
+    consumers gate entity creation on per-subentry ``is_dynamic`` so a
+    user with only fixed-tariff accounts simply never sees EPEX entities.
+    """
+
+    config_entry: EngieBeConfigEntry
+
+    def __init__(
         self,
-        previous: EpexPayload | None,
-    ) -> EpexPayload | None:
+        hass: HomeAssistant,
+        config_entry: EngieBeConfigEntry,
+    ) -> None:
+        """Initialise the entry-level EPEX coordinator."""
+        update_minutes = config_entry.options.get(
+            CONF_UPDATE_INTERVAL,
+            DEFAULT_UPDATE_INTERVAL_MINUTES,
+        )
+        super().__init__(
+            hass,
+            LOGGER,
+            config_entry=config_entry,
+            name=f"{DOMAIN} EPEX",
+            update_interval=timedelta(minutes=update_minutes),
+        )
+
+    async def _async_update_data(self) -> EpexPayload | None:
         """
         Fetch EPEX day-ahead prices covering today + tomorrow (Brussels).
 
-        Returns the parsed payload, or ``previous`` (last-known) when the
-        endpoint is reachable but tomorrow's slate is not yet published
-        (HTTP 404), or when a transient communication error occurs.
-        Returns ``None`` only when no previous payload exists either --
-        platforms must handle this by reporting unavailable.
+        Returns the parsed payload, or the previous (last-known) payload
+        when the endpoint is reachable but tomorrow's slate is not yet
+        published (HTTP 404), or when a transient communication error
+        occurs. Returns ``None`` only when no previous payload exists
+        either; platforms must handle this by reporting unavailable.
         """
         client = self.config_entry.runtime_data.client
+        previous = self.data if isinstance(self.data, EpexPayload) else None
+
         # Window: [today_brussels_00:00 .. day_after_tomorrow_brussels_00:00).
         # Two full Brussels-local days expressed as a half-open interval,
         # so we always cover today + tomorrow regardless of which side of

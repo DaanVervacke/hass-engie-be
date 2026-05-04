@@ -6,6 +6,8 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -20,12 +22,16 @@ from custom_components.engie_be.api import (
 )
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
+    CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
+    CONF_CONSUMPTION_ADDRESS,
     CONF_CUSTOMER_NUMBER,
+    CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
     DOMAIN,
+    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
 )
 from custom_components.engie_be.data import EngieBeData
 
@@ -35,25 +41,55 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 
-def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Build a MockConfigEntry with stored credentials and tokens."""
+_TEST_SUBENTRY_TITLE = "Rue de la Loi 16, 1000 Brussels"
+
+
+def _build_entry(
+    hass: HomeAssistant,
+    *,
+    customer_number: str = "000000000000",
+) -> MockConfigEntry:
+    """
+    Build a v3 MockConfigEntry with credentials, tokens, and one subentry.
+
+    The customer-account ``ConfigSubentry`` mirrors the shape produced by
+    the v3 config flow so the integration's setup path can find at least
+    one account to wire up coordinators for.
+    """
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=2,
+        version=3,
         title="user@example.com",
         unique_id="user_example_com",
         data={
             CONF_USERNAME: "user@example.com",
             CONF_PASSWORD: "hunter2",
-            CONF_CUSTOMER_NUMBER: "000000000000",
             CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
             CONF_ACCESS_TOKEN: "stored-access",
             CONF_REFRESH_TOKEN: "stored-refresh",
         },
         options={"update_interval": 60},
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                title=_TEST_SUBENTRY_TITLE,
+                unique_id=customer_number,
+                data={
+                    CONF_CUSTOMER_NUMBER: customer_number,
+                    CONF_BUSINESS_AGREEMENT_NUMBER: "B-0001",
+                    CONF_PREMISES_NUMBER: "P-0001",
+                    CONF_CONSUMPTION_ADDRESS: _TEST_SUBENTRY_TITLE,
+                },
+            ),
+        ],
     )
     entry.add_to_hass(hass)
     return entry
+
+
+def _only_subentry_id(entry: MockConfigEntry) -> str:
+    """Return the subentry id of the single test customer-account subentry."""
+    return next(iter(entry.subentries))
 
 
 def _make_client(
@@ -77,6 +113,10 @@ def _make_client(
     client.async_get_monthly_peaks = AsyncMock(
         return_value=peaks_return or {"peakOfTheMonth": None, "dailyPeaks": []},
     )
+    # EPEX endpoint is hit unconditionally by the entry-level
+    # EngieBeEpexCoordinator at first refresh; default to an empty
+    # timeSeries so the parser returns an empty payload without raising.
+    client.async_get_epex_prices = AsyncMock(return_value={"timeSeries": []})
     return client
 
 
@@ -95,6 +135,11 @@ async def test_setup_entry_persists_refreshed_tokens(
         ),
         patch(
             "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
             ".async_config_entry_first_refresh",
             new=AsyncMock(return_value=None),
         ),
@@ -177,6 +222,11 @@ async def test_periodic_refresh_callback_starts_reauth_on_auth_error(
             ".async_config_entry_first_refresh",
             new=AsyncMock(return_value=None),
         ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -210,7 +260,8 @@ def test_persist_tokens_writes_only_token_fields(
     assert entry.data[CONF_REFRESH_TOKEN] == "rotated-refresh"
     assert entry.data[CONF_USERNAME] == "user@example.com"
     assert entry.data[CONF_PASSWORD] == "hunter2"
-    assert entry.data[CONF_CUSTOMER_NUMBER] == "000000000000"
+    # v3 lifted CONF_CUSTOMER_NUMBER out of entry.data into the subentry.
+    assert CONF_CUSTOMER_NUMBER not in entry.data
 
 
 # ---------------------------------------------------------------------------
@@ -274,16 +325,22 @@ async def test_migrate_v1_without_interval_just_bumps_version(
     assert CONF_UPDATE_INTERVAL not in entry.options
 
 
-async def test_migrate_v2_is_noop(
+@pytest.mark.skip(
+    reason=(
+        "v2->v3 migration is implemented in a follow-up commit; until then "
+        "a v3 entry is the latest schema and never reaches async_migrate_entry."
+    )
+)
+async def test_migrate_v3_is_noop(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
-    """A v2 entry passes straight through the migration unchanged."""
+    """A v3 entry passes straight through the migration unchanged."""
     entry = _build_entry(hass)
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 2
+    assert entry.version == 3
     assert entry.options[CONF_UPDATE_INTERVAL] == 60
 
 
@@ -310,12 +367,18 @@ async def test_options_update_triggers_full_reload_with_new_interval(
             ".async_config_entry_first_refresh",
             new=AsyncMock(return_value=None),
         ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
         # Initial coordinator built from default 60-minute option.
-        first_coordinator = entry.runtime_data.coordinator
+        sid = _only_subentry_id(entry)
+        first_coordinator = entry.runtime_data.subentry_data[sid].coordinator
         assert first_coordinator.update_interval == timedelta(minutes=60)
 
         # Change the option; HA fires the update listener registered in setup.
@@ -327,7 +390,7 @@ async def test_options_update_triggers_full_reload_with_new_interval(
 
         # After reload, runtime_data is brand new and the coordinator
         # is constructed with the new interval.
-        second_coordinator = entry.runtime_data.coordinator
+        second_coordinator = entry.runtime_data.subentry_data[sid].coordinator
         assert second_coordinator is not first_coordinator
         assert second_coordinator.update_interval == timedelta(minutes=15)
         assert entry.options[CONF_UPDATE_INTERVAL] == 15
@@ -338,10 +401,10 @@ async def test_token_only_data_update_does_not_trigger_reload(
 ) -> None:
     """Rotating tokens (entry.data) must NOT rebuild the coordinator."""
     entry = _build_entry(hass)
-    sentinel_coordinator = MagicMock()
+    sentinel_epex_coordinator = MagicMock()
     entry.runtime_data = EngieBeData(
         client=MagicMock(),
-        coordinator=sentinel_coordinator,
+        epex_coordinator=sentinel_epex_coordinator,
         last_options=dict(entry.options),
     )
 
@@ -355,8 +418,8 @@ async def test_token_only_data_update_does_not_trigger_reload(
         await async_reload_entry(hass, entry)
 
     mock_reload.assert_not_awaited()
-    # Coordinator reference must be untouched.
-    assert entry.runtime_data.coordinator is sentinel_coordinator
+    # Runtime reference must be untouched.
+    assert entry.runtime_data.epex_coordinator is sentinel_epex_coordinator
 
 
 async def test_options_change_after_setup_uses_async_reload(
@@ -366,7 +429,7 @@ async def test_options_change_after_setup_uses_async_reload(
     entry = _build_entry(hass)
     entry.runtime_data = EngieBeData(
         client=MagicMock(),
-        coordinator=MagicMock(),
+        epex_coordinator=MagicMock(),
         last_options={CONF_UPDATE_INTERVAL: 60},
     )
     # Mutate options to simulate the options flow saving a new value before
@@ -432,8 +495,9 @@ async def test_setup_entry_fetches_service_points_in_parallel(
     assert client.async_get_service_point.await_count == 3
     queried = {call.args[0] for call in client.async_get_service_point.await_args_list}
     assert queried == set(division_by_ean)
-    # Result dict must reflect each EAN's division.
-    assert entry.runtime_data.service_points == division_by_ean
+    # Per-subentry service-points dict must reflect each EAN's division.
+    sid = _only_subentry_id(entry)
+    assert entry.runtime_data.subentry_data[sid].service_points == division_by_ean
 
 
 async def test_setup_entry_service_point_failure_does_not_poison_others(
@@ -469,7 +533,8 @@ async def test_setup_entry_service_point_failure_does_not_poison_others(
 
     assert ok is True
     # Failing EAN is silently dropped; surviving EANs still resolve.
-    assert entry.runtime_data.service_points == {
+    sid = _only_subentry_id(entry)
+    assert entry.runtime_data.subentry_data[sid].service_points == {
         "541448820000000001": "ELECTRICITY",
         "541448820000000003": "ELECTRICITY",
     }

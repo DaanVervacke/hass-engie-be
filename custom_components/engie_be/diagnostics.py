@@ -13,15 +13,16 @@ from .const import (
     CONF_CLIENT_ID,
     CONF_CUSTOMER_NUMBER,
     CONF_REFRESH_TOKEN,
-    KEY_EPEX,
     KEY_IS_DYNAMIC,
+    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
 )
 from .data import EpexPayload
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from .data import EngieBeConfigEntry
+    from .coordinator import EngieBeEpexCoordinator
+    from .data import EngieBeConfigEntry, EngieBeSubentryData
 
 TO_REDACT: set[str] = {
     CONF_USERNAME,
@@ -41,7 +42,7 @@ def _hash_ean(ean: str) -> str:
 
 
 def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
-    """Return a privacy-preserving summary of coordinator data."""
+    """Return a privacy-preserving summary of per-subentry coordinator data."""
     if not isinstance(data, dict):
         return {"raw_type": type(data).__name__}
 
@@ -78,7 +79,6 @@ def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
         "peaks_month": peaks_month,
         "peaks_is_fallback": peaks_is_fallback,
         "is_dynamic": bool(data.get(KEY_IS_DYNAMIC, False)),
-        "epex": _summarise_epex(data.get(KEY_EPEX)),
     }
 
 
@@ -101,19 +101,77 @@ def _summarise_epex(payload: Any) -> dict[str, Any] | None:
     }
 
 
+def _summarise_epex_coordinator(
+    coordinator: EngieBeEpexCoordinator | None,
+) -> dict[str, Any]:
+    """Return a privacy-safe summary of the entry-level EPEX coordinator."""
+    if coordinator is None:
+        return {"present": False}
+    return {
+        "present": True,
+        "last_update_success": coordinator.last_update_success,
+        "update_interval_seconds": (
+            coordinator.update_interval.total_seconds()
+            if coordinator.update_interval is not None
+            else None
+        ),
+        "payload": _summarise_epex(coordinator.data),
+    }
+
+
 def _summarise_service_points(service_points: dict[str, str]) -> dict[str, str]:
     """Return service points with EANs replaced by short hashes."""
     return {_hash_ean(ean): division for ean, division in service_points.items()}
+
+
+def _summarise_subentry(
+    sub_data: EngieBeSubentryData | None,
+) -> dict[str, Any]:
+    """Return a privacy-safe summary of one subentry's runtime state."""
+    if sub_data is None:
+        return {"present": False}
+    coordinator = sub_data.coordinator
+    return {
+        "present": True,
+        "service_points": _summarise_service_points(sub_data.service_points or {}),
+        "peaks_history": (
+            sub_data.peaks_store.summary()
+            if sub_data.peaks_store is not None
+            else None
+        ),
+        "coordinator": {
+            "last_update_success": coordinator.last_update_success,
+            "update_interval_seconds": (
+                coordinator.update_interval.total_seconds()
+                if coordinator.update_interval is not None
+                else None
+            ),
+            "data_summary": _summarise_coordinator_data(coordinator.data),
+        },
+    }
 
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,  # noqa: ARG001
     entry: EngieBeConfigEntry,
 ) -> dict[str, Any]:
-    """Return diagnostics for a config entry."""
+    """Return diagnostics for a config entry, including all subentries."""
     runtime = entry.runtime_data
-    coordinator = runtime.coordinator if runtime is not None else None
-    peaks_store = getattr(runtime, "peaks_store", None) if runtime is not None else None
+
+    subentries_summary: dict[str, dict[str, Any]] = {}
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+            continue
+        sub_data = (
+            runtime.subentry_data.get(subentry.subentry_id)
+            if runtime is not None
+            else None
+        )
+        subentries_summary[subentry.subentry_id] = {
+            "title": subentry.title,
+            "data": async_redact_data(dict(subentry.data), TO_REDACT),
+            **_summarise_subentry(sub_data),
+        }
 
     return {
         "entry": {
@@ -124,24 +182,9 @@ async def async_get_config_entry_diagnostics(
         },
         "runtime": {
             "authenticated": getattr(runtime, "authenticated", None),
-            "service_points": _summarise_service_points(
-                getattr(runtime, "service_points", {}) or {},
-            ),
-            "peaks_history": (
-                peaks_store.summary() if peaks_store is not None else None
-            ),
         },
-        "coordinator": {
-            "last_update_success": (
-                coordinator.last_update_success if coordinator is not None else None
-            ),
-            "update_interval_seconds": (
-                coordinator.update_interval.total_seconds()
-                if coordinator is not None and coordinator.update_interval is not None
-                else None
-            ),
-            "data_summary": _summarise_coordinator_data(
-                coordinator.data if coordinator is not None else None,
-            ),
-        },
+        "epex_coordinator": _summarise_epex_coordinator(
+            runtime.epex_coordinator if runtime is not None else None,
+        ),
+        "subentries": subentries_summary,
     }

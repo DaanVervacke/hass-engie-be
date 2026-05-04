@@ -11,7 +11,10 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
 
     from .api import EngieBeApiClient
-    from .coordinator import EngieBeDataUpdateCoordinator
+    from .coordinator import (
+        EngieBeDataUpdateCoordinator,
+        EngieBeEpexCoordinator,
+    )
     from .store import EngieBePeaksStore
 
 
@@ -47,12 +50,37 @@ class EpexPayload:
 
 
 @dataclass
-class EngieBeData:
-    """Runtime data for the ENGIE Belgium integration."""
+class EngieBeSubentryData:
+    """
+    Per-subentry runtime state.
 
-    client: EngieBeApiClient
+    One instance lives in :class:`EngieBeData.subentry_data` per ENGIE
+    customer account (one ``ConfigSubentry`` of type
+    ``customer_account``). Each subentry owns its own customer-data
+    coordinator, the per-account service-points lookup, and a peaks
+    store keyed off the subentry id so historical peaks survive across
+    restarts independently per account.
+    """
+
     coordinator: EngieBeDataUpdateCoordinator
-    authenticated: bool = field(default=False)
-    last_options: dict[str, Any] = field(default_factory=dict)
     service_points: dict[str, str] = field(default_factory=dict)
     peaks_store: EngieBePeaksStore | None = field(default=None)
+
+
+@dataclass
+class EngieBeData:
+    """
+    Runtime data for the ENGIE Belgium integration.
+
+    The parent :class:`ConfigEntry` owns a single :class:`EngieBeApiClient`
+    and a single :class:`EngieBeEpexCoordinator` (EPEX wholesale prices
+    are account-agnostic, so polling them once per login is correct).
+    Per-account state lives under ``subentry_data`` keyed by
+    ``ConfigSubentry.subentry_id``.
+    """
+
+    client: EngieBeApiClient
+    epex_coordinator: EngieBeEpexCoordinator
+    subentry_data: dict[str, EngieBeSubentryData] = field(default_factory=dict)
+    authenticated: bool = field(default=False)
+    last_options: dict[str, Any] = field(default_factory=dict)

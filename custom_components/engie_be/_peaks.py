@@ -72,7 +72,16 @@ def captar_peak_events(
     events_by_key: dict[tuple[int, int], CalendarEvent] = {}
 
     runtime = getattr(coordinator.config_entry, "runtime_data", None)
-    store = getattr(runtime, "peaks_store", None) if runtime is not None else None
+    subentry_data = (
+        runtime.subentry_data.get(coordinator.subentry.subentry_id)
+        if runtime is not None
+        else None
+    )
+    store = (
+        getattr(subentry_data, "peaks_store", None)
+        if subentry_data is not None
+        else None
+    )
     if store is not None:
         for entry in store.peaks:
             event = _build_event(

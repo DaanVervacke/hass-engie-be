@@ -16,19 +16,19 @@ from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.util import dt as dt_util
 
 from ._peaks import peaks_meta, peaks_payload
-from .const import EPEX_TZ, KEY_EPEX, KEY_IS_DYNAMIC, LOGGER
-from .data import EpexPayload
-from .entity import EngieBeEntity
+from .const import EPEX_TZ, LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from .entity import EngieBeEntity, EngieBeEpexEntity
 
 # Coordinator centralises updates; entities never poll individually.
 PARALLEL_UPDATES = 0
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-    from .coordinator import EngieBeDataUpdateCoordinator
-    from .data import EngieBeConfigEntry
+    from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
+    from .data import EngieBeConfigEntry, EpexPayload
 
 
 # Mapping from service-point division to display name.
@@ -185,32 +185,59 @@ def _build_sensor_descriptions(
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001
     entry: EngieBeConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the sensor platform."""
-    coordinator = entry.runtime_data.coordinator
+    """
+    Set up the sensor platform.
 
-    # Wait for first data before building sensors
-    if coordinator.data is None:
-        LOGGER.warning("No data available yet, skipping sensor setup")
-        return
+    Builds entities once per :class:`ConfigSubentry` of type
+    ``customer_account``. Energy-price and peak sensors come from the
+    per-subentry coordinator; EPEX sensors come from the entry-level
+    EPEX coordinator and are gated on the per-subentry ``is_dynamic``
+    flag so users on a fixed tariff never see them.
+    """
+    epex_coordinator = entry.runtime_data.epex_coordinator
 
-    sensor_defs = _build_sensor_descriptions(
-        coordinator.data, entry.runtime_data.service_points
-    )
-    entities: list[SensorEntity] = [
-        EngieBeEnergySensor(
-            coordinator=coordinator,
-            entity_description=desc,
-            ean=ean,
-            value_key=value_key,
-            slot_code=slot_code,
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+            continue
+
+        sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
+        if sub_data is None:
+            LOGGER.warning(
+                "No runtime data for subentry %s; skipping sensor setup",
+                subentry.subentry_id,
+            )
+            continue
+
+        coordinator = sub_data.coordinator
+        if coordinator.data is None:
+            LOGGER.warning(
+                "No data available yet for subentry %s; skipping sensor setup",
+                subentry.subentry_id,
+            )
+            continue
+
+        sensor_defs = _build_sensor_descriptions(
+            coordinator.data,
+            sub_data.service_points,
         )
-        for desc, ean, value_key, slot_code in sensor_defs
-    ]
-    entities.extend(_build_peak_sensors(coordinator))
-    entities.extend(_build_epex_sensors(coordinator))
-    async_add_entities(entities)
+        entities: list[SensorEntity] = [
+            EngieBeEnergySensor(
+                coordinator=coordinator,
+                subentry=subentry,
+                entity_description=desc,
+                ean=ean,
+                value_key=value_key,
+                slot_code=slot_code,
+            )
+            for desc, ean, value_key, slot_code in sensor_defs
+        ]
+        entities.extend(_build_peak_sensors(coordinator, subentry))
+        if coordinator.is_dynamic:
+            entities.extend(_build_epex_sensors(epex_coordinator, subentry))
+
+        async_add_entities(entities, config_subentry_id=subentry.subentry_id)
 
 
 # ---------------------------------------------------------------------------
@@ -254,26 +281,31 @@ _CAPTAR_MONTHLY_PEAK_END = SensorEntityDescription(
 
 def _build_peak_sensors(
     coordinator: EngieBeDataUpdateCoordinator,
+    subentry: ConfigSubentry,
 ) -> list[SensorEntity]:
-    """Build the four monthly capacity-tariff peak sensors for the entry."""
+    """Build the four monthly capacity-tariff peak sensors for one subentry."""
     return [
         EngieBeMonthlyPeakValueSensor(
             coordinator,
+            subentry,
             _CAPTAR_MONTHLY_PEAK_POWER,
             field="peakKW",
         ),
         EngieBeMonthlyPeakValueSensor(
             coordinator,
+            subentry,
             _CAPTAR_MONTHLY_PEAK_ENERGY,
             field="peakKWh",
         ),
         EngieBeMonthlyPeakTimestampSensor(
             coordinator,
+            subentry,
             _CAPTAR_MONTHLY_PEAK_START,
             field="start",
         ),
         EngieBeMonthlyPeakTimestampSensor(
             coordinator,
+            subentry,
             _CAPTAR_MONTHLY_PEAK_END,
             field="end",
         ),
@@ -286,13 +318,18 @@ class _EngieBePeakSensorBase(EngieBeEntity, SensorEntity):
     def __init__(
         self,
         coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
         entity_description: SensorEntityDescription,
     ) -> None:
         """Initialise the peak sensor with its coordinator and description."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, subentry)
         self.entity_description = entity_description
+        # Unique IDs are now subentry-scoped: peak descriptions repeat
+        # across customer accounts, so plain ``{entry_id}_{key}`` would
+        # collide between subentries on the same login.
         self._attr_unique_id = (
-            f"{coordinator.config_entry.entry_id}_{entity_description.key}"
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_{entity_description.key}"
         )
 
     @property
@@ -314,11 +351,12 @@ class EngieBeMonthlyPeakValueSensor(_EngieBePeakSensorBase):
     def __init__(
         self,
         coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
         entity_description: SensorEntityDescription,
         field: str,
     ) -> None:
         """Track which numeric field of ``peakOfTheMonth`` to expose."""
-        super().__init__(coordinator, entity_description)
+        super().__init__(coordinator, subentry, entity_description)
         self._field = field
 
     @property
@@ -347,11 +385,12 @@ class EngieBeMonthlyPeakTimestampSensor(_EngieBePeakSensorBase):
     def __init__(
         self,
         coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
         entity_description: SensorEntityDescription,
         field: str,
     ) -> None:
         """Track which timestamp field (``start`` or ``end``) to expose."""
-        super().__init__(coordinator, entity_description)
+        super().__init__(coordinator, subentry, entity_description)
         self._field = field
 
     @property
@@ -375,20 +414,23 @@ class EngieBeMonthlyPeakTimestampSensor(_EngieBePeakSensorBase):
 class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
     """Sensor for an ENGIE Belgium energy price."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - sensor identity needs coord, subentry, descriptor, EAN, and slot/value keys
         self,
         coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
         entity_description: SensorEntityDescription,
         ean: str,
         value_key: str,
         slot_code: str,
     ) -> None:
         """Initialise the sensor."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, subentry)
         self.entity_description = entity_description
         self._ean = ean
         self._value_key = value_key
         self._slot_code = slot_code
+        # EAN is already embedded in entity_description.key, so the key
+        # is naturally unique across subentries on the same login.
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}_{entity_description.key}"
         )
@@ -448,12 +490,12 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
 # EPEX day-ahead price sensors (dynamic / EPEX-indexed contracts only)
 # ---------------------------------------------------------------------------
 
-# EPEX wholesale prices are identical across every Belgian electricity EAN
-# on a given dynamic contract, so we expose ONE shared set of sensors per
-# config entry rather than duplicating per EAN. They are added at setup
-# unconditionally and report ``None`` when ``coordinator.data["is_dynamic"]``
-# is ``False`` -- this keeps the entity wiring stable across contract changes
-# (no add/remove churn, no reload required).
+# EPEX wholesale prices are identical for every Belgian electricity EAN on
+# a given dynamic contract, so a single :class:`EngieBeEpexCoordinator`
+# fetches them once per parent ConfigEntry. The entities themselves are
+# attached to each customer-account device that is on a dynamic tariff
+# (gated upstream by ``coordinator.is_dynamic``) so the user sees them
+# alongside the other sensors for that account.
 #
 # Unit follows the existing convention in this integration: the string
 # ``"EUR/kWh"`` rather than ``SensorDeviceClass.MONETARY``+``"EUR"``,
@@ -493,25 +535,27 @@ _EPEX_HIGH_TODAY = SensorEntityDescription(
 
 
 def _build_epex_sensors(
-    coordinator: EngieBeDataUpdateCoordinator,
+    epex_coordinator: EngieBeEpexCoordinator,
+    subentry: ConfigSubentry,
 ) -> list[SensorEntity]:
-    """Build the three shared EPEX day-ahead sensors for the entry."""
+    """Build the three shared EPEX day-ahead sensors for one subentry."""
     return [
-        EngieBeEpexCurrentSensor(coordinator, _EPEX_CURRENT),
-        EngieBeEpexExtremaSensor(coordinator, _EPEX_LOW_TODAY, mode="min"),
-        EngieBeEpexExtremaSensor(coordinator, _EPEX_HIGH_TODAY, mode="max"),
+        EngieBeEpexCurrentSensor(epex_coordinator, subentry, _EPEX_CURRENT),
+        EngieBeEpexExtremaSensor(
+            epex_coordinator, subentry, _EPEX_LOW_TODAY, mode="min"
+        ),
+        EngieBeEpexExtremaSensor(
+            epex_coordinator, subentry, _EPEX_HIGH_TODAY, mode="max"
+        ),
     ]
 
 
-def _epex_payload(coordinator: EngieBeDataUpdateCoordinator) -> EpexPayload | None:
-    """Return the cached EPEX payload, or ``None`` if not on a dynamic tariff."""
-    data = coordinator.data
-    if not isinstance(data, dict):
-        return None
-    if not data.get(KEY_IS_DYNAMIC):
-        return None
-    payload = data.get(KEY_EPEX)
-    return payload if isinstance(payload, EpexPayload) else None
+def _epex_payload(coordinator: EngieBeEpexCoordinator) -> EpexPayload | None:
+    """Return the cached EPEX payload, or ``None`` if not yet fetched."""
+    from .data import EpexPayload as _EpexPayload  # noqa: PLC0415
+
+    payload = coordinator.data
+    return payload if isinstance(payload, _EpexPayload) else None
 
 
 def _slots_for_date(payload: EpexPayload, target: date) -> list[Any]:
@@ -519,24 +563,28 @@ def _slots_for_date(payload: EpexPayload, target: date) -> list[Any]:
     return [slot for slot in payload.slots if slot.start.date() == target]
 
 
-class _EngieBeEpexSensorBase(EngieBeEntity, SensorEntity):
+class _EngieBeEpexSensorBase(EngieBeEpexEntity, SensorEntity):
     """Common base for EPEX day-ahead sensors."""
 
     def __init__(
         self,
-        coordinator: EngieBeDataUpdateCoordinator,
+        coordinator: EngieBeEpexCoordinator,
+        subentry: ConfigSubentry,
         entity_description: SensorEntityDescription,
     ) -> None:
-        """Bind the coordinator and entity description."""
-        super().__init__(coordinator)
+        """Bind the coordinator, subentry and entity description."""
+        super().__init__(coordinator, subentry)
         self.entity_description = entity_description
+        # Subentry-scoped unique IDs because the same EPEX descriptor
+        # repeats across every dynamic-tariff customer account.
         self._attr_unique_id = (
-            f"{coordinator.config_entry.entry_id}_{entity_description.key}"
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_{entity_description.key}"
         )
 
     @property
     def available(self) -> bool:
-        """Available only on dynamic accounts with a parsed payload."""
+        """Available only when a parsed payload exists for the entry."""
         return super().available and _epex_payload(self.coordinator) is not None
 
 
@@ -588,8 +636,10 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
             attrs["publication_time"] = payload.publication_time.isoformat()
         if payload.market_date is not None:
             attrs["market_date"] = payload.market_date
-        if self.coordinator.last_successful_fetch:
-            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
+        if self.coordinator.last_update_success_time is not None:
+            attrs["last_fetched"] = (
+                self.coordinator.last_update_success_time.isoformat()
+            )
         return attrs
 
 
@@ -598,12 +648,13 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
 
     def __init__(
         self,
-        coordinator: EngieBeDataUpdateCoordinator,
+        coordinator: EngieBeEpexCoordinator,
+        subentry: ConfigSubentry,
         entity_description: SensorEntityDescription,
         mode: str,
     ) -> None:
         """``mode`` selects ``min`` or ``max`` reduction over today's slots."""
-        super().__init__(coordinator, entity_description)
+        super().__init__(coordinator, subentry, entity_description)
         if mode not in ("min", "max"):
             msg = f"mode must be 'min' or 'max', got {mode!r}"
             raise ValueError(msg)
@@ -637,8 +688,10 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
             "slot_end": slot.end.isoformat(),
             "slot_duration_minutes": slot.duration_minutes,
         }
-        if self.coordinator.last_successful_fetch:
-            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
+        if self.coordinator.last_update_success_time is not None:
+            attrs["last_fetched"] = (
+                self.coordinator.last_update_success_time.isoformat()
+            )
         return attrs
 
 

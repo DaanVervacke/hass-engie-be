@@ -23,14 +23,16 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
     LOGGER,
+    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
     TOKEN_REFRESH_INTERVAL_SECONDS,
 )
-from .coordinator import EngieBeDataUpdateCoordinator
-from .data import EngieBeData
+from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
+from .data import EngieBeData, EngieBeSubentryData
 from .diagnostics import _hash_ean
 from .store import EngieBePeaksStore
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
 
     from .data import EngieBeConfigEntry
@@ -83,17 +85,16 @@ async def async_setup_entry(
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
     )
 
-    coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
-    peaks_store = await _async_init_peaks_store(hass, entry.entry_id)
+    epex_coordinator = EngieBeEpexCoordinator(hass=hass, config_entry=entry)
 
     entry.runtime_data = EngieBeData(
         client=client,
-        coordinator=coordinator,
+        epex_coordinator=epex_coordinator,
         last_options=dict(entry.options),
-        peaks_store=peaks_store,
     )
 
-    # Do an initial token refresh so we have a valid access token
+    # Initial token refresh so per-subentry coordinators have a valid
+    # access token to make their first authenticated request with.
     try:
         new_access, new_refresh = await client.async_refresh_token()
     except EngieBeApiClientAuthenticationError as err:
@@ -106,7 +107,8 @@ async def async_setup_entry(
     _persist_tokens(hass, entry, new_access, new_refresh)
     entry.runtime_data.authenticated = True
 
-    # Set up recurring token refresh (every 60 seconds)
+    # Recurring token refresh (one timer per parent entry, not per
+    # subentry: tokens are login-scoped, not account-scoped).
     async def _refresh_token_callback(_now: object) -> None:
         """Refresh the access token periodically."""
         try:
@@ -134,37 +136,40 @@ async def async_setup_entry(
     )
     entry.async_on_unload(cancel_refresh)
 
-    # Fetch initial data and forward platforms
-    await coordinator.async_config_entry_first_refresh()
-
-    # Resolve energy type for each EAN via the service-points API.
-    # Fetched in parallel so multi-EAN customers do not pay sum(latency).
-    eans: list[str] = [
-        item.get("ean", "")
-        for item in (coordinator.data or {}).get("items", [])
-        if item.get("ean")
+    # Build per-subentry coordinators, peak stores and service-points
+    # lookups, then do their initial refreshes in parallel so that a
+    # user with N customer accounts does not pay sum(latency) at setup.
+    subentries: list[ConfigSubentry] = [
+        sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
     ]
-    service_points: dict[str, str] = {}
-    if eans:
-        results = await asyncio.gather(
-            *(client.async_get_service_point(ean) for ean in eans),
-            return_exceptions=True,
+
+    for subentry in subentries:
+        coordinator = EngieBeDataUpdateCoordinator(
+            hass=hass,
+            config_entry=entry,
+            subentry=subentry,
         )
-        for ean, result in zip(eans, results, strict=True):
-            if isinstance(result, EngieBeApiClientError):
-                LOGGER.warning(
-                    "Failed to fetch service-point for EAN %s; using fallback",
-                    _hash_ean(ean),
-                )
-                continue
-            if isinstance(result, BaseException):
-                # Re-raise unexpected exceptions; only API errors are tolerated.
-                raise result
-            division: str = result.get("division", "")
-            if division:
-                service_points[ean] = division
-                LOGGER.debug("Service-point %s: division=%s", _hash_ean(ean), division)
-    entry.runtime_data.service_points = service_points
+        peaks_store = await _async_init_peaks_store(hass, subentry.subentry_id)
+        entry.runtime_data.subentry_data[subentry.subentry_id] = EngieBeSubentryData(
+            coordinator=coordinator,
+            peaks_store=peaks_store,
+        )
+
+    # Refresh EPEX once at startup alongside the per-subentry customer
+    # data; EPEX is shared across subentries so this is one fetch total.
+    refresh_calls = [epex_coordinator.async_config_entry_first_refresh()]
+    refresh_calls.extend(
+        sub_data.coordinator.async_config_entry_first_refresh()
+        for sub_data in entry.runtime_data.subentry_data.values()
+    )
+    await asyncio.gather(*refresh_calls)
+
+    # Resolve energy type for each EAN per subentry. Service-point lookups
+    # are fanned out across all subentries' EANs in a single gather so
+    # multi-account customers do not pay sum(latency) for setup.
+    await _async_populate_service_points(client, entry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
@@ -204,9 +209,61 @@ def _persist_tokens(
 
 async def _async_init_peaks_store(
     hass: HomeAssistant,
-    entry_id: str,
+    subentry_id: str,
 ) -> EngieBePeaksStore:
-    """Build and load the persistent peaks-history store for one entry."""
-    store = EngieBePeaksStore(hass, entry_id)
+    """Build and load the persistent peaks-history store for one subentry."""
+    store = EngieBePeaksStore(hass, subentry_id)
     await store.async_load()
     return store
+
+
+async def _async_populate_service_points(
+    client: EngieBeApiClient,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Resolve EAN-to-energy-type for every subentry in one fan-out call.
+
+    EAN-to-division mapping is per-EAN (and therefore inherently
+    per-subentry, since EANs belong to one customer account). Lookups
+    are issued in parallel across all subentries' EANs so a multi-account
+    user does not pay sum(latency) at setup. Failures degrade gracefully:
+    a missing service-point falls back to the heuristic in the sensor
+    layer, exactly as for single-account setups.
+    """
+    eans_by_subentry: dict[str, list[str]] = {}
+    flat_eans: list[tuple[str, str]] = []
+    for subentry_id, sub_data in entry.runtime_data.subentry_data.items():
+        coordinator_data = sub_data.coordinator.data or {}
+        eans = [
+            item.get("ean", "")
+            for item in coordinator_data.get("items", [])
+            if item.get("ean")
+        ]
+        eans_by_subentry[subentry_id] = eans
+        flat_eans.extend((subentry_id, ean) for ean in eans)
+
+    if not flat_eans:
+        return
+
+    results = await asyncio.gather(
+        *(client.async_get_service_point(ean) for _, ean in flat_eans),
+        return_exceptions=True,
+    )
+
+    for (subentry_id, ean), result in zip(flat_eans, results, strict=True):
+        if isinstance(result, EngieBeApiClientError):
+            LOGGER.warning(
+                "Failed to fetch service-point for EAN %s; using fallback",
+                _hash_ean(ean),
+            )
+            continue
+        if isinstance(result, BaseException):
+            # Re-raise unexpected exceptions; only API errors are tolerated.
+            raise result
+        division: str = result.get("division", "")
+        if division:
+            entry.runtime_data.subentry_data[subentry_id].service_points[ean] = (
+                division
+            )
+            LOGGER.debug("Service-point %s: division=%s", _hash_ean(ean), division)

@@ -1,14 +1,16 @@
 """
 Calendar platform for the ENGIE Belgium integration.
 
-A single calendar entity (``calendar.engie_belgium``) aggregates all
-ENGIE-related events. Today this is just the monthly capacity-tariff (captar)
-peak window, but new event types can be added without spawning a new
-calendar entity by registering an additional ``EventProvider`` below.
+One calendar entity is created per customer-account ConfigSubentry,
+attached to that subentry's device. Today this exposes only the monthly
+capacity-tariff (captar) peak window, but new event types can be added
+without spawning a new calendar entity by registering an additional
+``EventProvider`` below.
 
-Each ``EventProvider`` is a callable that takes the coordinator and returns
-zero or more ``CalendarEvent`` instances. The data is sourced from the
-existing coordinator payload, so no additional API calls are made.
+Each ``EventProvider`` is a callable that takes the per-subentry
+coordinator and returns zero or more ``CalendarEvent`` instances. The
+data is sourced from the existing coordinator payload, so no additional
+API calls are made.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 
 from ._peaks import captar_peak_events
+from .const import LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
 from .entity import EngieBeEntity
 
 # Coordinator centralises updates; entities never poll individually.
@@ -27,8 +30,9 @@ PARALLEL_UPDATES = 0
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
     from .coordinator import EngieBeDataUpdateCoordinator
     from .data import EngieBeConfigEntry
@@ -45,23 +49,46 @@ EVENT_PROVIDERS: list[EventProvider] = [
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001
     entry: EngieBeConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the calendar platform."""
-    coordinator = entry.runtime_data.coordinator
-    async_add_entities([EngieBeCalendar(coordinator)])
+    """Set up the calendar platform, one entity per customer-account subentry."""
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+            continue
+
+        sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
+        if sub_data is None:
+            LOGGER.warning(
+                "No runtime data for subentry %s; skipping calendar setup",
+                subentry.subentry_id,
+            )
+            continue
+
+        async_add_entities(
+            [EngieBeCalendar(sub_data.coordinator, subentry)],
+            config_subentry_id=subentry.subentry_id,
+        )
 
 
 class EngieBeCalendar(EngieBeEntity, CalendarEntity):
-    """Aggregated calendar entity for ENGIE Belgium events."""
+    """Aggregated calendar entity for one ENGIE Belgium customer account."""
 
     _attr_name = None
     _attr_icon = "mdi:calendar"
 
-    def __init__(self, coordinator: EngieBeDataUpdateCoordinator) -> None:
-        """Initialise the calendar entity."""
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_calendar"
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
+        """Initialise the calendar entity for one customer-account subentry."""
+        super().__init__(coordinator, subentry)
+        # Subentry-scoped unique ID: the calendar descriptor repeats
+        # across every customer account on a single login.
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_calendar"
+        )
 
     def _all_events(self) -> list[CalendarEvent]:
         """Collect events from every registered provider."""
