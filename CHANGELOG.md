@@ -25,6 +25,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   When the EPEX endpoint returns 404 (tomorrow not yet published) or a
   transient error, the integration keeps the last-known payload rather
   than wiping the sensors.
+- New binary sensor `EPEX price is negative` that turns on when the
+  current EPEX wholesale slot has a negative price. Lets users build
+  simple `state`-based automations ("run the dishwasher when ENGIE is
+  paying me to consume") without a `numeric_state` template. Only
+  created on dynamic (EPEX-indexed) accounts, so fixed-tariff users
+  don't see a permanently unavailable entity. Reports `unavailable`
+  before the first successful EPEX fetch and `unknown` when the cached
+  payload has no slot covering the current instant, so automations
+  don't fire on stale data. Zero is treated as non-negative.
 
 ## [0.7.1] - 2026-05-03
 

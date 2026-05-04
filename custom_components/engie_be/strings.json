@@ -221,6 +221,9 @@
         "binary_sensor": {
             "authentication": {
                 "name": "Authentication"
+            },
+            "epex_negative": {
+                "name": "EPEX price is negative"
             }
         }
     }
