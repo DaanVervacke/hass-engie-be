@@ -21,7 +21,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import slugify
 
-from ._relations import extract_accounts
+from ._relations import extract_accounts, subentry_title
 from .api import (
     AuthFlowState,
     EngieBeApiClient,
@@ -32,9 +32,7 @@ from .api import (
 )
 from .const import (
     CONF_ACCESS_TOKEN,
-    CONF_ACCOUNT_HOLDER_NAME,
     CONF_CLIENT_ID,
-    CONF_CONSUMPTION_ADDRESS,
     CONF_CUSTOMER_NUMBER,
     CONF_MFA_METHOD,
     CONF_REFRESH_TOKEN,
@@ -580,19 +578,8 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
 
 
 def _subentry_title(account: dict[str, Any]) -> str:
-    """
-    Build a user-friendly subentry title.
-
-    Falls back from address to account holder name to customer number so the
-    title always renders something useful.
-    """
-    address = account.get(CONF_CONSUMPTION_ADDRESS)
-    if address:
-        return address
-    holder = account.get(CONF_ACCOUNT_HOLDER_NAME)
-    if holder:
-        return holder
-    return account[CONF_CUSTOMER_NUMBER]
+    """Build a user-friendly subentry title (delegates to shared helper)."""
+    return subentry_title(account)
 
 
 class EngieBeOptionsFlowHandler(config_entries.OptionsFlow):

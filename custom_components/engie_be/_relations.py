@@ -75,6 +75,22 @@ def pick_active_agreement(
     return agreements[0]
 
 
+def subentry_title(account: dict[str, Any]) -> str:
+    """
+    Build a user-friendly subentry title.
+
+    Falls back from address to account holder name to customer number so the
+    title always renders something useful.
+    """
+    address = account.get(CONF_CONSUMPTION_ADDRESS)
+    if address:
+        return address
+    holder = account.get(CONF_ACCOUNT_HOLDER_NAME)
+    if holder:
+        return holder
+    return account[CONF_CUSTOMER_NUMBER]
+
+
 def format_address(address: dict[str, Any]) -> str:
     """Format a consumption address as ``street houseNumber, postalCode city``."""
     if not address:

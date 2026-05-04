@@ -93,6 +93,16 @@ class EngieBePeaksStore:
         """Coalesce frequent updates into one disk write."""
         self._store.async_delay_save(self._data_to_save, _SAVE_DELAY_SECONDS)
 
+    async def async_save_now(self) -> None:
+        """
+        Flush pending peaks to disk immediately, bypassing the save delay.
+
+        Used by the v2 to v3 migration so that, if HA crashes within the
+        save-delay window after migration, the carried-over peaks are not
+        lost.
+        """
+        await self._store.async_save(self._data_to_save())
+
     def _data_to_save(self) -> dict[str, Any]:
         """Return the payload persisted by ``Store``."""
         return {"peaks": self.peaks}
