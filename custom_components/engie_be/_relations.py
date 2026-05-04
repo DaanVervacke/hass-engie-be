@@ -9,7 +9,10 @@ without ``coordinator`` having to import ``config_flow``.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from .const import (
     CONF_ACCOUNT_HOLDER_NAME,
@@ -46,8 +49,43 @@ def extract_accounts(relations: dict[str, Any]) -> list[dict[str, Any]]:
         if not customer_number:
             continue
 
-        accounts.append(_flatten_customer_account(customer_account))
+        accounts.append(flatten_customer_account(customer_account))
     return accounts
+
+
+def iter_account_identifiers(customer_account: dict[str, Any]) -> Iterator[str]:
+    """
+    Yield every identifier (CAN + BANs) a stored subentry could carry.
+
+    Stored ``customer_number`` values can take one of two shapes
+    depending on when the subentry was created:
+
+    * v3 subentries created via the picker hold the canonical
+      ``customerAccountNumber`` (CAN, 10 digits, no leading zeros).
+    * v2-migrated subentries -- and entries created before the picker
+      existed -- can hold a ``businessAgreementNumber`` (BAN, 12 digits
+      with leading zeros), because the legacy v2 prices/peaks endpoints
+      accepted either identifier in the same path slot.
+
+    Callers that need to test "is this candidate already configured?"
+    should compare against the union of every identifier each existing
+    subentry could possibly carry, not just the canonical one. This
+    helper produces that union for a single ``customerAccount`` node.
+
+    Inactive business agreements are still yielded: a subentry created
+    when the agreement was active retains its BAN even after ENGIE
+    deactivates the agreement, and we still want to deduplicate it.
+
+    Empty / missing identifiers are filtered out. Order is CAN first,
+    then BANs in the order ENGIE returns them.
+    """
+    customer_number = customer_account.get("customerAccountNumber")
+    if customer_number:
+        yield customer_number
+    for agreement in customer_account.get("businessAgreements") or []:
+        ban = agreement.get("businessAgreementNumber")
+        if ban:
+            yield ban
 
 
 def find_account_for_customer_number(
@@ -79,14 +117,14 @@ def find_account_for_customer_number(
         if not customer_number:
             continue
         if customer_number == stored_number:
-            return _flatten_customer_account(customer_account)
+            return flatten_customer_account(customer_account)
         for agreement in customer_account.get("businessAgreements") or []:
             if agreement.get("businessAgreementNumber") == stored_number:
-                return _flatten_customer_account(customer_account)
+                return flatten_customer_account(customer_account)
     return None
 
 
-def _flatten_customer_account(customer_account: dict[str, Any]) -> dict[str, Any]:
+def flatten_customer_account(customer_account: dict[str, Any]) -> dict[str, Any]:
     """Produce the per-account subentry dict for a ``customerAccount`` node."""
     agreement = pick_active_agreement(customer_account.get("businessAgreements"))
     address = (agreement or {}).get("consumptionAddress") or {}

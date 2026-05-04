@@ -121,6 +121,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   attempt failed (for example because the OAuth token had expired
   and the relations backfill returned 403) would refuse to load on
   subsequent restarts.
+- The **Add customer account** subentry picker no longer offers
+  duplicates of accounts that are already configured under a different
+  identifier shape. ENGIE returns each account with both a
+  `customerAccountNumber` (CAN) and one or more
+  `businessAgreementNumber`s (BANs); legacy v2-migrated subentries
+  store the BAN as their `unique_id`, while the picker derives its
+  candidates from the CAN. The picker now dedupes against the union
+  of every existing subentry's `unique_id`, `customer_number`, and
+  `business_agreement_number`, and walks every candidate's CAN plus
+  all of its BANs before deciding whether it is already configured.
+  Without this, opening the picker for a v2-migrated login would list
+  the same physical premises a second time, and confirming the
+  selection would create a duplicate device with parallel sensors.
 
 ### Migration
 - Existing single-account config entries (schema v1 and v2) are

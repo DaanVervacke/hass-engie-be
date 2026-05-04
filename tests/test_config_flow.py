@@ -678,6 +678,92 @@ async def test_subentry_picker_aborts_when_all_configured(
     assert result["reason"] == "no_accounts_available"
 
 
+async def test_subentry_picker_dedupes_by_business_agreement_number(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Legacy BAN-shaped unique_ids must dedupe candidates whose CAN differs.
+
+    Reproduces the duplicate-device bug: a v2-migrated subentry stores
+    its identifier as a businessAgreementNumber, but the picker
+    candidate carries the canonical customerAccountNumber. Without the
+    BAN-aware dedupe the same physical premises gets added a second
+    time.
+    """
+    legacy_subentry = ConfigSubentryData(
+        data={
+            # Legacy v2-migrated shape: customer_number holds the BAN
+            # because that is what the legacy v2 endpoints accepted.
+            CONF_CUSTOMER_NUMBER: "002200000001",
+            CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+        },
+        subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+        title="Legacy",
+        unique_id="002200000001",
+    )
+    entry = _build_parent_entry(hass, subentries=(legacy_subentry,))
+    relations = _load_relations_fixture()
+
+    with patch(
+        "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+        AsyncMock(return_value=relations),
+    ):
+        result = await _init_subentry_flow(hass, entry)
+        assert result["type"] is data_entry_flow.FlowResultType.FORM
+
+        # Only CAN 1500000002 should remain selectable; CAN 1500000001
+        # is the canonical match for the legacy BAN-keyed subentry and
+        # must be filtered out.
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_SELECTED_ACCOUNTS: ["1500000002"]},
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert len(entry.subentries) == 2
+    stored_ids = {s.unique_id for s in entry.subentries.values()}
+    assert stored_ids == {"002200000001", "1500000002"}
+
+
+async def test_subentry_picker_aborts_when_only_legacy_ban_match_available(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """All candidates matched by BAN must abort, not silently fall through."""
+    legacy_subentries = (
+        ConfigSubentryData(
+            data={
+                CONF_CUSTOMER_NUMBER: "002200000001",
+                CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+            },
+            subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+            title="Legacy 1",
+            unique_id="002200000001",
+        ),
+        ConfigSubentryData(
+            data={
+                CONF_CUSTOMER_NUMBER: "002200000002",
+                CONF_BUSINESS_AGREEMENT_NUMBER: "002200000002",
+            },
+            subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+            title="Legacy 2",
+            unique_id="002200000002",
+        ),
+    )
+    entry = _build_parent_entry(hass, subentries=legacy_subentries)
+    relations = _load_relations_fixture()
+
+    with patch(
+        "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+        AsyncMock(return_value=relations),
+    ):
+        result = await _init_subentry_flow(hass, entry)
+
+    assert result["type"] is data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "no_accounts_available"
+
+
 async def test_subentry_picker_aborts_when_relations_empty(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001

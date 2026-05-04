@@ -15,6 +15,7 @@ from pathlib import Path
 from custom_components.engie_be._relations import (
     extract_accounts,
     find_account_for_customer_number,
+    iter_account_identifiers,
 )
 from custom_components.engie_be.const import (
     CONF_ACCOUNT_HOLDER_NAME,
@@ -93,3 +94,49 @@ def test_find_account_handles_empty_payload() -> None:
     """Empty/items-less payload must yield ``None`` cleanly."""
     assert find_account_for_customer_number({}, "1500000001") is None
     assert find_account_for_customer_number({"items": []}, "1500000001") is None
+
+
+def test_iter_account_identifiers_yields_can_then_bans() -> None:
+    """CAN comes first, then every BAN in payload order."""
+    customer_account = _load_relations()["items"][0]["customerAccount"]
+    assert list(iter_account_identifiers(customer_account)) == [
+        "1500000001",
+        "002200000001",
+    ]
+
+
+def test_iter_account_identifiers_yields_every_ban() -> None:
+    """Multi-agreement accounts must yield every BAN, regardless of activity."""
+    customer_account = {
+        "customerAccountNumber": "1500000099",
+        "businessAgreements": [
+            {"businessAgreementNumber": "002200000099", "isActive": True},
+            {"businessAgreementNumber": "002200000100", "isActive": False},
+            {"businessAgreementNumber": "002200000101"},
+        ],
+    }
+    assert list(iter_account_identifiers(customer_account)) == [
+        "1500000099",
+        "002200000099",
+        "002200000100",
+        "002200000101",
+    ]
+
+
+def test_iter_account_identifiers_skips_blanks_and_missing() -> None:
+    """Empty/missing identifiers are filtered out without crashing."""
+    customer_account = {
+        "customerAccountNumber": None,
+        "businessAgreements": [
+            {"businessAgreementNumber": ""},
+            {"businessAgreementNumber": "002200000200"},
+            {},
+        ],
+    }
+    assert list(iter_account_identifiers(customer_account)) == ["002200000200"]
+
+
+def test_iter_account_identifiers_handles_empty_payload() -> None:
+    """An empty customerAccount dict yields nothing."""
+    assert list(iter_account_identifiers({})) == []
+    assert list(iter_account_identifiers({"businessAgreements": None})) == []

@@ -19,7 +19,12 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import slugify
 
-from ._relations import extract_accounts, subentry_title
+from ._relations import (
+    extract_accounts,
+    flatten_customer_account,
+    iter_account_identifiers,
+    subentry_title,
+)
 from .api import (
     AuthFlowState,
     EngieBeApiClient,
@@ -30,6 +35,7 @@ from .api import (
 )
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
     CONF_CUSTOMER_NUMBER,
     CONF_MFA_METHOD,
@@ -572,19 +578,11 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         if isinstance(relations_or_abort, str):
             return self.async_abort(reason=relations_or_abort)
 
-        already_configured = {
-            subentry.unique_id
-            for subentry in entry.subentries.values()
-            if subentry.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
-            and subentry.unique_id is not None
-        }
-
-        accounts = extract_accounts(relations_or_abort)
-        self._available_accounts = [
-            account
-            for account in accounts
-            if account[CONF_CUSTOMER_NUMBER] not in already_configured
-        ]
+        already_configured = _collect_configured_identifiers(entry)
+        self._available_accounts = _candidates_excluding_configured(
+            relations_or_abort,
+            already_configured,
+        )
 
         if not self._available_accounts:
             return self.async_abort(reason="no_accounts_available")
@@ -690,6 +688,59 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
 def _subentry_title(account: dict[str, Any]) -> str:
     """Build a user-friendly subentry title (delegates to shared helper)."""
     return subentry_title(account)
+
+
+def _collect_configured_identifiers(
+    entry: config_entries.ConfigEntry,
+) -> set[str]:
+    """
+    Collect every identifier already claimed by an existing subentry.
+
+    For each customer-account subentry on ``entry`` this gathers the
+    subentry's ``unique_id`` plus its stored ``customer_number`` and
+    ``business_agreement_number`` data fields. The returned set is the
+    union used by the picker to decide whether a candidate from the
+    relations payload is already configured.
+    """
+    configured: set[str] = set()
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+            continue
+        if subentry.unique_id:
+            configured.add(subentry.unique_id)
+        data = subentry.data or {}
+        stored_can = data.get(CONF_CUSTOMER_NUMBER)
+        stored_ban = data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if stored_can:
+            configured.add(stored_can)
+        if stored_ban:
+            configured.add(stored_ban)
+    return configured
+
+
+def _candidates_excluding_configured(
+    relations: dict[str, Any],
+    already_configured: set[str],
+) -> list[dict[str, Any]]:
+    """
+    Walk the raw relations payload and return picker-ready candidates.
+
+    A candidate is included only when none of its identifiers (CAN +
+    every BAN, including inactive ones) intersects ``already_configured``.
+    Walking the raw payload -- rather than the flat dicts produced by
+    ``extract_accounts`` -- is what lets the picker dedupe against
+    legacy subentries whose stored identifier is a now-inactive BAN.
+    """
+    candidates: list[dict[str, Any]] = []
+    for item in relations.get("items", []):
+        customer_account = item.get("customerAccount") or {}
+        if not customer_account.get("customerAccountNumber"):
+            continue
+        candidate_ids = set(iter_account_identifiers(customer_account))
+        if candidate_ids & already_configured:
+            continue
+        candidates.append(flatten_customer_account(customer_account))
+    return candidates
 
 
 class EngieBeOptionsFlowHandler(config_entries.OptionsFlow):
