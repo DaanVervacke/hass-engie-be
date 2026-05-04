@@ -10,8 +10,12 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_ACCOUNT_HOLDER_NAME,
+    CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
+    CONF_CONSUMPTION_ADDRESS,
     CONF_CUSTOMER_NUMBER,
+    CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     KEY_IS_DYNAMIC,
     SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
@@ -31,14 +35,34 @@ TO_REDACT: set[str] = {
     CONF_REFRESH_TOKEN,
     CONF_CUSTOMER_NUMBER,
     CONF_CLIENT_ID,
+    CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_PREMISES_NUMBER,
+    CONF_ACCOUNT_HOLDER_NAME,
+    CONF_CONSUMPTION_ADDRESS,
 }
 
 EAN_HASH_LENGTH = 8
+TITLE_HASH_LENGTH = 8
 
 
 def _hash_ean(ean: str) -> str:
     """Hash an EAN to a short fingerprint for support correlation."""
     return hashlib.sha256(ean.encode("utf-8")).hexdigest()[:EAN_HASH_LENGTH]
+
+
+def _redacted_title(title: str | None) -> str:
+    """
+    Return a stable, non-identifying fingerprint for a subentry title.
+
+    Subentry titles are user-facing addresses or customer-account holder
+    names. Replacing them with a short content-hash keeps support bundles
+    privacy-safe while still letting the user correlate two subentries
+    in the same diagnostic dump.
+    """
+    if not title:
+        return "**REDACTED**"
+    digest = hashlib.sha256(title.encode("utf-8")).hexdigest()[:TITLE_HASH_LENGTH]
+    return f"**REDACTED:{digest}**"
 
 
 def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
@@ -168,7 +192,7 @@ async def async_get_config_entry_diagnostics(
             else None
         )
         subentries_summary[subentry.subentry_id] = {
-            "title": subentry.title,
+            "title": _redacted_title(subentry.title),
             "data": async_redact_data(dict(subentry.data), TO_REDACT),
             **_summarise_subentry(sub_data),
         }
@@ -176,7 +200,7 @@ async def async_get_config_entry_diagnostics(
     return {
         "entry": {
             "version": entry.version,
-            "title": entry.title,
+            "title": _redacted_title(entry.title),
             "data": async_redact_data(dict(entry.data), TO_REDACT),
             "options": dict(entry.options),
         },
