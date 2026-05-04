@@ -17,6 +17,7 @@ from typing import Any, NoReturn
 import aiohttp
 
 from .const import (
+    ACCOUNTS_BASE_URL,
     API_BASE_URL,
     AUTH_BASE_URL,
     EPEX_BASE_URL,
@@ -304,6 +305,42 @@ class EngieBeApiClient:
             method="GET",
             url=url,
             headers=headers,
+            json_response=True,
+        )
+
+    async def async_get_customer_account_relations(self) -> dict[str, Any]:
+        """
+        Fetch the list of customer accounts the logged-in user can access.
+
+        The Auth0 access token is per-login, not per-customer-account, so
+        a single ENGIE login can be linked to multiple ``customerAccountNumber``
+        values (e.g. a person managing both their own household and a
+        relative's account). This endpoint enumerates all such accounts
+        together with the consumption address and contract metadata
+        needed to present a meaningful picker in the config flow.
+
+        Returns the parsed JSON response with the shape
+        ``{"items": [{"customerAccount": {"customerAccountNumber": ...,
+        "name": ..., "businessAgreements": [...]}}, ...]}``.
+
+        The ``withBusinessAgreements=SMART_APP`` query parameter is
+        required to make ENGIE include the active business agreement
+        and its consumption address inline; without it the endpoint
+        returns only bare customer-account identifiers.
+        """
+        url = f"{ACCOUNTS_BASE_URL}/customer-account-relations"
+        headers = {
+            "User-Agent": USER_AGENT_NATIVE,
+            "Accept": "application/json, application/problem+json",
+            "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
+        }
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            params={"withBusinessAgreements": "SMART_APP"},
             json_response=True,
         )
 
