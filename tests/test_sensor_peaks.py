@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass
 
+from custom_components.engie_be.const import SUBENTRY_TYPE_CUSTOMER_ACCOUNT
 from custom_components.engie_be.sensor import (
     EngieBeMonthlyPeakTimestampSensor,
     EngieBeMonthlyPeakValueSensor,
@@ -39,8 +40,20 @@ def _wrap(
     }
 
 
+def _make_subentry(
+    subentry_id: str = "sub_test",
+    title: str = "Test Account",
+) -> MagicMock:
+    """Build a MagicMock ConfigSubentry stub."""
+    subentry = MagicMock()
+    subentry.subentry_id = subentry_id
+    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.title = title
+    return subentry
+
+
 def _make_coordinator(data: dict | None) -> MagicMock:
-    """Build a MagicMock coordinator stub with the given ``.data``."""
+    """Build a MagicMock per-subentry coordinator stub with the given ``.data``."""
     coordinator = MagicMock()
     coordinator.data = data
     coordinator.last_successful_fetch = None
@@ -57,7 +70,8 @@ def _make_coordinator(data: dict | None) -> MagicMock:
 def test_build_peak_sensors_creates_four_entities() -> None:
     """``_build_peak_sensors`` always returns the four monthly captar sensors."""
     coordinator = _make_coordinator({"items": [], "peaks": _wrap(_peaks())})
-    sensors = _build_peak_sensors(coordinator)
+    subentry = _make_subentry(subentry_id="sub_xyz")
+    sensors = _build_peak_sensors(coordinator, subentry)
 
     keys = {s.entity_description.key for s in sensors}
     assert keys == {
@@ -66,15 +80,18 @@ def test_build_peak_sensors_creates_four_entities() -> None:
         "captar_monthly_peak_start",
         "captar_monthly_peak_end",
     }
-    # Every sensor must carry a unique_id namespaced under the entry.
+    # Every sensor must carry an entry+subentry-scoped unique_id.
     for sensor in sensors:
-        assert sensor.unique_id == (f"test_entry_id_{sensor.entity_description.key}")
+        assert sensor.unique_id == (
+            f"test_entry_id_sub_xyz_{sensor.entity_description.key}"
+        )
 
 
 def test_build_peak_sensors_runs_without_peaks_payload() -> None:
     """Sensors are built even before the first peaks fetch arrives."""
     coordinator = _make_coordinator({"items": []})
-    sensors = _build_peak_sensors(coordinator)
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     assert len(sensors) == 4
 
 
@@ -86,9 +103,12 @@ def test_build_peak_sensors_runs_without_peaks_payload() -> None:
 def test_monthly_peak_power_native_value() -> None:
     """``peakKW`` from ``peakOfTheMonth`` is returned as a float."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     sensor = EngieBeMonthlyPeakValueSensor(
         coordinator,
-        _build_peak_sensors(coordinator)[0].entity_description,
+        subentry,
+        sensors[0].entity_description,
         field="peakKW",
     )
     assert sensor.native_value == 3.5
@@ -97,9 +117,12 @@ def test_monthly_peak_power_native_value() -> None:
 def test_monthly_peak_energy_native_value() -> None:
     """``peakKWh`` from ``peakOfTheMonth`` is returned as a float."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     sensor = EngieBeMonthlyPeakValueSensor(
         coordinator,
-        _build_peak_sensors(coordinator)[1].entity_description,
+        subentry,
+        sensors[1].entity_description,
         field="peakKWh",
     )
     assert sensor.native_value == 0.875
@@ -108,9 +131,12 @@ def test_monthly_peak_energy_native_value() -> None:
 def test_monthly_peak_value_returns_none_when_peaks_missing() -> None:
     """Missing peaks payload yields ``None`` rather than raising."""
     coordinator = _make_coordinator({"items": []})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     sensor = EngieBeMonthlyPeakValueSensor(
         coordinator,
-        _build_peak_sensors(coordinator)[0].entity_description,
+        subentry,
+        sensors[0].entity_description,
         field="peakKW",
     )
     assert sensor.native_value is None
@@ -124,9 +150,12 @@ def test_monthly_peak_value_returns_none_when_peaks_missing() -> None:
 def test_monthly_peak_timestamp_parses_iso8601_with_offset() -> None:
     """ISO 8601 timestamps with timezone offsets are parsed to ``datetime``."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     sensor = EngieBeMonthlyPeakTimestampSensor(
         coordinator,
-        _build_peak_sensors(coordinator)[2].entity_description,
+        subentry,
+        sensors[2].entity_description,
         field="start",
     )
     value = sensor.native_value
@@ -142,9 +171,12 @@ def test_monthly_peak_timestamp_returns_none_when_field_missing() -> None:
     coordinator = _make_coordinator(
         {"peaks": _wrap({"peakOfTheMonth": {"peakKW": "1.0"}})},
     )
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     sensor = EngieBeMonthlyPeakTimestampSensor(
         coordinator,
-        _build_peak_sensors(coordinator)[2].entity_description,
+        subentry,
+        sensors[2].entity_description,
         field="start",
     )
     assert sensor.native_value is None
@@ -161,9 +193,12 @@ def test_extra_state_attributes_includes_last_fetched_when_set() -> None:
     coordinator.last_successful_fetch = datetime.fromisoformat(
         "2026-04-15T19:00:00+00:00",
     ) - timedelta(hours=1)
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     sensor = EngieBeMonthlyPeakValueSensor(
         coordinator,
-        _build_peak_sensors(coordinator)[0].entity_description,
+        subentry,
+        sensors[0].entity_description,
         field="peakKW",
     )
     attrs = sensor.extra_state_attributes
@@ -173,9 +208,12 @@ def test_extra_state_attributes_includes_last_fetched_when_set() -> None:
 def test_extra_state_attributes_omits_last_fetched_when_unset() -> None:
     """Without a fetch timestamp ``last_fetched`` is omitted but peak meta stays."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     sensor = EngieBeMonthlyPeakValueSensor(
         coordinator,
-        _build_peak_sensors(coordinator)[0].entity_description,
+        subentry,
+        sensors[0].entity_description,
         field="peakKW",
     )
     attrs = sensor.extra_state_attributes
@@ -190,9 +228,12 @@ def test_extra_state_attributes_includes_peak_month_metadata() -> None:
     coordinator = _make_coordinator(
         {"peaks": _wrap(_peaks(), year=2026, month=4, is_fallback=True)},
     )
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     sensor = EngieBeMonthlyPeakValueSensor(
         coordinator,
-        _build_peak_sensors(coordinator)[0].entity_description,
+        subentry,
+        sensors[0].entity_description,
         field="peakKW",
     )
     attrs = sensor.extra_state_attributes
@@ -203,9 +244,12 @@ def test_extra_state_attributes_includes_peak_month_metadata() -> None:
 def test_extra_state_attributes_omits_peak_meta_when_no_wrapper() -> None:
     """Without a peaks wrapper the peak metadata attributes are omitted."""
     coordinator = _make_coordinator({"items": []})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
     sensor = EngieBeMonthlyPeakValueSensor(
         coordinator,
-        _build_peak_sensors(coordinator)[0].entity_description,
+        subentry,
+        sensors[0].entity_description,
         field="peakKW",
     )
     attrs = sensor.extra_state_attributes

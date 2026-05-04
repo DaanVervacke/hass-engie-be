@@ -6,15 +6,16 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-import pytest
-
 from custom_components.engie_be.binary_sensor import (
     EPEX_NEGATIVE_SENSOR_DESCRIPTION,
     EngieBeAuthSensor,
     EngieBeEpexNegativeSensor,
     async_setup_entry,
 )
-from custom_components.engie_be.const import EPEX_TZ, KEY_EPEX, KEY_IS_DYNAMIC
+from custom_components.engie_be.const import (
+    EPEX_TZ,
+    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+)
 from custom_components.engie_be.data import EpexPayload, EpexSlot
 
 _BRUSSELS = ZoneInfo(EPEX_TZ)
@@ -44,10 +45,22 @@ def _build_payload(today: list[tuple[int, float]]) -> EpexPayload:
     )
 
 
-def _make_coordinator(data: dict | None) -> MagicMock:
-    """Build a MagicMock coordinator stub with the given ``.data``."""
+def _make_subentry(
+    subentry_id: str = "sub_test",
+    title: str = "Test Account",
+) -> MagicMock:
+    """Build a MagicMock ConfigSubentry with the given id and title."""
+    subentry = MagicMock()
+    subentry.subentry_id = subentry_id
+    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.title = title
+    return subentry
+
+
+def _make_epex_coordinator(payload: EpexPayload | None) -> MagicMock:
+    """Build a MagicMock EngieBeEpexCoordinator stub with the given payload."""
     coordinator = MagicMock()
-    coordinator.data = data
+    coordinator.data = payload
     coordinator.last_update_success = True
     coordinator.last_successful_fetch = None
     coordinator.config_entry = MagicMock()
@@ -82,11 +95,12 @@ def test_epex_negative_description_metadata() -> None:
     assert desc.device_class is None
 
 
-def test_unique_id_namespaced_per_entry() -> None:
-    """Unique IDs must be per-entry to survive multi-account installs."""
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: True, KEY_EPEX: None})
-    sensor = EngieBeEpexNegativeSensor(coordinator)
-    assert sensor.unique_id == "test_entry_id_epex_negative"
+def test_unique_id_is_subentry_scoped() -> None:
+    """Unique IDs must be entry+subentry scoped to survive multi-account installs."""
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry(subentry_id="sub_xyz")
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
+    assert sensor.unique_id == "test_entry_id_sub_xyz_epex_negative"
 
 
 # ---------------------------------------------------------------------------
@@ -94,36 +108,11 @@ def test_unique_id_namespaced_per_entry() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_unavailable_on_non_dynamic_account() -> None:
-    """
-    Defensive: even if wrongly instantiated, non-dynamic -> unavailable.
-
-    ``async_setup_entry`` already gates creation on ``is_dynamic``; this
-    test pins the second line of defence so a runtime contract flip
-    (without a config-entry reload) cannot start publishing wholesale
-    state on an account that doesn't pay wholesale.
-    """
-    payload = _build_payload([(15, -0.05)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: False, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexNegativeSensor(coordinator)
-    with _patched_now():
-        assert sensor.available is False
-
-
 def test_unavailable_when_payload_missing() -> None:
     """First-poll 404 leaves ``epex=None`` -> unavailable."""
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: True, KEY_EPEX: None})
-    sensor = EngieBeEpexNegativeSensor(coordinator)
-    with _patched_now():
-        assert sensor.available is False
-
-
-def test_unavailable_when_coordinator_data_is_none() -> None:
-    """A pre-first-poll coordinator (data=None) must not raise."""
-    coordinator = _make_coordinator(None)
-    sensor = EngieBeEpexNegativeSensor(coordinator)
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
     with _patched_now():
         assert sensor.available is False
 
@@ -140,22 +129,20 @@ def test_available_when_payload_present_even_without_covering_slot() -> None:
     """
     # Slots only at 18:00; 15:30 anchor falls outside.
     payload = _build_payload([(18, -0.05)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexNegativeSensor(coordinator)
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
     with _patched_now():
         assert sensor.available is True
         assert sensor.is_on is None
 
 
 def test_available_when_slot_covers_now() -> None:
-    """Happy path: dynamic account + slot covering now -> available."""
+    """Happy path: slot covering now -> available."""
     payload = _build_payload([(15, 0.025)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexNegativeSensor(coordinator)
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
     with _patched_now():
         assert sensor.available is True
 
@@ -174,10 +161,9 @@ def test_is_on_true_when_current_slot_negative() -> None:
             (16, 0.05),
         ],
     )
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexNegativeSensor(coordinator)
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is True
 
@@ -190,10 +176,9 @@ def test_is_on_false_when_current_slot_zero() -> None:
     exactly 0.0 historically; flagging this as ``on`` would be wrong.
     """
     payload = _build_payload([(15, 0.0)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexNegativeSensor(coordinator)
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is False
 
@@ -201,18 +186,18 @@ def test_is_on_false_when_current_slot_zero() -> None:
 def test_is_on_false_when_current_slot_positive() -> None:
     """Typical case: positive wholesale price -> sensor off."""
     payload = _build_payload([(15, 0.025)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexNegativeSensor(coordinator)
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is False
 
 
 def test_is_on_none_when_unavailable() -> None:
     """No payload -> ``is_on`` is None (HA renders unavailable)."""
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: True, KEY_EPEX: None})
-    sensor = EngieBeEpexNegativeSensor(coordinator)
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is None
 
@@ -226,10 +211,9 @@ def test_is_on_none_when_no_slot_covers_now() -> None:
     non-negative, which we don't actually know.
     """
     payload = _build_payload([(18, -0.05)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexNegativeSensor(coordinator)
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is None
 
@@ -247,10 +231,9 @@ def test_slot_boundary_is_half_open() -> None:
             (15, 0.02),
         ],
     )
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexNegativeSensor(coordinator)
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNegativeSensor(coordinator, subentry)
 
     # Anchor exactly on the 15:00 boundary; should pick the 15:00 slot.
     boundary = datetime(2026, 5, 4, 15, 0, 0, tzinfo=_BRUSSELS).astimezone(UTC)
@@ -262,21 +245,35 @@ def test_slot_boundary_is_half_open() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Setup-entry gating: only create the EPEX entity for dynamic accounts.
+# Setup-entry gating: the EPEX entity is only created for dynamic subentries.
 # ---------------------------------------------------------------------------
 
 
-def _make_entry(coordinator: MagicMock) -> MagicMock:
-    """Build a MagicMock config entry whose runtime_data exposes ``coordinator``."""
+def _make_sub_data(*, is_dynamic: bool) -> MagicMock:
+    """Build a per-subentry runtime-data stub with a coordinator stub."""
+    sub_data = MagicMock()
+    sub_data.coordinator = MagicMock()
+    sub_data.coordinator.is_dynamic = is_dynamic
+    return sub_data
+
+
+def _make_entry(
+    epex_coordinator: MagicMock,
+    *,
+    subentries: dict[str, MagicMock],
+    sub_runtime: dict[str, MagicMock],
+) -> MagicMock:
+    """Build a MagicMock parent ConfigEntry exposing the v3 runtime layout."""
     entry = MagicMock()
     entry.entry_id = "test_entry_id"
+    entry.subentries = subentries
     entry.runtime_data = MagicMock()
-    entry.runtime_data.coordinator = coordinator
+    entry.runtime_data.epex_coordinator = epex_coordinator
+    entry.runtime_data.subentry_data = sub_runtime
     entry.runtime_data.authenticated = True
     return entry
 
 
-@pytest.mark.asyncio
 async def test_setup_entry_omits_negative_sensor_for_non_dynamic_account() -> None:
     """
     Fixed-tariff accounts must NOT get the EPEX negative-price entity.
@@ -284,41 +281,101 @@ async def test_setup_entry_omits_negative_sensor_for_non_dynamic_account() -> No
     A permanently unavailable entity is UI noise; gating at setup keeps
     the device card clean for the (majority) fixed-tariff users.
     """
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: False, KEY_EPEX: None})
-    entry = _make_entry(coordinator)
-    added: list = []
-    await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
+    epex_coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry(subentry_id="sub_fixed")
+    entry = _make_entry(
+        epex_coordinator,
+        subentries={"sub_fixed": subentry},
+        sub_runtime={"sub_fixed": _make_sub_data(is_dynamic=False)},
+    )
 
+    added: list = []
+
+    def _add(entities, *_args: object, **_kwargs: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    # Only the per-entry auth sensor; no EPEX negative entity.
     assert len(added) == 1
     assert isinstance(added[0], EngieBeAuthSensor)
 
 
-@pytest.mark.asyncio
 async def test_setup_entry_adds_negative_sensor_for_dynamic_account() -> None:
     """Dynamic accounts get both the auth sensor and the EPEX indicator."""
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: True, KEY_EPEX: None})
-    entry = _make_entry(coordinator)
+    epex_coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry(subentry_id="sub_dynamic")
+    entry = _make_entry(
+        epex_coordinator,
+        subentries={"sub_dynamic": subentry},
+        sub_runtime={"sub_dynamic": _make_sub_data(is_dynamic=True)},
+    )
+
     added: list = []
-    await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
+
+    def _add(entities, *_args: object, **_kwargs: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
 
     assert len(added) == 2
     assert any(isinstance(e, EngieBeAuthSensor) for e in added)
     assert any(isinstance(e, EngieBeEpexNegativeSensor) for e in added)
 
 
-@pytest.mark.asyncio
-async def test_setup_entry_omits_negative_sensor_when_data_missing() -> None:
+async def test_setup_entry_skips_subentry_when_runtime_missing() -> None:
     """
-    Pre-first-poll (``coordinator.data is None``) -> no EPEX entity.
+    A subentry without runtime data is skipped (not crashed on).
 
-    The contract type isn't known yet, so adding the entity would
-    require it to defensively gate itself forever.  The sensor platform
-    early-returns in this case anyway, so binary_sensor follows suit.
+    The auth sensor still gets created from the EPEX coordinator
+    fallback, since it does not depend on subentry runtime data.
     """
-    coordinator = _make_coordinator(None)
-    entry = _make_entry(coordinator)
+    epex_coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry(subentry_id="sub_orphan")
+    entry = _make_entry(
+        epex_coordinator,
+        subentries={"sub_orphan": subentry},
+        sub_runtime={},  # no runtime data -> warn-and-skip
+    )
+
     added: list = []
-    await async_setup_entry(MagicMock(), entry, lambda entities: added.extend(entities))
+
+    def _add(entities, *_args: object, **_kwargs: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
 
     assert len(added) == 1
     assert isinstance(added[0], EngieBeAuthSensor)
+
+
+async def test_setup_entry_only_adds_negative_sensor_for_dynamic_subentries() -> None:
+    """
+    Mixed install: one dynamic + one fixed -> exactly one EPEX entity.
+
+    Pins the per-subentry granularity: a single login can mix tariff
+    types across customer accounts.
+    """
+    epex_coordinator = _make_epex_coordinator(None)
+    sub_dyn = _make_subentry(subentry_id="sub_dyn", title="Dynamic")
+    sub_fix = _make_subentry(subentry_id="sub_fix", title="Fixed")
+    entry = _make_entry(
+        epex_coordinator,
+        subentries={"sub_dyn": sub_dyn, "sub_fix": sub_fix},
+        sub_runtime={
+            "sub_dyn": _make_sub_data(is_dynamic=True),
+            "sub_fix": _make_sub_data(is_dynamic=False),
+        },
+    )
+
+    added: list = []
+
+    def _add(entities, *_args: object, **_kwargs: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    epex_entities = [e for e in added if isinstance(e, EngieBeEpexNegativeSensor)]
+    assert len(epex_entities) == 1
+    # And the one created sensor is bound to the dynamic subentry.
+    assert epex_entities[0].unique_id == "test_entry_id_sub_dyn_epex_negative"

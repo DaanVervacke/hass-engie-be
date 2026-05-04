@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -20,18 +21,23 @@ from custom_components.engie_be.api import (
 )
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
+    CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
+    CONF_CONSUMPTION_ADDRESS,
     CONF_CUSTOMER_NUMBER,
+    CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
+    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
 )
 from custom_components.engie_be.coordinator import EngieBeDataUpdateCoordinator
 from custom_components.engie_be.data import EngieBeData
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "prices_sample.json"
@@ -42,32 +48,55 @@ def _build_entry(
     hass: HomeAssistant,
     *,
     options: dict[str, object] | None = None,
+    customer_number: str = "000000000000",
 ) -> MockConfigEntry:
-    """Build a MockConfigEntry with credentials and an empty runtime placeholder."""
+    """Build a v3 MockConfigEntry with one customer-account subentry."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=2,
+        version=3,
         title="user@example.com",
         unique_id="user_example_com",
         data={
             CONF_USERNAME: "user@example.com",
             CONF_PASSWORD: "hunter2",
-            CONF_CUSTOMER_NUMBER: "000000000000",
             CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
             CONF_ACCESS_TOKEN: "stored-access",
             CONF_REFRESH_TOKEN: "stored-refresh",
         },
         options=options if options is not None else {"update_interval": 60},
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                title="placeholder",
+                unique_id=customer_number,
+                data={
+                    CONF_CUSTOMER_NUMBER: customer_number,
+                    # Provide all relations-backfillable keys so the
+                    # coordinator's one-shot backfill stays disabled and
+                    # we don't need to mock the relations endpoint.
+                    CONF_BUSINESS_AGREEMENT_NUMBER: "B-0001",
+                    CONF_PREMISES_NUMBER: "P-0001",
+                    CONF_CONSUMPTION_ADDRESS: "Test 1, 1000 Brussels",
+                },
+            ),
+        ],
     )
     entry.add_to_hass(hass)
     return entry
+
+
+def _only_subentry(entry: MockConfigEntry) -> ConfigSubentry:
+    """Return the single customer-account subentry on the test entry."""
+    return next(iter(entry.subentries.values()))
 
 
 def _attach_runtime(entry: MockConfigEntry, client: MagicMock) -> None:
     """Attach an EngieBeData runtime stub with the given mocked client."""
     entry.runtime_data = EngieBeData(
         client=client,
-        coordinator=MagicMock(),  # placeholder; coordinator under test is built below
+        epex_coordinator=MagicMock(),
+        subentry_data={},
+        authenticated=True,
         last_options=dict(entry.options),
     )
 
@@ -85,7 +114,11 @@ async def test_async_update_data_returns_payload_on_success(
     client.async_get_monthly_peaks = AsyncMock(return_value=peaks_payload)
     _attach_runtime(entry, client)
 
-    coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
+    coordinator = EngieBeDataUpdateCoordinator(
+        hass=hass,
+        config_entry=entry,
+        subentry=_only_subentry(entry),
+    )
     result = await coordinator._async_update_data()
 
     # The prices payload is returned with the peaks wrapper merged under "peaks".
@@ -108,7 +141,11 @@ async def test_async_update_data_raises_config_entry_auth_failed_on_auth_error(
     client.async_get_prices = AsyncMock(side_effect=original)
     _attach_runtime(entry, client)
 
-    coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
+    coordinator = EngieBeDataUpdateCoordinator(
+        hass=hass,
+        config_entry=entry,
+        subentry=_only_subentry(entry),
+    )
 
     with pytest.raises(ConfigEntryAuthFailed) as exc_info:
         await coordinator._async_update_data()
@@ -128,7 +165,11 @@ async def test_async_update_data_raises_update_failed_on_generic_error(
     client.async_get_prices = AsyncMock(side_effect=original)
     _attach_runtime(entry, client)
 
-    coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
+    coordinator = EngieBeDataUpdateCoordinator(
+        hass=hass,
+        config_entry=entry,
+        subentry=_only_subentry(entry),
+    )
 
     with pytest.raises(UpdateFailed) as exc_info:
         await coordinator._async_update_data()
@@ -160,7 +201,11 @@ def test_coordinator_uses_options_update_interval(
     entry = _build_entry(hass, options=options)
     _attach_runtime(entry, MagicMock())
 
-    coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
+    coordinator = EngieBeDataUpdateCoordinator(
+        hass=hass,
+        config_entry=entry,
+        subentry=_only_subentry(entry),
+    )
 
     assert coordinator.update_interval == timedelta(minutes=expected_minutes)
 
@@ -172,7 +217,11 @@ def test_coordinator_uses_default_when_unrelated_option_set(
     entry = _build_entry(hass, options={"some_other_option": "value"})
     _attach_runtime(entry, MagicMock())
 
-    coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
+    coordinator = EngieBeDataUpdateCoordinator(
+        hass=hass,
+        config_entry=entry,
+        subentry=_only_subentry(entry),
+    )
 
     assert coordinator.update_interval == timedelta(
         minutes=DEFAULT_UPDATE_INTERVAL_MINUTES,
@@ -184,7 +233,11 @@ def test_coordinator_uses_constant_for_default(hass: HomeAssistant) -> None:
     entry = _build_entry(hass, options={})
     _attach_runtime(entry, MagicMock())
 
-    coordinator = EngieBeDataUpdateCoordinator(hass=hass, config_entry=entry)
+    coordinator = EngieBeDataUpdateCoordinator(
+        hass=hass,
+        config_entry=entry,
+        subentry=_only_subentry(entry),
+    )
 
     # If someone bumps the constant, the coordinator must follow.
     assert (
