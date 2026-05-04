@@ -146,6 +146,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   relations fetch fails the rewrite simply retries on the next setup,
   and subentries that already carry their CAN are skipped without any
   network call.
+- Coordinator now calls the prices and monthly-peaks endpoints with
+  the 12-digit `businessAgreementNumber` instead of the shorter
+  `customerAccountNumber`. The previous behaviour broke after the
+  legacy-unique_id migration rewrote `customer_number` to the
+  canonical CAN, causing setup to retry with `Cannot connect to the
+  ENGIE Belgium API` (the prices endpoint responds HTTP 400
+  `size must be between 12 and 12` and the peaks endpoint HTTP 500
+  when called with a CAN). Legacy v2-migrated subentries that have
+  not yet been backfilled with the dedicated `business_agreement_number`
+  field fall back to the CAN-shaped `customer_number` value, which
+  for those entries still holds the BAN until the relations backfill
+  populates the dedicated field on the first refresh.
 
 ### Migration
 - Existing single-account config entries (schema v1 and v2) are

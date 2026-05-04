@@ -26,6 +26,7 @@ from .api import (
     EpexNotPublishedError,
 )
 from .const import (
+    CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CUSTOMER_NUMBER,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
@@ -83,6 +84,20 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.subentry = subentry
         self.customer_number: str = subentry.data[CONF_CUSTOMER_NUMBER]
+        # The data endpoints (prices, monthly peaks) key off the 12-digit
+        # ``businessAgreementNumber`` (BAN), not the shorter
+        # ``customerAccountNumber`` (CAN) we use as the canonical
+        # subentry identity. New subentries always carry the BAN
+        # alongside the CAN; legacy v2-migrated subentries created
+        # before the BAN was tracked separately stored the BAN under
+        # ``customer_number``, so fall back to that when the dedicated
+        # field is missing. ``__init__.py`` migrates and backfills
+        # legacy subentries on setup so this fallback is only hit on
+        # the very first refresh after a multi-account upgrade.
+        self.business_agreement_number: str = (
+            subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+            or self.customer_number
+        )
         self.last_successful_fetch: datetime | None = None
         # One-shot backfill: when the subentry was created (or migrated)
         # without all relations-derived display fields, we attempt to
@@ -103,10 +118,10 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch energy prices and capacity-tariff peaks for this account."""
         client = self.config_entry.runtime_data.client
-        customer_number = self.customer_number
+        business_agreement_number = self.business_agreement_number
 
         try:
-            data = await client.async_get_prices(customer_number)
+            data = await client.async_get_prices(business_agreement_number)
         except EngieBeApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN,
@@ -152,7 +167,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         peaks_wrapper = await self._async_fetch_peaks_with_fallback(
             client,
-            customer_number,
+            business_agreement_number,
             today.year,
             today.month,
             previous_peaks_wrapper,
@@ -295,7 +310,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_fetch_peaks_with_fallback(
         self,
         client: EngieBeApiClient,
-        customer_number: str,
+        business_agreement_number: str,
         year: int,
         month: int,
         previous_wrapper: dict[str, Any] | None,
@@ -309,7 +324,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         try:
             current = await client.async_get_monthly_peaks(
-                customer_number,
+                business_agreement_number,
                 year,
                 month,
             )
@@ -339,7 +354,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
         try:
             previous = await client.async_get_monthly_peaks(
-                customer_number,
+                business_agreement_number,
                 prev_year,
                 prev_month,
             )

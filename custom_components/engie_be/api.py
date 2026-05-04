@@ -263,15 +263,22 @@ class EngieBeApiClient:
     # Data retrieval
     # ------------------------------------------------------------------
 
-    async def async_get_prices(self, customer_number: str) -> Any:
+    async def async_get_prices(self, business_agreement_number: str) -> Any:
         """
-        Fetch energy prices for a customer.
+        Fetch energy prices for a business agreement.
+
+        ``business_agreement_number`` is the 12-digit BAN (the
+        ``businessAgreementNumber`` field returned by the customer-account
+        relations endpoint, distinct from the shorter
+        ``customerAccountNumber`` / CAN). The endpoint validates this
+        path segment as exactly 12 characters and returns HTTP 400 for
+        any other identifier.
 
         Returns the parsed JSON response.
         """
         url = (
             f"{API_BASE_URL}/business-agreements/"
-            f"{customer_number.replace(' ', '')}/supplier-energy-prices"
+            f"{business_agreement_number.replace(' ', '')}/supplier-energy-prices"
         )
         headers = {
             "User-Agent": USER_AGENT_BROWSER,
@@ -346,19 +353,25 @@ class EngieBeApiClient:
 
     async def async_get_monthly_peaks(
         self,
-        customer_number: str,
+        business_agreement_number: str,
         year: int,
         month: int,
     ) -> dict[str, Any]:
         """
         Fetch capacity-tariff (captar) peaks for a given month.
 
+        ``business_agreement_number`` is the 12-digit BAN. Despite the
+        URL path naming it ``contract-accounts``, the endpoint expects
+        a businessAgreementNumber (the same identifier accepted by
+        :meth:`async_get_prices`); passing a ``customerAccountNumber``
+        / CAN here returns HTTP 500.
+
         Returns the parsed JSON response which contains the monthly peak
         and an array of daily peaks for the requested month.
         """
         url = (
             f"{PEAKS_BASE_URL}/private/customers/me/contract-accounts/"
-            f"{customer_number.replace(' ', '')}/energy-insights/peaks"
+            f"{business_agreement_number.replace(' ', '')}/energy-insights/peaks"
         )
         headers = {
             "User-Agent": USER_AGENT_NATIVE,

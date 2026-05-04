@@ -133,7 +133,7 @@ async def test_update_merges_peaks_into_payload(hass: HomeAssistant) -> None:
     assert "items" in result
     client.async_get_monthly_peaks.assert_awaited_once()
     args = client.async_get_monthly_peaks.await_args.args
-    assert args[0] == "000000000000"
+    assert args[0] == "B-0001"
 
 
 async def test_update_keeps_last_known_peaks_on_peaks_failure(
@@ -242,8 +242,8 @@ async def test_falls_back_to_previous_month_when_current_has_no_peak(
     assert client.async_get_monthly_peaks.await_count == 2
     first_call = client.async_get_monthly_peaks.await_args_list[0].args
     second_call = client.async_get_monthly_peaks.await_args_list[1].args
-    assert first_call == ("000000000000", 2026, 5)
-    assert second_call == ("000000000000", 2026, 4)
+    assert first_call == ("B-0001", 2026, 5)
+    assert second_call == ("B-0001", 2026, 4)
 
 
 async def test_january_falls_back_to_previous_december(
@@ -275,7 +275,7 @@ async def test_january_falls_back_to_previous_december(
     assert wrapper["month"] == 12
     assert wrapper["is_fallback"] is True
     second_call = client.async_get_monthly_peaks.await_args_list[1].args
-    assert second_call == ("000000000000", 2025, 12)
+    assert second_call == ("B-0001", 2025, 12)
 
 
 async def test_fallback_failure_keeps_empty_current_wrapper(

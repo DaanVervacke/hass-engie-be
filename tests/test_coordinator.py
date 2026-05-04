@@ -126,7 +126,7 @@ async def test_async_update_data_returns_payload_on_success(
     assert result["peaks"]["data"] == peaks_payload
     assert result["peaks"]["is_fallback"] is False
     assert coordinator.last_successful_fetch is not None
-    client.async_get_prices.assert_awaited_once_with("000000000000")
+    client.async_get_prices.assert_awaited_once_with("B-0001")
     client.async_get_monthly_peaks.assert_awaited_once()
 
 
