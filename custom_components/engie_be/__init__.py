@@ -779,6 +779,11 @@ async def async_setup_entry(
         client=client,
         epex_coordinator=epex_coordinator,
         last_options=dict(entry.options),
+        last_subentry_ids={
+            sub.subentry_id
+            for sub in entry.subentries.values()
+            if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+        },
     )
 
     # Initial token refresh so per-subentry coordinators have a valid
@@ -877,8 +882,21 @@ async def async_reload_entry(
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,
 ) -> None:
-    """Reload config entry only when options change (not on token rotation)."""
-    if dict(entry.options) != entry.runtime_data.last_options:
+    """
+    Reload on options change or customer-account subentry add/remove.
+
+    Token rotation also fires this listener (it writes to ``entry.data``)
+    but neither options nor the customer-account subentry id set change
+    on token rotation, so the no-op short-circuit holds.
+    """
+    options_changed = dict(entry.options) != entry.runtime_data.last_options
+    current_subentry_ids = {
+        sub.subentry_id
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    }
+    subentries_changed = current_subentry_ids != entry.runtime_data.last_subentry_ids
+    if options_changed or subentries_changed:
         await hass.config_entries.async_reload(entry.entry_id)
 
 

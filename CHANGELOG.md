@@ -72,6 +72,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   correlate which subentry a log line refers to.
 
 ### Fixed
+- Adding or removing a customer-account subentry after initial setup
+  no longer leaves the parent entry in a half-wired state. Home
+  Assistant fires update listeners on subentry changes but does not
+  schedule a reload, so the integration's reload guard previously
+  short-circuited (options unchanged) and the new subentry never got a
+  coordinator, device, or entities. The guard now also tracks the set
+  of customer-account subentry ids observed at setup time, so any
+  add/remove triggers a clean reload while token rotations (which only
+  touch `entry.data`) still skip reload as before.
 - `translations/en.json` had drifted out of sync with `strings.json`
   over several feature batches: the entire
   `config_subentries.customer_account` block was missing (so the

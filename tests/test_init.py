@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.config_entries import ConfigSubentryData
+from homeassistant.config_entries import ConfigSubentry, ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -402,6 +403,11 @@ async def test_token_only_data_update_does_not_trigger_reload(
         client=MagicMock(),
         epex_coordinator=sentinel_epex_coordinator,
         last_options=dict(entry.options),
+        last_subentry_ids={
+            sub.subentry_id
+            for sub in entry.subentries.values()
+            if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+        },
     )
 
     with patch.object(
@@ -427,6 +433,11 @@ async def test_options_change_after_setup_uses_async_reload(
         client=MagicMock(),
         epex_coordinator=MagicMock(),
         last_options={CONF_UPDATE_INTERVAL: 60},
+        last_subentry_ids={
+            sub.subentry_id
+            for sub in entry.subentries.values()
+            if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+        },
     )
     # Mutate options to simulate the options flow saving a new value before
     # the listener fires.
@@ -443,6 +454,142 @@ async def test_options_change_after_setup_uses_async_reload(
         await async_reload_entry(hass, entry)
 
     mock_reload.assert_awaited_once_with(entry.entry_id)
+
+
+async def test_subentry_added_after_setup_triggers_reload(
+    hass: HomeAssistant,
+) -> None:
+    """A new customer-account subentry must trigger a reload."""
+    entry = _build_entry(hass)
+    # Snapshot of subentries observed at setup time: only the seeded one.
+    initial_ids = {sub.subentry_id for sub in entry.subentries.values()}
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        epex_coordinator=MagicMock(),
+        last_options=dict(entry.options),
+        last_subentry_ids=initial_ids,
+    )
+
+    # Simulate the user picking a second account: framework calls
+    # async_add_subentry, which mutates entry.subentries and fires our
+    # update listener.
+    new_subentry = ConfigSubentry(
+        data=MappingProxyType(
+            {
+                CONF_CUSTOMER_NUMBER: "111111111111",
+                CONF_BUSINESS_AGREEMENT_NUMBER: "B-0002",
+            },
+        ),
+        subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+        title="Second Account",
+        unique_id="111111111111",
+    )
+    hass.config_entries.async_add_subentry(entry, new_subentry)
+
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(return_value=True),
+    ) as mock_reload:
+        await async_reload_entry(hass, entry)
+
+    mock_reload.assert_awaited_once_with(entry.entry_id)
+
+
+async def test_subentry_removed_after_setup_triggers_reload(
+    hass: HomeAssistant,
+) -> None:
+    """Removing a customer-account subentry must trigger a reload."""
+    entry = _build_entry(hass)
+    initial_ids = {sub.subentry_id for sub in entry.subentries.values()}
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        epex_coordinator=MagicMock(),
+        last_options=dict(entry.options),
+        last_subentry_ids=initial_ids,
+    )
+
+    # Pop the only seeded subentry and trigger the listener.
+    (subentry_id,) = initial_ids
+    hass.config_entries.async_remove_subentry(entry, subentry_id)
+
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(return_value=True),
+    ) as mock_reload:
+        await async_reload_entry(hass, entry)
+
+    mock_reload.assert_awaited_once_with(entry.entry_id)
+
+
+async def test_token_rotation_does_not_reload_when_subentries_unchanged(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Token rotation fires the listener but must not reload the entry.
+
+    Tokens are written via ``async_update_entry(data=...)`` which fires
+    every update listener, but neither options nor the customer-account
+    subentry id set changes, so the no-op short-circuit must hold.
+    """
+    entry = _build_entry(hass)
+    initial_ids = {sub.subentry_id for sub in entry.subentries.values()}
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        epex_coordinator=MagicMock(),
+        last_options=dict(entry.options),
+        last_subentry_ids=initial_ids,
+    )
+
+    # Simulate a token rotation: only entry.data changes.
+    _persist_tokens(hass, entry, "rotated-access", "rotated-refresh")
+
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(return_value=True),
+    ) as mock_reload:
+        await async_reload_entry(hass, entry)
+
+    mock_reload.assert_not_awaited()
+
+
+async def test_unrelated_subentry_type_does_not_trigger_reload(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Adding a non-customer-account subentry must not trigger a reload.
+
+    The reload guard only watches customer-account subentries; future
+    subentry types (or stray subentries from other migrations) must not
+    cause a tear-down/rebuild of the integration.
+    """
+    entry = _build_entry(hass)
+    initial_ids = {sub.subentry_id for sub in entry.subentries.values()}
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        epex_coordinator=MagicMock(),
+        last_options=dict(entry.options),
+        last_subentry_ids=initial_ids,
+    )
+
+    other_subentry = ConfigSubentry(
+        data=MappingProxyType({}),
+        subentry_type="some_future_type",
+        title="Unrelated",
+        unique_id="unrelated-1",
+    )
+    hass.config_entries.async_add_subentry(entry, other_subentry)
+
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(return_value=True),
+    ) as mock_reload:
+        await async_reload_entry(hass, entry)
+
+    mock_reload.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

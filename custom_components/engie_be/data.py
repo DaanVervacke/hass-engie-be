@@ -84,3 +84,4 @@ class EngieBeData:
     subentry_data: dict[str, EngieBeSubentryData] = field(default_factory=dict)
     authenticated: bool = field(default=False)
     last_options: dict[str, Any] = field(default_factory=dict)
+    last_subentry_ids: set[str] = field(default_factory=set)
