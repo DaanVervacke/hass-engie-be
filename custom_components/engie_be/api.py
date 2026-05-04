@@ -10,6 +10,7 @@ import socket
 import uuid
 from base64 import urlsafe_b64encode
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any, NoReturn
 
@@ -18,6 +19,7 @@ import aiohttp
 from .const import (
     API_BASE_URL,
     AUTH_BASE_URL,
+    EPEX_BASE_URL,
     LOGGER,
     MFA_METHOD_SMS,
     OAUTH_AUDIENCE,
@@ -48,6 +50,17 @@ class EngieBeApiClientAuthenticationError(EngieBeApiClientError):
 
 class EngieBeApiClientMfaError(EngieBeApiClientError):
     """Exception for MFA-related errors (invalid code)."""
+
+
+class EpexNotPublishedError(EngieBeApiClientError):
+    """
+    The EPEX endpoint returned 404 for the requested window.
+
+    ENGIE returns 404 (with body ``{"detail":"No prices found ..."}``)
+    when day-ahead prices for the requested window have not yet been
+    published.  Callers should treat this as a soft state (retry later)
+    rather than an error worth surfacing to the user.
+    """
 
 
 def _raise_auth_error(status: int) -> NoReturn:
@@ -192,7 +205,7 @@ class EngieBeApiClient:
                 flow_state, mfa_code, mfa_method=mfa_method
             )
         except EngieBeApiClientMfaError:
-            # Keep session open — user can retry with a new code
+            # Keep session open - user can retry with a new code
             raise
         except BaseException:
             await flow_state.session.close()
@@ -324,6 +337,86 @@ class EngieBeApiClient:
             params={"year": str(year), "month": str(month)},
             json_response=True,
         )
+
+    async def async_get_epex_prices(
+        self,
+        from_dt: datetime,
+        to_dt: datetime,
+    ) -> dict[str, Any]:
+        """
+        Fetch EPEX day-ahead market prices for the given UTC window.
+
+        ``from_dt``/``to_dt`` must be timezone-aware datetimes; they are
+        normalised to UTC and rendered as ISO-8601 with millisecond
+        precision and a literal ``Z`` suffix (the format the endpoint
+        accepts; e.g. ``2026-05-04T00:00:00.000Z``).
+
+        The endpoint is public, so no bearer is attached and a 401/403
+        from this call must NOT trigger reauth of the user's session.
+        Authentication-style status codes are coerced into a generic
+        communication error instead.
+
+        On HTTP 404 (``{"detail":"No prices found ..."}``) this raises
+        :class:`EpexNotPublishedError` so callers can treat it as a soft
+        "not yet published" state rather than a real failure.
+        """
+
+        def _iso_ms_z(value: datetime) -> str:
+            """Render a datetime as ISO-8601 UTC with ms precision + ``Z``."""
+            utc_value = value.astimezone(UTC)
+            # ``isoformat(timespec="milliseconds")`` keeps ms precision; we
+            # then strip the ``+00:00`` offset and append ``Z`` to match the
+            # exact shape the EPEX endpoint expects.
+            iso = utc_value.isoformat(timespec="milliseconds").removesuffix("+00:00")
+            return f"{iso}Z"
+
+        params = {"from": _iso_ms_z(from_dt), "to": _iso_ms_z(to_dt)}
+        headers = {
+            "User-Agent": USER_AGENT_BROWSER,
+            "Accept": "application/json, application/problem+json",
+        }
+
+        # Use raise_on_error=False so 404 doesn't go through
+        # raise_for_status (which would raise a generic ClientError) and
+        # so 401/403 don't trip the auth-error branch.  We need raw
+        # status visibility to distinguish 404 from real failures, so
+        # call session.request directly here -- mirroring _api_wrapper's
+        # error mapping but without its 401/403 handling.
+        try:
+            async with asyncio.timeout(30):
+                response = await self._session.request(
+                    method="GET",
+                    url=EPEX_BASE_URL,
+                    headers=headers,
+                    params=params,
+                    allow_redirects=False,
+                )
+                status = response.status
+                if status == HTTPStatus.NOT_FOUND:
+                    msg = (
+                        "EPEX prices not yet published for "
+                        f"{params['from']}..{params['to']}"
+                    )
+                    raise EpexNotPublishedError(msg)
+                if status >= HTTPStatus.BAD_REQUEST:
+                    body_preview = (await response.text())[:200]
+                    msg = f"EPEX endpoint returned HTTP {status}: {body_preview}"
+                    raise EngieBeApiClientCommunicationError(msg)
+                return await response.json()
+        except EngieBeApiClientError:
+            raise
+        except TimeoutError as exception:
+            msg = (
+                "Timeout communicating with EPEX endpoint "
+                f"({exception.__class__.__name__})"
+            )
+            raise EngieBeApiClientCommunicationError(msg) from exception
+        except (aiohttp.ClientError, socket.gaierror) as exception:
+            msg = (
+                f"Error communicating with EPEX endpoint "
+                f"({exception.__class__.__name__})"
+            )
+            raise EngieBeApiClientCommunicationError(msg) from exception
 
     # ------------------------------------------------------------------
     # Internal: auth flow step implementations
@@ -556,7 +649,7 @@ class EngieBeApiClient:
         )
         LOGGER.debug("Auth step 11 complete: passkey enrollment aborted")
 
-        # Step 12: GET /authorize/resume (final — extract auth code)
+        # Step 12: GET /authorize/resume (final - extract auth code)
         # Uses loginState (not passKeyState), exactly as in the API
         # auth flow.  The response body contains the authorization code,
         # but some responses return it only in the Location header.

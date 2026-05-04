@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -12,9 +13,11 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfEnergy, UnitOfPower
+from homeassistant.util import dt as dt_util
 
 from ._peaks import peaks_meta, peaks_payload
-from .const import LOGGER
+from .const import EPEX_TZ, KEY_EPEX, KEY_IS_DYNAMIC, LOGGER
+from .data import EpexPayload
 from .entity import EngieBeEntity
 
 # Coordinator centralises updates; entities never poll individually.
@@ -61,7 +64,7 @@ _SLOT_CODE_MAP: dict[str, tuple[str, str] | None] = {
     "PEAK": ("_peak", "_peak"),
     "OFFPEAK": ("_offpeak", "_offpeak"),
     "SUPEROFFPEAK": ("_superoffpeak", "_superoffpeak"),
-    "EN": None,  # blended/total rate — skipped
+    "EN": None,  # blended/total rate - skipped
 }
 
 # Direction keywords used to split prefixed slot codes.
@@ -206,6 +209,7 @@ async def async_setup_entry(
         for desc, ean, value_key, slot_code in sensor_defs
     ]
     entities.extend(_build_peak_sensors(coordinator))
+    entities.extend(_build_epex_sensors(coordinator))
     async_add_entities(entities)
 
 
@@ -438,3 +442,211 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
                 return float(value)
 
         return None
+
+
+# ---------------------------------------------------------------------------
+# EPEX day-ahead price sensors (dynamic / EPEX-indexed contracts only)
+# ---------------------------------------------------------------------------
+
+# EPEX wholesale prices are identical across every Belgian electricity EAN
+# on a given dynamic contract, so we expose ONE shared set of sensors per
+# config entry rather than duplicating per EAN. They are added at setup
+# unconditionally and report ``None`` when ``coordinator.data["is_dynamic"]``
+# is ``False`` -- this keeps the entity wiring stable across contract changes
+# (no add/remove churn, no reload required).
+#
+# Unit follows the existing convention in this integration: the string
+# ``"EUR/kWh"`` rather than ``SensorDeviceClass.MONETARY``+``"EUR"``,
+# because Home Assistant's MONETARY device class requires a bare ISO
+# 4217 currency code as the unit and would reject the per-kWh form.
+# Precision is 4 (vs. 6 for retail prices) because wholesale fluctuates
+# at the cent level and extra digits are noise.
+
+_EPEX_UNIT = "EUR/kWh"
+_EPEX_PRECISION = 4
+_BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
+
+_EPEX_CURRENT = SensorEntityDescription(
+    key="epex_current",
+    translation_key="epex_current",
+    icon="mdi:cash-clock",
+    native_unit_of_measurement=_EPEX_UNIT,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=_EPEX_PRECISION,
+)
+_EPEX_LOW_TODAY = SensorEntityDescription(
+    key="epex_low_today",
+    translation_key="epex_low_today",
+    icon="mdi:cash-minus",
+    native_unit_of_measurement=_EPEX_UNIT,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=_EPEX_PRECISION,
+)
+_EPEX_HIGH_TODAY = SensorEntityDescription(
+    key="epex_high_today",
+    translation_key="epex_high_today",
+    icon="mdi:cash-plus",
+    native_unit_of_measurement=_EPEX_UNIT,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=_EPEX_PRECISION,
+)
+
+
+def _build_epex_sensors(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> list[SensorEntity]:
+    """Build the three shared EPEX day-ahead sensors for the entry."""
+    return [
+        EngieBeEpexCurrentSensor(coordinator, _EPEX_CURRENT),
+        EngieBeEpexExtremaSensor(coordinator, _EPEX_LOW_TODAY, mode="min"),
+        EngieBeEpexExtremaSensor(coordinator, _EPEX_HIGH_TODAY, mode="max"),
+    ]
+
+
+def _epex_payload(coordinator: EngieBeDataUpdateCoordinator) -> EpexPayload | None:
+    """Return the cached EPEX payload, or ``None`` if not on a dynamic tariff."""
+    data = coordinator.data
+    if not isinstance(data, dict):
+        return None
+    if not data.get(KEY_IS_DYNAMIC):
+        return None
+    payload = data.get(KEY_EPEX)
+    return payload if isinstance(payload, EpexPayload) else None
+
+
+def _slots_for_date(payload: EpexPayload, target: date) -> list[Any]:
+    """Return slots whose Brussels-local start date matches ``target``."""
+    return [slot for slot in payload.slots if slot.start.date() == target]
+
+
+class _EngieBeEpexSensorBase(EngieBeEntity, SensorEntity):
+    """Common base for EPEX day-ahead sensors."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        entity_description: SensorEntityDescription,
+    ) -> None:
+        """Bind the coordinator and entity description."""
+        super().__init__(coordinator)
+        self.entity_description = entity_description
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}_{entity_description.key}"
+        )
+
+    @property
+    def available(self) -> bool:
+        """Available only on dynamic accounts with a parsed payload."""
+        return super().available and _epex_payload(self.coordinator) is not None
+
+
+class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
+    """Current EPEX day-ahead price for the slot covering ``now``."""
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the EUR/kWh price of the slot covering the current instant."""
+        payload = _epex_payload(self.coordinator)
+        if payload is None:
+            return None
+        now = dt_util.utcnow()
+        for slot in payload.slots:
+            if slot.start <= now < slot.end:
+                return slot.value_eur_per_kwh
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """
+        Expose the today/tomorrow slot arrays plus publication metadata.
+
+        Hour arrays are emitted as ``{start, end, value}`` dicts using
+        Brussels-local ISO 8601 timestamps so dashboard cards
+        (ApexCharts, etc.) can plot them without timezone gymnastics.
+        Raw EUR/MWh is included alongside EUR/kWh for users who prefer
+        wholesale-market units.
+        """
+        payload = _epex_payload(self.coordinator)
+        if payload is None:
+            return {}
+
+        today_brussels = dt_util.now(_BRUSSELS_TZ).date()
+        tomorrow_brussels = today_brussels + timedelta(days=1)
+
+        attrs: dict[str, Any] = {
+            "today": [
+                _serialize_slot(s) for s in _slots_for_date(payload, today_brussels)
+            ],
+            "tomorrow": [
+                _serialize_slot(s) for s in _slots_for_date(payload, tomorrow_brussels)
+            ],
+            "slot_duration_minutes": (
+                payload.slots[0].duration_minutes if payload.slots else None
+            ),
+        }
+        if payload.publication_time is not None:
+            attrs["publication_time"] = payload.publication_time.isoformat()
+        if payload.market_date is not None:
+            attrs["market_date"] = payload.market_date
+        if self.coordinator.last_successful_fetch:
+            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
+        return attrs
+
+
+class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
+    """Lowest or highest EPEX day-ahead price for the current Brussels day."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        entity_description: SensorEntityDescription,
+        mode: str,
+    ) -> None:
+        """``mode`` selects ``min`` or ``max`` reduction over today's slots."""
+        super().__init__(coordinator, entity_description)
+        if mode not in ("min", "max"):
+            msg = f"mode must be 'min' or 'max', got {mode!r}"
+            raise ValueError(msg)
+        self._mode = mode
+
+    def _selected_slot(self) -> Any | None:
+        payload = _epex_payload(self.coordinator)
+        if payload is None:
+            return None
+        today = dt_util.now(_BRUSSELS_TZ).date()
+        slots = _slots_for_date(payload, today)
+        if not slots:
+            return None
+        reducer = min if self._mode == "min" else max
+        return reducer(slots, key=lambda s: s.value_eur_per_kwh)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the EUR/kWh value of the chosen slot, if any."""
+        slot = self._selected_slot()
+        return slot.value_eur_per_kwh if slot is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the start/end of the slot that produced this extremum."""
+        slot = self._selected_slot()
+        if slot is None:
+            return {}
+        attrs = {
+            "slot_start": slot.start.isoformat(),
+            "slot_end": slot.end.isoformat(),
+            "slot_duration_minutes": slot.duration_minutes,
+        }
+        if self.coordinator.last_successful_fetch:
+            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
+        return attrs
+
+
+def _serialize_slot(slot: Any) -> dict[str, Any]:
+    """Serialise an :class:`EpexSlot` for use in entity attributes."""
+    return {
+        "start": slot.start.isoformat(),
+        "end": slot.end.isoformat(),
+        "value": slot.value_eur_per_kwh,
+        "value_eur_per_mwh": slot.value_eur_per_kwh * 1000.0,
+    }

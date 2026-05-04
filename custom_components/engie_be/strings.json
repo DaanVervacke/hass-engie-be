@@ -207,11 +207,23 @@
             },
             "captar_monthly_peak_end": {
                 "name": "Captar monthly peak end"
+            },
+            "epex_current": {
+                "name": "EPEX current price"
+            },
+            "epex_low_today": {
+                "name": "EPEX lowest price today"
+            },
+            "epex_high_today": {
+                "name": "EPEX highest price today"
             }
         },
         "binary_sensor": {
             "authentication": {
                 "name": "Authentication"
+            },
+            "epex_negative": {
+                "name": "EPEX price is negative"
             }
         }
     }
