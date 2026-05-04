@@ -14,6 +14,8 @@ from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
 
+    from .data import EngieBeConfigEntry
+
 
 class _EngieBeBaseEntity(CoordinatorEntity):  # type: ignore[type-arg]
     """Common attributes for every ENGIE Belgium entity."""
@@ -100,11 +102,12 @@ class EngieBeAuthEntity(
 
     def __init__(
         self,
-        coordinator: EngieBeDataUpdateCoordinator,
+        coordinator: EngieBeDataUpdateCoordinator | EngieBeEpexCoordinator,
+        entry: EngieBeConfigEntry,
     ) -> None:
         """Initialise the per-entry login entity."""
         super().__init__(coordinator)
-        entry = coordinator.config_entry
+        self._entry = entry
         username = entry.data.get(CONF_USERNAME, "")
         device_name = (
             f"ENGIE Belgium login ({username})"
