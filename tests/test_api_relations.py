@@ -16,7 +16,7 @@ from custom_components.engie_be.api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientCommunicationError,
 )
-from custom_components.engie_be.const import ACCOUNTS_BASE_URL
+from custom_components.engie_be.const import ACCOUNTS_BASE_URL, USER_AGENT_NATIVE
 
 _FIXTURE_PATH = (
     Path(__file__).parent / "fixtures" / "customer_account_relations_sample.json"
@@ -135,8 +135,9 @@ async def test_async_get_customer_account_relations_sends_native_user_agent() ->
     call = client._session.request.await_args
     headers: dict[str, str] = call.kwargs["headers"]
     # Match the same UA family we send for the peaks endpoint, which
-    # lives on the same host.
-    assert "ENGIE" in headers["User-Agent"]
+    # lives on the same host. This is the Dalvik/Android UA that mimics
+    # the ENGIE Smart App; the WAF rejects browser UAs on api.engie.be.
+    assert headers["User-Agent"] == USER_AGENT_NATIVE
     assert "Mozilla" not in headers["User-Agent"]
 
 

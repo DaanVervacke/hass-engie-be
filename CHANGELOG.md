@@ -76,6 +76,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   sensors" instead of "its own price sensors" since the new
   customer-account device exposes binary, peak, and EPEX sensors
   alongside the price sensors.
+- The native-User-Agent assertion in
+  `tests/test_api_relations.py::test_async_get_customer_account_relations_sends_native_user_agent`
+  was checking for the literal string `"ENGIE"` in the User-Agent
+  header, but the API client sends the Dalvik UA
+  (`Dalvik/2.1.0 (Linux; U; Android 16; ...)`) that mimics the ENGIE
+  Smart App. The assertion now compares against the
+  `USER_AGENT_NATIVE` constant directly.
 - The initial-setup flow now correctly chains into the customer-account
   picker. The previous implementation set `next_flow` on the parent
   flow result pointing at a `CONFIG_SUBENTRIES_FLOW`, which Home
