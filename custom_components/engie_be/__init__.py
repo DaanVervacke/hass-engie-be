@@ -326,8 +326,7 @@ async def _migrate_entity_unique_ids(
         "calendar",
     )
     old_to_new = {
-        f"{entry_id}_{key}": f"{entry_id}_{subentry_id}_{key}"
-        for key in keys_to_rename
+        f"{entry_id}_{key}": f"{entry_id}_{subentry_id}_{key}" for key in keys_to_rename
     }
 
     entity_reg = er.async_get(hass)
@@ -636,6 +635,113 @@ async def _async_fetch_relations_for_setup(
         return None
 
 
+async def _async_migrate_entity_id_slugs(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Rewrite existing customer-account entity_ids to carry the CAN prefix.
+
+    From v3 onwards every customer-account entity exposes a
+    ``_attr_suggested_object_id`` of the form
+    ``engie_belgium_{CAN}_{key}`` so that two customer accounts on the
+    same login do not collide on their translated friendly name and
+    end up auto-suffixed with ``_2``. ``suggested_object_id`` only
+    takes effect on first registration, so installs that already have
+    entities in the registry need a one-shot rewrite.
+
+    The rewrite is best-effort: failures are logged and the next
+    entity is processed. ``unique_id`` values are left untouched, so
+    state history is preserved across the rename. Idempotent: any
+    entity already at its target slug is skipped.
+
+    Login-scoped entities (those with ``config_subentry_id is None``,
+    e.g. the authentication binary sensor) are intentionally left
+    alone since they have no per-account context.
+    """
+    registry = er.async_get(hass)
+    entry_id = entry.entry_id
+
+    # Build a set of currently-used entity_ids per domain so collision
+    # checks are O(1) without re-scanning the registry on every loop
+    # iteration. The set is mutated as renames land.
+    used_by_domain: dict[str, set[str]] = {}
+    for reg_entry in registry.entities.values():
+        used_by_domain.setdefault(reg_entry.domain, set()).add(reg_entry.entity_id)
+
+    for reg_entry in list(er.async_entries_for_config_entry(registry, entry_id)):
+        if reg_entry.config_subentry_id is None:
+            continue
+
+        subentry = entry.subentries.get(reg_entry.config_subentry_id)
+        if subentry is None or subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+            continue
+
+        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
+        if not can:
+            continue
+
+        # Derive the descriptor key from unique_id by stripping the
+        # entry_id and (when present) the subentry_id prefixes.
+        unique_id = reg_entry.unique_id
+        prefix = f"{entry_id}_"
+        if not unique_id.startswith(prefix):
+            continue
+        suffix = unique_id[len(prefix) :]
+        sub_prefix = f"{subentry.subentry_id}_"
+        suffix = suffix.removeprefix(sub_prefix)
+
+        # Calendar entities are one-per-subentry; drop the trailing
+        # ``calendar`` token so the slug stays compact.
+        if reg_entry.domain == "calendar" and suffix == "calendar":
+            target_object_id = f"engie_belgium_{can}"
+        else:
+            target_object_id = f"engie_belgium_{can}_{suffix}"
+
+        target_entity_id = f"{reg_entry.domain}.{target_object_id}"
+        if reg_entry.entity_id == target_entity_id:
+            continue
+
+        domain_used = used_by_domain.setdefault(reg_entry.domain, set())
+        # Collision-aware: walk numeric suffixes until a free slug is
+        # found. The original entity_id is excluded because it is
+        # about to be vacated by the rename itself.
+        candidate = target_entity_id
+        index = 2
+        while candidate in domain_used and candidate != reg_entry.entity_id:
+            candidate = f"{reg_entry.domain}.{target_object_id}_{index}"
+            index += 1
+
+        if candidate != target_entity_id:
+            LOGGER.warning(
+                "Target entity_id %s already taken; using %s instead for unique_id %s",
+                target_entity_id,
+                candidate,
+                unique_id,
+            )
+
+        old_entity_id = reg_entry.entity_id
+        try:
+            registry.async_update_entity(old_entity_id, new_entity_id=candidate)
+        except Exception as err:  # noqa: BLE001 - best-effort rename
+            LOGGER.warning(
+                "Failed to rename entity_id %s to %s: %s",
+                old_entity_id,
+                candidate,
+                err,
+            )
+            continue
+
+        domain_used.discard(old_entity_id)
+        domain_used.add(candidate)
+        LOGGER.info(
+            "Renamed entity_id %s -> %s (unique_id=%s)",
+            old_entity_id,
+            candidate,
+            unique_id,
+        )
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,
@@ -652,6 +758,13 @@ async def async_setup_entry(
     # picker-dedupe set is computed elsewhere, but the picker itself
     # is BAN-aware so the order is not strictly load-bearing.
     await _async_migrate_legacy_subentry_unique_ids(hass, entry)
+
+    # One-shot rewrite of customer-account entity_ids to the
+    # CAN-prefixed slug. Must run after the unique_id migration so
+    # the CAN read here is canonical, and before the platforms are
+    # forwarded so the renamed entity_ids are in the registry by the
+    # time ``async_add_entities`` looks them up.
+    await _async_migrate_entity_id_slugs(hass, entry)
 
     client = EngieBeApiClient(
         session=async_get_clientsession(hass),
@@ -838,7 +951,5 @@ async def _async_populate_service_points(
             raise result
         division: str = result.get("division", "")
         if division:
-            entry.runtime_data.subentry_data[subentry_id].service_points[ean] = (
-                division
-            )
+            entry.runtime_data.subentry_data[subentry_id].service_points[ean] = division
             LOGGER.debug("Service-point %s: division=%s", _hash_ean(ean), division)

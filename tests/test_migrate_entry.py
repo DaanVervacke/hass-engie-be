@@ -361,9 +361,10 @@ async def test_migrate_v2_to_v3_mutates_device_identifiers_in_place(
     assert migrated_device is not None
     assert migrated_device.identifiers == {(DOMAIN, subentry.subentry_id)}
     assert migrated_device.name_by_user == "My ENGIE Hub"
-    assert subentry.subentry_id in migrated_device.config_entries_subentries[
-        entry.entry_id
-    ]
+    assert (
+        subentry.subentry_id
+        in migrated_device.config_entries_subentries[entry.entry_id]
+    )
 
 
 # ---------------------------------------------------------------------------

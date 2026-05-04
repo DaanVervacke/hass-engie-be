@@ -159,9 +159,7 @@ def _summarise_subentry(
         "present": True,
         "service_points": _summarise_service_points(sub_data.service_points or {}),
         "peaks_history": (
-            sub_data.peaks_store.summary()
-            if sub_data.peaks_store is not None
-            else None
+            sub_data.peaks_store.summary() if sub_data.peaks_store is not None else None
         ),
         "coordinator": {
             "last_update_success": coordinator.last_update_success,

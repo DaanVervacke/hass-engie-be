@@ -75,9 +75,9 @@ async def async_setup_entry(
     # but ``CoordinatorEntity`` requires a coordinator reference.  Fall
     # back to the EPEX coordinator if no customer-account subentries
     # exist yet (e.g. a future state where all accounts were removed).
-    auth_backing_coordinator: (
-        EngieBeDataUpdateCoordinator | EngieBeEpexCoordinator
-    ) = epex_coordinator
+    auth_backing_coordinator: EngieBeDataUpdateCoordinator | EngieBeEpexCoordinator = (
+        epex_coordinator
+    )
     for sub_data in entry.runtime_data.subentry_data.values():
         auth_backing_coordinator = sub_data.coordinator
         break
@@ -180,8 +180,7 @@ class EngieBeEpexNegativeSensor(EngieBeEpexEntity, BinarySensorEntity):
         # repeats across every dynamic-tariff customer account on a
         # single login.
         self._attr_unique_id = (
-            f"{coordinator.config_entry.entry_id}"
-            f"_{subentry.subentry_id}_epex_negative"
+            f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_epex_negative"
         )
 
     @property

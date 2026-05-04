@@ -16,7 +16,12 @@ from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.util import dt as dt_util
 
 from ._peaks import peaks_meta, peaks_payload
-from .const import EPEX_TZ, LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from .const import (
+    CONF_CUSTOMER_NUMBER,
+    EPEX_TZ,
+    LOGGER,
+    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+)
 from .entity import EngieBeEntity, EngieBeEpexEntity
 
 # Coordinator centralises updates; entities never poll individually.
@@ -331,6 +336,16 @@ class _EngieBePeakSensorBase(EngieBeEntity, SensorEntity):
             f"{coordinator.config_entry.entry_id}"
             f"_{subentry.subentry_id}_{entity_description.key}"
         )
+        # Suggest a CAN-prefixed entity_id slug so a second customer
+        # account on the same login does not collide on the friendly
+        # name and end up auto-suffixed with ``_2``. Only effective on
+        # first registration; existing installs are migrated separately
+        # via ``_async_migrate_entity_id_slugs`` in ``__init__``.
+        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
+        if can:
+            self._attr_suggested_object_id = (
+                f"engie_belgium_{can}_{entity_description.key}"
+            )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -434,6 +449,16 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}_{entity_description.key}"
         )
+        # Suggest a CAN-prefixed entity_id slug so price sensors for
+        # different customer accounts on one login don't collide on
+        # their translated friendly name. Only effective on first
+        # registration; existing installs are migrated via
+        # ``_async_migrate_entity_id_slugs`` in ``__init__``.
+        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
+        if can:
+            self._attr_suggested_object_id = (
+                f"engie_belgium_{can}_{entity_description.key}"
+            )
 
     @property
     def native_value(self) -> float | None:
@@ -581,6 +606,16 @@ class _EngieBeEpexSensorBase(EngieBeEpexEntity, SensorEntity):
             f"{coordinator.config_entry.entry_id}"
             f"_{subentry.subentry_id}_{entity_description.key}"
         )
+        # Suggest a CAN-prefixed entity_id slug so EPEX sensors stay
+        # distinct per customer account on multi-account dynamic-tariff
+        # logins. Only effective on first registration; existing
+        # installs are migrated via ``_async_migrate_entity_id_slugs``
+        # in ``__init__``.
+        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
+        if can:
+            self._attr_suggested_object_id = (
+                f"engie_belgium_{can}_{entity_description.key}"
+            )
 
     @property
     def available(self) -> bool:

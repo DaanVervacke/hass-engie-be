@@ -8,9 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be import (
+    _async_migrate_entity_id_slugs,
     _async_migrate_legacy_subentry_unique_ids,
     _persist_tokens,
     async_migrate_entry,
@@ -676,3 +678,191 @@ async def test_legacy_unique_id_migration_tolerates_relations_failure(
 
     untouched = next(iter(entry.subentries.values()))
     assert untouched.unique_id == legacy_ban
+
+
+# ---------------------------------------------------------------------------
+# Entity-id slug migration (one-shot CAN-prefix rewrite of legacy slugs).
+# ---------------------------------------------------------------------------
+
+
+def _seed_registry_entity(  # noqa: PLR0913 - test helper mirrors registry signature
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    *,
+    domain: str,
+    suggested_object_id: str,
+    unique_id: str,
+    subentry_id: str | None,
+) -> str:
+    """Register an entity in the registry under ``entry`` and return its id."""
+    registry = er.async_get(hass)
+    reg = registry.async_get_or_create(
+        domain=domain,
+        platform=DOMAIN,
+        unique_id=unique_id,
+        suggested_object_id=suggested_object_id,
+        config_entry=entry,
+        config_subentry_id=subentry_id,
+    )
+    return reg.entity_id
+
+
+async def test_slug_migration_renames_calendar_to_can_prefixed(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A BAN-prefixed calendar entity_id is rewritten to engie_belgium_{CAN}."""
+    can = "1500000123"
+    entry = _build_entry(hass, customer_number=can)
+    subentry_id = _only_subentry_id(entry)
+    legacy = _seed_registry_entity(
+        hass,
+        entry,
+        domain="calendar",
+        suggested_object_id="002200000123",
+        unique_id=f"{entry.entry_id}_{subentry_id}_calendar",
+        subentry_id=subentry_id,
+    )
+    assert legacy == "calendar.002200000123"
+
+    await _async_migrate_entity_id_slugs(hass, entry)
+
+    registry = er.async_get(hass)
+    assert registry.async_get(legacy) is None
+    renamed = registry.async_get(f"calendar.engie_belgium_{can}")
+    assert renamed is not None
+    assert renamed.unique_id == f"{entry.entry_id}_{subentry_id}_calendar"
+
+
+async def test_slug_migration_renames_sensor_with_key_suffix(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A subentry-scoped sensor gets ``_{key}`` appended after the CAN."""
+    can = "1500000456"
+    entry = _build_entry(hass, customer_number=can)
+    subentry_id = _only_subentry_id(entry)
+    legacy = _seed_registry_entity(
+        hass,
+        entry,
+        domain="sensor",
+        suggested_object_id="002200000456_captar_monthly_peak_power",
+        unique_id=f"{entry.entry_id}_{subentry_id}_captar_monthly_peak_power",
+        subentry_id=subentry_id,
+    )
+
+    await _async_migrate_entity_id_slugs(hass, entry)
+
+    registry = er.async_get(hass)
+    assert registry.async_get(legacy) is None
+    target = f"sensor.engie_belgium_{can}_captar_monthly_peak_power"
+    assert registry.async_get(target) is not None
+
+
+async def test_slug_migration_renames_price_sensor_without_subentry_prefix(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Price sensors whose unique_id has no subentry prefix still get rewritten."""
+    can = "1500000789"
+    entry = _build_entry(hass, customer_number=can)
+    subentry_id = _only_subentry_id(entry)
+    key = "electricity_offtake_price_eur_per_kwh"
+    legacy = _seed_registry_entity(
+        hass,
+        entry,
+        domain="sensor",
+        suggested_object_id="engie_belgium_electricity_offtake_price",
+        unique_id=f"{entry.entry_id}_{key}",
+        subentry_id=subentry_id,
+    )
+
+    await _async_migrate_entity_id_slugs(hass, entry)
+
+    registry = er.async_get(hass)
+    assert registry.async_get(legacy) is None
+    assert registry.async_get(f"sensor.engie_belgium_{can}_{key}") is not None
+
+
+async def test_slug_migration_is_idempotent(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A second pass over an already-migrated entity is a no-op."""
+    can = "1500000321"
+    entry = _build_entry(hass, customer_number=can)
+    subentry_id = _only_subentry_id(entry)
+    target = f"sensor.engie_belgium_{can}_captar_monthly_peak_energy"
+    _seed_registry_entity(
+        hass,
+        entry,
+        domain="sensor",
+        suggested_object_id=f"engie_belgium_{can}_captar_monthly_peak_energy",
+        unique_id=f"{entry.entry_id}_{subentry_id}_captar_monthly_peak_energy",
+        subentry_id=subentry_id,
+    )
+
+    await _async_migrate_entity_id_slugs(hass, entry)
+    await _async_migrate_entity_id_slugs(hass, entry)
+
+    registry = er.async_get(hass)
+    entries = list(er.async_entries_for_config_entry(registry, entry.entry_id))
+    assert [e.entity_id for e in entries] == [target]
+
+
+async def test_slug_migration_collision_falls_back_to_numeric_suffix(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A pre-existing slug at the target name forces a ``_2`` fallback."""
+    can = "1500000654"
+    entry = _build_entry(hass, customer_number=can)
+    subentry_id = _only_subentry_id(entry)
+    target = f"sensor.engie_belgium_{can}_captar_monthly_peak_start"
+
+    # Pre-occupy the target slug with an unrelated registry entry.
+    registry = er.async_get(hass)
+    registry.async_get_or_create(
+        domain="sensor",
+        platform="other",
+        unique_id="someone-else",
+        suggested_object_id=target.removeprefix("sensor."),
+    )
+    assert registry.async_get(target) is not None
+
+    legacy = _seed_registry_entity(
+        hass,
+        entry,
+        domain="sensor",
+        suggested_object_id="002200000654_captar_monthly_peak_start",
+        unique_id=f"{entry.entry_id}_{subentry_id}_captar_monthly_peak_start",
+        subentry_id=subentry_id,
+    )
+
+    await _async_migrate_entity_id_slugs(hass, entry)
+
+    assert registry.async_get(legacy) is None
+    assert registry.async_get(target) is not None  # the squatter is untouched
+    assert registry.async_get(f"{target}_2") is not None
+
+
+async def test_slug_migration_leaves_login_scoped_entities_alone(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """The auth binary sensor (no subentry) is never touched by the rewrite."""
+    can = "1500000999"
+    entry = _build_entry(hass, customer_number=can)
+    auth = _seed_registry_entity(
+        hass,
+        entry,
+        domain="binary_sensor",
+        suggested_object_id="engie_belgium_authentication",
+        unique_id=f"{entry.entry_id}_authentication",
+        subentry_id=None,
+    )
+
+    await _async_migrate_entity_id_slugs(hass, entry)
+
+    registry = er.async_get(hass)
+    assert registry.async_get(auth) is not None

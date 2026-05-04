@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 
 from ._peaks import captar_peak_events
-from .const import LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from .const import CONF_CUSTOMER_NUMBER, LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
 from .entity import EngieBeEntity
 
 # Coordinator centralises updates; entities never poll individually.
@@ -86,9 +86,18 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
         # Subentry-scoped unique ID: the calendar descriptor repeats
         # across every customer account on a single login.
         self._attr_unique_id = (
-            f"{coordinator.config_entry.entry_id}"
-            f"_{subentry.subentry_id}_calendar"
+            f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_calendar"
         )
+        # Suggest a CAN-prefixed entity_id slug so each customer
+        # account gets its own predictable calendar entity_id without
+        # HA auto-suffixing on the friendly name. There is only one
+        # calendar entity per subentry, so no trailing ``_calendar``
+        # is needed. Only effective on first registration; existing
+        # installs are migrated via ``_async_migrate_entity_id_slugs``
+        # in ``__init__``.
+        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
+        if can:
+            self._attr_suggested_object_id = f"engie_belgium_{can}"
 
     def _all_events(self) -> list[CalendarEvent]:
         """Collect events from every registered provider."""

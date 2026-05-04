@@ -49,6 +49,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   don't fire on stale data. Zero is treated as non-negative.
 
 ### Changed
+- **Breaking (entity_id rename, history preserved):** customer-account
+  entity IDs now carry the canonical customer account number (CAN) so
+  two accounts on the same login no longer collide and get
+  auto-suffixed with `_2`. Sensors become
+  `sensor.engie_belgium_{CAN}_{key}` and the calendar becomes
+  `calendar.engie_belgium_{CAN}`. Existing installs are migrated in
+  place at startup: `unique_id`s are untouched so long-term statistics
+  and history follow the rename, but any automation, script, scene, or
+  dashboard that hard-codes the old slug must be updated to the new
+  one. The login-scoped authentication binary sensor is unaffected.
 - The EPEX coordinator now lives at the parent-entry level instead of
   per-account, since the day-ahead wholesale price is identical for
   every customer account on the same login. EPEX sensors and the

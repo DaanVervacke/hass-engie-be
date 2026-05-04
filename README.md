@@ -34,6 +34,21 @@ The integration auto-detects your energy contracts and creates price sensors
 accordingly. Capacity-tariff peak sensors are created independently when peaks
 data is available; see [Capacity tariff (captar)](#capacity-tariff-captar).
 
+> **Multi-account note.** When your ENGIE login owns more than one customer
+> account, every entity ID is prefixed with the canonical
+> `customerAccountNumber` (CAN), e.g. `sensor.engie_belgium_1500000123_gas_offtake_price`
+> and `calendar.engie_belgium_1500000123`. The bare `sensor.engie_belgium_*`
+> shapes shown in the tables below are illustrative; replace `engie_belgium_`
+> with `engie_belgium_{your_CAN}_` when targeting a specific account in
+> automations, scripts, or dashboards. The CAN is visible on the customer
+> account device page in **Settings -> Devices & services -> ENGIE Belgium**.
+>
+> Existing single-account installs are migrated automatically on the first
+> start: `unique_id`s are preserved so long-term statistics and history follow
+> the rename, but any automation, script, scene, or dashboard that hard-codes
+> a pre-rename slug (e.g. `sensor.engie_belgium_electricity_offtake_price`)
+> must be updated to the new CAN-prefixed slug.
+
 **Price sensors** are in **EUR/kWh** with 6 decimal precision. Each one exposes
 the following attributes: `ean`, `from`, `to`, `vat_tariff`,
 `time_of_use_slot_code`, and `last_fetched`.

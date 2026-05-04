@@ -95,8 +95,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # legacy subentries on setup so this fallback is only hit on
         # the very first refresh after a multi-account upgrade.
         self.business_agreement_number: str = (
-            subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
-            or self.customer_number
+            subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER) or self.customer_number
         )
         self.last_successful_fetch: datetime | None = None
         # One-shot backfill: when the subentry was created (or migrated)

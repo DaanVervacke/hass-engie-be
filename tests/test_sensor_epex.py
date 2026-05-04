@@ -329,7 +329,10 @@ def test_low_today_sensor_selects_minimum_of_today_only() -> None:
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
     sensor = EngieBeEpexExtremaSensor(
-        coordinator, subentry, _EPEX_LOW_TODAY, mode="min",
+        coordinator,
+        subentry,
+        _EPEX_LOW_TODAY,
+        mode="min",
     )
 
     with patch(
@@ -353,7 +356,10 @@ def test_high_today_sensor_selects_maximum_of_today_only() -> None:
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
     sensor = EngieBeEpexExtremaSensor(
-        coordinator, subentry, _EPEX_HIGH_TODAY, mode="max",
+        coordinator,
+        subentry,
+        _EPEX_HIGH_TODAY,
+        mode="max",
     )
 
     with patch(
@@ -378,10 +384,16 @@ def test_extrema_sensor_returns_none_when_no_today_slots() -> None:
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
     sensor_min = EngieBeEpexExtremaSensor(
-        coordinator, subentry, _EPEX_LOW_TODAY, mode="min",
+        coordinator,
+        subentry,
+        _EPEX_LOW_TODAY,
+        mode="min",
     )
     sensor_max = EngieBeEpexExtremaSensor(
-        coordinator, subentry, _EPEX_HIGH_TODAY, mode="max",
+        coordinator,
+        subentry,
+        _EPEX_HIGH_TODAY,
+        mode="max",
     )
 
     with patch(
@@ -400,7 +412,10 @@ def test_extrema_sensor_rejects_invalid_mode() -> None:
     subentry = _make_subentry()
     with pytest.raises(ValueError, match="mode must be 'min' or 'max'"):
         EngieBeEpexExtremaSensor(
-            coordinator, subentry, _EPEX_LOW_TODAY, mode="median",
+            coordinator,
+            subentry,
+            _EPEX_LOW_TODAY,
+            mode="median",
         )
 
 

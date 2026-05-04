@@ -385,9 +385,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             data={
                 CONF_USERNAME: username,
                 CONF_PASSWORD: self._user_input[CONF_PASSWORD],
-                CONF_CLIENT_ID: self._user_input.get(
-                    CONF_CLIENT_ID, DEFAULT_CLIENT_ID
-                ),
+                CONF_CLIENT_ID: self._user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
                 CONF_ACCESS_TOKEN: self._access_token,
                 CONF_REFRESH_TOKEN: self._refresh_token,
             },
