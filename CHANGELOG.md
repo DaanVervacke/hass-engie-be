@@ -62,6 +62,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   correlate which subentry a log line refers to.
 
 ### Fixed
+- The initial-setup flow now correctly chains into the customer-account
+  picker. The previous implementation set `next_flow` on the parent
+  flow result pointing at a `CONFIG_SUBENTRIES_FLOW`, which Home
+  Assistant rejects: only `CONFIG_FLOW` targets are valid for that
+  hand-off. The picker is now an integrated `select_accounts` step
+  that runs after MFA succeeds, fetches relations with the just-issued
+  tokens, and creates the parent entry plus chosen subentries
+  atomically via `async_create_entry(subentries=...)`. If the
+  relations endpoint fails or returns zero accounts at this point the
+  flow still finishes cleanly: the parent entry is created without
+  subentries and the user can add accounts later from the **Add
+  subentry** button.
 - The relations-backfill matcher in the coordinator now finds legacy
   entries whose stored `customer_number` is the
   `businessAgreementNumber` (BAN) rather than the

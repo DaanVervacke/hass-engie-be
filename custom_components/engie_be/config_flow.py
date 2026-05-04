@@ -8,11 +8,9 @@ from typing import TYPE_CHECKING, Any
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import (
-    SOURCE_USER,
     ConfigSubentry,
+    ConfigSubentryData,
     ConfigSubentryFlow,
-    FlowType,
-    SubentryFlowContext,
     SubentryFlowResult,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
@@ -65,6 +63,11 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self._auth_flow_state: AuthFlowState | None = None
         self._client: EngieBeApiClient | None = None
         self._reauth_mfa_method: str = MFA_METHOD_SMS
+        # Set after successful MFA on the initial-setup flow; consumed by
+        # ``async_step_select_accounts``.
+        self._access_token: str | None = None
+        self._refresh_token: str | None = None
+        self._available_accounts: list[dict[str, Any]] = []
 
     @staticmethod
     def async_get_options_flow(
@@ -243,18 +246,14 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(slugify(username))
                 self._abort_if_unique_id_configured()
 
-                return self.async_create_entry(
-                    title=f"ENGIE Belgium ({username})",
-                    data={
-                        CONF_USERNAME: username,
-                        CONF_PASSWORD: self._user_input[CONF_PASSWORD],
-                        CONF_CLIENT_ID: self._user_input.get(
-                            CONF_CLIENT_ID, DEFAULT_CLIENT_ID
-                        ),
-                        CONF_ACCESS_TOKEN: access_token,
-                        CONF_REFRESH_TOKEN: refresh_token,
-                    },
-                )
+                # Stash the freshly-issued tokens for the picker step,
+                # which uses them to fetch customer-account relations
+                # before any ConfigEntry is persisted. Finishing happens
+                # in async_step_select_accounts so we can pass the chosen
+                # subentries to async_create_entry in a single call.
+                self._access_token = access_token
+                self._refresh_token = refresh_token
+                return await self.async_step_select_accounts()
 
         return self.async_show_form(
             step_id=step_id,
@@ -296,29 +295,140 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             self._auth_flow_state = None
 
     # ------------------------------------------------------------------
-    # Chain into subentry picker after the parent entry is created
+    # Customer-account picker (chained from MFA success on initial setup)
     # ------------------------------------------------------------------
 
-    async def async_on_create_entry(
+    async def async_step_select_accounts(
         self,
-        result: config_entries.ConfigFlowResult,
+        user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
         """
-        Chain into the customer-account subentry picker after parent entry is created.
+        Show the customer-account multi-select after MFA succeeds.
 
-        Returns the same result, populated with ``next_flow`` so the frontend
-        immediately opens the subentry picker step.
+        Runs as the final step of the initial-setup flow. Fetches the
+        customer-account-relations payload using the just-issued tokens
+        and presents a multi-select. On submit, creates the parent
+        ``ConfigEntry`` together with one ``ConfigSubentry`` per chosen
+        account in a single ``async_create_entry`` call (the only
+        supported way to create entry + subentries atomically; HA's
+        ``next_flow`` mechanism does not accept subentry flows).
+
+        On the first call the picker is rendered. On submit the chosen
+        identifiers are translated into ``ConfigSubentryData`` records
+        and the parent entry is created.
         """
-        entry = result["result"]
-        subentry_result = await self.hass.config_entries.subentries.async_init(
-            (entry.entry_id, SUBENTRY_TYPE_CUSTOMER_ACCOUNT),
-            context=SubentryFlowContext(source=SOURCE_USER),
+        username = self._user_input[CONF_USERNAME]
+        errors: dict[str, str] = {}
+
+        if not self._available_accounts:
+            relations_or_error = await self._async_fetch_initial_relations()
+            if isinstance(relations_or_error, str):
+                # Fetching the relations payload at this point is best-effort:
+                # we have valid tokens but the WAF or the API may still trip.
+                # Fall back to creating the entry without any subentries; the
+                # user can add accounts via the entry's "+ Add" picker later.
+                LOGGER.warning(
+                    "Skipping initial subentry picker: %s", relations_or_error
+                )
+                return self._async_finish_initial_setup(subentries=())
+            self._available_accounts = extract_accounts(relations_or_error)
+
+        if not self._available_accounts:
+            # Account on this login has zero customer accounts attached;
+            # finish without subentries so the user gets a usable entry.
+            return self._async_finish_initial_setup(subentries=())
+
+        if user_input is not None:
+            selected = user_input.get(CONF_SELECTED_ACCOUNTS, [])
+            if not selected:
+                errors["base"] = "no_accounts_selected"
+            else:
+                picked = [
+                    account
+                    for account in self._available_accounts
+                    if account[CONF_CUSTOMER_NUMBER] in selected
+                ]
+                subentries = tuple(
+                    ConfigSubentryData(
+                        data=account,
+                        subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                        title=subentry_title(account),
+                        unique_id=account[CONF_CUSTOMER_NUMBER],
+                    )
+                    for account in picked
+                )
+                return self._async_finish_initial_setup(subentries=subentries)
+
+        return self.async_show_form(
+            step_id="select_accounts",
+            data_schema=self._async_build_picker_schema(),
+            errors=errors,
+            description_placeholders={"username": username},
         )
-        result["next_flow"] = (
-            FlowType.CONFIG_SUBENTRIES_FLOW,
-            subentry_result["flow_id"],
+
+    @callback
+    def _async_finish_initial_setup(
+        self,
+        *,
+        subentries: tuple[ConfigSubentryData, ...],
+    ) -> config_entries.ConfigFlowResult:
+        """Create the parent config entry plus any chosen subentries."""
+        username = self._user_input[CONF_USERNAME]
+        return self.async_create_entry(
+            title=f"ENGIE Belgium ({username})",
+            data={
+                CONF_USERNAME: username,
+                CONF_PASSWORD: self._user_input[CONF_PASSWORD],
+                CONF_CLIENT_ID: self._user_input.get(
+                    CONF_CLIENT_ID, DEFAULT_CLIENT_ID
+                ),
+                CONF_ACCESS_TOKEN: self._access_token,
+                CONF_REFRESH_TOKEN: self._refresh_token,
+            },
+            subentries=subentries,
         )
-        return result
+
+    async def _async_fetch_initial_relations(self) -> dict[str, Any] | str:
+        """Fetch customer-account relations using the just-issued tokens."""
+        client = EngieBeApiClient(
+            session=async_get_clientsession(self.hass),
+            client_id=self._user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+            access_token=self._access_token,
+            refresh_token=self._refresh_token,
+        )
+        try:
+            return await client.async_get_customer_account_relations()
+        except EngieBeApiClientAuthenticationError as exception:
+            LOGGER.warning(exception)
+            return "auth"
+        except EngieBeApiClientCommunicationError as exception:
+            LOGGER.error(exception)
+            return "connection"
+        except EngieBeApiClientError as exception:
+            LOGGER.exception(exception)
+            return "unknown"
+
+    @callback
+    def _async_build_picker_schema(self) -> vol.Schema:
+        """Build the multi-select schema for the available customer accounts."""
+        options = [
+            selector.SelectOptionDict(
+                value=account[CONF_CUSTOMER_NUMBER],
+                label=subentry_title(account),
+            )
+            for account in self._available_accounts
+        ]
+        return vol.Schema(
+            {
+                vol.Required(CONF_SELECTED_ACCOUNTS): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=options,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
+                    ),
+                ),
+            },
+        )
 
     # ------------------------------------------------------------------
     # Reauth flow

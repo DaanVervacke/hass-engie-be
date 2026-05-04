@@ -149,14 +149,110 @@ async def test_user_flow_happy_path_sms(
             result["flow_id"], {"code": "123456"}
         )
 
+    # With an empty relations payload the picker step short-circuits and
+    # the parent entry is created with zero subentries; the user can add
+    # accounts later via the entry's "+ Add" picker.
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
     assert result["title"] == _EXPECTED_TITLE
     assert result["data"][CONF_ACCESS_TOKEN] == _TOKENS[0]
     assert result["data"][CONF_REFRESH_TOKEN] == _TOKENS[1]
     # v3: customer number lives on subentries, not on the parent entry data.
     assert CONF_CUSTOMER_NUMBER not in result["data"]
-    # The parent flow chains into the subentry picker via next_flow.
-    assert "next_flow" in result
+    assert result["result"].subentries == {}
+
+
+async def test_user_flow_happy_path_with_account_picker(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """MFA success surfaces the picker; chosen accounts become subentries."""
+    relations = _load_relations_fixture()
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+
+        assert result["type"] is data_entry_flow.FlowResultType.FORM
+        assert result["step_id"] == "select_accounts"
+
+        # Pick only the first account; the second must NOT become a subentry.
+        first_can = relations["items"][0]["customerAccount"]["customerAccountNumber"]
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"selected_accounts": [first_can]},
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result["title"] == _EXPECTED_TITLE
+    assert result["data"][CONF_ACCESS_TOKEN] == _TOKENS[0]
+    assert CONF_CUSTOMER_NUMBER not in result["data"]
+
+    entry = result["result"]
+    assert len(entry.subentries) == 1
+    only_subentry = next(iter(entry.subentries.values()))
+    assert only_subentry.unique_id == first_can
+    assert only_subentry.data[CONF_CUSTOMER_NUMBER] == first_can
+
+
+async def test_user_flow_select_accounts_requires_selection(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Submitting the picker with no selection re-shows the form with an error."""
+    relations = _load_relations_fixture()
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+        assert result["step_id"] == "select_accounts"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"selected_accounts": []}
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "select_accounts"
+    assert result["errors"] == {"base": "no_accounts_selected"}
 
 
 async def test_user_flow_happy_path_email(

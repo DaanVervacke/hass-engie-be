@@ -53,13 +53,24 @@
                 "data_description": {
                     "code": "The 6-digit code that ENGIE just sent you."
                 }
+            },
+            "select_accounts": {
+                "title": "Choose customer accounts",
+                "description": "Authentication for {username} succeeded. Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own price sensors. You can add or remove accounts later from the integration page.",
+                "data": {
+                    "selected_accounts": "Customer accounts"
+                },
+                "data_description": {
+                    "selected_accounts": "Select one or more customer accounts to configure."
+                }
             }
         },
         "error": {
             "auth": "Invalid username or password.",
             "connection": "Unable to connect to ENGIE Belgium.",
             "unknown": "An unknown error occurred.",
-            "invalid_mfa_code": "Invalid verification code. Please try again."
+            "invalid_mfa_code": "Invalid verification code. Please try again.",
+            "no_accounts_selected": "Select at least one customer account."
         },
         "abort": {
             "already_configured": "This account is already configured.",
