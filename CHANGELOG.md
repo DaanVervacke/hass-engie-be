@@ -8,6 +8,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [Unreleased]
 
 ### Added
+- Multi-account support via Home Assistant's ConfigSubentries framework.
+  A single ENGIE login can now own multiple customer accounts under one
+  config entry: each account becomes its own subentry with its own
+  device, service points, price sensors, captar peak sensors, calendar,
+  and (for dynamic accounts) EPEX sensors. During initial setup the
+  integration calls ENGIE's customer-account-relations endpoint and
+  shows a multi-select picker of every customer account your login has
+  access to. Additional accounts can be added later via the **Add
+  subentry** button on the integration card, and removed by deleting
+  the subentry without affecting the parent entry or its siblings. The
+  authentication binary sensor lives on a separate "login" device tied
+  to the parent entry, since it reflects the OAuth session rather than
+  any single account.
 - Support for ENGIE's dynamic (EPEX-indexed) electricity tariff. Dynamic
   contracts are auto-detected at the account level: when ENGIE returns
   an empty `items` list from the supplier-prices endpoint (the documented
@@ -34,6 +47,30 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   before the first successful EPEX fetch and `unknown` when the cached
   payload has no slot covering the current instant, so automations
   don't fire on stale data. Zero is treated as non-negative.
+
+### Changed
+- The EPEX coordinator now lives at the parent-entry level instead of
+  per-account, since the day-ahead wholesale price is identical for
+  every customer account on the same login. EPEX sensors and the
+  negative-price binary sensor are still created per dynamic subentry,
+  but only one HTTP call to the public EPEX endpoint runs per refresh
+  cycle regardless of how many dynamic accounts you have.
+- Diagnostics output is now organised top-level by `entry`, `runtime`,
+  `epex_coordinator`, and `subentries`, with subentry titles and
+  customer account numbers redacted via stable 8-character SHA-256
+  hashes so support bundles stay shareable while still letting you
+  correlate which subentry a log line refers to.
+
+### Migration
+- Existing single-account config entries (schema v1 and v2) are
+  upgraded automatically on first load to the new schema (v3). The
+  existing customer account becomes a single subentry under your
+  existing entry, entity unique IDs are rewritten in place from the
+  old `{entry_id}_{key}` pattern to the new
+  `{entry_id}_{subentry_id}_{key}` pattern, and the authentication
+  binary sensor's unique ID is normalised to `{entry_id}_authentication`.
+  Sensor history is preserved across the migration. No manual
+  reconfiguration is required.
 
 ## [0.7.1] - 2026-05-03
 

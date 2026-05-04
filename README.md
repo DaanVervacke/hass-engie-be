@@ -276,6 +276,35 @@ After setup, you can configure the price update interval:
 2. Click **Configure**.
 3. Set the **Update interval** (5-1440 minutes, default: 60 minutes).
 
+## Multiple customer accounts
+
+A single ENGIE login can be linked to several customer accounts (for
+example a private home and a holiday house under the same email). The
+integration models this as **one config entry per ENGIE login** plus
+**one subentry per customer account**:
+
+- During initial setup, after you complete 2FA, the integration calls
+  ENGIE's customer-account-relations endpoint and shows you a multi-select
+  picker of every customer account your login has access to. Pick one or
+  more, and a subentry is created for each.
+- Each subentry becomes its own **device** in Home Assistant, with its
+  own service points, price sensors, captar peak sensors, and (for
+  dynamic accounts) EPEX sensors and the negative-price binary sensor.
+- The shared authentication binary sensor lives on a separate "login"
+  device tied to the parent entry, since it reflects the OAuth session
+  rather than any single account.
+- To add a customer account later, open the ENGIE Belgium card in
+  **Settings** > **Devices & Services**, click **Add subentry**, and
+  pick from the remaining accounts your login can access. To remove
+  one, delete the subentry; the parent entry and its other subentries
+  stay intact.
+
+> **Migration note.** Existing single-account setups are upgraded
+> automatically when you update to this release. Your existing customer
+> account becomes a subentry under your existing entry, entity unique
+> IDs are rewritten in place, and your sensor history is preserved. No
+> manual reconfiguration is required.
+
 ## Re-authentication
 
 ENGIE rotates refresh tokens regularly, and the upstream auth server can
