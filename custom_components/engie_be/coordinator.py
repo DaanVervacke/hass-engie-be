@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
+from ._relations import RELATIONS_BACKFILLABLE_KEYS, extract_accounts
 from .api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
@@ -77,6 +78,15 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.subentry = subentry
         self.customer_number: str = subentry.data[CONF_CUSTOMER_NUMBER]
         self.last_successful_fetch: datetime | None = None
+        # One-shot backfill: when the subentry was created (or migrated)
+        # without all relations-derived display fields, we attempt to
+        # populate them from the customer-account-relations endpoint on
+        # the first successful refresh. The flag is cleared after a
+        # single attempt regardless of outcome to avoid hammering the
+        # API on every poll for an account that simply has no data.
+        self._needs_relations_backfill: bool = any(
+            not subentry.data.get(key) for key in RELATIONS_BACKFILLABLE_KEYS
+        )
 
     @property
     def is_dynamic(self) -> bool:
@@ -111,6 +121,14 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         items = data.get("items") if isinstance(data, dict) else None
         is_dynamic = isinstance(items, list) and len(items) == 0
         data[KEY_IS_DYNAMIC] = is_dynamic
+
+        # One-shot backfill of relations-derived display fields. Runs
+        # only when the subentry is missing at least one such field.
+        # Best-effort: failures are logged and swallowed so a transient
+        # relations outage never blocks price updates.
+        if self._needs_relations_backfill:
+            await self._async_try_backfill_subentry(client)
+            self._needs_relations_backfill = False
 
         # Fetch current-month captar peaks. Failures here must not block
         # price updates; we keep the last-known peaks payload so existing
@@ -179,6 +197,69 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             end=end,
             peak_kw=monthly.get("peakKW"),
             peak_kwh=monthly.get("peakKWh"),
+        )
+
+    async def _async_try_backfill_subentry(
+        self,
+        client: EngieBeApiClient,
+    ) -> None:
+        """
+        Best-effort fill of relations-derived fields on the subentry.
+
+        Called once per HA run for subentries that were created (or
+        migrated) without a complete ``relations`` payload. Only missing
+        fields are written; existing values are preserved so a user who
+        deliberately edited a subentry isn't overwritten by upstream
+        data. Any error during the relations call is logged at warning
+        level and swallowed; the next refresh proceeds normally without
+        the missing fields.
+        """
+        try:
+            relations = await client.async_get_customer_account_relations()
+        except EngieBeApiClientError as exception:
+            LOGGER.warning(
+                "Failed to backfill subentry %s from relations endpoint: %s",
+                self.subentry.subentry_id,
+                exception,
+            )
+            return
+
+        accounts = extract_accounts(relations) if isinstance(relations, dict) else []
+        match = next(
+            (
+                account
+                for account in accounts
+                if account.get(CONF_CUSTOMER_NUMBER) == self.customer_number
+            ),
+            None,
+        )
+        if match is None:
+            LOGGER.debug(
+                "Relations response has no entry for customer %s; "
+                "leaving subentry %s untouched",
+                self.customer_number,
+                self.subentry.subentry_id,
+            )
+            return
+
+        existing = dict(self.subentry.data)
+        updated = dict(existing)
+        for key in RELATIONS_BACKFILLABLE_KEYS:
+            if not updated.get(key) and match.get(key):
+                updated[key] = match[key]
+
+        if updated == existing:
+            return
+
+        self.hass.config_entries.async_update_subentry(
+            self.config_entry,
+            self.subentry,
+            data=updated,
+        )
+        LOGGER.debug(
+            "Backfilled subentry %s with relations fields: %s",
+            self.subentry.subentry_id,
+            sorted(set(updated) - {k for k, v in existing.items() if v}),
         )
 
     async def _async_fetch_peaks_with_fallback(

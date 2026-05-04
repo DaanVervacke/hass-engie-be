@@ -21,6 +21,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import slugify
 
+from ._relations import extract_accounts
 from .api import (
     AuthFlowState,
     EngieBeApiClient,
@@ -32,12 +33,10 @@ from .api import (
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_HOLDER_NAME,
-    CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
     CONF_CUSTOMER_NUMBER,
     CONF_MFA_METHOD,
-    CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     CONF_SELECTED_ACCOUNTS,
     CONF_UPDATE_INTERVAL,
@@ -472,7 +471,7 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
             and subentry.unique_id is not None
         }
 
-        accounts = _extract_accounts(relations_or_abort)
+        accounts = extract_accounts(relations_or_abort)
         self._available_accounts = [
             account
             for account in accounts
@@ -578,64 +577,6 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
 # ----------------------------------------------------------------------
 # Helpers (module level so they can be unit-tested without HA boilerplate)
 # ----------------------------------------------------------------------
-
-
-def _extract_accounts(relations: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Flatten a customer-account-relations response into per-account dicts.
-
-    Each returned dict carries the subset of fields stored in the corresponding
-    ConfigSubentry. Inactive business agreements are skipped; if no active
-    agreement is present the account is still surfaced so the user can pick it
-    (the address fields stay empty).
-    """
-    accounts: list[dict[str, Any]] = []
-    for item in relations.get("items", []):
-        customer_account = item.get("customerAccount") or {}
-        customer_number = customer_account.get("customerAccountNumber")
-        if not customer_number:
-            continue
-
-        agreement = _pick_active_agreement(customer_account.get("businessAgreements"))
-        address = (agreement or {}).get("consumptionAddress") or {}
-
-        accounts.append(
-            {
-                CONF_CUSTOMER_NUMBER: customer_number,
-                CONF_BUSINESS_AGREEMENT_NUMBER: (agreement or {}).get(
-                    "businessAgreementNumber",
-                ),
-                CONF_PREMISES_NUMBER: address.get("premisesNumber"),
-                CONF_ACCOUNT_HOLDER_NAME: customer_account.get("name"),
-                CONF_CONSUMPTION_ADDRESS: _format_address(address),
-            },
-        )
-    return accounts
-
-
-def _pick_active_agreement(
-    agreements: list[dict[str, Any]] | None,
-) -> dict[str, Any] | None:
-    """Return the first active business agreement, or the first one available."""
-    if not agreements:
-        return None
-    for agreement in agreements:
-        if agreement.get("active"):
-            return agreement
-    return agreements[0]
-
-
-def _format_address(address: dict[str, Any]) -> str:
-    """Format a consumption address as ``street houseNumber, postalCode city``."""
-    if not address:
-        return ""
-    street = address.get("street") or ""
-    house_number = address.get("houseNumber") or ""
-    postal_code = address.get("postalCode") or ""
-    city = address.get("city") or ""
-    line1 = " ".join(part for part in (street, house_number) if part).strip()
-    line2 = " ".join(part for part in (postal_code, city) if part).strip()
-    return ", ".join(part for part in (line1, line2) if part)
 
 
 def _subentry_title(account: dict[str, Any]) -> str:
