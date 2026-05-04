@@ -29,6 +29,7 @@ from .api import (
 )
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
     CONF_CUSTOMER_NUMBER,
     CONF_REFRESH_TOKEN,
@@ -519,6 +520,122 @@ async def _async_cleanup_orphan_v2_device(
     )
 
 
+async def _async_migrate_legacy_subentry_unique_ids(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Rewrite legacy BAN-shaped subentry unique_ids to canonical CAN values.
+
+    A v2 entry stored ``customer_number`` as whatever identifier the user
+    typed at setup time, which was usually a ``businessAgreementNumber``
+    (BAN) because that is what ENGIE printed on bills. The v2->v3
+    migration faithfully copied that BAN onto the new subentry's
+    ``unique_id`` and ``data[customer_number]`` fields.
+
+    From v3 onwards subentries are keyed by the canonical
+    ``customerAccountNumber`` (CAN) returned by the relations endpoint.
+    Subentries created via the picker already carry the CAN; subentries
+    that came in via v2->v3 migration are still BAN-shaped and would
+    duplicate when the user opens the picker (the picker dedupes by CAN
+    OR BAN, but downstream tooling -- including HA's own
+    ``already_configured`` semantics -- expects ``unique_id`` to be the
+    canonical identifier).
+
+    This helper is idempotent: already-canonical subentries are skipped,
+    subentries whose stored identifier no longer maps to any account are
+    left alone (the user may have moved the customer to a different
+    login). A relations fetch failure is logged at debug and the
+    migration is retried on next setup.
+    """
+    customer_subentries = [
+        sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+        and sub.unique_id is not None
+    ]
+    if not customer_subentries:
+        return
+
+    # If every subentry already carries its CAN as unique_id, skip the
+    # network fetch entirely. The CAN is always present in the stored
+    # data dict when the subentry was created via the v3 picker; legacy
+    # subentries that need the rewrite typically have a BAN-shaped
+    # unique_id matching their stored business_agreement_number.
+    needs_rewrite = [
+        sub
+        for sub in customer_subentries
+        if sub.data.get(CONF_CUSTOMER_NUMBER) != sub.unique_id
+        or sub.unique_id == sub.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+    ]
+    if not needs_rewrite:
+        return
+
+    relations: dict[str, Any] | None = None
+    for subentry in needs_rewrite:
+        if relations is None:
+            relations = await _async_fetch_relations_for_setup(hass, entry)
+            if relations is None:
+                return
+
+        match = find_account_for_customer_number(relations, subentry.unique_id)
+        if match is None:
+            continue
+
+        canonical_can = match.get(CONF_CUSTOMER_NUMBER)
+        if not canonical_can or canonical_can == subentry.unique_id:
+            continue
+
+        new_data = {**subentry.data, CONF_CUSTOMER_NUMBER: canonical_can}
+        previous_unique_id = subentry.unique_id
+        hass.config_entries.async_update_subentry(
+            entry,
+            subentry,
+            unique_id=canonical_can,
+            data=new_data,
+        )
+        LOGGER.info(
+            "Rewrote legacy subentry unique_id %s -> %s for entry %s",
+            previous_unique_id,
+            canonical_can,
+            entry.entry_id,
+        )
+
+
+async def _async_fetch_relations_for_setup(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+) -> dict[str, Any] | None:
+    """
+    Fetch the customer-account-relations payload for a setup-time helper.
+
+    Returns ``None`` and logs at debug on any error. Performs its own
+    token refresh so it can run before the main coordinator setup wires
+    up the persistent client/coordinators.
+    """
+    refresh_token = entry.data.get(CONF_REFRESH_TOKEN)
+    if not refresh_token:
+        return None
+
+    client = EngieBeApiClient(
+        session=async_get_clientsession(hass),
+        client_id=entry.data.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+        access_token=entry.data.get(CONF_ACCESS_TOKEN),
+        refresh_token=refresh_token,
+    )
+    try:
+        await client.async_refresh_token()
+        return await client.async_get_customer_account_relations()
+    except EngieBeApiClientError as err:
+        LOGGER.debug(
+            "Relations fetch skipped during legacy unique_id migration "
+            "for entry %s: %s",
+            entry.entry_id,
+            err,
+        )
+        return None
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,
@@ -528,6 +645,13 @@ async def async_setup_entry(
     # migration before the merge logic above existed. Safe to run on
     # every setup: it is a no-op when no orphan v2 device is present.
     await _async_cleanup_orphan_v2_device(hass, entry)
+
+    # One-shot migration of legacy BAN-shaped subentry unique_ids to
+    # canonical CAN values. Idempotent and tolerant of relations API
+    # failures: it retries on the next setup. Must run before the
+    # picker-dedupe set is computed elsewhere, but the picker itself
+    # is BAN-aware so the order is not strictly load-bearing.
+    await _async_migrate_legacy_subentry_unique_ids(hass, entry)
 
     client = EngieBeApiClient(
         session=async_get_clientsession(hass),

@@ -134,6 +134,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   Without this, opening the picker for a v2-migrated login would list
   the same physical premises a second time, and confirming the
   selection would create a duplicate device with parallel sensors.
+- Subentries that were migrated from v2 with a BAN-shaped `unique_id`
+  are now rewritten in place to the canonical CAN on the next setup.
+  The integration fetches the customer-account-relations payload once
+  per setup, looks up each legacy subentry's stored identifier across
+  both CAN and BAN fields, and rewrites `unique_id` and the
+  `customer_number` data field to the CAN when a match is found.
+  Existing entity unique IDs (which are keyed by the parent entry id
+  and subentry id, not by the customer number) are unaffected, so
+  sensor history is preserved. The migration is idempotent: if the
+  relations fetch fails the rewrite simply retries on the next setup,
+  and subentries that already carry their CAN are skipped without any
+  network call.
 
 ### Migration
 - Existing single-account config entries (schema v1 and v2) are

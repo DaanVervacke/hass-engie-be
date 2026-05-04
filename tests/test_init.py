@@ -11,6 +11,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be import (
+    _async_migrate_legacy_subentry_unique_ids,
     _persist_tokens,
     async_migrate_entry,
     async_reload_entry,
@@ -531,3 +532,147 @@ async def test_setup_entry_service_point_failure_does_not_poison_others(
         "541448820000000001": "ELECTRICITY",
         "541448820000000003": "ELECTRICITY",
     }
+
+
+# ---------------------------------------------------------------------------
+# Legacy BAN-shaped subentry unique_id migration
+# ---------------------------------------------------------------------------
+
+
+def _relations_payload_for(can: str, ban: str) -> dict[str, Any]:
+    """Build a minimal customer-account-relations payload for one account."""
+    return {
+        "items": [
+            {
+                "customerAccount": {
+                    "customerAccountNumber": can,
+                    "businessAgreements": [
+                        {"businessAgreementNumber": ban},
+                    ],
+                },
+            },
+        ],
+    }
+
+
+async def test_legacy_unique_id_migration_rewrites_ban_to_can(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A BAN-shaped subentry unique_id is rewritten to its canonical CAN."""
+    legacy_ban = "002200000099"
+    canonical_can = "1500000099"
+    entry = _build_entry(hass, customer_number=legacy_ban)
+    # Mirror the legacy v2-migrated shape: the BAN sits in both the
+    # unique_id (via _build_entry) and in the data block.
+    only_subentry = next(iter(entry.subentries.values()))
+    hass.config_entries.async_update_subentry(
+        entry,
+        only_subentry,
+        data={
+            **only_subentry.data,
+            CONF_BUSINESS_AGREEMENT_NUMBER: legacy_ban,
+        },
+    )
+
+    with patch(
+        "custom_components.engie_be._async_fetch_relations_for_setup",
+        AsyncMock(return_value=_relations_payload_for(canonical_can, legacy_ban)),
+    ):
+        await _async_migrate_legacy_subentry_unique_ids(hass, entry)
+
+    rewritten = next(iter(entry.subentries.values()))
+    assert rewritten.unique_id == canonical_can
+    assert rewritten.data[CONF_CUSTOMER_NUMBER] == canonical_can
+    # The BAN field is preserved so the picker dedupes correctly even
+    # before subsequent setups re-run this migration.
+    assert rewritten.data[CONF_BUSINESS_AGREEMENT_NUMBER] == legacy_ban
+
+
+async def test_legacy_unique_id_migration_is_noop_when_already_canonical(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A subentry that already carries its CAN as unique_id triggers no fetch."""
+    canonical_can = "1500000050"
+    entry = _build_entry(hass, customer_number=canonical_can)
+    # Make sure the BAN field does not look like the unique_id, so the
+    # ``needs_rewrite`` filter sees nothing to do.
+    only_subentry = next(iter(entry.subentries.values()))
+    hass.config_entries.async_update_subentry(
+        entry,
+        only_subentry,
+        data={
+            **only_subentry.data,
+            CONF_CUSTOMER_NUMBER: canonical_can,
+            CONF_BUSINESS_AGREEMENT_NUMBER: "002200000050",
+        },
+    )
+
+    fetch_mock = AsyncMock()
+    with patch(
+        "custom_components.engie_be._async_fetch_relations_for_setup",
+        fetch_mock,
+    ):
+        await _async_migrate_legacy_subentry_unique_ids(hass, entry)
+
+    assert fetch_mock.await_count == 0
+    untouched = next(iter(entry.subentries.values()))
+    assert untouched.unique_id == canonical_can
+
+
+async def test_legacy_unique_id_migration_skips_unknown_account(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A subentry whose stored id no longer maps to any account is left alone."""
+    legacy_ban = "002200000077"
+    entry = _build_entry(hass, customer_number=legacy_ban)
+    only_subentry = next(iter(entry.subentries.values()))
+    hass.config_entries.async_update_subentry(
+        entry,
+        only_subentry,
+        data={
+            **only_subentry.data,
+            CONF_BUSINESS_AGREEMENT_NUMBER: legacy_ban,
+        },
+    )
+
+    # Relations payload contains a totally different account.
+    with patch(
+        "custom_components.engie_be._async_fetch_relations_for_setup",
+        AsyncMock(
+            return_value=_relations_payload_for("9999999999", "999999999999"),
+        ),
+    ):
+        await _async_migrate_legacy_subentry_unique_ids(hass, entry)
+
+    untouched = next(iter(entry.subentries.values()))
+    assert untouched.unique_id == legacy_ban
+
+
+async def test_legacy_unique_id_migration_tolerates_relations_failure(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A relations fetch returning None defers the rewrite without raising."""
+    legacy_ban = "002200000088"
+    entry = _build_entry(hass, customer_number=legacy_ban)
+    only_subentry = next(iter(entry.subentries.values()))
+    hass.config_entries.async_update_subentry(
+        entry,
+        only_subentry,
+        data={
+            **only_subentry.data,
+            CONF_BUSINESS_AGREEMENT_NUMBER: legacy_ban,
+        },
+    )
+
+    with patch(
+        "custom_components.engie_be._async_fetch_relations_for_setup",
+        AsyncMock(return_value=None),
+    ):
+        await _async_migrate_legacy_subentry_unique_ids(hass, entry)
+
+    untouched = next(iter(entry.subentries.values()))
+    assert untouched.unique_id == legacy_ban
