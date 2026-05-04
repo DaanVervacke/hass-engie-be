@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.config_entries import (
+    SOURCE_USER,
+    ConfigSubentry,
+    ConfigSubentryFlow,
+    FlowType,
+    SubentryFlowContext,
+    SubentryFlowResult,
+)
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import slugify
@@ -21,10 +31,15 @@ from .api import (
 )
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_ACCOUNT_HOLDER_NAME,
+    CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
+    CONF_CONSUMPTION_ADDRESS,
     CONF_CUSTOMER_NUMBER,
     CONF_MFA_METHOD,
+    CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
+    CONF_SELECTED_ACCOUNTS,
     CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
@@ -34,6 +49,7 @@ from .const import (
     MFA_METHOD_EMAIL,
     MFA_METHOD_SMS,
     MIN_UPDATE_INTERVAL_MINUTES,
+    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
 )
 
 if TYPE_CHECKING:
@@ -43,7 +59,7 @@ if TYPE_CHECKING:
 class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the config flow for ENGIE Belgium."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         """Initialise the flow handler."""
@@ -60,8 +76,19 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Return the options flow handler."""
         return EngieBeOptionsFlowHandler()
 
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(
+        cls,
+        config_entry: config_entries.ConfigEntry,  # noqa: ARG003
+    ) -> dict[str, type[ConfigSubentryFlow]]:
+        """Return the supported subentry flow handlers."""
+        return {
+            SUBENTRY_TYPE_CUSTOMER_ACCOUNT: CustomerAccountSubentryFlowHandler,
+        }
+
     # ------------------------------------------------------------------
-    # Step 1: credentials + customer number + MFA method
+    # Step 1: credentials + MFA method
     # ------------------------------------------------------------------
 
     async def async_step_user(
@@ -99,10 +126,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self.async_step_mfa_email()
                 return await self.async_step_mfa_sms()
 
-        customer_default = (user_input or {}).get(CONF_CUSTOMER_NUMBER, vol.UNDEFINED)
-        if isinstance(customer_default, str):
-            customer_default = customer_default.removeprefix("00")
-
         return self.async_show_form(
             step_id="user",
             description_placeholders={
@@ -121,15 +144,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_PASSWORD): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.PASSWORD,
-                        ),
-                    ),
-                    vol.Required(
-                        CONF_CUSTOMER_NUMBER,
-                        default=customer_default,
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
-                            prefix="00",
                         ),
                     ),
                     vol.Required(
@@ -228,18 +242,15 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.exception(exception)
                 errors["base"] = "unknown"
             else:
-                raw_number = self._user_input[CONF_CUSTOMER_NUMBER]
-                customer_number = f"00{raw_number.replace(' ', '')}"
-
-                await self.async_set_unique_id(slugify(self._user_input[CONF_USERNAME]))
+                username = self._user_input[CONF_USERNAME]
+                await self.async_set_unique_id(slugify(username))
                 self._abort_if_unique_id_configured()
 
                 return self.async_create_entry(
-                    title=self._user_input[CONF_USERNAME],
+                    title=f"ENGIE Belgium ({username})",
                     data={
-                        CONF_USERNAME: self._user_input[CONF_USERNAME],
+                        CONF_USERNAME: username,
                         CONF_PASSWORD: self._user_input[CONF_PASSWORD],
-                        CONF_CUSTOMER_NUMBER: customer_number,
                         CONF_CLIENT_ID: self._user_input.get(
                             CONF_CLIENT_ID, DEFAULT_CLIENT_ID
                         ),
@@ -286,6 +297,31 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
         finally:
             self._auth_flow_state = None
+
+    # ------------------------------------------------------------------
+    # Chain into subentry picker after the parent entry is created
+    # ------------------------------------------------------------------
+
+    async def async_on_create_entry(
+        self,
+        result: config_entries.ConfigFlowResult,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Chain into the customer-account subentry picker after parent entry is created.
+
+        Returns the same result, populated with ``next_flow`` so the frontend
+        immediately opens the subentry picker step.
+        """
+        entry = result["result"]
+        subentry_result = await self.hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_CUSTOMER_ACCOUNT),
+            context=SubentryFlowContext(source=SOURCE_USER),
+        )
+        result["next_flow"] = (
+            FlowType.CONFIG_SUBENTRIES_FLOW,
+            subentry_result["flow_id"],
+        )
+        return result
 
     # ------------------------------------------------------------------
     # Reauth flow
@@ -408,6 +444,214 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+
+class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
+    """Handle adding ENGIE customer-account subentries to an existing config entry."""
+
+    def __init__(self) -> None:
+        """Initialise the subentry flow handler."""
+        super().__init__()
+        self._available_accounts: list[dict[str, Any]] = []
+
+    async def async_step_user(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> SubentryFlowResult:
+        """Show the multi-select picker for customer accounts."""
+        entry = self._get_entry()
+
+        relations_or_abort = await self._fetch_relations(entry)
+        if isinstance(relations_or_abort, str):
+            return self.async_abort(reason=relations_or_abort)
+
+        already_configured = {
+            subentry.unique_id
+            for subentry in entry.subentries.values()
+            if subentry.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+            and subentry.unique_id is not None
+        }
+
+        accounts = _extract_accounts(relations_or_abort)
+        self._available_accounts = [
+            account
+            for account in accounts
+            if account[CONF_CUSTOMER_NUMBER] not in already_configured
+        ]
+
+        if not self._available_accounts:
+            return self.async_abort(reason="no_accounts_available")
+
+        if user_input is None:
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self._build_schema(),
+            )
+
+        selected = user_input.get(CONF_SELECTED_ACCOUNTS, [])
+        if not selected:
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self._build_schema(),
+                errors={"base": "no_accounts_selected"},
+            )
+
+        picked = [
+            account
+            for account in self._available_accounts
+            if account[CONF_CUSTOMER_NUMBER] in selected
+        ]
+
+        # Programmatically add every pick after the first as a subentry on
+        # the parent entry. The first pick is returned via async_create_entry
+        # so the framework persists it via the standard ConfigSubentryFlow
+        # finish path.
+        for extra in picked[1:]:
+            self.hass.config_entries.async_add_subentry(
+                entry,
+                ConfigSubentry(
+                    data=MappingProxyType(extra),
+                    subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                    title=_subentry_title(extra),
+                    unique_id=extra[CONF_CUSTOMER_NUMBER],
+                ),
+            )
+
+        first = picked[0]
+        return self.async_create_entry(
+            title=_subentry_title(first),
+            data=first,
+            unique_id=first[CONF_CUSTOMER_NUMBER],
+        )
+
+    async def _fetch_relations(
+        self,
+        entry: config_entries.ConfigEntry,
+    ) -> dict[str, Any] | str:
+        """
+        Fetch customer-account relations using a fresh client.
+
+        Returns the response dict on success, or an abort reason string on
+        failure. A fresh client is built from the parent entry's stored tokens
+        because this step can run before async_setup_entry has finished.
+        """
+        client = EngieBeApiClient(
+            session=async_get_clientsession(self.hass),
+            client_id=entry.data.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+            access_token=entry.data.get(CONF_ACCESS_TOKEN),
+            refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
+        )
+        try:
+            return await client.async_get_customer_account_relations()
+        except EngieBeApiClientAuthenticationError as exception:
+            LOGGER.warning(exception)
+            return "auth"
+        except EngieBeApiClientCommunicationError as exception:
+            LOGGER.error(exception)
+            return "connection"
+        except EngieBeApiClientError as exception:
+            LOGGER.exception(exception)
+            return "unknown"
+
+    def _build_schema(self) -> vol.Schema:
+        """Build the multi-select schema for the available customer accounts."""
+        options = [
+            selector.SelectOptionDict(
+                value=account[CONF_CUSTOMER_NUMBER],
+                label=_subentry_title(account),
+            )
+            for account in self._available_accounts
+        ]
+        return vol.Schema(
+            {
+                vol.Required(CONF_SELECTED_ACCOUNTS): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=options,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
+                    ),
+                ),
+            },
+        )
+
+
+# ----------------------------------------------------------------------
+# Helpers (module level so they can be unit-tested without HA boilerplate)
+# ----------------------------------------------------------------------
+
+
+def _extract_accounts(relations: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Flatten a customer-account-relations response into per-account dicts.
+
+    Each returned dict carries the subset of fields stored in the corresponding
+    ConfigSubentry. Inactive business agreements are skipped; if no active
+    agreement is present the account is still surfaced so the user can pick it
+    (the address fields stay empty).
+    """
+    accounts: list[dict[str, Any]] = []
+    for item in relations.get("items", []):
+        customer_account = item.get("customerAccount") or {}
+        customer_number = customer_account.get("customerAccountNumber")
+        if not customer_number:
+            continue
+
+        agreement = _pick_active_agreement(customer_account.get("businessAgreements"))
+        address = (agreement or {}).get("consumptionAddress") or {}
+
+        accounts.append(
+            {
+                CONF_CUSTOMER_NUMBER: customer_number,
+                CONF_BUSINESS_AGREEMENT_NUMBER: (agreement or {}).get(
+                    "businessAgreementNumber",
+                ),
+                CONF_PREMISES_NUMBER: address.get("premisesNumber"),
+                CONF_ACCOUNT_HOLDER_NAME: customer_account.get("name"),
+                CONF_CONSUMPTION_ADDRESS: _format_address(address),
+            },
+        )
+    return accounts
+
+
+def _pick_active_agreement(
+    agreements: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Return the first active business agreement, or the first one available."""
+    if not agreements:
+        return None
+    for agreement in agreements:
+        if agreement.get("active"):
+            return agreement
+    return agreements[0]
+
+
+def _format_address(address: dict[str, Any]) -> str:
+    """Format a consumption address as ``street houseNumber, postalCode city``."""
+    if not address:
+        return ""
+    street = address.get("street") or ""
+    house_number = address.get("houseNumber") or ""
+    postal_code = address.get("postalCode") or ""
+    city = address.get("city") or ""
+    line1 = " ".join(part for part in (street, house_number) if part).strip()
+    line2 = " ".join(part for part in (postal_code, city) if part).strip()
+    return ", ".join(part for part in (line1, line2) if part)
+
+
+def _subentry_title(account: dict[str, Any]) -> str:
+    """
+    Build a user-friendly subentry title.
+
+    Falls back from address to account holder name to customer number so the
+    title always renders something useful.
+    """
+    address = account.get(CONF_CONSUMPTION_ADDRESS)
+    if address:
+        return address
+    holder = account.get(CONF_ACCOUNT_HOLDER_NAME)
+    if holder:
+        return holder
+    return account[CONF_CUSTOMER_NUMBER]
 
 
 class EngieBeOptionsFlowHandler(config_entries.OptionsFlow):

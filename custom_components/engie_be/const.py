@@ -29,6 +29,16 @@ CONF_CLIENT_ID = "client_id"
 CONF_ACCESS_TOKEN = "access_token"  # noqa: S105
 CONF_REFRESH_TOKEN = "refresh_token"  # noqa: S105
 
+# Subentry data keys (one ConfigSubentry per ENGIE customer account)
+SUBENTRY_TYPE_CUSTOMER_ACCOUNT = "customer_account"
+CONF_BUSINESS_AGREEMENT_NUMBER = "business_agreement_number"
+CONF_PREMISES_NUMBER = "premises_number"
+CONF_ACCOUNT_HOLDER_NAME = "account_holder_name"
+CONF_CONSUMPTION_ADDRESS = "consumption_address"
+
+# Subentry picker key
+CONF_SELECTED_ACCOUNTS = "selected_accounts"
+
 # MFA method options
 MFA_METHOD_SMS = "sms"
 MFA_METHOD_EMAIL = "email"
