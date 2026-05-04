@@ -132,6 +132,11 @@
         }
     },
     "entity": {
+        "calendar": {
+            "calendar": {
+                "name": "ENGIE Belgium"
+            }
+        },
         "sensor": {
             "gas_offtake": {
                 "name": "Gas offtake price"

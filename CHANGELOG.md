@@ -49,6 +49,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   don't fire on stale data. Zero is treated as non-negative.
 
 ### Changed
+- The per-account calendar entity now carries a translated entity name
+  ("ENGIE Belgium") instead of being unnamed. Previously, because the
+  calendar set `_attr_name = None` on top of `_attr_has_entity_name =
+  True`, the entity inherited the device name verbatim and appeared in
+  the UI as just the consumption address (e.g. `LINDESTRAAT 27, 8790
+  WAREGEM`), which was indistinguishable from any other calendar
+  source. The composed friendly name now reads as `<address> ENGIE
+  Belgium`, making the integration's calendars obvious at a glance.
+  Entity IDs and unique IDs are unchanged, so no migration is required
+  and history is preserved.
 - **Breaking (entity_id rename, history preserved):** customer-account
   entity IDs now carry the canonical customer account number (CAN) so
   two accounts on the same login no longer collide and get

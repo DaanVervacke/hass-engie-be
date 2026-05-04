@@ -73,7 +73,7 @@ async def async_setup_entry(
 class EngieBeCalendar(EngieBeEntity, CalendarEntity):
     """Aggregated calendar entity for one ENGIE Belgium customer account."""
 
-    _attr_name = None
+    _attr_translation_key = "calendar"
     _attr_icon = "mdi:calendar"
 
     def __init__(
