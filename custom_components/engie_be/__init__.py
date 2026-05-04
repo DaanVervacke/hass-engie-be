@@ -153,13 +153,33 @@ async def _async_migrate_v2_to_v3(
     else:
         title = customer_number
 
-    subentry = ConfigSubentry(
-        data=MappingProxyType(subentry_data),
-        subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
-        title=title,
-        unique_id=customer_number,
+    # Reuse an existing subentry from a previously-failed migration attempt
+    # so the v2->v3 path is idempotent. Match on unique_id (the customer
+    # number), which is the stable identity for a customer-account subentry.
+    existing_subentry = next(
+        (
+            s
+            for s in entry.subentries.values()
+            if s.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+            and s.unique_id == customer_number
+        ),
+        None,
     )
-    hass.config_entries.async_add_subentry(entry, subentry)
+    if existing_subentry is not None:
+        subentry = existing_subentry
+        LOGGER.debug(
+            "Reusing existing subentry %s for customer %s during v2->v3 migration",
+            subentry.subentry_id,
+            customer_number,
+        )
+    else:
+        subentry = ConfigSubentry(
+            data=MappingProxyType(subentry_data),
+            subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+            title=title,
+            unique_id=customer_number,
+        )
+        hass.config_entries.async_add_subentry(entry, subentry)
 
     # Mutate the v2 device in place so user customisations (name_by_user,
     # area_id, labels, automation references) survive the migration.
@@ -169,13 +189,14 @@ async def _async_migrate_v2_to_v3(
         device_reg.async_update_device(
             v2_device.id,
             new_identifiers={(DOMAIN, subentry.subentry_id)},
+            add_config_entry_id=entry.entry_id,
             add_config_subentry_id=subentry.subentry_id,
         )
 
     # Rename the unique_ids of entities whose v2 keys are now subentry-scoped.
     # Energy sensors (EAN-embedded keys) and the auth binary sensor keep their
     # v2 ids and need no rename.
-    _migrate_entity_unique_ids(hass, entry.entry_id, subentry.subentry_id)
+    await _migrate_entity_unique_ids(hass, entry.entry_id, subentry.subentry_id)
 
     # Rename the peaks-history store file on disk from the old per-entry
     # key to the new per-subentry key. Done via ``Store`` so the store
@@ -231,7 +252,7 @@ async def _async_try_relations_backfill(
     return None
 
 
-def _migrate_entity_unique_ids(
+async def _migrate_entity_unique_ids(
     hass: HomeAssistant,
     entry_id: str,
     subentry_id: str,
@@ -279,7 +300,7 @@ def _migrate_entity_unique_ids(
             "config_subentry_id": subentry_id,
         }
 
-    er.async_migrate_entries(hass, entry_id, _migrate)
+    await er.async_migrate_entries(hass, entry_id, _migrate)
 
 
 async def _async_rename_peaks_store(

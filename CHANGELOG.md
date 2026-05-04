@@ -61,6 +61,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   hashes so support bundles stay shareable while still letting you
   correlate which subentry a log line refers to.
 
+### Fixed
+- v2->v3 migration is now idempotent and survives partial-failure
+  retries: an existing customer-account subentry with the same
+  customer number is reused instead of triggering an
+  `already_configured` abort, the device-registry update now passes
+  both `add_config_entry_id` and `add_config_subentry_id` (Home
+  Assistant 2026.3 requires both), and the entity-registry rename
+  step is properly awaited (`er.async_migrate_entries` is a
+  coroutine). Without these fixes a v2 entry whose first migration
+  attempt failed (for example because the OAuth token had expired
+  and the relations backfill returned 403) would refuse to load on
+  subsequent restarts.
+
 ### Migration
 - Existing single-account config entries (schema v1 and v2) are
   upgraded automatically on first load to the new schema (v3). The
