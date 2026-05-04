@@ -6,7 +6,6 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -293,7 +292,7 @@ async def test_migrate_v1_converts_hours_to_minutes(
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 2
+    assert entry.version == 3
     assert entry.options[CONF_UPDATE_INTERVAL] == 120  # 2h -> 120min
 
 
@@ -321,16 +320,10 @@ async def test_migrate_v1_without_interval_just_bumps_version(
 
     assert await async_migrate_entry(hass, entry) is True
 
-    assert entry.version == 2
+    assert entry.version == 3
     assert CONF_UPDATE_INTERVAL not in entry.options
 
 
-@pytest.mark.skip(
-    reason=(
-        "v2->v3 migration is implemented in a follow-up commit; until then "
-        "a v3 entry is the latest schema and never reaches async_migrate_entry."
-    )
-)
 async def test_migrate_v3_is_noop(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001

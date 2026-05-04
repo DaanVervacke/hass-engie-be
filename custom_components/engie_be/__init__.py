@@ -19,7 +19,7 @@ from homeassistant.helpers.storage import Store
 
 from ._relations import (
     RELATIONS_BACKFILLABLE_KEYS,
-    extract_accounts,
+    find_account_for_customer_number,
     subentry_title,
 )
 from .api import (
@@ -181,16 +181,59 @@ async def _async_migrate_v2_to_v3(
         )
         hass.config_entries.async_add_subentry(entry, subentry)
 
-    # Mutate the v2 device in place so user customisations (name_by_user,
-    # area_id, labels, automation references) survive the migration.
+    # Reconcile the device registry with the new subentry. Migration may
+    # be replayed if a previous attempt failed partway through, so the
+    # logic here must be idempotent across four possible registry states:
+    #
+    # State A (fresh v2):       v2 device exists, v3 device does not.
+    #                           Rename the v2 device's identifier in place
+    #                           so user customisations (name_by_user,
+    #                           area_id, labels) and history survive.
+    #
+    # State B (half-migrated):  Both devices exist. A previous run created
+    #                           the v3 device via entity registration
+    #                           before the v2 rename completed. Reparent
+    #                           every v2 entity onto the v3 device and
+    #                           delete the v2 device row.
+    #
+    # State C (already done):   Only the v3 device exists. No-op.
+    #
+    # State D (no devices):     Neither exists. No-op; the platform setup
+    #                           will create the v3 device on first entity
+    #                           registration.
     device_reg = dr.async_get(hass)
-    v2_device = device_reg.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
-    if v2_device is not None:
+    entity_reg = er.async_get(hass)
+    v2_device = device_reg.async_get_device(
+        identifiers={(DOMAIN, entry.entry_id)},
+    )
+    v3_device = device_reg.async_get_device(
+        identifiers={(DOMAIN, subentry.subentry_id)},
+    )
+    if v2_device is not None and v3_device is None:
+        # State A
         device_reg.async_update_device(
             v2_device.id,
             new_identifiers={(DOMAIN, subentry.subentry_id)},
             add_config_entry_id=entry.entry_id,
             add_config_subentry_id=subentry.subentry_id,
+        )
+    elif v2_device is not None and v3_device is not None:
+        # State B
+        for entity_entry in er.async_entries_for_device(
+            entity_reg,
+            v2_device.id,
+            include_disabled_entities=True,
+        ):
+            entity_reg.async_update_entity(
+                entity_entry.entity_id,
+                device_id=v3_device.id,
+                config_subentry_id=subentry.subentry_id,
+            )
+        device_reg.async_remove_device(v2_device.id)
+        LOGGER.debug(
+            "Merged orphan v2 device %s into v3 device %s during migration",
+            v2_device.id,
+            v3_device.id,
         )
 
     # Rename the unique_ids of entities whose v2 keys are now subentry-scoped.
@@ -245,11 +288,7 @@ async def _async_try_relations_backfill(
         )
         return None
 
-    accounts = extract_accounts(relations)
-    for account in accounts:
-        if account.get(CONF_CUSTOMER_NUMBER) == customer_number:
-            return account
-    return None
+    return find_account_for_customer_number(relations, customer_number)
 
 
 async def _migrate_entity_unique_ids(
@@ -290,10 +329,33 @@ async def _migrate_entity_unique_ids(
         for key in keys_to_rename
     }
 
+    entity_reg = er.async_get(hass)
+    new_unique_ids = set(old_to_new.values())
+    domains_with_renames = {"sensor", "binary_sensor", "calendar"}
+    existing_v3_uids = {
+        ent.unique_id
+        for ent in entity_reg.entities.values()
+        if ent.platform == DOMAIN
+        and ent.domain in domains_with_renames
+        and ent.unique_id in new_unique_ids
+    }
+
     @callback
     def _migrate(entity_entry: er.RegistryEntry) -> dict[str, Any] | None:
         new_unique_id = old_to_new.get(entity_entry.unique_id)
         if new_unique_id is None:
+            return None
+        if new_unique_id in existing_v3_uids:
+            # A v3-uid sibling already owns the entity_id slot. Drop the
+            # v2-uid orphan so its entity_id can be reclaimed by the
+            # surviving v3 entity (or simply disappears if unused).
+            entity_reg.async_remove(entity_entry.entity_id)
+            LOGGER.debug(
+                "Removed orphan v2 entity %s during unique_id migration "
+                "(v3 sibling %s already exists)",
+                entity_entry.entity_id,
+                new_unique_id,
+            )
             return None
         return {
             "new_unique_id": new_unique_id,
@@ -369,11 +431,104 @@ async def _async_rename_peaks_store(
     )
 
 
+async def _async_cleanup_orphan_v2_device(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Drop a stale v2 device left over from a partial v2->v3 migration.
+
+    Earlier versions of ``_async_migrate_v2_to_v3`` could leave the
+    registry in an inconsistent state when the entity unique_id rename
+    silently failed: the v2 device kept its ``(DOMAIN, entry_id)``
+    identifier and continued to own a handful of entities while the
+    platform setup created a parallel v3 device under
+    ``(DOMAIN, subentry_id)``. The migration replay path now handles
+    this in-line, but production entries that already booted past the
+    migration step need the same reconciliation at setup time.
+
+    For each customer-account subentry on ``entry``, if both the v2 and
+    the v3 device exist, reparent every v2-owned entity onto the v3
+    device (renaming subentry-scoped unique_ids in the process) and
+    then remove the v2 device row. No-op when no v2 device is present.
+    """
+    device_reg = dr.async_get(hass)
+    entity_reg = er.async_get(hass)
+    v2_device = device_reg.async_get_device(
+        identifiers={(DOMAIN, entry.entry_id)},
+    )
+    if v2_device is None:
+        return
+
+    customer_subentries = [
+        sub
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    ]
+    if len(customer_subentries) != 1:
+        # Ambiguous: the v2 entry only ever had one customer account, so
+        # if more than one customer subentry exists we cannot safely pick
+        # the migration target. Leave the orphan in place and warn.
+        LOGGER.warning(
+            "Found orphan v2 device for entry %s but %d customer subentries "
+            "exist; manual cleanup required",
+            entry.entry_id,
+            len(customer_subentries),
+        )
+        return
+
+    subentry = customer_subentries[0]
+    v3_device = device_reg.async_get_device(
+        identifiers={(DOMAIN, subentry.subentry_id)},
+    )
+    if v3_device is None:
+        # Only the v2 device exists: rename its identifier in place so
+        # user customisations survive. Mirrors migration State A.
+        device_reg.async_update_device(
+            v2_device.id,
+            new_identifiers={(DOMAIN, subentry.subentry_id)},
+            add_config_entry_id=entry.entry_id,
+            add_config_subentry_id=subentry.subentry_id,
+        )
+        LOGGER.info(
+            "Promoted orphan v2 device %s to v3 subentry %s",
+            v2_device.id,
+            subentry.subentry_id,
+        )
+        return
+
+    # Both devices exist: rename any v2-uid entities onto v3 ids (or
+    # remove them if a v3 sibling already owns the new uid), reparent
+    # the survivors onto the v3 device, then drop the v2 device row.
+    await _migrate_entity_unique_ids(hass, entry.entry_id, subentry.subentry_id)
+    for entity_entry in er.async_entries_for_device(
+        entity_reg,
+        v2_device.id,
+        include_disabled_entities=True,
+    ):
+        entity_reg.async_update_entity(
+            entity_entry.entity_id,
+            device_id=v3_device.id,
+            config_subentry_id=subentry.subentry_id,
+        )
+    device_reg.async_remove_device(v2_device.id)
+    LOGGER.info(
+        "Removed orphan v2 device %s after merging entities into v3 device %s",
+        v2_device.id,
+        v3_device.id,
+    )
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,
 ) -> bool:
     """Set up this integration using UI."""
+    # Defensive cleanup for entries that survived a partial v2->v3
+    # migration before the merge logic above existed. Safe to run on
+    # every setup: it is a no-op when no orphan v2 device is present.
+    await _async_cleanup_orphan_v2_device(hass, entry)
+
     client = EngieBeApiClient(
         session=async_get_clientsession(hass),
         client_id=entry.data.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),

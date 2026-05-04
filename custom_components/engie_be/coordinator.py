@@ -6,14 +6,20 @@ from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
+from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
 from homeassistant.util import dt as dt_util
 
-from ._relations import RELATIONS_BACKFILLABLE_KEYS, extract_accounts
+from ._relations import (
+    RELATIONS_BACKFILLABLE_KEYS,
+    find_account_for_customer_number,
+    subentry_title,
+)
 from .api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
@@ -224,14 +230,10 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return
 
-        accounts = extract_accounts(relations) if isinstance(relations, dict) else []
-        match = next(
-            (
-                account
-                for account in accounts
-                if account.get(CONF_CUSTOMER_NUMBER) == self.customer_number
-            ),
-            None,
+        accounts_payload = relations if isinstance(relations, dict) else {}
+        match = find_account_for_customer_number(
+            accounts_payload,
+            self.customer_number,
         )
         if match is None:
             LOGGER.debug(
@@ -251,16 +253,44 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if updated == existing:
             return
 
+        new_title = subentry_title(updated)
+        old_title = self.subentry.title
         self.hass.config_entries.async_update_subentry(
             self.config_entry,
             self.subentry,
             data=updated,
+            title=new_title,
         )
         LOGGER.debug(
             "Backfilled subentry %s with relations fields: %s",
             self.subentry.subentry_id,
             sorted(set(updated) - {k for k, v in existing.items() if v}),
         )
+
+        if new_title != old_title:
+            self._async_rename_subentry_device(new_title)
+
+    @callback
+    def _async_rename_subentry_device(self, new_title: str) -> None:
+        """
+        Refresh the customer-account device name after a backfill.
+
+        ``DeviceInfo`` is only consulted by HA when an entity is added or
+        re-added; updating ``subentry.title`` does not by itself rename
+        the device. We look the device up by its stable subentry-scoped
+        identifier and update its ``name`` field directly. ``name_by_user``
+        is preserved by HA's update logic, so a user-customised name is
+        never clobbered.
+        """
+        device_reg = dr.async_get(self.hass)
+        device = device_reg.async_get_device(
+            identifiers={(DOMAIN, self.subentry.subentry_id)},
+        )
+        if device is None:
+            return
+        if device.name == new_title:
+            return
+        device_reg.async_update_device(device.id, name=new_title)
 
     async def _async_fetch_peaks_with_fallback(
         self,

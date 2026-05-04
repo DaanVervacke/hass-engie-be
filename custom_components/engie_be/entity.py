@@ -110,9 +110,9 @@ class EngieBeAuthEntity(
         self._entry = entry
         username = entry.data.get(CONF_USERNAME, "")
         device_name = (
-            f"ENGIE Belgium login ({username})"
+            f"Account ({username})"
             if username
-            else "ENGIE Belgium login"
+            else "Account"
         )
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"login_{entry.entry_id}")},

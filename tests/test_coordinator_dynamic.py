@@ -160,6 +160,10 @@ async def test_dynamic_account_records_is_dynamic_true(
 
     coordinator = _make_coordinator(hass, entry)
     result = await coordinator._async_update_data()
+    # The coordinator's ``async_refresh`` is what sets ``self.data`` for the
+    # public ``is_dynamic`` property; calling ``_async_update_data`` directly
+    # bypasses that, so mirror what the framework would have done.
+    coordinator.data = result
 
     assert result[KEY_IS_DYNAMIC] is True
     assert coordinator.is_dynamic is True

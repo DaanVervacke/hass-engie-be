@@ -17,8 +17,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be.api import EngieBeApiClientError
@@ -41,6 +43,11 @@ from custom_components.engie_be.data import EngieBeData
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
+
+# All tests in this module exercise the relations-backfill side effect; opt
+# out of the autouse stub in conftest that no-ops backfill for unrelated
+# coordinator tests.
+pytestmark = pytest.mark.backfill
 
 _RELATIONS_FIXTURE = (
     Path(__file__).parent / "fixtures" / "customer_account_relations_sample.json"
@@ -313,3 +320,136 @@ async def test_backfill_only_fills_missing_keys(
     assert refreshed.data[CONF_BUSINESS_AGREEMENT_NUMBER] == "002200000001"
     assert refreshed.data[CONF_PREMISES_NUMBER] == "5100000001"
     assert "TESTSTRAAT 1" in refreshed.data[CONF_CONSUMPTION_ADDRESS]
+
+
+async def test_backfill_matches_legacy_business_agreement_number(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Legacy v2 entries stored businessAgreementNumber as customer_number.
+
+    The coordinator backfill must still locate the owning customer
+    account via the businessAgreements walk so the address and holder
+    name can be filled in. The stored ``customer_number`` is left
+    untouched (the prices/peaks endpoints accept either identifier),
+    only the display fields are populated.
+    """
+    relations = json.loads(_RELATIONS_FIXTURE.read_text())
+    legacy_ban = "002200000001"  # 12-digit BAN, not a CAN
+    entry = _build_entry_with_subentry(
+        hass,
+        customer_number=legacy_ban,
+        subentry_data={},
+    )
+    subentry = _only_subentry(entry)
+    client = _make_client(relations_return=relations)
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeDataUpdateCoordinator(
+        hass=hass,
+        config_entry=entry,
+        subentry=subentry,
+    )
+
+    await coordinator._async_update_data()
+
+    refreshed = entry.subentries[subentry.subentry_id]
+    # The originally-stored identifier is preserved (used for API calls).
+    assert refreshed.data[CONF_CUSTOMER_NUMBER] == legacy_ban
+    # Display fields are populated from the matched customer account.
+    assert refreshed.data[CONF_BUSINESS_AGREEMENT_NUMBER] == "002200000001"
+    assert refreshed.data[CONF_PREMISES_NUMBER] == "5100000001"
+    assert refreshed.data[CONF_ACCOUNT_HOLDER_NAME] == "Test Customer One"
+    assert "TESTSTRAAT 1" in refreshed.data[CONF_CONSUMPTION_ADDRESS]
+
+
+async def test_backfill_refreshes_subentry_title_and_device_name(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Successful backfill must update the subentry title and rename the device.
+
+    Before backfill the subentry title is the bare customer number (the
+    fallback used when no relations data is available at creation time).
+    After backfill the title falls through to the consumption address,
+    and the matching device must be renamed in place so the registry
+    reflects the new label without requiring the user to remove and
+    re-add the entry.
+    """
+    relations = json.loads(_RELATIONS_FIXTURE.read_text())
+    entry = _build_entry_with_subentry(
+        hass,
+        customer_number="1500000001",
+        subentry_data={},
+    )
+    subentry = _only_subentry(entry)
+    client = _make_client(relations_return=relations)
+    _attach_runtime(entry, client)
+
+    # Pre-create the device the way the entity platform would, so the
+    # coordinator has a real device to rename.
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        config_subentry_id=subentry.subentry_id,
+        identifiers={(DOMAIN, subentry.subentry_id)},
+        manufacturer="ENGIE Belgium",
+        name=subentry.title,
+    )
+    assert device.name == "placeholder"
+
+    coordinator = EngieBeDataUpdateCoordinator(
+        hass=hass,
+        config_entry=entry,
+        subentry=subentry,
+    )
+
+    await coordinator._async_update_data()
+
+    refreshed_subentry = entry.subentries[subentry.subentry_id]
+    new_title = refreshed_subentry.title
+    # Title now reflects the consumption address rather than the placeholder.
+    assert new_title != "placeholder"
+    assert "TESTSTRAAT 1" in new_title
+
+    refreshed_device = device_reg.async_get(device.id)
+    assert refreshed_device is not None
+    assert refreshed_device.name == new_title
+
+
+async def test_backfill_preserves_user_named_device(
+    hass: HomeAssistant,
+) -> None:
+    """A user-customised device name must not be clobbered by backfill."""
+    relations = json.loads(_RELATIONS_FIXTURE.read_text())
+    entry = _build_entry_with_subentry(
+        hass,
+        customer_number="1500000001",
+        subentry_data={},
+    )
+    subentry = _only_subentry(entry)
+    client = _make_client(relations_return=relations)
+    _attach_runtime(entry, client)
+
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        config_subentry_id=subentry.subentry_id,
+        identifiers={(DOMAIN, subentry.subentry_id)},
+        manufacturer="ENGIE Belgium",
+        name=subentry.title,
+    )
+    device_reg.async_update_device(device.id, name_by_user="My Custom Label")
+
+    coordinator = EngieBeDataUpdateCoordinator(
+        hass=hass,
+        config_entry=entry,
+        subentry=subentry,
+    )
+
+    await coordinator._async_update_data()
+
+    refreshed_device = device_reg.async_get(device.id)
+    assert refreshed_device is not None
+    # The user-set label wins regardless of what backfill writes to ``name``.
+    assert refreshed_device.name_by_user == "My Custom Label"

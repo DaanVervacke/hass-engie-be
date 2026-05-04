@@ -46,21 +46,59 @@ def extract_accounts(relations: dict[str, Any]) -> list[dict[str, Any]]:
         if not customer_number:
             continue
 
-        agreement = pick_active_agreement(customer_account.get("businessAgreements"))
-        address = (agreement or {}).get("consumptionAddress") or {}
-
-        accounts.append(
-            {
-                CONF_CUSTOMER_NUMBER: customer_number,
-                CONF_BUSINESS_AGREEMENT_NUMBER: (agreement or {}).get(
-                    "businessAgreementNumber",
-                ),
-                CONF_PREMISES_NUMBER: address.get("premisesNumber"),
-                CONF_ACCOUNT_HOLDER_NAME: customer_account.get("name"),
-                CONF_CONSUMPTION_ADDRESS: format_address(address),
-            },
-        )
+        accounts.append(_flatten_customer_account(customer_account))
     return accounts
+
+
+def find_account_for_customer_number(
+    relations: dict[str, Any],
+    stored_number: str,
+) -> dict[str, Any] | None:
+    """
+    Find the relations record whose stored identifier matches a subentry.
+
+    The v3 ``customer_number`` subentry field nominally holds a
+    ``customerAccountNumber`` (10 digits, no leading zeros), but legacy
+    v2 entries -- and entries created before the picker-based config
+    flow existed -- can still hold a ``businessAgreementNumber`` (12
+    digits with leading zeros) because the v2 prices/peaks endpoints
+    accept either identifier in the same path slot. To keep backfill
+    working for those entries we match against both keys.
+
+    Returns the same flattened dict shape as :func:`extract_accounts`
+    on the active business agreement, or ``None`` when no match is
+    found. The returned dict's ``CONF_CUSTOMER_NUMBER`` always reflects
+    the canonical ``customerAccountNumber`` from the API; callers that
+    want to preserve the originally-stored value must merge explicitly.
+    """
+    if not stored_number:
+        return None
+    for item in relations.get("items", []):
+        customer_account = item.get("customerAccount") or {}
+        customer_number = customer_account.get("customerAccountNumber")
+        if not customer_number:
+            continue
+        if customer_number == stored_number:
+            return _flatten_customer_account(customer_account)
+        for agreement in customer_account.get("businessAgreements") or []:
+            if agreement.get("businessAgreementNumber") == stored_number:
+                return _flatten_customer_account(customer_account)
+    return None
+
+
+def _flatten_customer_account(customer_account: dict[str, Any]) -> dict[str, Any]:
+    """Produce the per-account subentry dict for a ``customerAccount`` node."""
+    agreement = pick_active_agreement(customer_account.get("businessAgreements"))
+    address = (agreement or {}).get("consumptionAddress") or {}
+    return {
+        CONF_CUSTOMER_NUMBER: customer_account.get("customerAccountNumber"),
+        CONF_BUSINESS_AGREEMENT_NUMBER: (agreement or {}).get(
+            "businessAgreementNumber",
+        ),
+        CONF_PREMISES_NUMBER: address.get("premisesNumber"),
+        CONF_ACCOUNT_HOLDER_NAME: customer_account.get("name"),
+        CONF_CONSUMPTION_ADDRESS: format_address(address),
+    }
 
 
 def pick_active_agreement(

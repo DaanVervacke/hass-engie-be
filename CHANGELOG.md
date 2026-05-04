@@ -62,6 +62,21 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   correlate which subentry a log line refers to.
 
 ### Fixed
+- The relations-backfill matcher in the coordinator now finds legacy
+  entries whose stored `customer_number` is the
+  `businessAgreementNumber` (BAN) rather than the
+  `customerAccountNumber` (CAN). The previous matcher only walked the
+  flat CAN list, so subentries created from older API payloads (or
+  entries migrated from a single-account v1/v2 schema where the
+  stored identifier happened to be the BAN) silently failed to be
+  enriched with `account_holder_name`, `consumption_address`, etc.
+- Backfilling relations now refreshes the subentry title and renames
+  the customer-account device to match. Previously the title and
+  device name were set once at subentry creation and never updated,
+  so subentries created before relations were available kept showing
+  the raw customer number even after the backfill populated the
+  consumption address. `name_by_user` is preserved so user-customised
+  device names are not overwritten.
 - v2->v3 migration is now idempotent and survives partial-failure
   retries: an existing customer-account subentry with the same
   customer number is reused instead of triggering an
