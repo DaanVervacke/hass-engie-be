@@ -26,9 +26,11 @@ exposes its EAN, the validity window, and the applicable VAT rate as
 attributes. Every sensor below is also available as an `_excl_vat` variant
 (same name, `_excl_vat` suffix on both the entity ID and the friendly name).
 
-> If your ENGIE login owns more than one customer account, the entity ID
-> includes that customer's number, e.g.
-> `sensor.engie_belgium_1500000123_gas_offtake_price`. The customer number is
+> All entity IDs include your ENGIE customer number, e.g.
+> `sensor.engie_belgium_1500000123_gas_offtake_price`. The bare
+> `sensor.engie_belgium_*` IDs shown in the tables below are illustrative;
+> replace `engie_belgium_` with `engie_belgium_{your_customer_number}_` when
+> referencing a sensor in automations or dashboards. Your customer number is
 > visible on the device page in **Settings -> Devices & services -> ENGIE
 > Belgium**.
 
