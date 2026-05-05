@@ -235,6 +235,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   `has_entity_name` so its friendly name leads with `ENGIE Belgium`
   instead of the device name). No behavioural changes.
 
+### Docs
+- Simplified the README: removed implementation-detail asides
+  (OAuth2/PKCE, token-refresh internals, polling endpoint counts,
+  energy-type detection fallback), trimmed the multi-customer-account
+  and credential-storage sections, dropped the internal API slot codes
+  (`TOTAL_HOURS`, `PEAK`, `OFFPEAK`, `SUPEROFFPEAK`) from the tariff
+  sub-sections, collapsed the incl-VAT / excl-VAT sensor table rows,
+  and removed the "How it works" and "A note on how this was built"
+  sections.
+
 ## [0.7.1] - 2026-05-03
 
 ### Added
