@@ -219,6 +219,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   Sensor history is preserved across the migration. No manual
   reconfiguration is required.
 
+### Chore
+- Code-quality cleanups identified by an HA conventions audit of the
+  multi-customer-account branch: hoisted the inline `dt_util` import in
+  `calendar.py` to module level (removes the `# noqa: PLC0415`
+  suppression); cleaned up the entity base-class hierarchy so each
+  concrete entity inherits `CoordinatorEntity` exactly once with its
+  proper generic parameter, removing the `# type: ignore[type-arg]`
+  workaround; renamed `EngieBePeaksStore.__init__`'s misleading
+  `entry_id` parameter to `subentry_id` to match what callers actually
+  pass; added a `loggers` declaration to `manifest.json` so
+  `logger.set_default_level` targeting works as expected; and re-flagged
+  `has-entity-name` as exempt in `quality_scale.yaml` with a comment
+  citing the calendar's brand-leading rationale (the entity opts out of
+  `has_entity_name` so its friendly name leads with `ENGIE Belgium`
+  instead of the device name). No behavioural changes.
+
 ## [0.7.1] - 2026-05-03
 
 ### Added

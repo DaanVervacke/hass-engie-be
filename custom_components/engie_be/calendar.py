@@ -19,6 +19,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
+from homeassistant.util import dt as dt_util
 
 from ._peaks import captar_peak_events
 from .const import CONF_CUSTOMER_NUMBER, LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
@@ -137,8 +138,6 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
         events = self._all_events()
         if not events:
             return None
-        from homeassistant.util import dt as dt_util  # noqa: PLC0415
-
         now = dt_util.utcnow()
         active = [e for e in events if e.start <= now < e.end]
         if active:

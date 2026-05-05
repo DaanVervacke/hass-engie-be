@@ -17,8 +17,16 @@ if TYPE_CHECKING:
     from .data import EngieBeConfigEntry
 
 
-class _EngieBeBaseEntity(CoordinatorEntity):  # type: ignore[type-arg]
-    """Common attributes for every ENGIE Belgium entity."""
+class _EngieBeBaseEntity:
+    """
+    Common attributes shared by every ENGIE Belgium entity.
+
+    Pure mixin: holds class-level attributes only and does not inherit
+    from ``CoordinatorEntity``. Each concrete subclass inherits
+    ``CoordinatorEntity[<concrete coordinator>]`` exactly once so the
+    generic parameter is preserved end-to-end without forcing a
+    type-arg suppression.
+    """
 
     _attr_attribution = ATTRIBUTION
     _attr_has_entity_name = True

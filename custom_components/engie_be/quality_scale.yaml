@@ -19,7 +19,13 @@ rules:
     status: exempt
     comment: Entities are coordinator-driven; no library event subscriptions to manage.
   entity-unique-id: done
-  has-entity-name: done
+  has-entity-name:
+    status: exempt
+    comment: >
+      All sensor and binary_sensor entities use has_entity_name=True. The
+      calendar entity opts out so its friendly name can lead with the brand
+      ("ENGIE Belgium <address>") rather than appending the brand to the
+      device name; see calendar.py for the full rationale.
   runtime-data: done
   test-before-configure: done
   test-before-setup: done

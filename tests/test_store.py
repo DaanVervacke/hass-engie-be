@@ -32,7 +32,7 @@ async def test_load_starts_empty_when_no_persisted_data(
 ) -> None:
     """A fresh store with no persisted data exposes an empty peaks list."""
     fake_store_load.async_load.return_value = None
-    store = EngieBePeaksStore(MagicMock(), entry_id="abc")
+    store = EngieBePeaksStore(MagicMock(), subentry_id="abc")
     await store.async_load()
     assert store.peaks == []
 
@@ -53,7 +53,7 @@ async def test_load_skips_invalid_entries(fake_store_load: MagicMock) -> None:
             {"year": "bad", "month": 4, "start": "x", "end": "y"},
         ],
     }
-    store = EngieBePeaksStore(MagicMock(), entry_id="abc")
+    store = EngieBePeaksStore(MagicMock(), subentry_id="abc")
     await store.async_load()
     assert len(store.peaks) == 1
     assert store.peaks[0]["month"] == 3
@@ -63,7 +63,7 @@ async def test_upsert_inserts_new_entry_and_schedules_save(
     fake_store_load: MagicMock,
 ) -> None:
     """Inserting a previously-unseen month adds an entry and schedules a save."""
-    store = EngieBePeaksStore(MagicMock(), entry_id="abc")
+    store = EngieBePeaksStore(MagicMock(), subentry_id="abc")
     await store.async_load()
 
     changed = store.upsert(
@@ -84,7 +84,7 @@ async def test_upsert_overwrites_existing_month_when_window_changes(
     fake_store_load: MagicMock,
 ) -> None:
     """A larger peak in the same month replaces the existing window."""
-    store = EngieBePeaksStore(MagicMock(), entry_id="abc")
+    store = EngieBePeaksStore(MagicMock(), subentry_id="abc")
     await store.async_load()
 
     store.upsert(
@@ -117,7 +117,7 @@ async def test_upsert_returns_false_and_skips_save_when_unchanged(
     fake_store_load: MagicMock,
 ) -> None:
     """Re-upserting an identical entry is a no-op."""
-    store = EngieBePeaksStore(MagicMock(), entry_id="abc")
+    store = EngieBePeaksStore(MagicMock(), subentry_id="abc")
     await store.async_load()
 
     store.upsert(
@@ -147,7 +147,7 @@ async def test_peaks_are_returned_in_chronological_order(
     fake_store_load: MagicMock,  # noqa: ARG001 - patches Store for the test
 ) -> None:
     """``peaks`` always sorts entries by (year, month) ascending."""
-    store = EngieBePeaksStore(MagicMock(), entry_id="abc")
+    store = EngieBePeaksStore(MagicMock(), subentry_id="abc")
     await store.async_load()
 
     store.upsert(
@@ -183,7 +183,7 @@ async def test_summary_reports_oldest_newest_and_count(
     fake_store_load: MagicMock,  # noqa: ARG001 - patches Store for the test
 ) -> None:
     """``summary`` reflects the persisted history at a glance."""
-    store = EngieBePeaksStore(MagicMock(), entry_id="abc")
+    store = EngieBePeaksStore(MagicMock(), subentry_id="abc")
     await store.async_load()
 
     store.upsert(
@@ -216,7 +216,7 @@ async def test_summary_when_empty(
     fake_store_load: MagicMock,  # noqa: ARG001 - patches Store for the test
 ) -> None:
     """``summary`` returns zeroed fields when nothing is persisted."""
-    store = EngieBePeaksStore(MagicMock(), entry_id="abc")
+    store = EngieBePeaksStore(MagicMock(), subentry_id="abc")
     await store.async_load()
     assert store.summary() == {
         "count": 0,
