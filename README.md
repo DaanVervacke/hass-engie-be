@@ -247,8 +247,7 @@ one, delete its subentry.
 ENGIE rotates refresh tokens regularly, and the upstream auth server can revoke
 a session at any time. The most common trigger is the same ENGIE account being
 used elsewhere (engie.be web, ENGIE Smart App). If you see the **"Repair"**
-notification frequently, see [Prerequisites](#prerequisites) for the
-dedicated-account recommendation.
+notification frequently, use a dedicated account (see [Prerequisites](#prerequisites)).
 
 To complete re-authentication:
 
