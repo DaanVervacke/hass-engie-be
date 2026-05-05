@@ -818,14 +818,10 @@ async def _async_heal_b1_energy_unique_ids(
     skipped = 0
     for ent in candidates:
         device = (
-            device_reg.async_get(ent.device_id)
-            if ent.device_id is not None
-            else None
+            device_reg.async_get(ent.device_id) if ent.device_id is not None else None
         )
         subentry_id = (
-            _subentry_id_from_device(device, valid_subentry_ids)
-            if device
-            else None
+            _subentry_id_from_device(device, valid_subentry_ids) if device else None
         )
         if subentry_id is None:
             LOGGER.warning(
@@ -838,9 +834,7 @@ async def _async_heal_b1_energy_unique_ids(
 
         suffix = ent.unique_id[len(entry_prefix) :]
         new_unique_id = f"{entry_id}_{subentry_id}_{suffix}"
-        existing = entity_reg.async_get_entity_id(
-            ent.domain, DOMAIN, new_unique_id
-        )
+        existing = entity_reg.async_get_entity_id(ent.domain, DOMAIN, new_unique_id)
         if existing is not None and existing != ent.entity_id:
             entity_reg.async_remove(ent.entity_id)
             dropped += 1

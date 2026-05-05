@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0b5] - 2026-05-05
+
+> Beta release. Please report issues on
+> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
+
+### Changed
+- Internal: code formatting fix; no functional change.
+
 ## [0.8.0b4] - 2026-05-05
 
 > Beta release. Please report issues on
