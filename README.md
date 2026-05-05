@@ -235,7 +235,7 @@ integration shows a picker of every customer account your login can access. Pick
 one or more, and each becomes its own device with its own sensors.
 
 To add another customer account later, open the ENGIE Belgium card in
-**Settings** > **Devices & Services** and click **Add subentry**. To remove
+**Settings** > **Devices & Services** and click **Add customer account**. To remove
 one, delete its subentry. The rest stay intact.
 
 > Existing single-account installs are upgraded automatically and your sensor
