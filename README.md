@@ -28,8 +28,8 @@ attributes. Every sensor below is also available as an `_excl_vat` variant
 
 > All entity IDs include your ENGIE customer number, e.g.
 > `sensor.engie_belgium_1500000123_gas_offtake_price`. The bare
-> `sensor.engie_belgium_*` IDs shown in the tables below are illustrative;
-> replace `engie_belgium_` with `engie_belgium_{your_customer_number}_` when
+> `sensor.engie_belgium_*` IDs shown in the tables below are illustrative.
+> Replace `engie_belgium_` with `engie_belgium_{your_customer_number}_` when
 > referencing a sensor in automations or dashboards. The customer number
 > appears in every entity ID created by the integration (visible in
 > **Developer tools** > **States**).
@@ -134,7 +134,7 @@ series:
       return entity.attributes.today.map(s => [new Date(s.start).getTime(), s.value]);
 ```
 
-> Wholesale prices can be **negative** during periods of oversupply; this is
+> Wholesale prices can be **negative** during periods of oversupply. This is
 > reported faithfully.
 
 A binary sensor `binary_sensor.engie_belgium_epex_price_is_negative` turns on
@@ -191,7 +191,7 @@ If the badges above do not work in your browser:
 
 Configuration is done entirely through the Home Assistant UI. New ENGIE
 accounts created via the [user management page](https://www.engie.be/nl/energiedesk/usermanagement/manage-access/)
-have 2FA enabled by default and work out of the box; the integration only
+have 2FA enabled by default and work out of the box. The integration only
 supports accounts where 2FA via SMS or email is already enabled.
 
 If you haven't reached the credential form yet, use the **Add Integration**
@@ -226,12 +226,12 @@ After setup, you can change the price update interval:
 
 A single ENGIE login can be linked to several customer accounts (for example a
 private home and a holiday house). After you finish 2FA during setup, the
-integration shows a picker of every customer account your login can access; pick
+integration shows a picker of every customer account your login can access. Pick
 one or more, and each becomes its own device with its own sensors.
 
 To add another customer account later, open the ENGIE Belgium card in
 **Settings** > **Devices & Services** and click **Add subentry**. To remove
-one, delete its subentry; the rest stay intact.
+one, delete its subentry. The rest stay intact.
 
 > Existing single-account installs are upgraded automatically and your sensor
 > history is preserved. If any of your automations or dashboards reference an
@@ -261,7 +261,7 @@ removed and no history is lost.
 2. Find the **ENGIE Belgium** card and click the three-dot menu.
 3. Select **Delete**.
 
-No cleanup is required on your ENGIE account; the integration only reads data
+No cleanup is required on your ENGIE account. The integration only reads data
 and never modifies anything upstream.
 
 ## Troubleshooting
