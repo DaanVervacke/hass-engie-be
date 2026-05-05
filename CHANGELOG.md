@@ -18,6 +18,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   subentry). The integration now cleans this up automatically the next
   time it starts. No action is required and your sensors, history, and
   customisations are preserved.
+- **Energy price sensors now stay attached to the customer account
+  device after upgrading from 0.7.x.** Previously the gas and
+  electricity offtake/injection price sensors were moved onto a
+  separate "Account" device during the upgrade, which broke
+  area assignments and grouped them away from the captar peak,
+  calendar, and EPEX sensors. They are now correctly grouped under
+  the customer account device alongside the rest of the sensors.
+  History and customisations are preserved.
 
 ## [0.8.0b1] - 2026-05-05
 

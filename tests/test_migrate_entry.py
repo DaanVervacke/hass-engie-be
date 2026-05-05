@@ -137,14 +137,16 @@ def _seed_v2_device_and_entities(
         device_id=v2_device.id,
     )
 
-    # Untouched: energy sensor (EAN-embedded key) and auth binary sensor
-    energy_uid = f"{entry.entry_id}_consumption_541448820000000001"
+    # Energy sensor (EAN-embedded key) gets renamed and reparented like the
+    # other subentry-scoped entities. Only the auth binary sensor stays at
+    # the v2 unique_id shape because it is login-scoped, not account-scoped.
+    energy_uid = f"{entry.entry_id}_541448820000000001_offtake"
     old_uids["energy"] = energy_uid
     entity_reg.async_get_or_create(
         "sensor",
         DOMAIN,
         energy_uid,
-        suggested_object_id="engie_be_consumption",
+        suggested_object_id="engie_be_offtake",
         config_entry=entry,
         device_id=v2_device.id,
     )
@@ -374,7 +376,7 @@ async def test_migrate_v2_to_v3_mutates_device_identifiers_in_place(
 
 
 # ---------------------------------------------------------------------------
-# Entity registry: rename the 9 affected entities, leave energy + auth alone
+# Entity registry: rename every v2 unique_id except authentication
 # ---------------------------------------------------------------------------
 
 
@@ -382,7 +384,7 @@ async def test_migrate_v2_to_v3_renames_only_subentry_scoped_unique_ids(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
-    """Peaks/EPEX/calendar unique_ids are rewritten, energy + auth move to login dev."""
+    """All v2 unique_ids gain a subentry segment; only auth stays login-scoped."""
     entry = _build_v2_entry(hass)
     _v2_device_id, old_uids = _seed_v2_device_and_entities(hass, entry)
 
@@ -401,8 +403,8 @@ async def test_migrate_v2_to_v3_renames_only_subentry_scoped_unique_ids(
     all_entries = er.async_entries_for_config_entry(entity_reg, entry.entry_id)
     by_uid = {e.unique_id: e for e in all_entries}
 
-    # Renamed entities: old uid is gone, new uid is present, and the
-    # subentry_id is associated.
+    # Renamed entities: old uid is gone, new uid carries the subentry-id
+    # segment, and the entity is attached to the customer-account device.
     keys_to_rename = (
         "captar_monthly_peak_power",
         "captar_monthly_peak_energy",
@@ -425,18 +427,25 @@ async def test_migrate_v2_to_v3_renames_only_subentry_scoped_unique_ids(
         assert by_uid[new_uid].config_subentry_id == subentry.subentry_id
         assert by_uid[new_uid].device_id == customer_device.id
 
-    # Energy and auth unique_ids are unchanged (no subentry_id segment added)
-    # but get reparented onto a dedicated login device so they survive the
+    # Energy sensors (EAN-embedded keys) are also renamed and stay on the
+    # customer-account device. Only the suffix after ``{entry_id}_`` differs.
+    new_energy_uid = (
+        f"{entry.entry_id}_{subentry.subentry_id}_541448820000000001_offtake"
+    )
+    assert old_uids["energy"] not in by_uid
+    assert new_energy_uid in by_uid
+    assert by_uid[new_energy_uid].config_subentry_id == subentry.subentry_id
+    assert by_uid[new_energy_uid].device_id == customer_device.id
+
+    # Auth binary sensor keeps its v2 unique_id (login-scoped) and is
+    # reparented onto a dedicated login device so it survives the
     # device-link cleanup that drops the legacy ``(entry_id, None)`` link.
     login_device = device_reg.async_get_device(
         identifiers={(DOMAIN, f"login_{entry.entry_id}")},
     )
     assert login_device is not None
-    assert old_uids["energy"] in by_uid
     assert old_uids["auth"] in by_uid
-    assert by_uid[old_uids["energy"]].device_id == login_device.id
     assert by_uid[old_uids["auth"]].device_id == login_device.id
-    assert by_uid[old_uids["energy"]].config_subentry_id is None
     assert by_uid[old_uids["auth"]].config_subentry_id is None
 
 

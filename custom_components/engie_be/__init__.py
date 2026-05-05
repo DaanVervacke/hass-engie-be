@@ -336,16 +336,15 @@ async def _async_migrate_v2_to_v3(
         identifiers={(DOMAIN, subentry.subentry_id)},
     )
 
-    # Rename the unique_ids of entities whose v2 keys are now subentry-scoped
-    # before touching the device registry. ``_migrate_entity_unique_ids``
-    # also stamps ``config_subentry_id=subentry_id`` on the renamed entities,
-    # so that when the device-link swap below strips the legacy
+    # Rewrite v2 unique_ids to the v3 subentry-scoped shape before touching
+    # the device registry. ``_migrate_entity_unique_ids`` stamps
+    # ``config_subentry_id=subentry_id`` on every renamed entity, so that
+    # when the device-link swap below strips the legacy
     # ``(entry_id, None)`` link, Home Assistant's entity registry only
-    # auto-removes entities whose ``config_subentry_id`` is still ``None``
-    # (the v2 login-scoped energy + auth entities). The promote helper
-    # reparents those onto a dedicated login device first, so nothing is
-    # lost. Energy sensors (EAN-embedded keys) and the auth binary sensor
-    # keep their v2 unique_ids and never get a subentry-id segment.
+    # auto-removes entities whose ``config_subentry_id`` is still ``None``.
+    # The only such entity is the auth binary sensor (login-scoped, kept
+    # at the v2 unique_id shape on purpose), which the promote helper
+    # reparents onto a dedicated login device first so nothing is lost.
     await _migrate_entity_unique_ids(hass, entry.entry_id, subentry.subentry_id)
 
     if v2_device is not None and v3_device is None:
@@ -434,51 +433,56 @@ async def _migrate_entity_unique_ids(
     """
     Rename v2 unique_ids that became subentry-scoped in v3.
 
-    The v2 keys listed below were previously globally unique on a single
-    login because the integration only supported one customer account.
-    In v3 the same descriptor repeats across customer accounts, so
-    ``{entry_id}_{key}`` would collide. The subentry-id segment keeps
-    them disjoint.
+    In v2 the integration only supported one customer account, so every
+    entity's unique_id was simply ``{entry_id}_{key}``. In v3 the same
+    descriptors repeat across customer accounts (multiple subentries on
+    one login), so the unique_id schema gained a subentry-id segment:
+    ``{entry_id}_{subentry_id}_{key}``.
+
+    This helper finds every v2-shaped unique_id on the entry and rewrites
+    it to the v3 shape, also stamping ``config_subentry_id=subentry_id``
+    on the registry entry so the entity is correctly attributed to the
+    customer-account subentry.
+
+    The only entity intentionally kept at the v2 shape is the auth
+    binary sensor (``{entry_id}_authentication``), which is login-scoped
+    and lives on a dedicated login device, not a customer-account device.
 
     Entity ids are preserved (the registry retains the old ``entity_id``
     when ``new_unique_id`` is set), so history, dashboards, automations,
     and statistics continue to work.
+
+    The helper is idempotent: entities whose unique_id already carries
+    the v3 shape (or whose ``config_subentry_id`` is already set) are
+    skipped. This means it is safe to re-run during recovery sweeps.
     """
-    keys_to_rename = (
-        # Captar peaks
-        "captar_monthly_peak_power",
-        "captar_monthly_peak_energy",
-        "captar_monthly_peak_start",
-        "captar_monthly_peak_end",
-        # EPEX sensors
-        "epex_current",
-        "epex_low_today",
-        "epex_high_today",
-        # EPEX negative binary sensor
-        "epex_negative",
-        # Calendar
-        "calendar",
-    )
-    old_to_new = {
-        f"{entry_id}_{key}": f"{entry_id}_{subentry_id}_{key}" for key in keys_to_rename
-    }
+    v2_prefix = f"{entry_id}_"
+    v3_prefix = f"{entry_id}_{subentry_id}_"
+    keep_login_scoped = {f"{entry_id}_authentication"}
 
     entity_reg = er.async_get(hass)
-    new_unique_ids = set(old_to_new.values())
-    domains_with_renames = {"sensor", "binary_sensor", "calendar"}
     existing_v3_uids = {
         ent.unique_id
         for ent in entity_reg.entities.values()
-        if ent.platform == DOMAIN
-        and ent.domain in domains_with_renames
-        and ent.unique_id in new_unique_ids
+        if ent.platform == DOMAIN and ent.unique_id.startswith(v3_prefix)
     }
 
     @callback
     def _migrate(entity_entry: er.RegistryEntry) -> dict[str, Any] | None:
-        new_unique_id = old_to_new.get(entity_entry.unique_id)
-        if new_unique_id is None:
+        unique_id = entity_entry.unique_id
+        if unique_id in keep_login_scoped:
             return None
+        if not unique_id.startswith(v2_prefix):
+            return None
+        if unique_id.startswith(v3_prefix):
+            # Already migrated; just make sure the subentry attribution
+            # is set (defensive against partially migrated state).
+            if entity_entry.config_subentry_id == subentry_id:
+                return None
+            return {"config_subentry_id": subentry_id}
+
+        suffix = unique_id[len(v2_prefix) :]
+        new_unique_id = f"{v3_prefix}{suffix}"
         if new_unique_id in existing_v3_uids:
             # A v3-uid sibling already owns the entity_id slot. Drop the
             # v2-uid orphan so its entity_id can be reclaimed by the
