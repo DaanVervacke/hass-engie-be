@@ -15,6 +15,9 @@ API_BASE_URL = "https://www.engie.be/api/engie/be/ms/billing/customer/v1"
 PREMISES_BASE_URL = "https://www.engie.be/api/engie/be/ms/premises/customer/v1"
 PEAKS_BASE_URL = "https://api.engie.be/engie/ms/b2c-energy-insights/v1"
 ACCOUNTS_BASE_URL = "https://api.engie.be/engie/ms/accounts/customer/v1"
+BUSINESS_AGREEMENTS_BASE_URL = (
+    "https://www.engie.be/api/engie/be/ms/business-agreements/customer/v1"
+)
 
 # OAuth configuration (public mobile-app client, no secret needed)
 DEFAULT_CLIENT_ID = "R0PQyUdjO5B2tBaRnltgitVnnUmjGyld"
@@ -86,3 +89,11 @@ EPEX_MWH_TO_KWH = 1000.0
 # clashing with future ENGIE response fields).
 KEY_EPEX = "epex"
 KEY_IS_DYNAMIC = "is_dynamic"
+
+# Energy-contracts product codes that identify a dynamic (EPEX-indexed)
+# tariff. The API returns ``productConfiguration.energyProduct`` per
+# active contract; only contracts whose code appears in this set count
+# as dynamic. Held as a frozenset so future codes (e.g. a renamed
+# successor product) can be added in one place without touching the
+# detection predicate.
+DYNAMIC_ENERGY_PRODUCTS: frozenset[str] = frozenset({"DYNAMIC"})

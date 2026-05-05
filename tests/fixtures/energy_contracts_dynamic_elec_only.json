@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "businessAgreementNumber": "002200000001",
+      "servicePointNumber": "541448820000000001_ID1",
+      "division": "ELECTRICITY",
+      "status": "ACTIVE",
+      "productConfiguration": {
+        "energyProduct": "DYNAMIC",
+        "type": "INDEXED"
+      }
+    }
+  ]
+}

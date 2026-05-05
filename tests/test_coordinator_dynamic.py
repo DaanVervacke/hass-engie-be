@@ -25,7 +25,7 @@ from custom_components.engie_be.const import (
     SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
 )
 from custom_components.engie_be.coordinator import EngieBeDataUpdateCoordinator
-from custom_components.engie_be.data import EngieBeData
+from custom_components.engie_be.data import EngieBeData, EngieBeSubentryData
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
@@ -234,3 +234,98 @@ async def test_is_dynamic_property_reflects_latest_refresh(
     second = await coordinator._async_update_data()
     coordinator.data = second
     assert coordinator.is_dynamic is False
+
+
+# ---------------------------------------------------------------------------
+# Override precedence (b6 contracts-driven detection)
+#
+# When ``EngieBeSubentryData.is_dynamic_override`` is set by
+# ``_async_populate_dynamic_flags``, it MUST take precedence over the
+# legacy ``len(items) == 0`` heuristic on the prices payload. The
+# legacy heuristic remains as a fallback only when the override is
+# ``None`` (e.g. the contracts call failed at setup).
+# ---------------------------------------------------------------------------
+
+
+def _attach_runtime_with_override(
+    entry: MockConfigEntry,
+    client: MagicMock,
+    *,
+    override: bool | None,
+) -> str:
+    """Attach runtime with an EngieBeSubentryData carrying ``is_dynamic_override``."""
+    sub = next(iter(entry.subentries.values()))
+    sub_data = EngieBeSubentryData(
+        coordinator=MagicMock(),  # replaced by the real coordinator below
+        is_dynamic_override=override,
+    )
+    entry.runtime_data = EngieBeData(
+        client=client,
+        epex_coordinator=MagicMock(),
+        subentry_data={sub.subentry_id: sub_data},
+        authenticated=True,
+        last_options=dict(entry.options),
+    )
+    return sub.subentry_id
+
+
+async def test_override_true_wins_over_populated_prices(
+    hass: HomeAssistant,
+) -> None:
+    """An override of ``True`` must flip ``is_dynamic`` even with priced items."""
+    entry = _build_entry(hass)
+    prices = json.loads(_PRICES_FIXTURE.read_text(encoding="utf-8"))
+    peaks = json.loads(_PEAKS_FIXTURE.read_text(encoding="utf-8"))
+
+    client = MagicMock()
+    client.async_get_prices = AsyncMock(return_value=prices)
+    client.async_get_monthly_peaks = AsyncMock(return_value=peaks)
+    sid = _attach_runtime_with_override(entry, client, override=True)
+
+    coordinator = _make_coordinator(hass, entry)
+    # Wire the real coordinator into the runtime so the property can find it.
+    entry.runtime_data.subentry_data[sid].coordinator = coordinator
+
+    result = await coordinator._async_update_data()
+    coordinator.data = result
+
+    # Legacy heuristic on populated ``items`` would say False; override wins.
+    assert result[KEY_IS_DYNAMIC] is False
+    assert coordinator.is_dynamic is True
+
+
+async def test_override_false_wins_over_empty_prices(
+    hass: HomeAssistant,
+) -> None:
+    """An override of ``False`` must beat the empty-items dynamic heuristic."""
+    entry = _build_entry(hass)
+    client = _build_dynamic_client()
+    sid = _attach_runtime_with_override(entry, client, override=False)
+
+    coordinator = _make_coordinator(hass, entry)
+    entry.runtime_data.subentry_data[sid].coordinator = coordinator
+
+    result = await coordinator._async_update_data()
+    coordinator.data = result
+
+    # Legacy heuristic on empty ``items`` would say True; override wins.
+    assert result[KEY_IS_DYNAMIC] is True
+    assert coordinator.is_dynamic is False
+
+
+async def test_override_none_falls_back_to_legacy_heuristic(
+    hass: HomeAssistant,
+) -> None:
+    """An override of ``None`` must defer to the legacy heuristic."""
+    entry = _build_entry(hass)
+    client = _build_dynamic_client()
+    sid = _attach_runtime_with_override(entry, client, override=None)
+
+    coordinator = _make_coordinator(hass, entry)
+    entry.runtime_data.subentry_data[sid].coordinator = coordinator
+
+    result = await coordinator._async_update_data()
+    coordinator.data = result
+
+    # Empty ``items`` + override=None => legacy heuristic flags dynamic.
+    assert coordinator.is_dynamic is True

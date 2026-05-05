@@ -110,7 +110,31 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def is_dynamic(self) -> bool:
-        """Return True when this account is on a dynamic (EPEX-indexed) tariff."""
+        """
+        Return True when this account is on a dynamic (EPEX-indexed) tariff.
+
+        The authoritative source is the energy-contracts endpoint, which
+        reports the per-EAN product code (``energyProduct``) directly.
+        That value is populated into ``EngieBeSubentryData.is_dynamic_override``
+        during setup and takes precedence here when set, so the answer
+        is correct even for mixed-fuel accounts whose supplier-energy-
+        prices payload would otherwise look fixed (gas item populates
+        ``items[]`` so the legacy ``len(items) == 0`` heuristic returns
+        False). The legacy heuristic still backs the property when the
+        contracts call failed at setup time, so the integration degrades
+        gracefully on a contracts-endpoint outage.
+        """
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        subentry_data = (
+            runtime.subentry_data.get(self.subentry.subentry_id)
+            if runtime is not None
+            else None
+        )
+        override = (
+            subentry_data.is_dynamic_override if subentry_data is not None else None
+        )
+        if override is not None:
+            return override
         data = self.data
         return bool(isinstance(data, dict) and data.get(KEY_IS_DYNAMIC))
 
@@ -132,12 +156,16 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 translation_key="cannot_connect",
             ) from exception
 
-        # An empty ``items`` list is the documented signal that this
-        # account is on a dynamic (EPEX-indexed) tariff: ENGIE returns
-        # 200 with ``{"items":[]}`` because there are no fixed monthly
-        # rates to expose. Detection is therefore at the account level,
-        # not per-EAN, and is recorded on the per-subentry coordinator
-        # so the platform layer can gate EPEX entity creation on it.
+        # Legacy fallback for the dynamic-tariff flag: an empty
+        # ``items`` list means the supplier-energy-prices endpoint had
+        # no fixed monthly rates to expose, which historically signalled
+        # a dynamic account. This is per-EAN (not per-account) so it
+        # misfires for mixed-fuel households whose gas EAN populates
+        # ``items[]``. The authoritative answer is the energy-contracts
+        # endpoint, fetched once at setup and stored on
+        # ``EngieBeSubentryData.is_dynamic_override`` (see ``__init__.py``);
+        # the ``is_dynamic`` property prefers that override and only
+        # falls back to this value when the contracts call failed.
         items = data.get("items") if isinstance(data, dict) else None
         is_dynamic = isinstance(items, list) and len(items) == 0
         data[KEY_IS_DYNAMIC] = is_dynamic
