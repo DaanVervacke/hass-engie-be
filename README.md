@@ -9,175 +9,113 @@ Custom [Home Assistant](https://www.home-assistant.io/) integration for
 data and monthly capacity-tariff peaks from the ENGIE Belgium API and exposes
 them as sensors.
 
-## A note on how this was built
-
-The ENGIE login flow was reverse-engineered by hand, and the integration
-around it was put together with AI assistance. Reviewed and tested
-before release.
-
 ## Features
 
-- Authenticates via ENGIE Belgium's OAuth2/PKCE flow with two-factor
-  authentication (SMS or email)
-- Automatically refreshes access tokens in the background
-- Detects gas and electricity contracts via the ENGIE service-points endpoint
-- Creates price sensors per energy type, direction (offtake / injection), and
-  tariff rate (single-rate, dual-rate, or tri-rate contracts)
-- Tracks the monthly capacity-tariff (captar) peak window per electricity service point
-- Auto-detects ENGIE's dynamic (EPEX-indexed) electricity tariff and exposes
-  day-ahead wholesale prices (current / lowest today / highest today)
-- Configurable update interval via the integration options
+- Authenticates with your ENGIE Belgium account using two-factor authentication
+- Auto-detects gas and electricity contracts, including dynamic (EPEX-indexed) tariffs
+- Creates price sensors per energy type, direction (offtake / injection), and tariff rate
+- Tracks the monthly capacity-tariff (captar) peak window for each electricity meter
+- Supports multiple customer accounts under a single ENGIE login
+- Configurable update interval
 
 ## Sensors
 
-The integration auto-detects your energy contracts and creates price sensors
-accordingly. Capacity-tariff peak sensors are created independently when peaks
-data is available; see [Capacity tariff (captar)](#capacity-tariff-captar).
+The integration auto-detects your contracts and creates the right sensors. All
+price sensors report values in **EUR/kWh** with 6 decimals, and each one
+exposes its EAN, the validity window, and the applicable VAT rate as
+attributes. Every sensor below is also available as an `_excl_vat` variant
+(same name, `_excl_vat` suffix on both the entity ID and the friendly name).
 
-> **Multi-account note.** When your ENGIE login owns more than one customer
-> account, every entity ID is prefixed with the canonical
-> `customerAccountNumber` (CAN), e.g. `sensor.engie_belgium_1500000123_gas_offtake_price`
-> and `calendar.engie_belgium_1500000123`. The bare `sensor.engie_belgium_*`
-> shapes shown in the tables below are illustrative; replace `engie_belgium_`
-> with `engie_belgium_{your_CAN}_` when targeting a specific account in
-> automations, scripts, or dashboards. The CAN is visible on the customer
-> account device page in **Settings -> Devices & services -> ENGIE Belgium**.
->
-> Existing single-account installs are migrated automatically on the first
-> start: `unique_id`s are preserved so long-term statistics and history follow
-> the rename, but any automation, script, scene, or dashboard that hard-codes
-> a pre-rename slug (e.g. `sensor.engie_belgium_electricity_offtake_price`)
-> must be updated to the new CAN-prefixed slug.
-
-**Price sensors** are in **EUR/kWh** with 6 decimal precision. Each one exposes
-the following attributes: `ean`, `from`, `to`, `vat_tariff`,
-`time_of_use_slot_code`, and `last_fetched`.
-
-Which price sensors are created depends on your contract type. The integration
-reads the `timeOfUseSlotCode` from the API response to determine whether you
-have a single-rate, dual-rate (peak / off-peak), or tri-rate
-(peak / off-peak / super off-peak) contract.
+> If your ENGIE login owns more than one customer account, the entity ID
+> includes that customer's number, e.g.
+> `sensor.engie_belgium_1500000123_gas_offtake_price`. The customer number is
+> visible on the device page in **Settings -> Devices & services -> ENGIE
+> Belgium**.
 
 ### Gas
 
 Gas contracts are always single-rate.
 
-| Sensor | Entity ID | Description |
-|---|---|---|
-| Gas offtake price | `sensor.engie_belgium_gas_offtake_price` | Current gas offtake price incl. VAT |
-| Gas offtake price (excl. VAT) | `sensor.engie_belgium_gas_offtake_price_excl_vat` | Current gas offtake price excl. VAT |
+| Sensor | Entity ID |
+|---|---|
+| Gas offtake price | `sensor.engie_belgium_gas_offtake_price` |
 
 ### Electricity: single-rate
 
-Created when the API returns `TOTAL_HOURS` as the time-of-use slot code.
+Created when your contract has a single electricity rate.
 
-| Sensor | Entity ID | Description |
-|---|---|---|
-| Electricity offtake price | `sensor.engie_belgium_electricity_offtake_price` | Current electricity offtake price incl. VAT |
-| Electricity offtake price (excl. VAT) | `sensor.engie_belgium_electricity_offtake_price_excl_vat` | Current electricity offtake price excl. VAT |
-| Electricity injection price | `sensor.engie_belgium_electricity_injection_price` | Current electricity injection price incl. VAT |
-| Electricity injection price (excl. VAT) | `sensor.engie_belgium_electricity_injection_price_excl_vat` | Current electricity injection price excl. VAT |
+| Sensor | Entity ID |
+|---|---|
+| Electricity offtake price | `sensor.engie_belgium_electricity_offtake_price` |
+| Electricity injection price | `sensor.engie_belgium_electricity_injection_price` |
 
 ### Electricity: dual-rate (peak / off-peak)
 
-Created when the API returns `PEAK` and `OFFPEAK` as time-of-use slot codes
-(e.g. two-period meter contracts). These sensors replace the single-rate
-offtake/injection sensors for that EAN.
+Created when your contract has separate peak and off-peak rates. These replace
+the single-rate sensors above for that meter.
 
-| Sensor | Entity ID | Description |
-|---|---|---|
-| Electricity peak offtake price | `sensor.engie_belgium_electricity_peak_offtake_price` | Current electricity peak offtake price incl. VAT |
-| Electricity peak offtake price (excl. VAT) | `sensor.engie_belgium_electricity_peak_offtake_price_excl_vat` | Current electricity peak offtake price excl. VAT |
-| Electricity off-peak offtake price | `sensor.engie_belgium_electricity_off_peak_offtake_price` | Current electricity off-peak offtake price incl. VAT |
-| Electricity off-peak offtake price (excl. VAT) | `sensor.engie_belgium_electricity_off_peak_offtake_price_excl_vat` | Current electricity off-peak offtake price excl. VAT |
-| Electricity peak injection price | `sensor.engie_belgium_electricity_peak_injection_price` | Current electricity peak injection price incl. VAT |
-| Electricity peak injection price (excl. VAT) | `sensor.engie_belgium_electricity_peak_injection_price_excl_vat` | Current electricity peak injection price excl. VAT |
-| Electricity off-peak injection price | `sensor.engie_belgium_electricity_off_peak_injection_price` | Current electricity off-peak injection price incl. VAT |
-| Electricity off-peak injection price (excl. VAT) | `sensor.engie_belgium_electricity_off_peak_injection_price_excl_vat` | Current electricity off-peak injection price excl. VAT |
+| Sensor | Entity ID |
+|---|---|
+| Electricity peak offtake price | `sensor.engie_belgium_electricity_peak_offtake_price` |
+| Electricity off-peak offtake price | `sensor.engie_belgium_electricity_off_peak_offtake_price` |
+| Electricity peak injection price | `sensor.engie_belgium_electricity_peak_injection_price` |
+| Electricity off-peak injection price | `sensor.engie_belgium_electricity_off_peak_injection_price` |
 
 ### Electricity: tri-rate (peak / off-peak / super off-peak)
 
-Created when the API returns `PEAK`, `OFFPEAK`, and `SUPEROFFPEAK` as
-time-of-use slot codes.
+Created when your contract has three time-of-use rates.
 
-| Sensor | Entity ID | Description |
-|---|---|---|
-| Electricity peak offtake price | `sensor.engie_belgium_electricity_peak_offtake_price` | Current electricity peak offtake price incl. VAT |
-| Electricity peak offtake price (excl. VAT) | `sensor.engie_belgium_electricity_peak_offtake_price_excl_vat` | Current electricity peak offtake price excl. VAT |
-| Electricity off-peak offtake price | `sensor.engie_belgium_electricity_off_peak_offtake_price` | Current electricity off-peak offtake price incl. VAT |
-| Electricity off-peak offtake price (excl. VAT) | `sensor.engie_belgium_electricity_off_peak_offtake_price_excl_vat` | Current electricity off-peak offtake price excl. VAT |
-| Electricity super off-peak offtake price | `sensor.engie_belgium_electricity_super_off_peak_offtake_price` | Current electricity super off-peak offtake price incl. VAT |
-| Electricity super off-peak offtake price (excl. VAT) | `sensor.engie_belgium_electricity_super_off_peak_offtake_price_excl_vat` | Current electricity super off-peak offtake price excl. VAT |
-| Electricity peak injection price | `sensor.engie_belgium_electricity_peak_injection_price` | Current electricity peak injection price incl. VAT |
-| Electricity peak injection price (excl. VAT) | `sensor.engie_belgium_electricity_peak_injection_price_excl_vat` | Current electricity peak injection price excl. VAT |
-| Electricity off-peak injection price | `sensor.engie_belgium_electricity_off_peak_injection_price` | Current electricity off-peak injection price incl. VAT |
-| Electricity off-peak injection price (excl. VAT) | `sensor.engie_belgium_electricity_off_peak_injection_price_excl_vat` | Current electricity off-peak injection price excl. VAT |
-| Electricity super off-peak injection price | `sensor.engie_belgium_electricity_super_off_peak_injection_price` | Current electricity super off-peak injection price incl. VAT |
-| Electricity super off-peak injection price (excl. VAT) | `sensor.engie_belgium_electricity_super_off_peak_injection_price_excl_vat` | Current electricity super off-peak injection price excl. VAT |
+| Sensor | Entity ID |
+|---|---|
+| Electricity peak offtake price | `sensor.engie_belgium_electricity_peak_offtake_price` |
+| Electricity off-peak offtake price | `sensor.engie_belgium_electricity_off_peak_offtake_price` |
+| Electricity super off-peak offtake price | `sensor.engie_belgium_electricity_super_off_peak_offtake_price` |
+| Electricity peak injection price | `sensor.engie_belgium_electricity_peak_injection_price` |
+| Electricity off-peak injection price | `sensor.engie_belgium_electricity_off_peak_injection_price` |
+| Electricity super off-peak injection price | `sensor.engie_belgium_electricity_super_off_peak_injection_price` |
 
-> Injection sensors are only created when injection data is present in the API
-> response.
+> Injection sensors are only created when injection data is present.
 
 ### Capacity tariff (captar)
 
 Four sensors expose the monthly peak window used for the Belgian
-capacity-tariff calculation. Values come from the ENGIE
-`b2c-energy-insights` peaks endpoint.
+capacity-tariff calculation. They are created per electricity meter when peaks
+data is available.
 
-| Sensor name | Entity ID | Description |
-|-------------|-----------|-------------|
+| Sensor | Entity ID | Description |
+|---|---|---|
 | Captar monthly peak power | `sensor.engie_belgium_captar_monthly_peak_power` | Highest 15-minute average power for the month, in kW |
 | Captar monthly peak energy | `sensor.engie_belgium_captar_monthly_peak_energy` | Energy consumed during that 15-minute window, in kWh |
-| Captar monthly peak start | `sensor.engie_belgium_captar_monthly_peak_start` | Start timestamp of the 15-minute peak window |
-| Captar monthly peak end | `sensor.engie_belgium_captar_monthly_peak_end` | End timestamp of the 15-minute peak window |
+| Captar monthly peak start | `sensor.engie_belgium_captar_monthly_peak_start` | Start of the 15-minute peak window |
+| Captar monthly peak end | `sensor.engie_belgium_captar_monthly_peak_end` | End of the 15-minute peak window |
 
-These sensors are always created when peaks data is available, are emitted per
-electricity EAN, and are not intended as Energy-dashboard sources (the kW and
-kWh values use `state_class=measurement` because they describe a 15-minute peak
-window, not a cumulative counter). Daily peak entries returned by the same
-endpoint are intentionally not exposed as sensors.
+ENGIE only publishes a peak after the first 15-minute peak of the month is
+recorded, so the current month is empty for the first day or so. Until then,
+the integration shows the previous month's peak and marks it via the
+`peak_is_fallback` attribute (and `peak_month` shows which month the value
+covers).
 
-The ENGIE API only returns a monthly peak after the first 15-minute peak
-of the month has been recorded, which means the current month is empty
-during the first day or so. While that is the case, the integration
-falls back to the previous month so the sensors stay populated. Two
-attributes on each sensor make the source explicit:
-
-- `peak_month`: the `YYYY-MM` the displayed value covers.
-- `peak_is_fallback`: `true` when the value is carried over from the
-  previous month, `false` once the current month has its own peak.
-
-The integration adds a calendar entity (`calendar.engie_belgium`) that
-shows your monthly capacity-tariff peak as a single event titled
-"Captar monthly peak", with the peak power and energy in the event
-description.
+A calendar entity (`calendar.engie_belgium`) is also created and shows the
+current monthly peak as a single event, with the peak power and energy in the
+event description.
 
 ### Dynamic tariff (EPEX-indexed)
 
-Customers on ENGIE's dynamic (EPEX-indexed) electricity contract do not
-have fixed monthly tariffs. The integration auto-detects this case --
-when the ENGIE supplier-prices endpoint returns an empty list of items,
-the account is considered dynamic -- and exposes three additional
-sensors that surface day-ahead wholesale prices fetched from the public
-EPEX endpoint. These sensors are shared across all electricity EANs on
-the entry (the wholesale price is identical for every meter) and only
-report a value while the account is dynamic.
+Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get three
+extra sensors that surface day-ahead wholesale prices from the public EPEX
+endpoint.
 
-| Sensor name | Entity ID | Description |
-|-------------|-----------|-------------|
-| EPEX current price | `sensor.engie_belgium_epex_current_price` | Wholesale price for the slot covering the current instant |
-| EPEX lowest price today | `sensor.engie_belgium_epex_lowest_price_today` | Lowest wholesale price across today's slots (Brussels-local day) |
-| EPEX highest price today | `sensor.engie_belgium_epex_highest_price_today` | Highest wholesale price across today's slots (Brussels-local day) |
+| Sensor | Entity ID |
+|---|---|
+| EPEX current price | `sensor.engie_belgium_epex_current_price` |
+| EPEX lowest price today | `sensor.engie_belgium_epex_lowest_price_today` |
+| EPEX highest price today | `sensor.engie_belgium_epex_highest_price_today` |
 
-All three sensors are in **EUR/kWh** (4 decimals). The current-price
-sensor advances on the next coordinator refresh after the slot
-boundary; tomorrow's prices appear once ENGIE publishes them, typically
-shortly after 13:15 Europe/Brussels. The integration keeps the last
-known payload across publication delays and transient errors instead of
-wiping the sensors.
+All three sensors are in **EUR/kWh** (4 decimals). Tomorrow's prices appear
+once ENGIE publishes them, typically shortly after 13:15 Europe/Brussels.
 
 The current-price sensor exposes the full today / tomorrow slate as
-attributes for plotting:
+attributes, which is convenient for plotting:
 
 ```yaml
 type: custom:apexcharts-card
@@ -194,22 +132,17 @@ series:
       return entity.attributes.today.map(s => [new Date(s.start).getTime(), s.value]);
 ```
 
-Per-slot attribute keys are `start`, `end`, `value` (EUR/kWh), and
-`value_eur_per_mwh`. A `slot_duration_minutes` attribute is also
-exposed so dashboards can adapt without code changes if ENGIE later
-switches to 15-minute slots. The `epex_lowest_price_today` and
-`epex_highest_price_today` sensors expose the `slot_start` and
-`slot_end` of the chosen extremum on their `extra_state_attributes`.
+> Wholesale prices can be **negative** during periods of oversupply; this is
+> reported faithfully.
 
-> Wholesale prices can be **negative** during periods of oversupply;
-> none of the EPEX sensors use `state_class=total_increasing`, so this
-> is reported faithfully.
+A binary sensor `binary_sensor.engie_belgium_epex_price_is_negative` turns on
+when the current wholesale slot has a negative price, so you can build simple
+state-based automations without a template.
 
 ### Authentication
 
-A binary connectivity sensor (`binary_sensor.engie_belgium_authentication`) is
-always created, showing whether the integration is currently authenticated with
-the ENGIE API.
+A binary connectivity sensor (`binary_sensor.engie_belgium_authentication`)
+shows whether the integration is currently authenticated with the ENGIE API.
 
 ## Prerequisites
 
@@ -224,7 +157,7 @@ the ENGIE API.
 
 - A dedicated [ENGIE Belgium](https://www.engie.be/) account for this
   integration (see required callout above)
-- Your ENGIE customer number (business agreement number)
+- Your ENGIE customer number
 - Access to SMS or email for two-factor authentication during setup
 
 ## Installation
@@ -240,7 +173,7 @@ After HACS finishes, restart Home Assistant.
 
 Click the badge above to open the **Add Integration** dialog for ENGIE
 Belgium. The credential form opens directly. See [Configuration](#configuration)
-for what each field expects and a note on 2FA.
+for what each field expects.
 
 #### Manual steps
 
@@ -255,35 +188,31 @@ If the badges above do not work in your browser:
 
 ## Configuration
 
-Before starting, there are a few things to note:
+Configuration is done entirely through the Home Assistant UI. New ENGIE
+accounts created via the [user management page](https://www.engie.be/nl/energiedesk/usermanagement/manage-access/)
+have 2FA enabled by default and work out of the box; the integration only
+supports accounts where 2FA via SMS or email is already enabled.
 
-**A dedicated ENGIE account is required for this integration** (see
-[Prerequisites](#prerequisites) for the reasoning). New accounts
-created via the [ENGIE user management page](https://www.engie.be/nl/energiedesk/usermanagement/manage-access/)
-have 2FA enabled by default and work out of the box. The integration
-only supports accounts where 2FA via SMS or e-mail is already enabled.
-
-Configuration is done entirely through the Home Assistant UI. If you
-haven't reached the credential form yet, use the **Add Integration**
+If you haven't reached the credential form yet, use the **Add Integration**
 badge in [Installation](#hacs-recommended) or open
-**Settings** > **Devices & Services** > **Add Integration** and search
-for **ENGIE Belgium**.
+**Settings** > **Devices & Services** > **Add Integration** and search for
+**ENGIE Belgium**.
 
 1. Enter your credentials:
    - **Email address** - your ENGIE Belgium login email
    - **Password** - your ENGIE Belgium password
-   - **Customer number** - your ENGIE customer/business agreement number
+   - **Customer number** - your ENGIE customer number
    - **Client ID** - leave at the default unless you know what you're doing
    - **Two-factor authentication method** - choose SMS or Email
-2. Click **Submit** - you will receive a verification code via your chosen method
-3. Enter the 6-digit verification code and click **Submit**
+2. Click **Submit**. You will receive a verification code via your chosen method.
+3. Enter the 6-digit code and click **Submit**.
 
-The integration will authenticate, fetch your energy prices and capacity-tariff
-peaks, and create the appropriate sensors.
+The integration will then fetch your energy prices and capacity-tariff peaks
+and create the appropriate sensors.
 
 ### Options
 
-After setup, you can configure the price update interval:
+After setup, you can change the price update interval:
 
 [![Open your Home Assistant instance and show your ENGIE Belgium integration.](https://my.home-assistant.io/badges/integration.svg)](https://my.home-assistant.io/redirect/integration/?domain=engie_be)
 
@@ -293,104 +222,71 @@ After setup, you can configure the price update interval:
 
 ## Multiple customer accounts
 
-A single ENGIE login can be linked to several customer accounts (for
-example a private home and a holiday house under the same email). The
-integration models this as **one config entry per ENGIE login** plus
-**one subentry per customer account**:
+A single ENGIE login can be linked to several customer accounts (for example a
+private home and a holiday house). After you finish 2FA during setup, the
+integration shows a picker of every customer account your login can access; pick
+one or more, and each becomes its own device with its own sensors.
 
-- During initial setup, after you complete 2FA, the integration calls
-  ENGIE's customer-account-relations endpoint and shows you a multi-select
-  picker of every customer account your login has access to. Pick one or
-  more, and a subentry is created for each.
-- Each subentry becomes its own **device** in Home Assistant, with its
-  own service points, price sensors, captar peak sensors, and (for
-  dynamic accounts) EPEX sensors and the negative-price binary sensor.
-- The shared authentication binary sensor lives on a separate "login"
-  device tied to the parent entry, since it reflects the OAuth session
-  rather than any single account.
-- To add a customer account later, open the ENGIE Belgium card in
-  **Settings** > **Devices & Services**, click **Add subentry**, and
-  pick from the remaining accounts your login can access. To remove
-  one, delete the subentry; the parent entry and its other subentries
-  stay intact.
+To add another customer account later, open the ENGIE Belgium card in
+**Settings** > **Devices & Services** and click **Add subentry**. To remove
+one, delete its subentry; the rest stay intact.
 
-> **Migration note.** Existing single-account setups are upgraded
-> automatically when you update to this release. Your existing customer
-> account becomes a subentry under your existing entry, entity unique
-> IDs are rewritten in place, and your sensor history is preserved. No
-> manual reconfiguration is required.
+> Existing single-account installs are upgraded automatically and your sensor
+> history is preserved. If any of your automations or dashboards reference an
+> old entity ID, update them to include the customer number.
 
 ## Re-authentication
 
-ENGIE rotates refresh tokens regularly, and the upstream auth server can
-revoke a session at any time. The most common trigger is the same ENGIE
-account being used elsewhere (engie.be web, ENGIE Smart App). If you see
-the **"Repair"** notification frequently, see
-[Prerequisites](#prerequisites) for the dedicated-account recommendation.
+ENGIE rotates refresh tokens regularly, and the upstream auth server can revoke
+a session at any time. The most common trigger is the same ENGIE account being
+used elsewhere (engie.be web, ENGIE Smart App). If you see the **"Repair"**
+notification frequently, see [Prerequisites](#prerequisites) for the
+dedicated-account recommendation.
 
 To complete re-authentication:
 
-1. Open **Settings** > **Devices & Services** and click the
-   **Reconfigure** prompt on the ENGIE Belgium card (or click the
-   notification).
+1. Open **Settings** > **Devices & Services** and click the **Reconfigure**
+   prompt on the ENGIE Belgium card (or click the notification).
 2. Choose how you want to receive a verification code (SMS or email).
 3. Enter the 6-digit code that ENGIE sends you.
 
-Your stored email, password, and customer number are reused. Only fresh
-access and refresh tokens are written back to the config entry. No
-sensors are removed and no history is lost.
+Your stored email, password, and customer number are reused. No sensors are
+removed and no history is lost.
 
 ## Removing the integration
-
-This integration follows the standard Home Assistant removal flow and does
-not leave any state behind on Home Assistant or on the ENGIE side.
 
 1. Go to **Settings** > **Devices & Services**.
 2. Find the **ENGIE Belgium** card and click the three-dot menu.
 3. Select **Delete**.
 
-Removing the entry deletes its sensors and the stored credentials and
-tokens (`.storage/core.config_entries` is updated by Home Assistant). No
-cleanup is required on your ENGIE account: the integration only reads
-data and never modifies anything upstream. The OAuth refresh token in
-the deleted entry is left to expire naturally on ENGIE's side.
+No cleanup is required on your ENGIE account; the integration only reads data
+and never modifies anything upstream.
 
 ## Troubleshooting
 
-If the integration is misbehaving, work through these steps before
-filing an issue:
+If the integration is misbehaving, work through these steps before filing an
+issue:
 
-1. **Enable debug logging.** Open **Settings** > **Devices & Services**,
-   click the three-dot menu on the ENGIE Belgium entry, and select
-   **Enable debug logging**. Reproduce the issue, then choose **Disable
-   debug logging** from the same menu, and Home Assistant will offer to
-   download the captured log. Alternatively, add the following to
-   `configuration.yaml` and restart Home Assistant:
+1. **Enable debug logging.** Open **Settings** > **Devices & Services**, click
+   the three-dot menu on the ENGIE Belgium entry, and select **Enable debug
+   logging**. Reproduce the issue, then choose **Disable debug logging** from
+   the same menu, and Home Assistant will offer to download the captured log.
 
-   ```yaml
-   logger:
-     logs:
-       custom_components.engie_be: debug
-   ```
-
-2. **Download diagnostics.** Open the integration in **Settings** >
-   **Devices & Services**, click the three-dot menu on the ENGIE Belgium
-   entry, and choose **Download diagnostics**. The resulting JSON
-   redacts your password, tokens, and EAN identifiers, and is safe to
-   attach to a GitHub issue.
+2. **Download diagnostics.** From the same three-dot menu, choose **Download
+   diagnostics**. The resulting JSON redacts your password, tokens, and EAN
+   identifiers, and is safe to attach to a GitHub issue.
 
 3. **Common errors.**
-   - *Authentication with ENGIE Belgium failed*: your stored tokens
-     were rejected. Follow the [Re-authentication](#re-authentication)
-     steps above. If this happens repeatedly, the most common cause is
-     sharing your ENGIE account between this integration and engie.be
-     or the ENGIE Smart App. A dedicated account is required. See
-     [Prerequisites](#prerequisites).
-   - *Cannot connect to the ENGIE Belgium API*: the upstream API is
-     unreachable or returned an HTTP error. The coordinator will retry
-     on its next interval.
-   - *Invalid verification code*: re-trigger the MFA step and enter the
-     latest code.
+   - *Authentication with ENGIE Belgium failed*: your stored tokens were
+     rejected. Follow the [Re-authentication](#re-authentication) steps above.
+     If this happens repeatedly, the most common cause is sharing your ENGIE
+     account between this integration and engie.be or the ENGIE Smart App. A
+     dedicated account is required. See [Prerequisites](#prerequisites).
+   - *Cannot connect to the ENGIE Belgium API*: the upstream API is unreachable
+     or returned an HTTP error. The integration will retry on its next
+     interval.
+   - *Invalid verification code*: re-trigger the MFA step and enter the latest
+     code.
 
 4. **File an issue.** If the problem persists, open one at
    [github.com/DaanVervacke/hass-engie-be/issues](https://github.com/DaanVervacke/hass-engie-be/issues)
@@ -398,41 +294,9 @@ filing an issue:
 
 ## Credential storage
 
-This integration stores your ENGIE email, password, customer number,
-client ID, and the latest OAuth access and refresh tokens in the
-config entry (`.storage/core.config_entries`), which Home Assistant
-keeps as plain JSON on disk. This is the standard Home Assistant
-pattern for integrations that need persisted credentials.
-
-The password is kept (rather than discarded after setup) because the
-re-authentication flow re-runs the upstream OAuth `Resource Owner
-Password Credentials` exchange to begin a new MFA challenge. Without
-the password, every token revocation would require fully removing and
-re-adding the integration.
-
-If you do not want the password on disk, treat this integration the
-same as any other credential-storing HA integration: protect the host,
-restrict filesystem access, and consider full-disk encryption. The
-**Download diagnostics** payload redacts all of these fields and is
-safe to share.
-
-## How it works
-
-- **Authentication**: Uses OAuth2 with PKCE (public client, no secret) through
-  ENGIE's Auth0 login. Two-factor authentication is required only during
-  initial setup. The refresh token is persisted across restarts.
-- **Token refresh**: Access tokens expire in ~2 minutes. The integration
-  refreshes tokens every 60 seconds automatically. Refresh tokens are rotated
-  and persisted to the config entry.
-- **Data polling**: Energy prices and the current month's capacity-tariff peak
-  are fetched at the configured interval (default: every 60 minutes). The
-  coordinator polls two endpoints per update; if the peaks endpoint fails
-  transiently, the previous value is preserved so the captar sensors stay
-  populated.
-- **Energy type detection**: At startup the integration calls the ENGIE
-  service-points endpoint for each EAN to determine whether the contract is gas
-  or electricity. If the lookup fails, a generic "Energy" label is used as
-  fallback.
+The integration stores your ENGIE credentials and OAuth tokens in Home
+Assistant's standard config-entry storage. The **Download diagnostics** payload
+redacts all of these fields and is safe to share.
 
 ## Changelog
 
