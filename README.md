@@ -181,11 +181,16 @@ for what each field expects.
 If the badges above do not work in your browser:
 
 1. Open HACS in your Home Assistant instance.
-2. Click the three dots in the top right corner and select **Custom repositories**.
-3. Add `https://github.com/DaanVervacke/hass-engie-be` with category **Integration**.
-4. Search for **ENGIE Belgium** in HACS and install it.
-5. Restart Home Assistant.
-6. Go to **Settings** > **Devices & Services** > **Add Integration** and search for **ENGIE Belgium**.
+2. Search for **ENGIE Belgium** in the HACS search bar and install it.
+3. Restart Home Assistant.
+4. Go to **Settings** > **Devices & Services** > **Add Integration** and search for **ENGIE Belgium**.
+
+If the search returns no results, add this repository as a custom repository
+first:
+
+1. Open HACS, click the three dots in the top right corner, and select **Custom repositories**.
+2. Add `https://github.com/DaanVervacke/hass-engie-be` with category **Integration**.
+3. Search for **ENGIE Belgium** in HACS and install it.
 
 ## Configuration
 
