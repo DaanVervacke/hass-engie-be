@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0b2] - 2026-05-05
+
+> Beta release. Please report issues on
+> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
+
+### Fixed
+- **Customer account no longer appears twice in the integration card.**
+  After upgrading from 0.7.x to 0.8.0b1, some installs showed the same
+  customer account listed under two groups in **Settings** > **Devices
+  & Services** (once under the parent entry and once under its own
+  subentry). The integration now cleans this up automatically the next
+  time it starts. No action is required and your sensors, history, and
+  customisations are preserved.
+
 ## [0.8.0b1] - 2026-05-05
 
 > Beta release. Please report issues on

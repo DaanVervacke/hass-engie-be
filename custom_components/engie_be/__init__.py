@@ -93,6 +93,131 @@ async def async_migrate_entry(
     return True
 
 
+def _async_promote_device_to_subentry(
+    hass: HomeAssistant,
+    device_id: str,
+    *,
+    entry_id: str,
+    subentry_id: str,
+    new_identifiers: set[tuple[str, str]] | None = None,
+) -> None:
+    """
+    Move a v2-shaped device onto a v3 customer-account subentry.
+
+    A v2 device row carries the bare ``(entry_id, None)`` config-entry
+    link. The v3 device row must carry ``(entry_id, subentry_id)``
+    instead, otherwise Home Assistant renders the device twice in the
+    integration card: once under the parent entry's "no sub-item"
+    group and once under the subentry's group.
+
+    Home Assistant's ``async_update_device`` cannot atomically swap
+    one for the other: ``add_config_subentry_id`` set-unions onto the
+    existing entry, and combining ``add_*`` and ``remove_*`` in a
+    single call makes the remove path read pre-add state and overwrite
+    the add. The safe sequence is two calls: first add the new link
+    (and rewrite identifiers), then drop the legacy ``None`` link.
+
+    Before the legacy link is dropped any entity still attached to the
+    device with ``config_subentry_id=None`` (the v2 login-scoped energy
+    sensor and the auth binary sensor) is reparented onto a dedicated
+    login device. Home Assistant's entity registry would otherwise
+    auto-remove every such entity when the ``None`` link disappears
+    from the device's ``config_entries_subentries``, taking entity-id
+    customisations and statistics history with them.
+
+    No-op when the legacy link is already absent, so this is idempotent
+    and safe to run on already-healed devices.
+    """
+    device_reg = dr.async_get(hass)
+
+    if new_identifiers is not None:
+        device_reg.async_update_device(
+            device_id,
+            new_identifiers=new_identifiers,
+            add_config_entry_id=entry_id,
+            add_config_subentry_id=subentry_id,
+        )
+    else:
+        device_reg.async_update_device(
+            device_id,
+            add_config_entry_id=entry_id,
+            add_config_subentry_id=subentry_id,
+        )
+
+    device = device_reg.async_get(device_id)
+    if device is None:
+        return
+    legacy_subentries = device.config_entries_subentries.get(entry_id, set())
+    if None not in legacy_subentries:
+        return
+
+    _async_reparent_login_scoped_entities(
+        hass,
+        device_id=device_id,
+        entry_id=entry_id,
+    )
+
+    device_reg.async_update_device(
+        device_id,
+        remove_config_entry_id=entry_id,
+        remove_config_subentry_id=None,
+    )
+
+
+def _async_reparent_login_scoped_entities(
+    hass: HomeAssistant,
+    *,
+    device_id: str,
+    entry_id: str,
+) -> None:
+    """
+    Move login-scoped entities off a customer-account device.
+
+    Walks every entity registered against ``device_id`` and reparents
+    those whose ``config_subentry_id`` is ``None`` onto a dedicated
+    login device identified by ``(DOMAIN, f"login_{entry_id}")``,
+    creating that device on demand. Subentry-scoped entities are left
+    untouched.
+
+    Used as a pre-step before stripping the legacy ``(entry_id, None)``
+    link from a customer-account device: without it, Home Assistant's
+    entity registry auto-removes every entity whose ``config_subentry_id``
+    was in the device's old subentry set for the entry but not in the new
+    one, which would silently delete the v2 energy + auth entities.
+    """
+    entity_reg = er.async_get(hass)
+    orphans = [
+        ent
+        for ent in er.async_entries_for_device(
+            entity_reg,
+            device_id,
+            include_disabled_entities=True,
+        )
+        if ent.config_subentry_id is None
+    ]
+    if not orphans:
+        return
+
+    device_reg = dr.async_get(hass)
+    login_device = device_reg.async_get_or_create(
+        config_entry_id=entry_id,
+        identifiers={(DOMAIN, f"login_{entry_id}")},
+        manufacturer="ENGIE Belgium",
+        name="Account",
+    )
+    for ent in orphans:
+        entity_reg.async_update_entity(
+            ent.entity_id,
+            device_id=login_device.id,
+        )
+        LOGGER.debug(
+            "Reparented login-scoped entity %s from %s onto login device %s",
+            ent.entity_id,
+            device_id,
+            login_device.id,
+        )
+
+
 async def _async_migrate_v2_to_v3(
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,
@@ -210,13 +335,27 @@ async def _async_migrate_v2_to_v3(
     v3_device = device_reg.async_get_device(
         identifiers={(DOMAIN, subentry.subentry_id)},
     )
+
+    # Rename the unique_ids of entities whose v2 keys are now subentry-scoped
+    # before touching the device registry. ``_migrate_entity_unique_ids``
+    # also stamps ``config_subentry_id=subentry_id`` on the renamed entities,
+    # so that when the device-link swap below strips the legacy
+    # ``(entry_id, None)`` link, Home Assistant's entity registry only
+    # auto-removes entities whose ``config_subentry_id`` is still ``None``
+    # (the v2 login-scoped energy + auth entities). The promote helper
+    # reparents those onto a dedicated login device first, so nothing is
+    # lost. Energy sensors (EAN-embedded keys) and the auth binary sensor
+    # keep their v2 unique_ids and never get a subentry-id segment.
+    await _migrate_entity_unique_ids(hass, entry.entry_id, subentry.subentry_id)
+
     if v2_device is not None and v3_device is None:
         # State A
-        device_reg.async_update_device(
+        _async_promote_device_to_subentry(
+            hass,
             v2_device.id,
+            entry_id=entry.entry_id,
+            subentry_id=subentry.subentry_id,
             new_identifiers={(DOMAIN, subentry.subentry_id)},
-            add_config_entry_id=entry.entry_id,
-            add_config_subentry_id=subentry.subentry_id,
         )
     elif v2_device is not None and v3_device is not None:
         # State B
@@ -236,11 +375,6 @@ async def _async_migrate_v2_to_v3(
             v2_device.id,
             v3_device.id,
         )
-
-    # Rename the unique_ids of entities whose v2 keys are now subentry-scoped.
-    # Energy sensors (EAN-embedded keys) and the auth binary sensor keep their
-    # v2 ids and need no rename.
-    await _migrate_entity_unique_ids(hass, entry.entry_id, subentry.subentry_id)
 
     # Rename the peaks-history store file on disk from the old per-entry
     # key to the new per-subentry key. Done via ``Store`` so the store
@@ -484,11 +618,12 @@ async def _async_cleanup_orphan_v2_device(
     if v3_device is None:
         # Only the v2 device exists: rename its identifier in place so
         # user customisations survive. Mirrors migration State A.
-        device_reg.async_update_device(
+        _async_promote_device_to_subentry(
+            hass,
             v2_device.id,
+            entry_id=entry.entry_id,
+            subentry_id=subentry.subentry_id,
             new_identifiers={(DOMAIN, subentry.subentry_id)},
-            add_config_entry_id=entry.entry_id,
-            add_config_subentry_id=subentry.subentry_id,
         )
         LOGGER.info(
             "Promoted orphan v2 device %s to v3 subentry %s",
@@ -517,6 +652,65 @@ async def _async_cleanup_orphan_v2_device(
         v2_device.id,
         v3_device.id,
     )
+
+
+async def _async_heal_stale_subentry_links(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Drop a stale ``(entry_id, None)`` link from each customer-account device.
+
+    Releases up to and including 0.8.0b1 ran the v2->v3 migration with a
+    single ``async_update_device(..., add_config_subentry_id=...)`` call,
+    which set-unioned the new subentry onto the legacy ``{None}`` set
+    instead of replacing it. The device ended up with both
+    ``(entry_id, None)`` and ``(entry_id, subentry_id)`` links and Home
+    Assistant rendered it twice in the integration card: once under the
+    parent entry's "no sub-item" group and once under the subentry's group.
+
+    The migration helper now does the right thing for fresh upgrades, but
+    entries that already booted past 0.8.0b1 still carry the duplicated
+    link. This pass walks every customer-account subentry and, when its
+    device still has the legacy ``None`` link alongside the subentry link,
+    reparents any login-scoped entity off the device first (so HA's entity
+    registry does not auto-remove them when the ``None`` link disappears)
+    and then removes the legacy link. Idempotent and safe on healthy
+    installs.
+    """
+    device_reg = dr.async_get(hass)
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+            continue
+        device = device_reg.async_get_device(
+            identifiers={(DOMAIN, subentry.subentry_id)},
+        )
+        if device is None:
+            continue
+        entry_subentries = device.config_entries_subentries.get(entry.entry_id)
+        if entry_subentries is None:
+            continue
+        if None not in entry_subentries:
+            continue
+        if subentry.subentry_id not in entry_subentries:
+            # The device is somehow only linked via the bare entry; do
+            # not touch it. Promotion is the orphan-cleanup helper's job.
+            continue
+        _async_reparent_login_scoped_entities(
+            hass,
+            device_id=device.id,
+            entry_id=entry.entry_id,
+        )
+        device_reg.async_update_device(
+            device.id,
+            remove_config_entry_id=entry.entry_id,
+            remove_config_subentry_id=None,
+        )
+        LOGGER.info(
+            "Removed stale entry-only link from device %s (subentry %s)",
+            device.id,
+            subentry.subentry_id,
+        )
 
 
 async def _async_migrate_legacy_subentry_unique_ids(
@@ -751,6 +945,12 @@ async def async_setup_entry(
     # migration before the merge logic above existed. Safe to run on
     # every setup: it is a no-op when no orphan v2 device is present.
     await _async_cleanup_orphan_v2_device(hass, entry)
+
+    # Heal customer-account devices that 0.8.0b1 left with both an
+    # entry-only and an entry+subentry link, which Home Assistant
+    # rendered as two duplicate device rows. Idempotent and a no-op
+    # on healthy installs.
+    await _async_heal_stale_subentry_links(hass, entry)
 
     # One-shot migration of legacy BAN-shaped subentry unique_ids to
     # canonical CAN values. Idempotent and tolerant of relations API
