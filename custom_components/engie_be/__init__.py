@@ -731,6 +731,187 @@ async def _async_heal_stale_subentry_links(
         )
 
 
+_B1_ENERGY_UID_DIRECTIONS = (
+    "offtake_excl_vat",
+    "injection_excl_vat",
+    "offtake",
+    "injection",
+)
+
+
+async def _async_heal_b1_energy_unique_ids(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Rewrite 0.8.0b1-shaped energy unique_ids to the canonical v3 shape.
+
+    The 0.8.0b1 release of the v2->v3 migration helper rewrote captar,
+    EPEX, and calendar entities to the subentry-scoped unique_id shape
+    but left energy price entities at the legacy
+    ``{entry_id}_{ean}_{direction}`` shape, because b1's platform also
+    produced that shape so the registry rows still matched. The 0.8.0b3
+    platform produces the canonical
+    ``{entry_id}_{subentry_id}_{ean}_{direction}`` shape, which means
+    direct b1->b3 upgrades end up with six orphan registry rows per
+    customer account (the b1-shape rows that no platform claims) plus a
+    fresh set of canonical entities under brand-new entity_ids. The
+    six orphans show up as "unavailable" in the UI under the user's
+    original entity_ids.
+
+    The fresh installs and v0.7.x->b3 paths do not hit this: a fresh
+    install creates the canonical shape from the start, and a v2->v3
+    migration runs the prefix-sweep helper that rewrites every
+    v2-shaped unique_id (including energy ones) to canonical.
+
+    This pass walks every engie entity in the registry on every setup
+    and, when an entity matches the b1 energy shape, derives its owning
+    subentry from its device's ``(DOMAIN, subentry_id)`` identifier (the
+    b1 device-promote step already moved energy entities onto the
+    subentry-keyed device, so this lookup is reliable). It then
+    rewrites the unique_id to the canonical shape and stamps
+    ``config_subentry_id``. If a canonical sibling already owns the
+    target unique_id (the platform registered fresh entities under new
+    entity_ids on a previous boot), the b1 orphan is removed instead.
+
+    Idempotent: entities already at the canonical shape are skipped.
+    """
+    entry_id = entry.entry_id
+    entry_prefix = f"{entry_id}_"
+    valid_subentry_ids = {
+        sub.subentry_id
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    }
+    if not valid_subentry_ids:
+        return
+
+    # Collect candidates first so the registry mutation does not race
+    # against iteration. ``entity_reg.entities`` is a live mapping.
+    entity_reg = er.async_get(hass)
+    device_reg = dr.async_get(hass)
+    candidates: list[er.RegistryEntry] = []
+    for ent in entity_reg.entities.values():
+        if ent.platform != DOMAIN:
+            continue
+        if ent.config_entry_id != entry_id:
+            continue
+        unique_id = ent.unique_id
+        if not unique_id.startswith(entry_prefix):
+            continue
+        suffix = unique_id[len(entry_prefix) :]
+        # The canonical shape is ``{entry_id}_{subentry_id}_<suffix>``;
+        # b1 energy uids are ``{entry_id}_{ean}_<direction>`` where the
+        # EAN is digits and the direction is one of the four energy
+        # descriptors. The all-digits EAN check rules out canonical
+        # rows because subentry ids are ULIDs (alphanumeric, never
+        # all-digit).
+        if _match_b1_energy_suffix(suffix) is None:
+            continue
+        candidates.append(ent)
+
+    if not candidates:
+        return
+
+    healed = 0
+    dropped = 0
+    skipped = 0
+    for ent in candidates:
+        device = (
+            device_reg.async_get(ent.device_id)
+            if ent.device_id is not None
+            else None
+        )
+        subentry_id = (
+            _subentry_id_from_device(device, valid_subentry_ids)
+            if device
+            else None
+        )
+        if subentry_id is None:
+            LOGGER.warning(
+                "Cannot heal b1-shape energy unique_id %s: no subentry-keyed "
+                "device link found",
+                ent.unique_id,
+            )
+            skipped += 1
+            continue
+
+        suffix = ent.unique_id[len(entry_prefix) :]
+        new_unique_id = f"{entry_id}_{subentry_id}_{suffix}"
+        existing = entity_reg.async_get_entity_id(
+            ent.domain, DOMAIN, new_unique_id
+        )
+        if existing is not None and existing != ent.entity_id:
+            entity_reg.async_remove(ent.entity_id)
+            dropped += 1
+            LOGGER.info(
+                "Removed b1-shape energy entity %s; canonical sibling %s "
+                "already owns unique_id %s",
+                ent.entity_id,
+                existing,
+                new_unique_id,
+            )
+            continue
+
+        entity_reg.async_update_entity(
+            ent.entity_id,
+            new_unique_id=new_unique_id,
+            config_subentry_id=subentry_id,
+        )
+        healed += 1
+        LOGGER.info(
+            "Healed b1-shape energy unique_id %s -> %s (subentry %s)",
+            ent.unique_id,
+            new_unique_id,
+            subentry_id,
+        )
+
+    if healed or dropped or skipped:
+        LOGGER.info(
+            "b1 energy unique_id heal: healed=%d dropped=%d skipped=%d",
+            healed,
+            dropped,
+            skipped,
+        )
+
+
+def _match_b1_energy_suffix(suffix: str) -> tuple[str, str] | None:
+    """
+    Return ``(ean, direction)`` if ``suffix`` matches a b1 energy uid.
+
+    A b1 energy uid suffix is ``<ean>_<direction>`` where ``ean`` is all
+    digits and ``direction`` is one of the four energy descriptors. The
+    direction list is ordered longest-first so ``offtake_excl_vat`` is
+    matched before ``offtake``.
+    """
+    for direction in _B1_ENERGY_UID_DIRECTIONS:
+        marker = f"_{direction}"
+        if not suffix.endswith(marker):
+            continue
+        ean = suffix[: -len(marker)]
+        if ean and ean.isdigit():
+            return ean, direction
+    return None
+
+
+def _subentry_id_from_device(
+    device: dr.DeviceEntry,
+    valid_subentry_ids: set[str],
+) -> str | None:
+    """
+    Return the ``(DOMAIN, subentry_id)`` identifier value, or ``None``.
+
+    ``valid_subentry_ids`` is the set of ``ConfigSubentry.subentry_id``
+    values currently attached to the parent entry, used to discriminate
+    customer-account devices (identifier value is the ULID subentry id)
+    from the login device (identifier value is ``login_<entry_id>``).
+    """
+    for domain, value in device.identifiers:
+        if domain == DOMAIN and value in valid_subentry_ids:
+            return value
+    return None
+
+
 async def _async_migrate_legacy_subentry_unique_ids(
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,
@@ -984,6 +1165,12 @@ async def async_setup_entry(
     # rendered as two duplicate device rows. Idempotent and a no-op
     # on healthy installs.
     await _async_heal_stale_subentry_links(hass, entry)
+
+    # Heal energy price entities whose unique_ids were left at the
+    # 0.8.0b1 shape by direct b1->b3 upgrades. Idempotent and a no-op
+    # on healthy installs (b2->b3 and v0.7.x->b3 paths already produce
+    # the canonical shape).
+    await _async_heal_b1_energy_unique_ids(hass, entry)
 
     # One-shot migration of legacy BAN-shaped subentry unique_ids to
     # canonical CAN values. Idempotent and tolerant of relations API
