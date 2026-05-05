@@ -49,16 +49,21 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   don't fire on stale data. Zero is treated as non-negative.
 
 ### Changed
-- The per-account calendar entity now carries a translated entity name
-  ("ENGIE Belgium") instead of being unnamed. Previously, because the
-  calendar set `_attr_name = None` on top of `_attr_has_entity_name =
-  True`, the entity inherited the device name verbatim and appeared in
-  the UI as just the consumption address (e.g. `LINDESTRAAT 27, 8790
-  WAREGEM`), which was indistinguishable from any other calendar
-  source. The composed friendly name now reads as `<address> ENGIE
-  Belgium`, making the integration's calendars obvious at a glance.
-  Entity IDs and unique IDs are unchanged, so no migration is required
-  and history is preserved.
+- The per-account calendar entity now has a brand-leading friendly
+  name (`ENGIE Belgium <address>`) instead of being unnamed.
+  Previously, because the calendar set `_attr_name = None` on top of
+  the inherited `_attr_has_entity_name = True`, it inherited the
+  device name verbatim and showed in the `/calendar` panel and any
+  calendar picker as just the consumption address (e.g.
+  `LINDESTRAAT 27, 8790 WAREGEM`), indistinguishable from any other
+  calendar source. The fix sets `_attr_has_entity_name = False` and
+  composes `_attr_name` as `f"ENGIE Belgium {subentry.title}"` so the
+  brand always leads, surviving the truncation the HA frontend
+  applies to long calendar labels in narrow panes. Entity IDs and
+  unique IDs are unchanged, so no migration is required and history
+  is preserved. Trade-off: a user-renamed device no longer
+  propagates into the calendar's friendly name; acceptable because
+  the device name is the consumption address, which is stable.
 - **Breaking (entity_id rename, history preserved):** customer-account
   entity IDs now carry the canonical customer account number (CAN) so
   two accounts on the same login no longer collide and get

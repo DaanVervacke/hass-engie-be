@@ -73,7 +73,21 @@ async def async_setup_entry(
 class EngieBeCalendar(EngieBeEntity, CalendarEntity):
     """Aggregated calendar entity for one ENGIE Belgium customer account."""
 
-    _attr_translation_key = "calendar"
+    # Override the inherited ``_attr_has_entity_name = True`` so the
+    # friendly name is taken verbatim from ``_attr_name`` instead of
+    # being composed as ``<device-name> <entity-name>``. This lets us
+    # lead with the brand ("ENGIE Belgium") and then the address,
+    # rather than the address followed by the brand. The standard
+    # composition is fine for sensors (which read e.g. ``<address>
+    # Captar monthly peak power``), but the calendar entity has no
+    # per-feature suffix, so without this override the only label HA
+    # would compose for the calendar dropdown is the address alone or
+    # ``<address> ENGIE Belgium`` (with the brand truncated in narrow
+    # panels). Trade-off: a user-renamed device no longer propagates
+    # into the calendar's friendly name. Acceptable because the
+    # device name is the consumption address, which is stable and
+    # rarely user-edited.
+    _attr_has_entity_name = False
     _attr_icon = "mdi:calendar"
 
     def __init__(
@@ -83,6 +97,12 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
     ) -> None:
         """Initialise the calendar entity for one customer-account subentry."""
         super().__init__(coordinator, subentry)
+        # Brand-leading literal friendly name. Composed at init time
+        # because ``_attr_has_entity_name`` is False (see class docstring
+        # rationale above). The brand string is intentionally untranslated:
+        # "ENGIE Belgium" is a proper noun and rendered identically in
+        # every locale ENGIE itself uses.
+        self._attr_name = f"ENGIE Belgium {subentry.title}"
         # Subentry-scoped unique ID: the calendar descriptor repeats
         # across every customer account on a single login.
         self._attr_unique_id = (
