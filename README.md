@@ -30,9 +30,9 @@ attributes. Every sensor below is also available as an `_excl_vat` variant
 > `sensor.engie_belgium_1500000123_gas_offtake_price`. The bare
 > `sensor.engie_belgium_*` IDs shown in the tables below are illustrative;
 > replace `engie_belgium_` with `engie_belgium_{your_customer_number}_` when
-> referencing a sensor in automations or dashboards. Your customer number is
-> the one you used during setup, and it appears in every ENGIE Belgium entity
-> ID created by the integration (visible in **Developer tools** > **States**).
+> referencing a sensor in automations or dashboards. The customer number
+> appears in every entity ID created by the integration (visible in
+> **Developer tools** > **States**).
 
 ### Gas
 
@@ -159,7 +159,6 @@ shows whether the integration is currently authenticated with the ENGIE API.
 
 - A dedicated [ENGIE Belgium](https://www.engie.be/) account for this
   integration (see required callout above)
-- Your ENGIE customer number
 - Access to SMS or email for two-factor authentication during setup
 
 ## Installation
@@ -203,11 +202,12 @@ badge in [Installation](#hacs-recommended) or open
 1. Enter your credentials:
    - **Email address** - your ENGIE Belgium login email
    - **Password** - your ENGIE Belgium password
-   - **Customer number** - your ENGIE customer number
    - **Client ID** - leave at the default unless you know what you're doing
    - **Two-factor authentication method** - choose SMS or Email
 2. Click **Submit**. You will receive a verification code via your chosen method.
 3. Enter the 6-digit code and click **Submit**.
+4. Pick one or more customer accounts from the list of accounts your login can
+   access. Each selection becomes its own device with its own sensors.
 
 The integration will then fetch your energy prices and capacity-tariff peaks
 and create the appropriate sensors.
@@ -252,7 +252,7 @@ To complete re-authentication:
 2. Choose how you want to receive a verification code (SMS or email).
 3. Enter the 6-digit code that ENGIE sends you.
 
-Your stored email, password, and customer number are reused. No sensors are
+Your stored email and password are reused. No sensors are
 removed and no history is lost.
 
 ## Removing the integration
