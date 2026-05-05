@@ -205,7 +205,7 @@ badge in [Installation](#hacs-recommended) or open
 **ENGIE Belgium**.
 
 1. Enter your credentials:
-   - **Email address**: your ENGIE Belgium login email.
+   - **Email address**: your ENGIE Belgium email.
    - **Password**: your ENGIE Belgium password.
    - **Client ID**: leave at the default unless you know what you are doing.
    - **Two-factor authentication method**: choose SMS or Email.
