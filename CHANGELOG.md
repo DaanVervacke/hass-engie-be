@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0b4] - 2026-05-05
+
+> Beta release. Please report issues on
+> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
+
+### Fixed
+- **Energy price sensors that became unavailable after the first 0.8.0
+  beta now recover automatically.** Users who installed 0.8.0b1 and
+  later upgraded to 0.8.0b2 or 0.8.0b3 could see their six gas and
+  electricity offtake/injection price sensors stuck as "unavailable",
+  with new duplicate sensors appearing alongside them. The integration
+  now repairs these sensors automatically the next time it starts. Your
+  original entity IDs, history, and any dashboard or automation
+  references are preserved. No action is required.
+
 ## [0.8.0b3] - 2026-05-05
 
 > Beta release. Please report issues on
