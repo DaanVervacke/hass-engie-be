@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0b7] - 2026-05-05
+
+> Beta release. Please report issues on
+> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
+
+### Changed
+- **Reduced background writes to Home Assistant's config storage.**
+  The integration previously rewrote its stored ENGIE login tokens
+  on every refresh cycle, even when the tokens had not actually
+  changed. It now writes only when at least one token is different,
+  matching the pattern recommended for OAuth-based integrations.
+  This avoids needless churn on the configuration storage file.
+
+### Fixed
+- **Improved server-side traceability for the dynamic-tariff
+  detection call.** The request the integration uses to identify
+  dynamic-electricity accounts now includes the same per-request
+  trace identifier as every other ENGIE API call, so server-side
+  logs can correlate it with the rest of a refresh cycle. There is
+  no user-visible change.
+
 ## [0.8.0b6] - 2026-05-05
 
 > Beta release. Please report issues on
