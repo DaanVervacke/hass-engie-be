@@ -224,7 +224,7 @@ After setup, you can change the price update interval:
 [![Open your Home Assistant instance and show your ENGIE Belgium integration.](https://my.home-assistant.io/badges/integration.svg)](https://my.home-assistant.io/redirect/integration/?domain=engie_be)
 
 1. Click the badge above (or go to **Settings** > **Devices & Services** and find **ENGIE Belgium**).
-2. Click **Configure**.
+2. Click **Configure** (the cog wheel icon).
 3. Set the **Update interval** (5-1440 minutes, default: 60 minutes).
 
 ## Multiple customer accounts
