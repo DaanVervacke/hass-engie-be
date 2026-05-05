@@ -326,6 +326,7 @@ class EngieBeApiClient:
             "User-Agent": USER_AGENT_BROWSER,
             "Accept": "application/json, application/problem+json",
             "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
         }
         return await self._api_wrapper(
             session=self._session,

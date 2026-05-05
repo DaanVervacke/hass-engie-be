@@ -1346,7 +1346,20 @@ def _persist_tokens(
     access_token: str,
     refresh_token: str,
 ) -> None:
-    """Persist refreshed tokens to the config entry data."""
+    """
+    Persist refreshed tokens to the config entry data.
+
+    Skips the write when both tokens already match what is stored, so
+    routine coordinator refreshes that hand back the same access token
+    do not dirty ``core.config_entries`` storage. ENGIE rotates the
+    refresh token on every successful exchange, so in practice this
+    short-circuit only fires when the OAuth helper returns a cached
+    token (e.g. when the previous access token is still valid).
+    """
+    current_access = entry.data.get(CONF_ACCESS_TOKEN)
+    current_refresh = entry.data.get(CONF_REFRESH_TOKEN)
+    if current_access == access_token and current_refresh == refresh_token:
+        return
     updated_data = {**entry.data}
     updated_data[CONF_ACCESS_TOKEN] = access_token
     updated_data[CONF_REFRESH_TOKEN] = refresh_token
