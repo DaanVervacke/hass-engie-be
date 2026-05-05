@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0b3] - 2026-05-05
+
+> Beta release. Please report issues on
+> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
+
+### Fixed
+- **No more duplicate energy price sensors after upgrading from 0.7.x.**
+  After upgrading from 0.7.x to 0.8.0b2, the gas and electricity
+  offtake/injection price sensors could end up listed twice in your
+  customer account: once with the original entity IDs (the migrated
+  sensors that keep your history) and once again with new entity IDs
+  derived from your address. The integration now reuses the migrated
+  sensors directly, so only the original six energy price sensors
+  appear and your history stays intact.
+
 ## [0.8.0b2] - 2026-05-05
 
 > Beta release. Please report issues on
