@@ -205,10 +205,10 @@ badge in [Installation](#hacs-recommended) or open
 **ENGIE Belgium**.
 
 1. Enter your credentials:
-   - **Email address** - your ENGIE Belgium login email
-   - **Password** - your ENGIE Belgium password
-   - **Client ID** - leave at the default unless you know what you're doing
-   - **Two-factor authentication method** - choose SMS or Email
+   - **Email address**: your ENGIE Belgium login email.
+   - **Password**: your ENGIE Belgium password.
+   - **Client ID**: leave at the default unless you know what you are doing.
+   - **Two-factor authentication method**: choose SMS or Email.
 2. Click **Submit**. You will receive a verification code via your chosen method.
 3. Enter the 6-digit code and click **Submit**.
 4. Pick one or more customer accounts from the list of accounts your login can
