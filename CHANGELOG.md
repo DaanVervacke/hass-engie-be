@@ -8,6 +8,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [Unreleased]
 
 ### Added
+- Multi-account support via Home Assistant's ConfigSubentries framework.
+  A single ENGIE login can now own multiple customer accounts under one
+  config entry: each account becomes its own subentry with its own
+  device, service points, price sensors, captar peak sensors, calendar,
+  and (for dynamic accounts) EPEX sensors. During initial setup the
+  integration calls ENGIE's customer-account-relations endpoint and
+  shows a multi-select picker of every customer account your login has
+  access to. Additional accounts can be added later via the **Add
+  subentry** button on the integration card, and removed by deleting
+  the subentry without affecting the parent entry or its siblings. The
+  authentication binary sensor lives on a separate "login" device tied
+  to the parent entry, since it reflects the OAuth session rather than
+  any single account.
 - Support for ENGIE's dynamic (EPEX-indexed) electricity tariff. Dynamic
   contracts are auto-detected at the account level: when ENGIE returns
   an empty `items` list from the supplier-prices endpoint (the documented
@@ -34,6 +47,193 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   before the first successful EPEX fetch and `unknown` when the cached
   payload has no slot covering the current instant, so automations
   don't fire on stale data. Zero is treated as non-negative.
+
+### Changed
+- The per-account calendar entity now has a brand-leading friendly
+  name (`ENGIE Belgium <address>`) instead of being unnamed.
+  Previously, because the calendar set `_attr_name = None` on top of
+  the inherited `_attr_has_entity_name = True`, it inherited the
+  device name verbatim and showed in the `/calendar` panel and any
+  calendar picker as just the consumption address (e.g.
+  `LINDESTRAAT 27, 8790 WAREGEM`), indistinguishable from any other
+  calendar source. The fix sets `_attr_has_entity_name = False` and
+  composes `_attr_name` as `f"ENGIE Belgium {subentry.title}"` so the
+  brand always leads, surviving the truncation the HA frontend
+  applies to long calendar labels in narrow panes. Entity IDs and
+  unique IDs are unchanged, so no migration is required and history
+  is preserved. Trade-off: a user-renamed device no longer
+  propagates into the calendar's friendly name; acceptable because
+  the device name is the consumption address, which is stable.
+- **Breaking (entity_id rename, history preserved):** customer-account
+  entity IDs now carry the canonical customer account number (CAN) so
+  two accounts on the same login no longer collide and get
+  auto-suffixed with `_2`. Sensors become
+  `sensor.engie_belgium_{CAN}_{key}` and the calendar becomes
+  `calendar.engie_belgium_{CAN}`. Existing installs are migrated in
+  place at startup: `unique_id`s are untouched so long-term statistics
+  and history follow the rename, but any automation, script, scene, or
+  dashboard that hard-codes the old slug must be updated to the new
+  one. The login-scoped authentication binary sensor is unaffected.
+- The EPEX coordinator now lives at the parent-entry level instead of
+  per-account, since the day-ahead wholesale price is identical for
+  every customer account on the same login. EPEX sensors and the
+  negative-price binary sensor are still created per dynamic subentry,
+  but only one HTTP call to the public EPEX endpoint runs per refresh
+  cycle regardless of how many dynamic accounts you have.
+- Diagnostics output is now organised top-level by `entry`, `runtime`,
+  `epex_coordinator`, and `subentries`, with subentry titles and
+  customer account numbers redacted via stable 8-character SHA-256
+  hashes so support bundles stay shareable while still letting you
+  correlate which subentry a log line refers to.
+- The scheduled token-refresh warning now includes the exception class
+  name and message (e.g.
+  `Scheduled token refresh failed (EngieBeApiClientCommunicationError: HTTP 503: ...); will retry`)
+  so transient upstream failures are diagnosable from the log without
+  enabling debug logging. Behaviour is unchanged: a single failed
+  refresh still just retries on the next interval.
+
+### Fixed
+- EPEX sensors (`current price`, `lowest price today`, `highest price today`)
+  no longer crash on first state write with `AttributeError: 'EngieBeEpexCoordinator'
+  object has no attribute 'last_update_success_time'`. The attribute was
+  referenced by the sensors' `extra_state_attributes` (for the `last_fetched`
+  attribute) but never actually set on the coordinator; it is now tracked
+  explicitly on every successful EPEX fetch and exposed as a property. The
+  bug only surfaced when the EPEX entities were registered fresh (e.g. on
+  a brand-new dynamic account); existing entities masked it because HA
+  skipped the initial state write.
+- Adding or removing a customer-account subentry after initial setup
+  no longer leaves the parent entry in a half-wired state. Home
+  Assistant fires update listeners on subentry changes but does not
+  schedule a reload, so the integration's reload guard previously
+  short-circuited (options unchanged) and the new subentry never got a
+  coordinator, device, or entities. The guard now also tracks the set
+  of customer-account subentry ids observed at setup time, so any
+  add/remove triggers a clean reload while token rotations (which only
+  touch `entry.data`) still skip reload as before.
+- `translations/en.json` had drifted out of sync with `strings.json`
+  over several feature batches: the entire
+  `config_subentries.customer_account` block was missing (so the
+  **Add customer account** dialog showed the raw `selected_accounts`
+  key instead of a proper field label), the `config.step.user`
+  description still mentioned a removed customer-number field with
+  two stale field labels, and the four EPEX entities
+  (`binary_sensor.epex_negative`, `sensor.epex_current`,
+  `sensor.epex_high_today`, `sensor.epex_low_today`) had no friendly
+  names. The translations file is now a literal mirror of
+  `strings.json`. Tweaked the picker description to read "its own
+  sensors" instead of "its own price sensors" since the new
+  customer-account device exposes binary, peak, and EPEX sensors
+  alongside the price sensors.
+- The native-User-Agent assertion in
+  `tests/test_api_relations.py::test_async_get_customer_account_relations_sends_native_user_agent`
+  was checking for the literal string `"ENGIE"` in the User-Agent
+  header, but the API client sends the Dalvik UA
+  (`Dalvik/2.1.0 (Linux; U; Android 16; ...)`) that mimics the ENGIE
+  Smart App. The assertion now compares against the
+  `USER_AGENT_NATIVE` constant directly.
+- The initial-setup flow now correctly chains into the customer-account
+  picker. The previous implementation set `next_flow` on the parent
+  flow result pointing at a `CONFIG_SUBENTRIES_FLOW`, which Home
+  Assistant rejects: only `CONFIG_FLOW` targets are valid for that
+  hand-off. The picker is now an integrated `select_accounts` step
+  that runs after MFA succeeds, fetches relations with the just-issued
+  tokens, and creates the parent entry plus chosen subentries
+  atomically via `async_create_entry(subentries=...)`. If the
+  relations endpoint fails or returns zero accounts at this point the
+  flow still finishes cleanly: the parent entry is created without
+  subentries and the user can add accounts later from the **Add
+  subentry** button.
+- The relations-backfill matcher in the coordinator now finds legacy
+  entries whose stored `customer_number` is the
+  `businessAgreementNumber` (BAN) rather than the
+  `customerAccountNumber` (CAN). The previous matcher only walked the
+  flat CAN list, so subentries created from older API payloads (or
+  entries migrated from a single-account v1/v2 schema where the
+  stored identifier happened to be the BAN) silently failed to be
+  enriched with `account_holder_name`, `consumption_address`, etc.
+- Backfilling relations now refreshes the subentry title and renames
+  the customer-account device to match. Previously the title and
+  device name were set once at subentry creation and never updated,
+  so subentries created before relations were available kept showing
+  the raw customer number even after the backfill populated the
+  consumption address. `name_by_user` is preserved so user-customised
+  device names are not overwritten.
+- v2->v3 migration is now idempotent and survives partial-failure
+  retries: an existing customer-account subentry with the same
+  customer number is reused instead of triggering an
+  `already_configured` abort, the device-registry update now passes
+  both `add_config_entry_id` and `add_config_subentry_id` (Home
+  Assistant 2026.3 requires both), and the entity-registry rename
+  step is properly awaited (`er.async_migrate_entries` is a
+  coroutine). Without these fixes a v2 entry whose first migration
+  attempt failed (for example because the OAuth token had expired
+  and the relations backfill returned 403) would refuse to load on
+  subsequent restarts.
+- The **Add customer account** subentry picker no longer offers
+  duplicates of accounts that are already configured under a different
+  identifier shape. ENGIE returns each account with both a
+  `customerAccountNumber` (CAN) and one or more
+  `businessAgreementNumber`s (BANs); legacy v2-migrated subentries
+  store the BAN as their `unique_id`, while the picker derives its
+  candidates from the CAN. The picker now dedupes against the union
+  of every existing subentry's `unique_id`, `customer_number`, and
+  `business_agreement_number`, and walks every candidate's CAN plus
+  all of its BANs before deciding whether it is already configured.
+  Without this, opening the picker for a v2-migrated login would list
+  the same physical premises a second time, and confirming the
+  selection would create a duplicate device with parallel sensors.
+- Subentries that were migrated from v2 with a BAN-shaped `unique_id`
+  are now rewritten in place to the canonical CAN on the next setup.
+  The integration fetches the customer-account-relations payload once
+  per setup, looks up each legacy subentry's stored identifier across
+  both CAN and BAN fields, and rewrites `unique_id` and the
+  `customer_number` data field to the CAN when a match is found.
+  Existing entity unique IDs (which are keyed by the parent entry id
+  and subentry id, not by the customer number) are unaffected, so
+  sensor history is preserved. The migration is idempotent: if the
+  relations fetch fails the rewrite simply retries on the next setup,
+  and subentries that already carry their CAN are skipped without any
+  network call.
+- Coordinator now calls the prices and monthly-peaks endpoints with
+  the 12-digit `businessAgreementNumber` instead of the shorter
+  `customerAccountNumber`. The previous behaviour broke after the
+  legacy-unique_id migration rewrote `customer_number` to the
+  canonical CAN, causing setup to retry with `Cannot connect to the
+  ENGIE Belgium API` (the prices endpoint responds HTTP 400
+  `size must be between 12 and 12` and the peaks endpoint HTTP 500
+  when called with a CAN). Legacy v2-migrated subentries that have
+  not yet been backfilled with the dedicated `business_agreement_number`
+  field fall back to the CAN-shaped `customer_number` value, which
+  for those entries still holds the BAN until the relations backfill
+  populates the dedicated field on the first refresh.
+
+### Migration
+- Existing single-account config entries (schema v1 and v2) are
+  upgraded automatically on first load to the new schema (v3). The
+  existing customer account becomes a single subentry under your
+  existing entry, entity unique IDs are rewritten in place from the
+  old `{entry_id}_{key}` pattern to the new
+  `{entry_id}_{subentry_id}_{key}` pattern, and the authentication
+  binary sensor's unique ID is normalised to `{entry_id}_authentication`.
+  Sensor history is preserved across the migration. No manual
+  reconfiguration is required.
+
+### Chore
+- Code-quality cleanups identified by an HA conventions audit of the
+  multi-customer-account branch: hoisted the inline `dt_util` import in
+  `calendar.py` to module level (removes the `# noqa: PLC0415`
+  suppression); cleaned up the entity base-class hierarchy so each
+  concrete entity inherits `CoordinatorEntity` exactly once with its
+  proper generic parameter, removing the `# type: ignore[type-arg]`
+  workaround; renamed `EngieBePeaksStore.__init__`'s misleading
+  `entry_id` parameter to `subentry_id` to match what callers actually
+  pass; added a `loggers` declaration to `manifest.json` so
+  `logger.set_default_level` targeting works as expected; and re-flagged
+  `has-entity-name` as exempt in `quality_scale.yaml` with a comment
+  citing the calendar's brand-leading rationale (the entity opts out of
+  `has_entity_name` so its friendly name leads with `ENGIE Belgium`
+  instead of the device name). No behavioural changes.
 
 ## [0.7.1] - 2026-05-03
 

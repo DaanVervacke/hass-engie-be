@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 from homeassistant.components.calendar import CalendarEvent
 
 from custom_components.engie_be.calendar import EngieBeCalendar
+from custom_components.engie_be.const import SUBENTRY_TYPE_CUSTOMER_ACCOUNT
 
 _PEAKS_FIXTURE = Path(__file__).parent / "fixtures" / "peaks_2026_04.json"
 
@@ -35,39 +36,67 @@ def _wrap(
     }
 
 
+def _make_subentry(
+    subentry_id: str = "sub_test",
+    title: str = "Test Account",
+) -> MagicMock:
+    """Build a MagicMock ConfigSubentry stub."""
+    subentry = MagicMock()
+    subentry.subentry_id = subentry_id
+    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.title = title
+    return subentry
+
+
 def _make_coordinator(
     data: dict | None,
     *,
+    subentry_id: str = "sub_test",
     history: list[dict] | None = None,
 ) -> MagicMock:
-    """Build a MagicMock coordinator stub with the given ``.data``."""
+    """
+    Build a MagicMock per-subentry coordinator stub.
+
+    ``captar_peak_events`` walks
+    ``coordinator.config_entry.runtime_data.subentry_data[subentry_id].peaks_store.peaks``,
+    so the runtime layout has to mirror that exactly.
+    """
     coordinator = MagicMock()
     coordinator.data = data
     coordinator.last_successful_fetch = None
     coordinator.config_entry = MagicMock()
     coordinator.config_entry.entry_id = "test_entry_id"
+    # The provider reads ``coordinator.subentry.subentry_id``.
+    coordinator.subentry = MagicMock()
+    coordinator.subentry.subentry_id = subentry_id
+
     if history is None:
+        # Explicit None -> no runtime data; provider must still cope.
         coordinator.config_entry.runtime_data = None
     else:
         store = MagicMock()
         store.peaks = list(history)
+        sub_data = MagicMock()
+        sub_data.peaks_store = store
         runtime = MagicMock()
-        runtime.peaks_store = store
+        runtime.subentry_data = {subentry_id: sub_data}
         coordinator.config_entry.runtime_data = runtime
     return coordinator
 
 
-def test_calendar_unique_id_namespaced_to_entry() -> None:
-    """The calendar carries a stable per-entry unique_id."""
-    coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
-    calendar = EngieBeCalendar(coordinator)
-    assert calendar.unique_id == "test_entry_id_calendar"
+def test_calendar_unique_id_namespaced_to_subentry() -> None:
+    """The calendar carries a stable per-subentry unique_id."""
+    coordinator = _make_coordinator({"peaks": _wrap(_peaks())}, subentry_id="sub_xyz")
+    subentry = _make_subentry(subentry_id="sub_xyz")
+    calendar = EngieBeCalendar(coordinator, subentry)
+    assert calendar.unique_id == "test_entry_id_sub_xyz_calendar"
 
 
 def test_event_property_returns_captar_peak() -> None:
     """``event`` exposes the captar peak window as a ``CalendarEvent``."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
-    calendar = EngieBeCalendar(coordinator)
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
     event = calendar.event
     assert isinstance(event, CalendarEvent)
     assert event.summary == "Captar monthly peak"
@@ -81,7 +110,8 @@ def test_event_property_returns_captar_peak() -> None:
 def test_event_returns_none_when_no_providers_yield_events() -> None:
     """``event`` is ``None`` when no provider yields anything."""
     coordinator = _make_coordinator({"items": []})
-    calendar = EngieBeCalendar(coordinator)
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
     assert calendar.event is None
 
 
@@ -95,7 +125,8 @@ def test_event_fallback_does_not_annotate_description() -> None:
     coordinator = _make_coordinator(
         {"peaks": _wrap(_peaks(), year=2026, month=3, is_fallback=True)},
     )
-    calendar = EngieBeCalendar(coordinator)
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
     event = calendar.event
     assert event is not None
     assert event.description is not None
@@ -105,7 +136,8 @@ def test_event_fallback_does_not_annotate_description() -> None:
 async def test_async_get_events_returns_event_when_overlapping() -> None:
     """``async_get_events`` returns the event when its window overlaps."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
-    calendar = EngieBeCalendar(coordinator)
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
@@ -118,7 +150,8 @@ async def test_async_get_events_returns_event_when_overlapping() -> None:
 async def test_async_get_events_returns_empty_outside_window() -> None:
     """``async_get_events`` returns ``[]`` when the window does not overlap."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
-    calendar = EngieBeCalendar(coordinator)
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-05-01T00:00:00+02:00"),
@@ -130,7 +163,8 @@ async def test_async_get_events_returns_empty_outside_window() -> None:
 async def test_async_get_events_returns_empty_when_no_providers_yield() -> None:
     """``async_get_events`` returns ``[]`` when no provider yields anything."""
     coordinator = _make_coordinator({"items": []})
-    calendar = EngieBeCalendar(coordinator)
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
@@ -140,7 +174,7 @@ async def test_async_get_events_returns_empty_when_no_providers_yield() -> None:
 
 
 async def test_async_get_events_returns_history_plus_current_month() -> None:
-    """History entries from the store are surfaced alongside the live month."""
+    """History entries from the per-subentry store appear with the live month."""
     history = [
         {
             "year": 2026,
@@ -160,7 +194,8 @@ async def test_async_get_events_returns_history_plus_current_month() -> None:
         },
     ]
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())}, history=history)
-    calendar = EngieBeCalendar(coordinator)
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-01-01T00:00:00+01:00"),
@@ -187,11 +222,32 @@ async def test_history_does_not_duplicate_current_month() -> None:
         },
     ]
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())}, history=history)
-    calendar = EngieBeCalendar(coordinator)
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
         end_date=datetime.fromisoformat("2026-04-30T23:59:59+02:00"),
     )
+    assert len(events) == 1
+    assert events[0].start == datetime.fromisoformat("2026-04-15T18:00:00+02:00")
+
+
+async def test_async_get_events_handles_missing_subentry_runtime() -> None:
+    """A subentry without runtime data falls back to the live payload only."""
+    coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
+    # Runtime exists but has no entry for this subentry id.
+    runtime = MagicMock()
+    runtime.subentry_data = {}
+    coordinator.config_entry.runtime_data = runtime
+
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
+    events = await calendar.async_get_events(
+        hass=MagicMock(),
+        start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
+        end_date=datetime.fromisoformat("2026-04-30T23:59:59+02:00"),
+    )
+    # Only the current-month live event survives.
     assert len(events) == 1
     assert events[0].start == datetime.fromisoformat("2026-04-15T18:00:00+02:00")

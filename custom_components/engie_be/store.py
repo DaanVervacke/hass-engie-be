@@ -26,12 +26,12 @@ _SAVE_DELAY_SECONDS = 30
 class EngieBePeaksStore:
     """Wrapper around ``Store`` for persisted peak history."""
 
-    def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
-        """Initialise the store for one config entry."""
+    def __init__(self, hass: HomeAssistant, subentry_id: str) -> None:
+        """Initialise the store for one customer-account subentry."""
         self._store: Store[dict[str, Any]] = Store(
             hass,
             _STORE_VERSION,
-            f"{DOMAIN}.peaks_history.{entry_id}",
+            f"{DOMAIN}.peaks_history.{subentry_id}",
         )
         self._peaks: list[dict[str, Any]] = []
         self._loaded: bool = False
@@ -92,6 +92,16 @@ class EngieBePeaksStore:
     def _schedule_save(self) -> None:
         """Coalesce frequent updates into one disk write."""
         self._store.async_delay_save(self._data_to_save, _SAVE_DELAY_SECONDS)
+
+    async def async_save_now(self) -> None:
+        """
+        Flush pending peaks to disk immediately, bypassing the save delay.
+
+        Used by the v2 to v3 migration so that, if HA crashes within the
+        save-delay window after migration, the carried-over peaks are not
+        lost.
+        """
+        await self._store.async_save(self._data_to_save())
 
     def _data_to_save(self) -> dict[str, Any]:
         """Return the payload persisted by ``Store``."""

@@ -17,6 +17,7 @@ from typing import Any, NoReturn
 import aiohttp
 
 from .const import (
+    ACCOUNTS_BASE_URL,
     API_BASE_URL,
     AUTH_BASE_URL,
     EPEX_BASE_URL,
@@ -262,15 +263,22 @@ class EngieBeApiClient:
     # Data retrieval
     # ------------------------------------------------------------------
 
-    async def async_get_prices(self, customer_number: str) -> Any:
+    async def async_get_prices(self, business_agreement_number: str) -> Any:
         """
-        Fetch energy prices for a customer.
+        Fetch energy prices for a business agreement.
+
+        ``business_agreement_number`` is the 12-digit BAN (the
+        ``businessAgreementNumber`` field returned by the customer-account
+        relations endpoint, distinct from the shorter
+        ``customerAccountNumber`` / CAN). The endpoint validates this
+        path segment as exactly 12 characters and returns HTTP 400 for
+        any other identifier.
 
         Returns the parsed JSON response.
         """
         url = (
             f"{API_BASE_URL}/business-agreements/"
-            f"{customer_number.replace(' ', '')}/supplier-energy-prices"
+            f"{business_agreement_number.replace(' ', '')}/supplier-energy-prices"
         )
         headers = {
             "User-Agent": USER_AGENT_BROWSER,
@@ -307,21 +315,63 @@ class EngieBeApiClient:
             json_response=True,
         )
 
+    async def async_get_customer_account_relations(self) -> dict[str, Any]:
+        """
+        Fetch the list of customer accounts the logged-in user can access.
+
+        The Auth0 access token is per-login, not per-customer-account, so
+        a single ENGIE login can be linked to multiple ``customerAccountNumber``
+        values (e.g. a person managing both their own household and a
+        relative's account). This endpoint enumerates all such accounts
+        together with the consumption address and contract metadata
+        needed to present a meaningful picker in the config flow.
+
+        Returns the parsed JSON response with the shape
+        ``{"items": [{"customerAccount": {"customerAccountNumber": ...,
+        "name": ..., "businessAgreements": [...]}}, ...]}``.
+
+        The ``withBusinessAgreements=SMART_APP`` query parameter is
+        required to make ENGIE include the active business agreement
+        and its consumption address inline; without it the endpoint
+        returns only bare customer-account identifiers.
+        """
+        url = f"{ACCOUNTS_BASE_URL}/customer-account-relations"
+        headers = {
+            "User-Agent": USER_AGENT_NATIVE,
+            "Accept": "application/json, application/problem+json",
+            "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
+        }
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            params={"withBusinessAgreements": "SMART_APP"},
+            json_response=True,
+        )
+
     async def async_get_monthly_peaks(
         self,
-        customer_number: str,
+        business_agreement_number: str,
         year: int,
         month: int,
     ) -> dict[str, Any]:
         """
         Fetch capacity-tariff (captar) peaks for a given month.
 
+        ``business_agreement_number`` is the 12-digit BAN. Despite the
+        URL path naming it ``contract-accounts``, the endpoint expects
+        a businessAgreementNumber (the same identifier accepted by
+        :meth:`async_get_prices`); passing a ``customerAccountNumber``
+        / CAN here returns HTTP 500.
+
         Returns the parsed JSON response which contains the monthly peak
         and an array of daily peaks for the requested month.
         """
         url = (
             f"{PEAKS_BASE_URL}/private/customers/me/contract-accounts/"
-            f"{customer_number.replace(' ', '')}/energy-insights/peaks"
+            f"{business_agreement_number.replace(' ', '')}/energy-insights/peaks"
         )
         headers = {
             "User-Agent": USER_AGENT_NATIVE,

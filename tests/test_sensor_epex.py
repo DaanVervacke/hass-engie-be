@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from homeassistant.components.sensor import SensorStateClass
 
-from custom_components.engie_be.const import EPEX_TZ, KEY_EPEX, KEY_IS_DYNAMIC
+from custom_components.engie_be.const import EPEX_TZ, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
 from custom_components.engie_be.data import EpexPayload, EpexSlot
 from custom_components.engie_be.sensor import (
     _EPEX_CURRENT,
@@ -64,16 +64,36 @@ def _build_payload(
     )
 
 
-def _make_coordinator(
-    data: dict | None,
+def _make_subentry(
+    subentry_id: str = "sub_test",
+    title: str = "Test Account",
+) -> MagicMock:
+    """Build a MagicMock ConfigSubentry stub."""
+    subentry = MagicMock()
+    subentry.subentry_id = subentry_id
+    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.title = title
+    return subentry
+
+
+def _make_epex_coordinator(
+    payload: EpexPayload | None,
     *,
     last_fetch: datetime | None = None,
 ) -> MagicMock:
-    """Build a MagicMock coordinator stub with the given ``.data``."""
+    """
+    Build a MagicMock EPEX coordinator stub.
+
+    ``    EngieBeEpexCoordinator.data`` is now an ``EpexPayload | None``
+    (no longer a dict with KEY_EPEX/KEY_IS_DYNAMIC). The current sensor
+    reads ``last_update_success_time`` for the ``last_fetched`` attr,
+    which is a custom property on ``EngieBeEpexCoordinator`` set on
+    every successful parse.
+    """
     coordinator = MagicMock()
-    coordinator.data = data
+    coordinator.data = payload
     coordinator.last_update_success = True
-    coordinator.last_successful_fetch = last_fetch
+    coordinator.last_update_success_time = last_fetch
     coordinator.config_entry = MagicMock()
     coordinator.config_entry.entry_id = "test_entry_id"
     return coordinator
@@ -88,22 +108,23 @@ def test_build_epex_sensors_creates_three_entities() -> None:
     """
     The builder always returns the three documented EPEX sensors.
 
-    These are shared per config entry (EAN-agnostic), so the count and
-    set are part of the public contract.  A regression here would break
-    user dashboards.
+    The set + count is part of the public contract; a regression here
+    would break user dashboards. Unique IDs are subentry-scoped because
+    the EPEX descriptors repeat across every dynamic-tariff customer
+    account on a single login.
     """
     payload = _build_payload([(15, 0.02565)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry(subentry_id="sub_xyz")
 
-    sensors = _build_epex_sensors(coordinator)
+    sensors = _build_epex_sensors(coordinator, subentry)
 
     keys = {s.entity_description.key for s in sensors}
     assert keys == {"epex_current", "epex_low_today", "epex_high_today"}
     for sensor in sensors:
-        # Unique IDs must be namespaced per-entry to survive multi-account installs.
-        assert sensor.unique_id == f"test_entry_id_{sensor.entity_description.key}"
+        assert sensor.unique_id == (
+            f"test_entry_id_sub_xyz_{sensor.entity_description.key}"
+        )
 
 
 def test_build_epex_sensors_runs_without_payload() -> None:
@@ -113,57 +134,38 @@ def test_build_epex_sensors_runs_without_payload() -> None:
     Platform setup runs before the first refresh; the entities exist
     but report ``unavailable`` until data arrives.
     """
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: True, KEY_EPEX: None})
-    assert len(_build_epex_sensors(coordinator)) == 3
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
+    assert len(_build_epex_sensors(coordinator, subentry)) == 3
 
 
 # ---------------------------------------------------------------------------
 # Availability gating
 # ---------------------------------------------------------------------------
-
-
-def test_sensors_unavailable_on_non_dynamic_account() -> None:
-    """
-    A fixed-tariff account must report all 3 EPEX sensors unavailable.
-
-    Even if a payload is somehow present in coordinator data, the
-    ``is_dynamic`` flag is the source of truth -- otherwise a sensor
-    could publish wholesale prices on an account that doesn't pay them.
-    """
-    payload = _build_payload([(15, 0.02565)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: False, KEY_EPEX: payload},
-    )
-
-    for sensor in _build_epex_sensors(coordinator):
-        assert sensor.available is False
+#
+# NOTE: per-subentry ``is_dynamic`` gating now happens at platform-setup
+# time (entities are not even constructed for fixed accounts), so the
+# sensor itself only checks payload presence here. The setup-level gating
+# is exercised in test_init.py / test_binary_sensor_epex.py.
 
 
 def test_sensors_unavailable_when_payload_missing() -> None:
-    """``epex=None`` (e.g. first-poll 404) reports unavailable, not zero."""
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: True, KEY_EPEX: None})
+    """``data=None`` (e.g. first-poll 404) reports unavailable, not zero."""
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
 
-    for sensor in _build_epex_sensors(coordinator):
+    for sensor in _build_epex_sensors(coordinator, subentry):
         assert sensor.available is False
 
 
-def test_sensors_available_on_dynamic_account_with_payload() -> None:
-    """Happy path: dynamic + payload present -> available."""
+def test_sensors_available_with_payload() -> None:
+    """Happy path: payload present -> available."""
     payload = _build_payload([(15, 0.02565)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
 
-    for sensor in _build_epex_sensors(coordinator):
+    for sensor in _build_epex_sensors(coordinator, subentry):
         assert sensor.available is True
-
-
-def test_sensors_unavailable_when_coordinator_data_is_none() -> None:
-    """A pre-first-poll coordinator (data=None) must not raise -- just unavailable."""
-    coordinator = _make_coordinator(None)
-
-    for sensor in _build_epex_sensors(coordinator):
-        assert sensor.available is False
 
 
 # ---------------------------------------------------------------------------
@@ -186,10 +188,9 @@ def test_current_sensor_picks_slot_covering_now() -> None:
             (16, 0.08040),
         ],
     )
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexCurrentSensor(coordinator, _EPEX_CURRENT)
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT)
 
     with patch(
         "custom_components.engie_be.sensor.dt_util.utcnow",
@@ -202,16 +203,15 @@ def test_current_sensor_returns_none_outside_any_slot() -> None:
     """
     If no slot covers ``now``, ``native_value`` is ``None`` (becomes unknown).
 
-    This protects against silently displaying a stale value when the
+    Protects against silently displaying a stale value when the
     coordinator's last-known payload no longer covers the present
     instant (e.g. 25h+ outage).
     """
     # Slots only cover 18:00-19:00, so 15:30 anchor falls outside.
     payload = _build_payload([(18, 0.19840)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-    )
-    sensor = EngieBeEpexCurrentSensor(coordinator, _EPEX_CURRENT)
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT)
 
     with patch(
         "custom_components.engie_be.sensor.dt_util.utcnow",
@@ -222,8 +222,9 @@ def test_current_sensor_returns_none_outside_any_slot() -> None:
 
 def test_current_sensor_native_value_is_none_when_unavailable() -> None:
     """No payload -> native_value None (don't surface placeholder zeros)."""
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: True, KEY_EPEX: None})
-    sensor = EngieBeEpexCurrentSensor(coordinator, _EPEX_CURRENT)
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT)
     assert sensor.native_value is None
 
 
@@ -237,19 +238,17 @@ def test_current_sensor_attributes_partition_today_and_tomorrow() -> None:
     The today/tomorrow arrays must split slots by Brussels-local date.
 
     Dashboard cards (ApexCharts in particular) consume these arrays to
-    render two distinct series -- a regression here would smear the
-    series together or drop one entirely.
+    render two distinct series -- a regression here would smear them
+    together or drop one entirely.
     """
     payload = _build_payload(
         today=[(14, -0.0123), (15, 0.02565), (18, 0.19840)],
         tomorrow=[(0, 0.08810), (18, 0.21050)],
     )
     last_fetch = datetime(2026, 5, 4, 13, 7, 21, tzinfo=UTC)
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-        last_fetch=last_fetch,
-    )
-    sensor = EngieBeEpexCurrentSensor(coordinator, _EPEX_CURRENT)
+    coordinator = _make_epex_coordinator(payload, last_fetch=last_fetch)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT)
 
     with patch(
         "custom_components.engie_be.sensor.dt_util.now",
@@ -277,8 +276,9 @@ def test_current_sensor_attributes_partition_today_and_tomorrow() -> None:
 
 def test_current_sensor_attributes_empty_when_unavailable() -> None:
     """No payload -> empty attribute dict (don't leak stale keys)."""
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: True, KEY_EPEX: None})
-    sensor = EngieBeEpexCurrentSensor(coordinator, _EPEX_CURRENT)
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT)
     assert sensor.extra_state_attributes == {}
 
 
@@ -295,11 +295,9 @@ def test_current_sensor_attributes_omit_optional_metadata_when_absent() -> None:
         publication_time=None,
         market_date=None,
     )
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
-        last_fetch=None,
-    )
-    sensor = EngieBeEpexCurrentSensor(coordinator, _EPEX_CURRENT)
+    coordinator = _make_epex_coordinator(payload, last_fetch=None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT)
 
     with patch(
         "custom_components.engie_be.sensor.dt_util.now",
@@ -329,10 +327,14 @@ def test_low_today_sensor_selects_minimum_of_today_only() -> None:
         today=[(8, 0.115), (14, -0.0123), (18, 0.19840)],
         tomorrow=[(14, -0.5)],  # Lower than today, but must be ignored.
     )
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexExtremaSensor(
+        coordinator,
+        subentry,
+        _EPEX_LOW_TODAY,
+        mode="min",
     )
-    sensor = EngieBeEpexExtremaSensor(coordinator, _EPEX_LOW_TODAY, mode="min")
 
     with patch(
         "custom_components.engie_be.sensor.dt_util.now",
@@ -352,10 +354,14 @@ def test_high_today_sensor_selects_maximum_of_today_only() -> None:
         today=[(8, 0.115), (14, -0.0123), (18, 0.19840)],
         tomorrow=[(18, 0.99999)],  # Higher than today, but must be ignored.
     )
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexExtremaSensor(
+        coordinator,
+        subentry,
+        _EPEX_HIGH_TODAY,
+        mode="max",
     )
-    sensor = EngieBeEpexExtremaSensor(coordinator, _EPEX_HIGH_TODAY, mode="max")
 
     with patch(
         "custom_components.engie_be.sensor.dt_util.now",
@@ -376,11 +382,20 @@ def test_extrema_sensor_returns_none_when_no_today_slots() -> None:
     in the rare window where the cached payload only covers tomorrow.
     """
     payload = _build_payload(today=[], tomorrow=[(18, 0.21050)])
-    coordinator = _make_coordinator(
-        {KEY_IS_DYNAMIC: True, KEY_EPEX: payload},
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor_min = EngieBeEpexExtremaSensor(
+        coordinator,
+        subentry,
+        _EPEX_LOW_TODAY,
+        mode="min",
     )
-    sensor_min = EngieBeEpexExtremaSensor(coordinator, _EPEX_LOW_TODAY, mode="min")
-    sensor_max = EngieBeEpexExtremaSensor(coordinator, _EPEX_HIGH_TODAY, mode="max")
+    sensor_max = EngieBeEpexExtremaSensor(
+        coordinator,
+        subentry,
+        _EPEX_HIGH_TODAY,
+        mode="max",
+    )
 
     with patch(
         "custom_components.engie_be.sensor.dt_util.now",
@@ -394,9 +409,15 @@ def test_extrema_sensor_returns_none_when_no_today_slots() -> None:
 
 def test_extrema_sensor_rejects_invalid_mode() -> None:
     """Defensive: only ``min``/``max`` are valid reducers."""
-    coordinator = _make_coordinator({KEY_IS_DYNAMIC: True, KEY_EPEX: None})
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
     with pytest.raises(ValueError, match="mode must be 'min' or 'max'"):
-        EngieBeEpexExtremaSensor(coordinator, _EPEX_LOW_TODAY, mode="median")
+        EngieBeEpexExtremaSensor(
+            coordinator,
+            subentry,
+            _EPEX_LOW_TODAY,
+            mode="median",
+        )
 
 
 # ---------------------------------------------------------------------------

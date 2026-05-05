@@ -14,6 +14,7 @@ AUTH_BASE_URL = "https://account.engie.be"
 API_BASE_URL = "https://www.engie.be/api/engie/be/ms/billing/customer/v1"
 PREMISES_BASE_URL = "https://www.engie.be/api/engie/be/ms/premises/customer/v1"
 PEAKS_BASE_URL = "https://api.engie.be/engie/ms/b2c-energy-insights/v1"
+ACCOUNTS_BASE_URL = "https://api.engie.be/engie/ms/accounts/customer/v1"
 
 # OAuth configuration (public mobile-app client, no secret needed)
 DEFAULT_CLIENT_ID = "R0PQyUdjO5B2tBaRnltgitVnnUmjGyld"
@@ -27,6 +28,16 @@ CONF_MFA_METHOD = "mfa_method"
 CONF_CLIENT_ID = "client_id"
 CONF_ACCESS_TOKEN = "access_token"  # noqa: S105
 CONF_REFRESH_TOKEN = "refresh_token"  # noqa: S105
+
+# Subentry data keys (one ConfigSubentry per ENGIE customer account)
+SUBENTRY_TYPE_CUSTOMER_ACCOUNT = "customer_account"
+CONF_BUSINESS_AGREEMENT_NUMBER = "business_agreement_number"
+CONF_PREMISES_NUMBER = "premises_number"
+CONF_ACCOUNT_HOLDER_NAME = "account_holder_name"
+CONF_CONSUMPTION_ADDRESS = "consumption_address"
+
+# Subentry picker key
+CONF_SELECTED_ACCOUNTS = "selected_accounts"
 
 # MFA method options
 MFA_METHOD_SMS = "sms"

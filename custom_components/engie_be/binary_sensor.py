@@ -11,18 +11,19 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.util import dt as dt_util
 
-from .const import KEY_EPEX, KEY_IS_DYNAMIC
+from .const import LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
 from .data import EpexPayload
-from .entity import EngieBeEntity
+from .entity import EngieBeAuthEntity, EngieBeEpexEntity
 
 # Coordinator centralises updates; entities never poll individually.
 PARALLEL_UPDATES = 0
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-    from .coordinator import EngieBeDataUpdateCoordinator
+    from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
     from .data import EngieBeConfigEntry
 
 AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
@@ -34,10 +35,11 @@ AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
 
 # EPEX "negative price right now" indicator.
 #
-# Exposed for every config entry so users can wire ``numeric_state``-free
-# automations such as "run the dishwasher when wholesale is paying me".
-# Reports ``unavailable`` on non-dynamic accounts and during outages so
-# downstream automations don't fire on stale data.
+# Created per dynamic-tariff customer account so users can wire
+# ``numeric_state``-free automations such as "run the dishwasher when
+# wholesale is paying me".  Reports ``unavailable`` during outages so
+# downstream automations don't fire on stale data.  Fixed-tariff
+# accounts never get the entity at all.
 EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="epex_negative",
     translation_key="epex_negative",
@@ -48,42 +50,79 @@ EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001
     entry: EngieBeConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """
     Set up the binary sensor platform.
 
-    The auth sensor is always added.  The EPEX negative-price indicator
-    is only added on dynamic (EPEX-indexed) accounts: a fixed-tariff
-    customer never has a wholesale price to flag, so the entity would
-    be permanently ``unavailable`` and only add UI noise.  This mirrors
-    how a contract switch is handled elsewhere in the integration: the
-    coordinator detects ``is_dynamic`` at first refresh, and a contract
-    change requires a config-entry reload to (re)create the entity.
+    The auth sensor is created **once per parent config entry** because
+    authentication is login-scoped, not account-scoped: a single ENGIE
+    login holds one Auth0 session shared across all customer accounts.
+    It attaches to a dedicated "login" device (no ``config_subentry_id``)
+    rather than to any one customer-account device.
+
+    The EPEX negative-price indicator is created **once per dynamic
+    customer account** and attached to that account's device.  A
+    fixed-tariff account never sees one: the coordinator detects
+    ``is_dynamic`` at first refresh, and a contract change requires a
+    config-entry reload to (re)create the entity.
     """
-    coordinator = entry.runtime_data.coordinator
-    entities: list[BinarySensorEntity] = [
-        EngieBeAuthSensor(coordinator=coordinator, entry=entry),
-    ]
-    data = coordinator.data
-    if isinstance(data, dict) and data.get(KEY_IS_DYNAMIC):
-        entities.append(EngieBeEpexNegativeSensor(coordinator=coordinator))
-    async_add_entities(entities)
+    epex_coordinator = entry.runtime_data.epex_coordinator
+
+    # Pick any per-subentry coordinator to back the auth sensor's
+    # CoordinatorEntity machinery.  The auth sensor doesn't consume
+    # coordinator data -- it reflects ``runtime_data.authenticated`` --
+    # but ``CoordinatorEntity`` requires a coordinator reference.  Fall
+    # back to the EPEX coordinator if no customer-account subentries
+    # exist yet (e.g. a future state where all accounts were removed).
+    auth_backing_coordinator: EngieBeDataUpdateCoordinator | EngieBeEpexCoordinator = (
+        epex_coordinator
+    )
+    for sub_data in entry.runtime_data.subentry_data.values():
+        auth_backing_coordinator = sub_data.coordinator
+        break
+
+    async_add_entities(
+        [EngieBeAuthSensor(coordinator=auth_backing_coordinator, entry=entry)]
+    )
+
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+            continue
+
+        sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
+        if sub_data is None:
+            LOGGER.warning(
+                "No runtime data for subentry %s; skipping binary_sensor setup",
+                subentry.subentry_id,
+            )
+            continue
+
+        if not sub_data.coordinator.is_dynamic:
+            continue
+
+        async_add_entities(
+            [
+                EngieBeEpexNegativeSensor(
+                    coordinator=epex_coordinator, subentry=subentry
+                )
+            ],
+            config_subentry_id=subentry.subentry_id,
+        )
 
 
-class EngieBeAuthSensor(EngieBeEntity, BinarySensorEntity):
+class EngieBeAuthSensor(EngieBeAuthEntity, BinarySensorEntity):
     """Binary sensor indicating whether the integration is authenticated."""
 
     entity_description = AUTHENTICATION_SENSOR_DESCRIPTION
 
     def __init__(
         self,
-        coordinator: EngieBeDataUpdateCoordinator,
+        coordinator: EngieBeDataUpdateCoordinator | EngieBeEpexCoordinator,
         entry: EngieBeConfigEntry,
     ) -> None:
         """Initialise the authentication binary sensor."""
-        super().__init__(coordinator)
-        self._entry = entry
+        super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_authentication"
 
     @property
@@ -97,26 +136,13 @@ class EngieBeAuthSensor(EngieBeEntity, BinarySensorEntity):
         return self._entry.runtime_data.authenticated
 
 
-def _epex_payload(
-    coordinator: EngieBeDataUpdateCoordinator,
-) -> EpexPayload | None:
-    """
-    Return the cached EPEX payload, or ``None`` if not on a dynamic tariff.
-
-    Mirrors the helper in ``sensor.py`` deliberately rather than importing
-    across platform modules; HA platform modules are loaded independently
-    and a cross-platform import would couple their lifecycles.
-    """
-    data = coordinator.data
-    if not isinstance(data, dict):
-        return None
-    if not data.get(KEY_IS_DYNAMIC):
-        return None
-    payload = data.get(KEY_EPEX)
+def _epex_payload(coordinator: EngieBeEpexCoordinator) -> EpexPayload | None:
+    """Return the cached EPEX payload, or ``None`` if not yet available."""
+    payload = coordinator.data
     return payload if isinstance(payload, EpexPayload) else None
 
 
-class EngieBeEpexNegativeSensor(EngieBeEntity, BinarySensorEntity):
+class EngieBeEpexNegativeSensor(EngieBeEpexEntity, BinarySensorEntity):
     """
     Binary sensor that turns ``on`` when the current EPEX slot is negative.
 
@@ -143,15 +169,24 @@ class EngieBeEpexNegativeSensor(EngieBeEntity, BinarySensorEntity):
 
     entity_description = EPEX_NEGATIVE_SENSOR_DESCRIPTION
 
-    def __init__(self, coordinator: EngieBeDataUpdateCoordinator) -> None:
+    def __init__(
+        self,
+        coordinator: EngieBeEpexCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
         """Initialise the negative-price indicator."""
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_epex_negative"
+        super().__init__(coordinator, subentry)
+        # Subentry-scoped unique ID: the same EPEX-negative descriptor
+        # repeats across every dynamic-tariff customer account on a
+        # single login.
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_epex_negative"
+        )
 
     @property
     def available(self) -> bool:
         """
-        Available only on dynamic accounts with a parsed payload.
+        Available only when the EPEX coordinator has a parsed payload.
 
         Per HA's integration-quality-scale guidance: an entity is
         ``unavailable`` when data cannot be fetched, but ``unknown``

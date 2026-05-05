@@ -34,6 +34,21 @@ The integration auto-detects your energy contracts and creates price sensors
 accordingly. Capacity-tariff peak sensors are created independently when peaks
 data is available; see [Capacity tariff (captar)](#capacity-tariff-captar).
 
+> **Multi-account note.** When your ENGIE login owns more than one customer
+> account, every entity ID is prefixed with the canonical
+> `customerAccountNumber` (CAN), e.g. `sensor.engie_belgium_1500000123_gas_offtake_price`
+> and `calendar.engie_belgium_1500000123`. The bare `sensor.engie_belgium_*`
+> shapes shown in the tables below are illustrative; replace `engie_belgium_`
+> with `engie_belgium_{your_CAN}_` when targeting a specific account in
+> automations, scripts, or dashboards. The CAN is visible on the customer
+> account device page in **Settings -> Devices & services -> ENGIE Belgium**.
+>
+> Existing single-account installs are migrated automatically on the first
+> start: `unique_id`s are preserved so long-term statistics and history follow
+> the rename, but any automation, script, scene, or dashboard that hard-codes
+> a pre-rename slug (e.g. `sensor.engie_belgium_electricity_offtake_price`)
+> must be updated to the new CAN-prefixed slug.
+
 **Price sensors** are in **EUR/kWh** with 6 decimal precision. Each one exposes
 the following attributes: `ean`, `from`, `to`, `vat_tariff`,
 `time_of_use_slot_code`, and `last_fetched`.
@@ -275,6 +290,35 @@ After setup, you can configure the price update interval:
 1. Click the badge above (or go to **Settings** > **Devices & Services** and find **ENGIE Belgium**).
 2. Click **Configure**.
 3. Set the **Update interval** (5-1440 minutes, default: 60 minutes).
+
+## Multiple customer accounts
+
+A single ENGIE login can be linked to several customer accounts (for
+example a private home and a holiday house under the same email). The
+integration models this as **one config entry per ENGIE login** plus
+**one subentry per customer account**:
+
+- During initial setup, after you complete 2FA, the integration calls
+  ENGIE's customer-account-relations endpoint and shows you a multi-select
+  picker of every customer account your login has access to. Pick one or
+  more, and a subentry is created for each.
+- Each subentry becomes its own **device** in Home Assistant, with its
+  own service points, price sensors, captar peak sensors, and (for
+  dynamic accounts) EPEX sensors and the negative-price binary sensor.
+- The shared authentication binary sensor lives on a separate "login"
+  device tied to the parent entry, since it reflects the OAuth session
+  rather than any single account.
+- To add a customer account later, open the ENGIE Belgium card in
+  **Settings** > **Devices & Services**, click **Add subentry**, and
+  pick from the remaining accounts your login can access. To remove
+  one, delete the subentry; the parent entry and its other subentries
+  stay intact.
+
+> **Migration note.** Existing single-account setups are upgraded
+> automatically when you update to this release. Your existing customer
+> account becomes a subentry under your existing entry, entity unique
+> IDs are rewritten in place, and your sensor history is preserved. No
+> manual reconfiguration is required.
 
 ## Re-authentication
 
