@@ -412,7 +412,21 @@ async def _async_try_relations_backfill(
         refresh_token=refresh_token,
     )
     try:
-        await client.async_refresh_token()
+        new_access, new_refresh = await client.async_refresh_token()
+    except EngieBeApiClientError as err:
+        LOGGER.debug(
+            "Relations backfill skipped during v2->v3 migration of %s: %s",
+            entry.entry_id,
+            err,
+        )
+        return None
+
+    # ENGIE rotates the refresh token on every call, so we must persist
+    # the new pair before any subsequent refresh in the same setup pass
+    # uses the now-invalid stored refresh token and triggers reauth.
+    _persist_tokens(hass, entry, new_access, new_refresh)
+
+    try:
         relations = await client.async_get_customer_account_relations()
     except EngieBeApiClientError as err:
         LOGGER.debug(
@@ -821,7 +835,22 @@ async def _async_fetch_relations_for_setup(
         refresh_token=refresh_token,
     )
     try:
-        await client.async_refresh_token()
+        new_access, new_refresh = await client.async_refresh_token()
+    except EngieBeApiClientError as err:
+        LOGGER.debug(
+            "Relations fetch skipped during legacy unique_id migration "
+            "for entry %s: %s",
+            entry.entry_id,
+            err,
+        )
+        return None
+
+    # ENGIE rotates the refresh token on every call, so we must persist
+    # the new pair before any subsequent refresh in the same setup pass
+    # uses the now-invalid stored refresh token and triggers reauth.
+    _persist_tokens(hass, entry, new_access, new_refresh)
+
+    try:
         return await client.async_get_customer_account_relations()
     except EngieBeApiClientError as err:
         LOGGER.debug(

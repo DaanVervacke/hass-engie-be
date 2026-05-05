@@ -14,6 +14,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be import (
+    _async_fetch_relations_for_setup,
     _async_migrate_entity_id_slugs,
     _async_migrate_legacy_subentry_unique_ids,
     _persist_tokens,
@@ -907,6 +908,69 @@ async def test_legacy_unique_id_migration_tolerates_relations_failure(
 
     untouched = next(iter(entry.subentries.values()))
     assert untouched.unique_id == legacy_ban
+
+
+async def test_fetch_relations_for_setup_persists_rotated_tokens(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    The setup-time relations helper must persist rotated tokens.
+
+    ENGIE rotates the refresh token on every refresh call. The legacy
+    subentry-id migration runs before the main coordinator setup and
+    issues its own refresh on a throwaway client. If the rotated tokens
+    are not written back to ``entry.data``, the next refresh in the
+    same setup pass uses the now-invalid stored refresh token and
+    triggers a spurious second reauth.
+    """
+    entry = _build_entry(hass, customer_number="002200000001")
+    assert entry.data[CONF_ACCESS_TOKEN] == "stored-access"
+    assert entry.data[CONF_REFRESH_TOKEN] == "stored-refresh"
+
+    client = _make_client(refresh_return=("rotated-access", "rotated-refresh"))
+    client.async_get_customer_account_relations = AsyncMock(
+        return_value={"customerAccounts": []},
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        result = await _async_fetch_relations_for_setup(hass, entry)
+
+    assert result == {"customerAccounts": []}
+    assert client.async_refresh_token.await_count == 1
+    # Critical: the rotated tokens must be visible on the entry before
+    # any subsequent setup-pass refresh runs.
+    assert entry.data[CONF_ACCESS_TOKEN] == "rotated-access"
+    assert entry.data[CONF_REFRESH_TOKEN] == "rotated-refresh"
+    # Other entry data must be untouched.
+    assert entry.data[CONF_USERNAME] == "user@example.com"
+    assert entry.data[CONF_CLIENT_ID] == DEFAULT_CLIENT_ID
+
+
+async def test_fetch_relations_for_setup_skips_persist_on_refresh_failure(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A failing refresh must leave stored tokens untouched and return None."""
+    entry = _build_entry(hass, customer_number="002200000002")
+    client = _make_client(
+        refresh_side_effect=EngieBeApiClientAuthenticationError("expired"),
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        result = await _async_fetch_relations_for_setup(hass, entry)
+
+    assert result is None
+    assert client.async_refresh_token.await_count == 1
+    # Stored tokens must NOT have been overwritten.
+    assert entry.data[CONF_ACCESS_TOKEN] == "stored-access"
+    assert entry.data[CONF_REFRESH_TOKEN] == "stored-refresh"
 
 
 # ---------------------------------------------------------------------------

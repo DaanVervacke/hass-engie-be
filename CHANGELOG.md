@@ -19,6 +19,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   derived from your address. The integration now reuses the migrated
   sensors directly, so only the original six energy price sensors
   appear and your history stays intact.
+- **No more second login prompt after upgrading from 0.7.x.**
+  Upgrading from 0.7.x no longer prompts a second login dialog after
+  the first one succeeds. The integration was unintentionally
+  invalidating its own freshly minted credentials during a one-time
+  migration step. One reauth on upgrade is still expected, but only
+  one.
 
 ## [0.8.0b2] - 2026-05-05
 
