@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "businessAgreementNumber": "002200000001",
+      "servicePointNumber": "541448820000000001_ID1",
+      "division": "ELECTRICITY",
+      "status": "ACTIVE",
+      "productConfiguration": {
+        "energyProduct": "EASY",
+        "type": "INDEXED"
+      }
+    },
+    {
+      "businessAgreementNumber": "002200000001",
+      "servicePointNumber": "541448820000000002_ID2",
+      "division": "GAS",
+      "status": "ACTIVE",
+      "productConfiguration": {
+        "energyProduct": "EASY",
+        "type": "INDEXED"
+      }
+    }
+  ]
+}

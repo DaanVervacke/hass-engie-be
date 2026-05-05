@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
+from ._contracts import energy_products_by_ean
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_HOLDER_NAME,
@@ -148,6 +149,14 @@ def _summarise_service_points(service_points: dict[str, str]) -> dict[str, str]:
     return {_hash_ean(ean): division for ean, division in service_points.items()}
 
 
+def _summarise_energy_products(payload: Any) -> dict[str, str]:
+    """Return per-EAN ``energyProduct`` codes with EANs replaced by short hashes."""
+    return {
+        _hash_ean(ean): product
+        for ean, product in energy_products_by_ean(payload).items()
+    }
+
+
 def _summarise_subentry(
     sub_data: EngieBeSubentryData | None,
 ) -> dict[str, Any]:
@@ -155,9 +164,17 @@ def _summarise_subentry(
     if sub_data is None:
         return {"present": False}
     coordinator = sub_data.coordinator
+    is_dynamic_source = (
+        "contract" if sub_data.is_dynamic_override is not None else "fallback"
+    )
     return {
         "present": True,
         "service_points": _summarise_service_points(sub_data.service_points or {}),
+        "is_dynamic_override": sub_data.is_dynamic_override,
+        "is_dynamic_source": is_dynamic_source,
+        "energy_products": _summarise_energy_products(
+            sub_data.energy_contracts_payload,
+        ),
         "peaks_history": (
             sub_data.peaks_store.summary() if sub_data.peaks_store is not None else None
         ),

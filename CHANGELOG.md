@@ -5,6 +5,32 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0b6] - 2026-05-05
+
+> Beta release. Please report issues on
+> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
+
+### Fixed
+- **EPEX day-ahead price sensors now appear for dynamic-electricity
+  customers who also have a gas contract on the same account.** The
+  integration previously decided whether an account was on the dynamic
+  (EPEX-indexed) tariff by inspecting the supplier-energy-prices
+  payload, which lists both gas and electricity rates. For mixed-fuel
+  households on dynamic electricity plus fixed gas, the gas line made
+  the account look fixed and the EPEX price and "negative price"
+  sensors were never created. Detection now uses the official
+  per-contract product code from ENGIE, so dynamic accounts are
+  recognised correctly regardless of whether gas is on the same
+  account. No action is required; the missing sensors appear on the
+  next restart.
+- **EPEX sensors now use the canonical entity ID on first appearance
+  rather than after a second restart.** When dynamic-tariff detection
+  added EPEX entities to an account for the first time, the entities
+  were created under their device-name slug and only renamed to the
+  expected `engie_belgium_<customer_number>_epex_*` form on the next
+  restart. The rename now happens in the same setup pass, so the
+  canonical entity IDs are available immediately.
+
 ## [0.8.0b5] - 2026-05-05
 
 > Beta release. Please report issues on

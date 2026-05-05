@@ -20,6 +20,7 @@ from .const import (
     ACCOUNTS_BASE_URL,
     API_BASE_URL,
     AUTH_BASE_URL,
+    BUSINESS_AGREEMENTS_BASE_URL,
     EPEX_BASE_URL,
     LOGGER,
     MFA_METHOD_SMS,
@@ -291,6 +292,51 @@ class EngieBeApiClient:
             url=url,
             headers=headers,
             params={"maxGranularity": "MONTHLY"},
+            json_response=True,
+        )
+
+    async def async_get_energy_contracts(
+        self,
+        business_agreement_number: str,
+    ) -> dict[str, Any]:
+        """
+        Fetch the active energy contracts for a business agreement.
+
+        Returns the parsed JSON response. Each ``items[]`` element
+        carries a ``division`` (``"ELECTRICITY"`` / ``"GAS"``), a
+        ``servicePointNumber`` (EAN), and a ``productConfiguration``
+        block whose ``energyProduct`` field identifies the tariff
+        product (e.g. ``"DYNAMIC"`` for the EPEX-indexed tariff,
+        ``"EASY"`` for fixed). The integration uses ``energyProduct``
+        to detect dynamic-tariff accounts in a way that survives
+        mixed-fuel households (dynamic electricity + fixed gas), where
+        the supplier-energy-prices payload alone is ambiguous.
+
+        ``filter=ONLY_ACTIVE_ENERGY_CONTRACTS`` plus
+        ``includeActions=true`` and ``includeSapData=true`` mirror the
+        request the ENGIE smart-app issues. Without them the response
+        omits the ``productConfiguration`` block this integration relies
+        on.
+        """
+        url = (
+            f"{BUSINESS_AGREEMENTS_BASE_URL}/business-agreements/"
+            f"{business_agreement_number.replace(' ', '')}/energy-contracts"
+        )
+        headers = {
+            "User-Agent": USER_AGENT_BROWSER,
+            "Accept": "application/json, application/problem+json",
+            "authorization": f"Bearer {self.access_token}",
+        }
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            params={
+                "filter": "ONLY_ACTIVE_ENERGY_CONTRACTS",
+                "includeActions": "true",
+                "includeSapData": "true",
+            },
             json_response=True,
         )
 

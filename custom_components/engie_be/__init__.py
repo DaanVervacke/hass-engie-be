@@ -17,6 +17,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 
+from ._contracts import is_account_dynamic
 from ._relations import (
     RELATIONS_BACKFILLABLE_KEYS,
     find_account_for_customer_number,
@@ -1044,13 +1045,20 @@ async def _async_migrate_entity_id_slugs(
     """
     Rewrite existing customer-account entity_ids to carry the CAN prefix.
 
-    From v3 onwards every customer-account entity exposes a
-    ``_attr_suggested_object_id`` of the form
-    ``engie_belgium_{CAN}_{key}`` so that two customer accounts on the
-    same login do not collide on their translated friendly name and
-    end up auto-suffixed with ``_2``. ``suggested_object_id`` only
-    takes effect on first registration, so installs that already have
-    entities in the registry need a one-shot rewrite.
+    From v3 onwards every customer-account entity should resolve to the
+    slug ``engie_belgium_{CAN}_{key}`` so that two customer accounts on
+    the same login do not collide on their translated friendly name and
+    end up auto-suffixed with ``_2``.
+
+    HA's entity registry derives the object_id_base from the translation
+    key for ``has_entity_name=True`` entities and ignores
+    ``_attr_suggested_object_id`` in that path, so the canonical slug
+    can only be enforced post-registration. This helper is invoked
+    after ``async_forward_entry_setups`` so freshly-registered entities
+    (including EPEX entities created on the first setup pass after a
+    subentry first reports a dynamic tariff) are rewritten in the same
+    cycle. Installs that already carried legacy slugs from earlier
+    versions are picked up on the same pass.
 
     The rewrite is best-effort: failures are logged and the next
     entity is processed. ``unique_id`` values are left untouched, so
@@ -1173,13 +1181,6 @@ async def async_setup_entry(
     # is BAN-aware so the order is not strictly load-bearing.
     await _async_migrate_legacy_subentry_unique_ids(hass, entry)
 
-    # One-shot rewrite of customer-account entity_ids to the
-    # CAN-prefixed slug. Must run after the unique_id migration so
-    # the CAN read here is canonical, and before the platforms are
-    # forwarded so the renamed entity_ids are in the registry by the
-    # time ``async_add_entities`` looks them up.
-    await _async_migrate_entity_id_slugs(hass, entry)
-
     client = EngieBeApiClient(
         session=async_get_clientsession(hass),
         client_id=entry.data.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
@@ -1284,10 +1285,26 @@ async def async_setup_entry(
 
     # Resolve energy type for each EAN per subentry. Service-point lookups
     # are fanned out across all subentries' EANs in a single gather so
-    # multi-account customers do not pay sum(latency) for setup.
-    await _async_populate_service_points(client, entry)
+    # multi-account customers do not pay sum(latency) for setup. Dynamic-
+    # tariff detection runs in parallel with the same fan-out so the
+    # ``is_dynamic`` flag (which gates EPEX entity creation) is settled
+    # before platforms are forwarded.
+    await asyncio.gather(
+        _async_populate_service_points(client, entry),
+        _async_populate_dynamic_flags(client, entry),
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # One-shot rewrite of customer-account entity_ids to the CAN-prefixed
+    # slug. Runs after platform forwarding so newly-registered entities
+    # (notably EPEX entities created on the first setup pass after a
+    # subentry first reports a dynamic tariff) are rewritten in the same
+    # cycle instead of waiting for the next reload. Idempotent and a
+    # no-op for entities already at their target slug, so legacy renames
+    # from earlier installs continue to work the same way.
+    await _async_migrate_entity_id_slugs(hass, entry)
+
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True
@@ -1394,3 +1411,73 @@ async def _async_populate_service_points(
         if division:
             entry.runtime_data.subentry_data[subentry_id].service_points[ean] = division
             LOGGER.debug("Service-point %s: division=%s", _hash_ean(ean), division)
+
+
+async def _async_populate_dynamic_flags(
+    client: EngieBeApiClient,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Resolve the dynamic-tariff flag for every subentry in one fan-out call.
+
+    Calls the energy-contracts endpoint once per subentry's BAN in
+    parallel and writes the result to
+    :attr:`EngieBeSubentryData.is_dynamic_override`. The override is
+    consulted by :attr:`EngieBeDataUpdateCoordinator.is_dynamic`, which
+    in turn gates EPEX entity creation in the sensor and binary-sensor
+    platforms. Failures degrade gracefully: a contracts call that
+    raises (network error, 5xx, schema drift) leaves the override at
+    ``None`` so the legacy ``len(items) == 0`` heuristic on the prices
+    payload still drives detection. Authentication failures are not
+    raised here because the parent entry's first refresh has already
+    surfaced any auth problem; a contracts-only auth error is treated
+    as a transient failure for this account.
+    """
+    subentries: list[tuple[str, str]] = [
+        (
+            subentry.subentry_id,
+            subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+            or subentry.data.get(CONF_CUSTOMER_NUMBER, ""),
+        )
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    ]
+    targets = [(sid, ban) for sid, ban in subentries if ban]
+    if not targets:
+        return
+
+    results = await asyncio.gather(
+        *(client.async_get_energy_contracts(ban) for _, ban in targets),
+        return_exceptions=True,
+    )
+
+    for (subentry_id, _ban), result in zip(targets, results, strict=True):
+        sub_data = entry.runtime_data.subentry_data.get(subentry_id)
+        if sub_data is None:
+            continue
+        if isinstance(result, EngieBeApiClientError):
+            LOGGER.warning(
+                "Failed to fetch energy contracts for subentry %s; "
+                "falling back to legacy detection (%s: %s)",
+                subentry_id,
+                type(result).__name__,
+                result,
+            )
+            continue
+        if isinstance(result, BaseException):
+            # Re-raise unexpected exceptions; only API errors are tolerated.
+            raise result
+        if not isinstance(result, dict):
+            LOGGER.warning(
+                "Energy contracts response for subentry %s is not a JSON "
+                "object; falling back to legacy detection",
+                subentry_id,
+            )
+            continue
+        sub_data.energy_contracts_payload = result
+        sub_data.is_dynamic_override = is_account_dynamic(result)
+        LOGGER.debug(
+            "Subentry %s dynamic-tariff flag from contracts: %s",
+            subentry_id,
+            sub_data.is_dynamic_override,
+        )
