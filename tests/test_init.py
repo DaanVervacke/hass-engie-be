@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -41,6 +42,7 @@ from custom_components.engie_be.data import EngieBeData
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    import pytest
     from homeassistant.core import HomeAssistant
 
 
@@ -249,6 +251,86 @@ async def test_periodic_refresh_callback_starts_reauth_on_auth_error(
 
     assert entry.runtime_data.authenticated is False
     start_reauth.assert_called_once_with(hass)
+
+
+async def test_periodic_refresh_callback_logs_exception_detail_on_error(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    The 60s refresh callback must include exception detail in its warning.
+
+    The previous warning ("Scheduled token refresh failed; will retry") gave
+    no clue about what actually went wrong, making transient upstream
+    failures undebuggable post-hoc. The new format must include both the
+    exception class name and the message (which the API client populates
+    with HTTP status / underlying exception class) so a single grep over
+    the logs reveals the cause.
+    """
+    entry = _build_entry(hass)
+    client = _make_client()
+
+    captured: list[Callable[[object], Any]] = []
+
+    def _capture_callback(
+        _hass: HomeAssistant,
+        callback: Callable[[object], Any],
+        _interval: object,
+    ) -> Callable[[], None]:
+        captured.append(callback)
+        return MagicMock()
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.async_track_time_interval",
+            side_effect=_capture_callback,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    refresh_callback = captured[0]
+
+    # Re-arm the client to fail with a non-auth communication error that
+    # carries the upstream-shaped message the real API client would emit.
+    client.async_refresh_token = AsyncMock(
+        side_effect=EngieBeApiClientError(
+            "Error communicating with Engie API (ClientConnectorError)",
+        ),
+    )
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="custom_components.engie_be"):
+        await refresh_callback(None)
+
+    matching = [
+        record
+        for record in caplog.records
+        if "Scheduled token refresh failed" in record.message
+    ]
+    assert len(matching) == 1, (
+        f"expected 1 refresh-failed warning, got {len(matching)}: "
+        f"{[r.message for r in caplog.records]}"
+    )
+    message = matching[0].message
+    assert "EngieBeApiClientError" in message, message
+    assert "ClientConnectorError" in message, message
+    assert "will retry" in message, message
+    assert entry.runtime_data.authenticated is False
 
 
 def test_persist_tokens_writes_only_token_fields(

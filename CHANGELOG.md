@@ -85,6 +85,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   customer account numbers redacted via stable 8-character SHA-256
   hashes so support bundles stay shareable while still letting you
   correlate which subentry a log line refers to.
+- The scheduled token-refresh warning now includes the exception class
+  name and message (e.g.
+  `Scheduled token refresh failed (EngieBeApiClientCommunicationError: HTTP 503: ...); will retry`)
+  so transient upstream failures are diagnosable from the log without
+  enabling debug logging. Behaviour is unchanged: a single failed
+  refresh still just retries on the next interval.
 
 ### Fixed
 - EPEX sensors (`current price`, `lowest price today`, `highest price today`)

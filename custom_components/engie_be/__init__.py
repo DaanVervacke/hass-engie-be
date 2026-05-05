@@ -813,9 +813,18 @@ async def async_setup_entry(
             )
             entry.async_start_reauth(hass)
             return
-        except EngieBeApiClientError:
+        except EngieBeApiClientError as err:
             entry.runtime_data.authenticated = False
-            LOGGER.warning("Scheduled token refresh failed; will retry")
+            # The API client embeds HTTP status / underlying exception class
+            # into the message (see api.py: "HTTP {status}: {body_preview}",
+            # "Timeout communicating ... ({TimeoutError})", etc.), so logging
+            # the exception type plus its message is enough to diagnose
+            # transient upstream failures without enabling debug logging.
+            LOGGER.warning(
+                "Scheduled token refresh failed (%s: %s); will retry",
+                type(err).__name__,
+                err,
+            )
             return
 
         _persist_tokens(hass, entry, new_access, new_refresh)
