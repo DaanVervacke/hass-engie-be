@@ -31,8 +31,8 @@ attributes. Every sensor below is also available as an `_excl_vat` variant
 > `sensor.engie_belgium_*` IDs shown in the tables below are illustrative;
 > replace `engie_belgium_` with `engie_belgium_{your_customer_number}_` when
 > referencing a sensor in automations or dashboards. Your customer number is
-> visible on the device page in **Settings -> Devices & services -> ENGIE
-> Belgium**.
+> the one you used during setup, and it appears in every ENGIE Belgium entity
+> ID created by the integration (visible in **Developer tools** > **States**).
 
 ### Gas
 
