@@ -9,8 +9,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 > [!IMPORTANT]
 > You will need to re-authenticate after upgrading. Open the ENGIE Belgium
-> card in **Settings** > **Devices & Services** and use **Reconfigure** to
-> sign in again.
+> card under **Settings** then **Devices & Services** and use
+> **Reconfigure** to sign in again.
 
 ### Added
 - **Multiple ENGIE customer accounts under one login.** If your ENGIE
@@ -18,8 +18,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   rental property), you can now add all of them with a single setup.
   At the end of the setup wizard you pick which accounts to add. Each
   account becomes its own device with its own sensors and calendar. To
-  add another account later, open the ENGIE Belgium card in **Settings**
-  > **Devices & Services** and click **Add customer account**.
+  add another account later, open the ENGIE Belgium card under
+  **Settings** then **Devices & Services** and click
+  **Add customer account**.
 - **Dynamic (EPEX-indexed) electricity tariff support.** If your
   contract uses ENGIE's dynamic tariff, the integration now exposes
   three new sensors (**EPEX current price**, **EPEX lowest price today**,
