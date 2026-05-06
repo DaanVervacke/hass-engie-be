@@ -9,6 +9,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.util import dt as dt_util
 
 from .const import LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
@@ -30,6 +31,7 @@ AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="authentication",
     translation_key="authentication",
     device_class=BinarySensorDeviceClass.CONNECTIVITY,
+    entity_category=EntityCategory.DIAGNOSTIC,
     icon="mdi:shield-check",
 )
 

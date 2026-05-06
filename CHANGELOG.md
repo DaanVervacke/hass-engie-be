@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Authentication sensor moved to diagnostics.** The
+  **Authentication** binary sensor is now categorised as a diagnostic
+  entity, so it no longer appears on default dashboards (Overview,
+  Energy). It remains visible on the integration's device page and
+  continues to work in automations and on any custom dashboard that
+  references it directly.
+
 ## [0.8.0] - 2026-05-05
 
 > [!IMPORTANT]

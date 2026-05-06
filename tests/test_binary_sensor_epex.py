@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
+from homeassistant.const import EntityCategory
+
 from custom_components.engie_be.binary_sensor import (
     EPEX_NEGATIVE_SENSOR_DESCRIPTION,
     EngieBeAuthSensor,
@@ -299,6 +301,8 @@ async def test_setup_entry_omits_negative_sensor_for_non_dynamic_account() -> No
     # Only the per-entry auth sensor; no EPEX negative entity.
     assert len(added) == 1
     assert isinstance(added[0], EngieBeAuthSensor)
+    # Auth sensor is a diagnostic entity so it stays out of default dashboards.
+    assert added[0].entity_category is EntityCategory.DIAGNOSTIC
 
 
 async def test_setup_entry_adds_negative_sensor_for_dynamic_account() -> None:
