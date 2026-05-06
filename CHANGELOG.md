@@ -5,194 +5,43 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.0b7] - 2026-05-05
+## [0.8.0] - 2026-05-05
 
-> Beta release. Please report issues on
-> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
-
-### Changed
-- **Reduced background writes to Home Assistant's config storage.**
-  The integration previously rewrote its stored ENGIE login tokens
-  on every refresh cycle, even when the tokens had not actually
-  changed. It now writes only when at least one token is different,
-  matching the pattern recommended for OAuth-based integrations.
-  This avoids needless churn on the configuration storage file.
-
-### Fixed
-- **Improved server-side traceability for the dynamic-tariff
-  detection call.** The request the integration uses to identify
-  dynamic-electricity accounts now includes the same per-request
-  trace identifier as every other ENGIE API call, so server-side
-  logs can correlate it with the rest of a refresh cycle. There is
-  no user-visible change.
-
-## [0.8.0b6] - 2026-05-05
-
-> Beta release. Please report issues on
-> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
-
-### Fixed
-- **EPEX day-ahead price sensors now appear for dynamic-electricity
-  customers who also have a gas contract on the same account.** The
-  integration previously decided whether an account was on the dynamic
-  (EPEX-indexed) tariff by inspecting the supplier-energy-prices
-  payload, which lists both gas and electricity rates. For mixed-fuel
-  households on dynamic electricity plus fixed gas, the gas line made
-  the account look fixed and the EPEX price and "negative price"
-  sensors were never created. Detection now uses the official
-  per-contract product code from ENGIE, so dynamic accounts are
-  recognised correctly regardless of whether gas is on the same
-  account. No action is required; the missing sensors appear on the
-  next restart.
-- **EPEX sensors now use the canonical entity ID on first appearance
-  rather than after a second restart.** When dynamic-tariff detection
-  added EPEX entities to an account for the first time, the entities
-  were created under their device-name slug and only renamed to the
-  expected `engie_belgium_<customer_number>_epex_*` form on the next
-  restart. The rename now happens in the same setup pass, so the
-  canonical entity IDs are available immediately.
-
-## [0.8.0b5] - 2026-05-05
-
-> Beta release. Please report issues on
-> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
-
-### Changed
-- Internal: code formatting fix; no functional change.
-
-## [0.8.0b4] - 2026-05-05
-
-> Beta release. Please report issues on
-> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
-
-### Fixed
-- **Energy price sensors that became unavailable after the first 0.8.0
-  beta now recover automatically.** Users who installed 0.8.0b1 and
-  later upgraded to 0.8.0b2 or 0.8.0b3 could see their six gas and
-  electricity offtake/injection price sensors stuck as "unavailable",
-  with new duplicate sensors appearing alongside them. The integration
-  now repairs these sensors automatically the next time it starts. Your
-  original entity IDs, history, and any dashboard or automation
-  references are preserved. No action is required.
-
-## [0.8.0b3] - 2026-05-05
-
-> Beta release. Please report issues on
-> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
-
-### Fixed
-- **No more duplicate energy price sensors after upgrading from 0.7.x.**
-  After upgrading from 0.7.x to 0.8.0b2, the gas and electricity
-  offtake/injection price sensors could end up listed twice in your
-  customer account: once with the original entity IDs (the migrated
-  sensors that keep your history) and once again with new entity IDs
-  derived from your address. The integration now reuses the migrated
-  sensors directly, so only the original six energy price sensors
-  appear and your history stays intact.
-- **No more second login prompt after upgrading from 0.7.x.**
-  Upgrading from 0.7.x no longer prompts a second login dialog after
-  the first one succeeds. The integration was unintentionally
-  invalidating its own freshly minted credentials during a one-time
-  migration step. One reauth on upgrade is still expected, but only
-  one.
-
-## [0.8.0b2] - 2026-05-05
-
-> Beta release. Please report issues on
-> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
-
-### Fixed
-- **Customer account no longer appears twice in the integration card.**
-  After upgrading from 0.7.x to 0.8.0b1, some installs showed the same
-  customer account listed under two groups in **Settings** > **Devices
-  & Services** (once under the parent entry and once under its own
-  subentry). The integration now cleans this up automatically the next
-  time it starts. No action is required and your sensors, history, and
-  customisations are preserved.
-- **Energy price sensors now stay attached to the customer account
-  device after upgrading from 0.7.x.** Previously the gas and
-  electricity offtake/injection price sensors were moved onto a
-  separate "Account" device during the upgrade, which broke
-  area assignments and grouped them away from the captar peak,
-  calendar, and EPEX sensors. They are now correctly grouped under
-  the customer account device alongside the rest of the sensors.
-  History and customisations are preserved.
-
-## [0.8.0b1] - 2026-05-05
-
-> Beta release. Please report issues on
-> [GitHub](https://github.com/DaanVervacke/hass-engie-be/issues).
+> [!IMPORTANT]
+> You will need to re-authenticate after upgrading. Open the ENGIE Belgium
+> card in **Settings** > **Devices & Services** and use **Reconfigure** to
+> sign in again.
 
 ### Added
 - **Multiple ENGIE customer accounts under one login.** If your ENGIE
-  login owns more than one customer account (for example a home plus a
-  rental property), you can now add all of them with a single setup. At
-  the end of the setup wizard you pick which accounts to add from a
-  list. Each account becomes its own device with its own sensors,
-  calendar, and (for dynamic contracts) wholesale-price sensors. To add
-  another account later, open the ENGIE Belgium card in **Settings**
-  > **Devices & Services** and click **Add customer account**. To
-  remove one, delete its subentry.
+  login owns more than one customer account (for example a home and a
+  rental property), you can now add all of them with a single setup.
+  At the end of the setup wizard you pick which accounts to add. Each
+  account becomes its own device with its own sensors and calendar. To
+  add another account later, open the ENGIE Belgium card in **Settings**
+  > **Devices & Services** and click **Add customer account**.
 - **Dynamic (EPEX-indexed) electricity tariff support.** If your
   contract uses ENGIE's dynamic tariff, the integration now exposes
-  three new sensors: **EPEX current price**, **EPEX lowest price
-  today**, and **EPEX highest price today**. Prices are reported in
-  EUR/kWh, and the hourly slots for today and tomorrow are exposed as
-  attributes so you can plot them in ApexCharts or similar dashboard
-  cards. Tomorrow's prices appear once ENGIE publishes them (typically
-  around 13:15 Brussels time). These sensors are only created on
-  dynamic accounts.
-- **Negative-price binary sensor.** A new **EPEX price is negative**
-  binary sensor turns on when the current wholesale price is below
-  zero, so you can build simple automations like "run the dishwasher
-  when ENGIE is paying me to consume" without writing templates. Only
-  created on dynamic accounts.
+  three new sensors (**EPEX current price**, **EPEX lowest price today**,
+  **EPEX highest price today**) plus a new **EPEX price is negative**
+  binary sensor that turns on when the wholesale price drops below
+  zero. Hourly slots for today and tomorrow are exposed as attributes
+  for plotting in ApexCharts and similar dashboard cards. Tomorrow's
+  prices appear once ENGIE publishes them.
 
 ### Changed
-- **The calendar now leads with the ENGIE Belgium brand name.**
-  Previously the calendar showed up in the calendar panel as just your
-  consumption address, making it indistinguishable from other calendar
-  sources. It now shows as **ENGIE Belgium &lt;address&gt;**.
-- **Entity IDs now include your customer account number.** Entity IDs
-  for sensors and calendars now look like
-  `sensor.engie_belgium_1500000123_gas_offtake_price` and
-  `calendar.engie_belgium_1500000123`. This applies to every install,
-  not just multi-account ones, and avoids accidental `_2` suffixes
-  when adding a second account later. Long-term statistics and history
-  are preserved automatically. **You will need to update any automation,
-  script, scene, or dashboard that references the old entity IDs.**
-- **Diagnostics output is easier to share.** Customer account numbers
-  and addresses are now redacted from diagnostics downloads, so you can
-  share support bundles without leaking personal information.
-
-### Fixed
-- Adding or removing a customer account after initial setup now works
-  reliably. Previously the new account could appear without any sensors
-  until you reloaded the integration manually.
-- Setup no longer fails partway through with a confusing error about
-  the customer-account picker.
-- The **Add customer account** dialog now shows a proper field label
-  instead of a raw `selected_accounts` placeholder, and EPEX sensors
-  now have proper friendly names.
-- The **Add customer account** picker no longer offers accounts that
-  are already configured (the deduplication check missed certain legacy
-  installs).
-- Token-refresh failures now log a useful error message so transient
-  upstream issues are easier to diagnose.
+- **Calendar now leads with the brand name.** Your calendar shows up
+  in the calendar panel as **ENGIE Belgium &lt;address&gt;** instead of
+  just the address.
+- **Entity IDs now include your customer account number** (for example
+  `sensor.engie_belgium_1500000123_gas_offtake_price`). Long-term
+  statistics and history are preserved automatically, but any
+  hard-coded entity ID in an automation, script, scene, or dashboard
+  will need updating.
 
 ### Migration
-- **Existing installs are upgraded automatically on first load.** Your
-  current customer account becomes a single account under the new
-  multi-account structure, and entity history is preserved. No manual
-  reconfiguration is required, but see the **Changed** section above
-  about updating automations and dashboards that reference the old
-  entity IDs.
-
-### Docs
-- Simplified the README: removed internal implementation details,
-  trimmed the multi-account and credential sections, collapsed the
-  incl-VAT / excl-VAT sensor tables into single rows, and clarified the
-  install steps to lead with the HACS search bar.
+- Existing installs upgrade automatically on first load. You will be
+  asked to re-authenticate once after upgrading.
 
 ## [0.7.1] - 2026-05-03
 
@@ -438,7 +287,8 @@ No user-visible changes.
 [#59]: https://github.com/DaanVervacke/hass-engie-be/pull/59
 [#61]: https://github.com/DaanVervacke/hass-engie-be/pull/61
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.6.0...v0.6.1
