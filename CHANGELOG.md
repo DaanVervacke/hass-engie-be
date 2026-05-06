@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Chore
+- **CI now enforces a minimum test coverage of 85%.** The test
+  workflow fails when overall coverage of `custom_components.engie_be`
+  drops below this floor, protecting against regressions that quietly
+  remove tested code paths. Internal change only, with no
+  user-visible impact.
+
 ## [0.8.1] - 2026-05-06
 
 ### Changed
