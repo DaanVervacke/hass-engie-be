@@ -14,6 +14,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be import (
+    _async_fetch_relations_for_setup,
     _async_migrate_entity_id_slugs,
     _async_migrate_legacy_subentry_unique_ids,
     _persist_tokens,
@@ -97,13 +98,14 @@ def _only_subentry_id(entry: MockConfigEntry) -> str:
     return next(iter(entry.subentries))
 
 
-def _make_client(
+def _make_client(  # noqa: PLR0913 - kwargs-only test helper, one knob per endpoint
     *,
     refresh_return: tuple[str, str] = ("new-access", "new-refresh"),
     refresh_side_effect: Exception | None = None,
     prices_return: dict[str, Any] | None = None,
     service_point_return: dict[str, Any] | None = None,
     peaks_return: dict[str, Any] | None = None,
+    energy_contracts_return: dict[str, Any] | None = None,
 ) -> MagicMock:
     """Build a MagicMock EngieBeApiClient with the given async return values."""
     client = MagicMock()
@@ -117,6 +119,12 @@ def _make_client(
     )
     client.async_get_monthly_peaks = AsyncMock(
         return_value=peaks_return or {"peakOfTheMonth": None, "dailyPeaks": []},
+    )
+    # Energy-contracts endpoint is hit by ``_async_populate_dynamic_flags``
+    # at setup; default to an empty payload so detection silently leaves
+    # the override at None and falls back to the legacy heuristic.
+    client.async_get_energy_contracts = AsyncMock(
+        return_value=energy_contracts_return or {"items": []},
     )
     # EPEX endpoint is hit unconditionally by the entry-level
     # EngieBeEpexCoordinator at first refresh; default to an empty
@@ -766,6 +774,249 @@ async def test_setup_entry_service_point_failure_does_not_poison_others(
 
 
 # ---------------------------------------------------------------------------
+# Dynamic-tariff override population (b6 contracts-driven detection)
+#
+# These tests cover ``_async_populate_dynamic_flags``, the setup-time
+# fan-out that calls the energy-contracts endpoint once per subentry's
+# BAN and writes the resulting dynamic flag onto
+# ``EngieBeSubentryData.is_dynamic_override``. The override is the
+# primary input to ``EngieBeDataUpdateCoordinator.is_dynamic`` (which
+# gates EPEX entity creation in the platform layer); the legacy
+# ``len(items) == 0`` heuristic on the prices payload is the fallback.
+# ---------------------------------------------------------------------------
+
+
+async def test_setup_entry_populates_dynamic_override_from_contracts(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Dynamic electricity contracts must set ``is_dynamic_override=True``."""
+    entry = _build_entry(hass)
+    client = _make_client(
+        energy_contracts_return={
+            "items": [
+                {
+                    "businessAgreementNumber": "B-0001",
+                    "servicePointNumber": "541448820000000001_ID1",
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "productConfiguration": {
+                        "energyProduct": "DYNAMIC",
+                        "type": "INDEXED",
+                    },
+                },
+            ],
+        },
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    sid = _only_subentry_id(entry)
+    sub_data = entry.runtime_data.subentry_data[sid]
+    assert sub_data.is_dynamic_override is True
+    # The raw payload is cached on the subentry so diagnostics can surface
+    # the per-EAN energyProduct without re-fetching.
+    assert sub_data.energy_contracts_payload is not None
+    # Coordinator ``is_dynamic`` must reflect the override.
+    assert sub_data.coordinator.is_dynamic is True
+    # Endpoint must have been called exactly once with the BAN.
+    client.async_get_energy_contracts.assert_awaited_once_with("B-0001")
+
+
+async def test_setup_entry_dynamic_override_handles_mixed_fuel(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """The b6 bug fix: dynamic elec + fixed gas must still flag the account."""
+    entry = _build_entry(hass)
+    client = _make_client(
+        energy_contracts_return={
+            "items": [
+                {
+                    "businessAgreementNumber": "B-0001",
+                    "servicePointNumber": "541448820000000001_ID1",
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "productConfiguration": {"energyProduct": "DYNAMIC"},
+                },
+                {
+                    "businessAgreementNumber": "B-0001",
+                    "servicePointNumber": "541448820000000002_ID2",
+                    "division": "GAS",
+                    "status": "ACTIVE",
+                    "productConfiguration": {"energyProduct": "EASY"},
+                },
+            ],
+        },
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    sid = _only_subentry_id(entry)
+    sub_data = entry.runtime_data.subentry_data[sid]
+    assert sub_data.is_dynamic_override is True
+    assert sub_data.coordinator.is_dynamic is True
+
+
+async def test_setup_entry_dynamic_override_false_for_fixed_account(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A fixed-tariff contract must set ``is_dynamic_override=False``."""
+    entry = _build_entry(hass)
+    client = _make_client(
+        energy_contracts_return={
+            "items": [
+                {
+                    "businessAgreementNumber": "B-0001",
+                    "servicePointNumber": "541448820000000001_ID1",
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "productConfiguration": {"energyProduct": "EASY"},
+                },
+            ],
+        },
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    sid = _only_subentry_id(entry)
+    sub_data = entry.runtime_data.subentry_data[sid]
+    assert sub_data.is_dynamic_override is False
+    assert sub_data.coordinator.is_dynamic is False
+
+
+async def test_setup_entry_dynamic_override_falls_back_on_api_error(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A contracts API error must leave the override at ``None`` (legacy fallback)."""
+    entry = _build_entry(hass)
+    client = _make_client()
+    client.async_get_energy_contracts = AsyncMock(
+        side_effect=EngieBeApiClientError("contracts unavailable"),
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    # Setup must still succeed; the error degrades to legacy heuristic.
+    assert ok is True
+    sid = _only_subentry_id(entry)
+    sub_data = entry.runtime_data.subentry_data[sid]
+    assert sub_data.is_dynamic_override is None
+    # ``_make_client`` defaults to ``items=[]`` for prices, so the legacy
+    # heuristic on the empty prices payload classifies this as dynamic.
+    # The point is that the contracts failure did not poison setup.
+    assert sub_data.coordinator.is_dynamic is True
+
+
+async def test_setup_entry_dynamic_override_falls_back_on_non_dict_payload(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A non-JSON-object contracts response must leave the override at ``None``."""
+    entry = _build_entry(hass)
+    client = _make_client()
+    # Simulate schema drift: the API returns a list instead of an object.
+    client.async_get_energy_contracts = AsyncMock(return_value=["unexpected"])
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    sid = _only_subentry_id(entry)
+    sub_data = entry.runtime_data.subentry_data[sid]
+    assert sub_data.is_dynamic_override is None
+    # Cache must not be populated with garbage.
+    assert sub_data.energy_contracts_payload is None
+
+
+async def test_setup_entry_dynamic_override_uses_can_when_ban_missing(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Subentries lacking a BAN must fall back to the customer number."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=3,
+        title="user@example.com",
+        unique_id="user_example_com",
+        data={
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "hunter2",
+            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
+            CONF_ACCESS_TOKEN: "stored-access",
+            CONF_REFRESH_TOKEN: "stored-refresh",
+        },
+        options={"update_interval": 60},
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                title=_TEST_SUBENTRY_TITLE,
+                unique_id="999000000000",
+                data={
+                    CONF_CUSTOMER_NUMBER: "999000000000",
+                    # No CONF_BUSINESS_AGREEMENT_NUMBER on purpose.
+                    CONF_PREMISES_NUMBER: "P-0001",
+                    CONF_CONSUMPTION_ADDRESS: _TEST_SUBENTRY_TITLE,
+                },
+            ),
+        ],
+    )
+    entry.add_to_hass(hass)
+    client = _make_client(
+        energy_contracts_return={
+            "items": [
+                {
+                    "servicePointNumber": "541448820000000001_ID1",
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "productConfiguration": {"energyProduct": "DYNAMIC"},
+                },
+            ],
+        },
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    # The endpoint must have been called with the CAN as the fallback identifier.
+    client.async_get_energy_contracts.assert_awaited_once_with("999000000000")
+
+
+# ---------------------------------------------------------------------------
 # Legacy BAN-shaped subentry unique_id migration
 # ---------------------------------------------------------------------------
 
@@ -907,6 +1158,69 @@ async def test_legacy_unique_id_migration_tolerates_relations_failure(
 
     untouched = next(iter(entry.subentries.values()))
     assert untouched.unique_id == legacy_ban
+
+
+async def test_fetch_relations_for_setup_persists_rotated_tokens(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    The setup-time relations helper must persist rotated tokens.
+
+    ENGIE rotates the refresh token on every refresh call. The legacy
+    subentry-id migration runs before the main coordinator setup and
+    issues its own refresh on a throwaway client. If the rotated tokens
+    are not written back to ``entry.data``, the next refresh in the
+    same setup pass uses the now-invalid stored refresh token and
+    triggers a spurious second reauth.
+    """
+    entry = _build_entry(hass, customer_number="002200000001")
+    assert entry.data[CONF_ACCESS_TOKEN] == "stored-access"
+    assert entry.data[CONF_REFRESH_TOKEN] == "stored-refresh"
+
+    client = _make_client(refresh_return=("rotated-access", "rotated-refresh"))
+    client.async_get_customer_account_relations = AsyncMock(
+        return_value={"customerAccounts": []},
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        result = await _async_fetch_relations_for_setup(hass, entry)
+
+    assert result == {"customerAccounts": []}
+    assert client.async_refresh_token.await_count == 1
+    # Critical: the rotated tokens must be visible on the entry before
+    # any subsequent setup-pass refresh runs.
+    assert entry.data[CONF_ACCESS_TOKEN] == "rotated-access"
+    assert entry.data[CONF_REFRESH_TOKEN] == "rotated-refresh"
+    # Other entry data must be untouched.
+    assert entry.data[CONF_USERNAME] == "user@example.com"
+    assert entry.data[CONF_CLIENT_ID] == DEFAULT_CLIENT_ID
+
+
+async def test_fetch_relations_for_setup_skips_persist_on_refresh_failure(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A failing refresh must leave stored tokens untouched and return None."""
+    entry = _build_entry(hass, customer_number="002200000002")
+    client = _make_client(
+        refresh_side_effect=EngieBeApiClientAuthenticationError("expired"),
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        result = await _async_fetch_relations_for_setup(hass, entry)
+
+    assert result is None
+    assert client.async_refresh_token.await_count == 1
+    # Stored tokens must NOT have been overwritten.
+    assert entry.data[CONF_ACCESS_TOKEN] == "stored-access"
+    assert entry.data[CONF_REFRESH_TOKEN] == "stored-refresh"
 
 
 # ---------------------------------------------------------------------------
@@ -1095,3 +1409,91 @@ async def test_slug_migration_leaves_login_scoped_entities_alone(
 
     registry = er.async_get(hass)
     assert registry.async_get(auth) is not None
+
+
+async def test_slug_migration_runs_after_platform_forwarding(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Regression: slug rewrite must catch entities created during platform setup.
+
+    Reproduces the b6 ordering bug where ``_async_migrate_entity_id_slugs``
+    ran before ``async_forward_entry_setups``: any entity registered by
+    platform setup itself (notably EPEX entities created on the first
+    setup pass after a subentry first reports a dynamic tariff) was
+    missed and only got rewritten on the next reload. The fix moves
+    the helper to run after ``forward_entry_setups`` so freshly-
+    registered entities are picked up in the same cycle.
+
+    The test patches ``async_forward_entry_setups`` to seed a
+    legacy-slug entity into the registry as if a platform had just
+    registered it, then asserts the entity ends up at the canonical
+    ``engie_belgium_{CAN}_*`` slug after ``async_setup_entry``
+    returns.
+    """
+    can = "1500000777"
+    entry = _build_entry(hass, customer_number=can)
+    subentry_id = _only_subentry_id(entry)
+    client = _make_client(refresh_return=("fresh-access", "fresh-refresh"))
+
+    # Stand-in for what a real platform's ``async_setup_entry`` would do:
+    # register an entity in the entity registry. The legacy-shaped slug
+    # mirrors what HA produces today for ``has_entity_name=True`` +
+    # ``translation_key`` entities under a named device, which is the
+    # exact path that bypasses ``_attr_suggested_object_id`` and made
+    # the migration helper necessary in the first place.
+    async def _seed_during_forward(
+        _entry: MockConfigEntry,
+        _platforms: object,
+    ) -> bool:
+        registry = er.async_get(hass)
+        registry.async_get_or_create(
+            domain="sensor",
+            platform=DOMAIN,
+            unique_id=f"{entry.entry_id}_{subentry_id}_epex_current",
+            suggested_object_id="rue_de_la_loi_16_1000_brussels_epex_current_price",
+            config_entry=entry,
+            config_subentry_id=subentry_id,
+        )
+        return True
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new=AsyncMock(side_effect=_seed_during_forward),
+        ),
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+
+    registry = er.async_get(hass)
+    # The legacy-shaped entity registered during forward_entry_setups
+    # must have been rewritten to the canonical CAN-prefixed slug by
+    # the migration helper running afterwards. If the helper still
+    # ran before forward_entry_setups, the legacy entity would
+    # survive and the canonical slug would not exist.
+    assert (
+        registry.async_get("sensor.rue_de_la_loi_16_1000_brussels_epex_current_price")
+        is None
+    )
+    canonical = registry.async_get(f"sensor.engie_belgium_{can}_epex_current")
+    assert canonical is not None
+    assert canonical.unique_id == f"{entry.entry_id}_{subentry_id}_epex_current"

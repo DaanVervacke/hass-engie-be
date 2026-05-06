@@ -17,6 +17,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 
+from ._contracts import is_account_dynamic
 from ._relations import (
     RELATIONS_BACKFILLABLE_KEYS,
     find_account_for_customer_number,
@@ -91,6 +92,131 @@ async def async_migrate_entry(
         )
 
     return True
+
+
+def _async_promote_device_to_subentry(
+    hass: HomeAssistant,
+    device_id: str,
+    *,
+    entry_id: str,
+    subentry_id: str,
+    new_identifiers: set[tuple[str, str]] | None = None,
+) -> None:
+    """
+    Move a v2-shaped device onto a v3 customer-account subentry.
+
+    A v2 device row carries the bare ``(entry_id, None)`` config-entry
+    link. The v3 device row must carry ``(entry_id, subentry_id)``
+    instead, otherwise Home Assistant renders the device twice in the
+    integration card: once under the parent entry's "no sub-item"
+    group and once under the subentry's group.
+
+    Home Assistant's ``async_update_device`` cannot atomically swap
+    one for the other: ``add_config_subentry_id`` set-unions onto the
+    existing entry, and combining ``add_*`` and ``remove_*`` in a
+    single call makes the remove path read pre-add state and overwrite
+    the add. The safe sequence is two calls: first add the new link
+    (and rewrite identifiers), then drop the legacy ``None`` link.
+
+    Before the legacy link is dropped any entity still attached to the
+    device with ``config_subentry_id=None`` (the v2 login-scoped energy
+    sensor and the auth binary sensor) is reparented onto a dedicated
+    login device. Home Assistant's entity registry would otherwise
+    auto-remove every such entity when the ``None`` link disappears
+    from the device's ``config_entries_subentries``, taking entity-id
+    customisations and statistics history with them.
+
+    No-op when the legacy link is already absent, so this is idempotent
+    and safe to run on already-healed devices.
+    """
+    device_reg = dr.async_get(hass)
+
+    if new_identifiers is not None:
+        device_reg.async_update_device(
+            device_id,
+            new_identifiers=new_identifiers,
+            add_config_entry_id=entry_id,
+            add_config_subentry_id=subentry_id,
+        )
+    else:
+        device_reg.async_update_device(
+            device_id,
+            add_config_entry_id=entry_id,
+            add_config_subentry_id=subentry_id,
+        )
+
+    device = device_reg.async_get(device_id)
+    if device is None:
+        return
+    legacy_subentries = device.config_entries_subentries.get(entry_id, set())
+    if None not in legacy_subentries:
+        return
+
+    _async_reparent_login_scoped_entities(
+        hass,
+        device_id=device_id,
+        entry_id=entry_id,
+    )
+
+    device_reg.async_update_device(
+        device_id,
+        remove_config_entry_id=entry_id,
+        remove_config_subentry_id=None,
+    )
+
+
+def _async_reparent_login_scoped_entities(
+    hass: HomeAssistant,
+    *,
+    device_id: str,
+    entry_id: str,
+) -> None:
+    """
+    Move login-scoped entities off a customer-account device.
+
+    Walks every entity registered against ``device_id`` and reparents
+    those whose ``config_subentry_id`` is ``None`` onto a dedicated
+    login device identified by ``(DOMAIN, f"login_{entry_id}")``,
+    creating that device on demand. Subentry-scoped entities are left
+    untouched.
+
+    Used as a pre-step before stripping the legacy ``(entry_id, None)``
+    link from a customer-account device: without it, Home Assistant's
+    entity registry auto-removes every entity whose ``config_subentry_id``
+    was in the device's old subentry set for the entry but not in the new
+    one, which would silently delete the v2 energy + auth entities.
+    """
+    entity_reg = er.async_get(hass)
+    orphans = [
+        ent
+        for ent in er.async_entries_for_device(
+            entity_reg,
+            device_id,
+            include_disabled_entities=True,
+        )
+        if ent.config_subentry_id is None
+    ]
+    if not orphans:
+        return
+
+    device_reg = dr.async_get(hass)
+    login_device = device_reg.async_get_or_create(
+        config_entry_id=entry_id,
+        identifiers={(DOMAIN, f"login_{entry_id}")},
+        manufacturer="ENGIE Belgium",
+        name="Account",
+    )
+    for ent in orphans:
+        entity_reg.async_update_entity(
+            ent.entity_id,
+            device_id=login_device.id,
+        )
+        LOGGER.debug(
+            "Reparented login-scoped entity %s from %s onto login device %s",
+            ent.entity_id,
+            device_id,
+            login_device.id,
+        )
 
 
 async def _async_migrate_v2_to_v3(
@@ -210,13 +336,26 @@ async def _async_migrate_v2_to_v3(
     v3_device = device_reg.async_get_device(
         identifiers={(DOMAIN, subentry.subentry_id)},
     )
+
+    # Rewrite v2 unique_ids to the v3 subentry-scoped shape before touching
+    # the device registry. ``_migrate_entity_unique_ids`` stamps
+    # ``config_subentry_id=subentry_id`` on every renamed entity, so that
+    # when the device-link swap below strips the legacy
+    # ``(entry_id, None)`` link, Home Assistant's entity registry only
+    # auto-removes entities whose ``config_subentry_id`` is still ``None``.
+    # The only such entity is the auth binary sensor (login-scoped, kept
+    # at the v2 unique_id shape on purpose), which the promote helper
+    # reparents onto a dedicated login device first so nothing is lost.
+    await _migrate_entity_unique_ids(hass, entry.entry_id, subentry.subentry_id)
+
     if v2_device is not None and v3_device is None:
         # State A
-        device_reg.async_update_device(
+        _async_promote_device_to_subentry(
+            hass,
             v2_device.id,
+            entry_id=entry.entry_id,
+            subentry_id=subentry.subentry_id,
             new_identifiers={(DOMAIN, subentry.subentry_id)},
-            add_config_entry_id=entry.entry_id,
-            add_config_subentry_id=subentry.subentry_id,
         )
     elif v2_device is not None and v3_device is not None:
         # State B
@@ -236,11 +375,6 @@ async def _async_migrate_v2_to_v3(
             v2_device.id,
             v3_device.id,
         )
-
-    # Rename the unique_ids of entities whose v2 keys are now subentry-scoped.
-    # Energy sensors (EAN-embedded keys) and the auth binary sensor keep their
-    # v2 ids and need no rename.
-    await _migrate_entity_unique_ids(hass, entry.entry_id, subentry.subentry_id)
 
     # Rename the peaks-history store file on disk from the old per-entry
     # key to the new per-subentry key. Done via ``Store`` so the store
@@ -279,7 +413,21 @@ async def _async_try_relations_backfill(
         refresh_token=refresh_token,
     )
     try:
-        await client.async_refresh_token()
+        new_access, new_refresh = await client.async_refresh_token()
+    except EngieBeApiClientError as err:
+        LOGGER.debug(
+            "Relations backfill skipped during v2->v3 migration of %s: %s",
+            entry.entry_id,
+            err,
+        )
+        return None
+
+    # ENGIE rotates the refresh token on every call, so we must persist
+    # the new pair before any subsequent refresh in the same setup pass
+    # uses the now-invalid stored refresh token and triggers reauth.
+    _persist_tokens(hass, entry, new_access, new_refresh)
+
+    try:
         relations = await client.async_get_customer_account_relations()
     except EngieBeApiClientError as err:
         LOGGER.debug(
@@ -300,51 +448,56 @@ async def _migrate_entity_unique_ids(
     """
     Rename v2 unique_ids that became subentry-scoped in v3.
 
-    The v2 keys listed below were previously globally unique on a single
-    login because the integration only supported one customer account.
-    In v3 the same descriptor repeats across customer accounts, so
-    ``{entry_id}_{key}`` would collide. The subentry-id segment keeps
-    them disjoint.
+    In v2 the integration only supported one customer account, so every
+    entity's unique_id was simply ``{entry_id}_{key}``. In v3 the same
+    descriptors repeat across customer accounts (multiple subentries on
+    one login), so the unique_id schema gained a subentry-id segment:
+    ``{entry_id}_{subentry_id}_{key}``.
+
+    This helper finds every v2-shaped unique_id on the entry and rewrites
+    it to the v3 shape, also stamping ``config_subentry_id=subentry_id``
+    on the registry entry so the entity is correctly attributed to the
+    customer-account subentry.
+
+    The only entity intentionally kept at the v2 shape is the auth
+    binary sensor (``{entry_id}_authentication``), which is login-scoped
+    and lives on a dedicated login device, not a customer-account device.
 
     Entity ids are preserved (the registry retains the old ``entity_id``
     when ``new_unique_id`` is set), so history, dashboards, automations,
     and statistics continue to work.
+
+    The helper is idempotent: entities whose unique_id already carries
+    the v3 shape (or whose ``config_subentry_id`` is already set) are
+    skipped. This means it is safe to re-run during recovery sweeps.
     """
-    keys_to_rename = (
-        # Captar peaks
-        "captar_monthly_peak_power",
-        "captar_monthly_peak_energy",
-        "captar_monthly_peak_start",
-        "captar_monthly_peak_end",
-        # EPEX sensors
-        "epex_current",
-        "epex_low_today",
-        "epex_high_today",
-        # EPEX negative binary sensor
-        "epex_negative",
-        # Calendar
-        "calendar",
-    )
-    old_to_new = {
-        f"{entry_id}_{key}": f"{entry_id}_{subentry_id}_{key}" for key in keys_to_rename
-    }
+    v2_prefix = f"{entry_id}_"
+    v3_prefix = f"{entry_id}_{subentry_id}_"
+    keep_login_scoped = {f"{entry_id}_authentication"}
 
     entity_reg = er.async_get(hass)
-    new_unique_ids = set(old_to_new.values())
-    domains_with_renames = {"sensor", "binary_sensor", "calendar"}
     existing_v3_uids = {
         ent.unique_id
         for ent in entity_reg.entities.values()
-        if ent.platform == DOMAIN
-        and ent.domain in domains_with_renames
-        and ent.unique_id in new_unique_ids
+        if ent.platform == DOMAIN and ent.unique_id.startswith(v3_prefix)
     }
 
     @callback
     def _migrate(entity_entry: er.RegistryEntry) -> dict[str, Any] | None:
-        new_unique_id = old_to_new.get(entity_entry.unique_id)
-        if new_unique_id is None:
+        unique_id = entity_entry.unique_id
+        if unique_id in keep_login_scoped:
             return None
+        if not unique_id.startswith(v2_prefix):
+            return None
+        if unique_id.startswith(v3_prefix):
+            # Already migrated; just make sure the subentry attribution
+            # is set (defensive against partially migrated state).
+            if entity_entry.config_subentry_id == subentry_id:
+                return None
+            return {"config_subentry_id": subentry_id}
+
+        suffix = unique_id[len(v2_prefix) :]
+        new_unique_id = f"{v3_prefix}{suffix}"
         if new_unique_id in existing_v3_uids:
             # A v3-uid sibling already owns the entity_id slot. Drop the
             # v2-uid orphan so its entity_id can be reclaimed by the
@@ -484,11 +637,12 @@ async def _async_cleanup_orphan_v2_device(
     if v3_device is None:
         # Only the v2 device exists: rename its identifier in place so
         # user customisations survive. Mirrors migration State A.
-        device_reg.async_update_device(
+        _async_promote_device_to_subentry(
+            hass,
             v2_device.id,
+            entry_id=entry.entry_id,
+            subentry_id=subentry.subentry_id,
             new_identifiers={(DOMAIN, subentry.subentry_id)},
-            add_config_entry_id=entry.entry_id,
-            add_config_subentry_id=subentry.subentry_id,
         )
         LOGGER.info(
             "Promoted orphan v2 device %s to v3 subentry %s",
@@ -517,6 +671,240 @@ async def _async_cleanup_orphan_v2_device(
         v2_device.id,
         v3_device.id,
     )
+
+
+async def _async_heal_stale_subentry_links(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Drop a stale ``(entry_id, None)`` link from each customer-account device.
+
+    Releases up to and including 0.8.0b1 ran the v2->v3 migration with a
+    single ``async_update_device(..., add_config_subentry_id=...)`` call,
+    which set-unioned the new subentry onto the legacy ``{None}`` set
+    instead of replacing it. The device ended up with both
+    ``(entry_id, None)`` and ``(entry_id, subentry_id)`` links and Home
+    Assistant rendered it twice in the integration card: once under the
+    parent entry's "no sub-item" group and once under the subentry's group.
+
+    The migration helper now does the right thing for fresh upgrades, but
+    entries that already booted past 0.8.0b1 still carry the duplicated
+    link. This pass walks every customer-account subentry and, when its
+    device still has the legacy ``None`` link alongside the subentry link,
+    reparents any login-scoped entity off the device first (so HA's entity
+    registry does not auto-remove them when the ``None`` link disappears)
+    and then removes the legacy link. Idempotent and safe on healthy
+    installs.
+    """
+    device_reg = dr.async_get(hass)
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+            continue
+        device = device_reg.async_get_device(
+            identifiers={(DOMAIN, subentry.subentry_id)},
+        )
+        if device is None:
+            continue
+        entry_subentries = device.config_entries_subentries.get(entry.entry_id)
+        if entry_subentries is None:
+            continue
+        if None not in entry_subentries:
+            continue
+        if subentry.subentry_id not in entry_subentries:
+            # The device is somehow only linked via the bare entry; do
+            # not touch it. Promotion is the orphan-cleanup helper's job.
+            continue
+        _async_reparent_login_scoped_entities(
+            hass,
+            device_id=device.id,
+            entry_id=entry.entry_id,
+        )
+        device_reg.async_update_device(
+            device.id,
+            remove_config_entry_id=entry.entry_id,
+            remove_config_subentry_id=None,
+        )
+        LOGGER.info(
+            "Removed stale entry-only link from device %s (subentry %s)",
+            device.id,
+            subentry.subentry_id,
+        )
+
+
+_B1_ENERGY_UID_DIRECTIONS = (
+    "offtake_excl_vat",
+    "injection_excl_vat",
+    "offtake",
+    "injection",
+)
+
+
+async def _async_heal_b1_energy_unique_ids(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Rewrite 0.8.0b1-shaped energy unique_ids to the canonical v3 shape.
+
+    The 0.8.0b1 release of the v2->v3 migration helper rewrote captar,
+    EPEX, and calendar entities to the subentry-scoped unique_id shape
+    but left energy price entities at the legacy
+    ``{entry_id}_{ean}_{direction}`` shape, because b1's platform also
+    produced that shape so the registry rows still matched. The 0.8.0b3
+    platform produces the canonical
+    ``{entry_id}_{subentry_id}_{ean}_{direction}`` shape, which means
+    direct b1->b3 upgrades end up with six orphan registry rows per
+    customer account (the b1-shape rows that no platform claims) plus a
+    fresh set of canonical entities under brand-new entity_ids. The
+    six orphans show up as "unavailable" in the UI under the user's
+    original entity_ids.
+
+    The fresh installs and v0.7.x->b3 paths do not hit this: a fresh
+    install creates the canonical shape from the start, and a v2->v3
+    migration runs the prefix-sweep helper that rewrites every
+    v2-shaped unique_id (including energy ones) to canonical.
+
+    This pass walks every engie entity in the registry on every setup
+    and, when an entity matches the b1 energy shape, derives its owning
+    subentry from its device's ``(DOMAIN, subentry_id)`` identifier (the
+    b1 device-promote step already moved energy entities onto the
+    subentry-keyed device, so this lookup is reliable). It then
+    rewrites the unique_id to the canonical shape and stamps
+    ``config_subentry_id``. If a canonical sibling already owns the
+    target unique_id (the platform registered fresh entities under new
+    entity_ids on a previous boot), the b1 orphan is removed instead.
+
+    Idempotent: entities already at the canonical shape are skipped.
+    """
+    entry_id = entry.entry_id
+    entry_prefix = f"{entry_id}_"
+    valid_subentry_ids = {
+        sub.subentry_id
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    }
+    if not valid_subentry_ids:
+        return
+
+    # Collect candidates first so the registry mutation does not race
+    # against iteration. ``entity_reg.entities`` is a live mapping.
+    entity_reg = er.async_get(hass)
+    device_reg = dr.async_get(hass)
+    candidates: list[er.RegistryEntry] = []
+    for ent in entity_reg.entities.values():
+        if ent.platform != DOMAIN:
+            continue
+        if ent.config_entry_id != entry_id:
+            continue
+        unique_id = ent.unique_id
+        if not unique_id.startswith(entry_prefix):
+            continue
+        suffix = unique_id[len(entry_prefix) :]
+        # The canonical shape is ``{entry_id}_{subentry_id}_<suffix>``;
+        # b1 energy uids are ``{entry_id}_{ean}_<direction>`` where the
+        # EAN is digits and the direction is one of the four energy
+        # descriptors. The all-digits EAN check rules out canonical
+        # rows because subentry ids are ULIDs (alphanumeric, never
+        # all-digit).
+        if _match_b1_energy_suffix(suffix) is None:
+            continue
+        candidates.append(ent)
+
+    if not candidates:
+        return
+
+    healed = 0
+    dropped = 0
+    skipped = 0
+    for ent in candidates:
+        device = (
+            device_reg.async_get(ent.device_id) if ent.device_id is not None else None
+        )
+        subentry_id = (
+            _subentry_id_from_device(device, valid_subentry_ids) if device else None
+        )
+        if subentry_id is None:
+            LOGGER.warning(
+                "Cannot heal b1-shape energy unique_id %s: no subentry-keyed "
+                "device link found",
+                ent.unique_id,
+            )
+            skipped += 1
+            continue
+
+        suffix = ent.unique_id[len(entry_prefix) :]
+        new_unique_id = f"{entry_id}_{subentry_id}_{suffix}"
+        existing = entity_reg.async_get_entity_id(ent.domain, DOMAIN, new_unique_id)
+        if existing is not None and existing != ent.entity_id:
+            entity_reg.async_remove(ent.entity_id)
+            dropped += 1
+            LOGGER.info(
+                "Removed b1-shape energy entity %s; canonical sibling %s "
+                "already owns unique_id %s",
+                ent.entity_id,
+                existing,
+                new_unique_id,
+            )
+            continue
+
+        entity_reg.async_update_entity(
+            ent.entity_id,
+            new_unique_id=new_unique_id,
+            config_subentry_id=subentry_id,
+        )
+        healed += 1
+        LOGGER.info(
+            "Healed b1-shape energy unique_id %s -> %s (subentry %s)",
+            ent.unique_id,
+            new_unique_id,
+            subentry_id,
+        )
+
+    if healed or dropped or skipped:
+        LOGGER.info(
+            "b1 energy unique_id heal: healed=%d dropped=%d skipped=%d",
+            healed,
+            dropped,
+            skipped,
+        )
+
+
+def _match_b1_energy_suffix(suffix: str) -> tuple[str, str] | None:
+    """
+    Return ``(ean, direction)`` if ``suffix`` matches a b1 energy uid.
+
+    A b1 energy uid suffix is ``<ean>_<direction>`` where ``ean`` is all
+    digits and ``direction`` is one of the four energy descriptors. The
+    direction list is ordered longest-first so ``offtake_excl_vat`` is
+    matched before ``offtake``.
+    """
+    for direction in _B1_ENERGY_UID_DIRECTIONS:
+        marker = f"_{direction}"
+        if not suffix.endswith(marker):
+            continue
+        ean = suffix[: -len(marker)]
+        if ean and ean.isdigit():
+            return ean, direction
+    return None
+
+
+def _subentry_id_from_device(
+    device: dr.DeviceEntry,
+    valid_subentry_ids: set[str],
+) -> str | None:
+    """
+    Return the ``(DOMAIN, subentry_id)`` identifier value, or ``None``.
+
+    ``valid_subentry_ids`` is the set of ``ConfigSubentry.subentry_id``
+    values currently attached to the parent entry, used to discriminate
+    customer-account devices (identifier value is the ULID subentry id)
+    from the login device (identifier value is ``login_<entry_id>``).
+    """
+    for domain, value in device.identifiers:
+        if domain == DOMAIN and value in valid_subentry_ids:
+            return value
+    return None
 
 
 async def _async_migrate_legacy_subentry_unique_ids(
@@ -623,7 +1011,22 @@ async def _async_fetch_relations_for_setup(
         refresh_token=refresh_token,
     )
     try:
-        await client.async_refresh_token()
+        new_access, new_refresh = await client.async_refresh_token()
+    except EngieBeApiClientError as err:
+        LOGGER.debug(
+            "Relations fetch skipped during legacy unique_id migration "
+            "for entry %s: %s",
+            entry.entry_id,
+            err,
+        )
+        return None
+
+    # ENGIE rotates the refresh token on every call, so we must persist
+    # the new pair before any subsequent refresh in the same setup pass
+    # uses the now-invalid stored refresh token and triggers reauth.
+    _persist_tokens(hass, entry, new_access, new_refresh)
+
+    try:
         return await client.async_get_customer_account_relations()
     except EngieBeApiClientError as err:
         LOGGER.debug(
@@ -642,13 +1045,20 @@ async def _async_migrate_entity_id_slugs(
     """
     Rewrite existing customer-account entity_ids to carry the CAN prefix.
 
-    From v3 onwards every customer-account entity exposes a
-    ``_attr_suggested_object_id`` of the form
-    ``engie_belgium_{CAN}_{key}`` so that two customer accounts on the
-    same login do not collide on their translated friendly name and
-    end up auto-suffixed with ``_2``. ``suggested_object_id`` only
-    takes effect on first registration, so installs that already have
-    entities in the registry need a one-shot rewrite.
+    From v3 onwards every customer-account entity should resolve to the
+    slug ``engie_belgium_{CAN}_{key}`` so that two customer accounts on
+    the same login do not collide on their translated friendly name and
+    end up auto-suffixed with ``_2``.
+
+    HA's entity registry derives the object_id_base from the translation
+    key for ``has_entity_name=True`` entities and ignores
+    ``_attr_suggested_object_id`` in that path, so the canonical slug
+    can only be enforced post-registration. This helper is invoked
+    after ``async_forward_entry_setups`` so freshly-registered entities
+    (including EPEX entities created on the first setup pass after a
+    subentry first reports a dynamic tariff) are rewritten in the same
+    cycle. Installs that already carried legacy slugs from earlier
+    versions are picked up on the same pass.
 
     The rewrite is best-effort: failures are logged and the next
     entity is processed. ``unique_id`` values are left untouched, so
@@ -752,19 +1162,24 @@ async def async_setup_entry(
     # every setup: it is a no-op when no orphan v2 device is present.
     await _async_cleanup_orphan_v2_device(hass, entry)
 
+    # Heal customer-account devices that 0.8.0b1 left with both an
+    # entry-only and an entry+subentry link, which Home Assistant
+    # rendered as two duplicate device rows. Idempotent and a no-op
+    # on healthy installs.
+    await _async_heal_stale_subentry_links(hass, entry)
+
+    # Heal energy price entities whose unique_ids were left at the
+    # 0.8.0b1 shape by direct b1->b3 upgrades. Idempotent and a no-op
+    # on healthy installs (b2->b3 and v0.7.x->b3 paths already produce
+    # the canonical shape).
+    await _async_heal_b1_energy_unique_ids(hass, entry)
+
     # One-shot migration of legacy BAN-shaped subentry unique_ids to
     # canonical CAN values. Idempotent and tolerant of relations API
     # failures: it retries on the next setup. Must run before the
     # picker-dedupe set is computed elsewhere, but the picker itself
     # is BAN-aware so the order is not strictly load-bearing.
     await _async_migrate_legacy_subentry_unique_ids(hass, entry)
-
-    # One-shot rewrite of customer-account entity_ids to the
-    # CAN-prefixed slug. Must run after the unique_id migration so
-    # the CAN read here is canonical, and before the platforms are
-    # forwarded so the renamed entity_ids are in the registry by the
-    # time ``async_add_entities`` looks them up.
-    await _async_migrate_entity_id_slugs(hass, entry)
 
     client = EngieBeApiClient(
         session=async_get_clientsession(hass),
@@ -870,10 +1285,26 @@ async def async_setup_entry(
 
     # Resolve energy type for each EAN per subentry. Service-point lookups
     # are fanned out across all subentries' EANs in a single gather so
-    # multi-account customers do not pay sum(latency) for setup.
-    await _async_populate_service_points(client, entry)
+    # multi-account customers do not pay sum(latency) for setup. Dynamic-
+    # tariff detection runs in parallel with the same fan-out so the
+    # ``is_dynamic`` flag (which gates EPEX entity creation) is settled
+    # before platforms are forwarded.
+    await asyncio.gather(
+        _async_populate_service_points(client, entry),
+        _async_populate_dynamic_flags(client, entry),
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # One-shot rewrite of customer-account entity_ids to the CAN-prefixed
+    # slug. Runs after platform forwarding so newly-registered entities
+    # (notably EPEX entities created on the first setup pass after a
+    # subentry first reports a dynamic tariff) are rewritten in the same
+    # cycle instead of waiting for the next reload. Idempotent and a
+    # no-op for entities already at their target slug, so legacy renames
+    # from earlier installs continue to work the same way.
+    await _async_migrate_entity_id_slugs(hass, entry)
+
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True
@@ -915,7 +1346,20 @@ def _persist_tokens(
     access_token: str,
     refresh_token: str,
 ) -> None:
-    """Persist refreshed tokens to the config entry data."""
+    """
+    Persist refreshed tokens to the config entry data.
+
+    Skips the write when both tokens already match what is stored, so
+    routine coordinator refreshes that hand back the same access token
+    do not dirty ``core.config_entries`` storage. ENGIE rotates the
+    refresh token on every successful exchange, so in practice this
+    short-circuit only fires when the OAuth helper returns a cached
+    token (e.g. when the previous access token is still valid).
+    """
+    current_access = entry.data.get(CONF_ACCESS_TOKEN)
+    current_refresh = entry.data.get(CONF_REFRESH_TOKEN)
+    if current_access == access_token and current_refresh == refresh_token:
+        return
     updated_data = {**entry.data}
     updated_data[CONF_ACCESS_TOKEN] = access_token
     updated_data[CONF_REFRESH_TOKEN] = refresh_token
@@ -980,3 +1424,73 @@ async def _async_populate_service_points(
         if division:
             entry.runtime_data.subentry_data[subentry_id].service_points[ean] = division
             LOGGER.debug("Service-point %s: division=%s", _hash_ean(ean), division)
+
+
+async def _async_populate_dynamic_flags(
+    client: EngieBeApiClient,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Resolve the dynamic-tariff flag for every subentry in one fan-out call.
+
+    Calls the energy-contracts endpoint once per subentry's BAN in
+    parallel and writes the result to
+    :attr:`EngieBeSubentryData.is_dynamic_override`. The override is
+    consulted by :attr:`EngieBeDataUpdateCoordinator.is_dynamic`, which
+    in turn gates EPEX entity creation in the sensor and binary-sensor
+    platforms. Failures degrade gracefully: a contracts call that
+    raises (network error, 5xx, schema drift) leaves the override at
+    ``None`` so the legacy ``len(items) == 0`` heuristic on the prices
+    payload still drives detection. Authentication failures are not
+    raised here because the parent entry's first refresh has already
+    surfaced any auth problem; a contracts-only auth error is treated
+    as a transient failure for this account.
+    """
+    subentries: list[tuple[str, str]] = [
+        (
+            subentry.subentry_id,
+            subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+            or subentry.data.get(CONF_CUSTOMER_NUMBER, ""),
+        )
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    ]
+    targets = [(sid, ban) for sid, ban in subentries if ban]
+    if not targets:
+        return
+
+    results = await asyncio.gather(
+        *(client.async_get_energy_contracts(ban) for _, ban in targets),
+        return_exceptions=True,
+    )
+
+    for (subentry_id, _ban), result in zip(targets, results, strict=True):
+        sub_data = entry.runtime_data.subentry_data.get(subentry_id)
+        if sub_data is None:
+            continue
+        if isinstance(result, EngieBeApiClientError):
+            LOGGER.warning(
+                "Failed to fetch energy contracts for subentry %s; "
+                "falling back to legacy detection (%s: %s)",
+                subentry_id,
+                type(result).__name__,
+                result,
+            )
+            continue
+        if isinstance(result, BaseException):
+            # Re-raise unexpected exceptions; only API errors are tolerated.
+            raise result
+        if not isinstance(result, dict):
+            LOGGER.warning(
+                "Energy contracts response for subentry %s is not a JSON "
+                "object; falling back to legacy detection",
+                subentry_id,
+            )
+            continue
+        sub_data.energy_contracts_payload = result
+        sub_data.is_dynamic_override = is_account_dynamic(result)
+        LOGGER.debug(
+            "Subentry %s dynamic-tariff flag from contracts: %s",
+            subentry_id,
+            sub_data.is_dynamic_override,
+        )

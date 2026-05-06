@@ -283,3 +283,105 @@ async def test_diagnostics_works_when_runtime_data_is_missing(
     assert diag["epex_coordinator"] == {"present": False}
     sub = next(iter(diag["subentries"].values()))
     assert sub["present"] is False
+
+
+# ---------------------------------------------------------------------------
+# Dynamic-detection diagnostics (b6)
+#
+# When ``_async_populate_dynamic_flags`` succeeds at setup,
+# diagnostics must surface the override value, the source label
+# (``"contract"`` vs ``"fallback"``), and the per-EAN energyProduct
+# mapping with EANs hashed for privacy. When the contracts call
+# fails (override stays None), diagnostics must report the
+# fallback source so support bundles distinguish "we trusted the
+# contracts API" from "we degraded to the legacy heuristic".
+# ---------------------------------------------------------------------------
+
+
+def _build_entry_with_contracts_payload(
+    hass: HomeAssistant,
+    *,
+    is_dynamic_override: bool | None,
+    energy_contracts_payload: dict[str, Any] | None,
+) -> MockConfigEntry:
+    """Build an entry whose subentry carries explicit dynamic-detection state."""
+    entry = _build_entry(hass)
+    sub_id = next(iter(entry.subentries))
+    sub_data = entry.runtime_data.subentry_data[sub_id]
+    sub_data.is_dynamic_override = is_dynamic_override
+    sub_data.energy_contracts_payload = energy_contracts_payload
+    return entry
+
+
+async def test_diagnostics_reports_contract_source_when_override_set(
+    hass: HomeAssistant,
+) -> None:
+    """An override populated from contracts must report ``is_dynamic_source='contract'``."""  # noqa: E501
+    entry = _build_entry_with_contracts_payload(
+        hass,
+        is_dynamic_override=True,
+        energy_contracts_payload={
+            "items": [
+                {
+                    "servicePointNumber": "541448820000000001_ID1",
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "productConfiguration": {"energyProduct": "DYNAMIC"},
+                },
+            ],
+        },
+    )
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    sub = next(iter(diag["subentries"].values()))
+
+    assert sub["is_dynamic_override"] is True
+    assert sub["is_dynamic_source"] == "contract"
+    # EAN must be hashed; product code preserved verbatim.
+    assert sub["energy_products"]
+    for hashed_ean, product in sub["energy_products"].items():
+        assert len(hashed_ean) == EAN_HASH_LENGTH
+        assert all(c in "0123456789abcdef" for c in hashed_ean)
+        assert product == "DYNAMIC"
+
+
+async def test_diagnostics_reports_fallback_source_when_override_none(
+    hass: HomeAssistant,
+) -> None:
+    """A None override must surface as ``is_dynamic_source='fallback'``."""
+    entry = _build_entry_with_contracts_payload(
+        hass,
+        is_dynamic_override=None,
+        energy_contracts_payload=None,
+    )
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    sub = next(iter(diag["subentries"].values()))
+
+    assert sub["is_dynamic_override"] is None
+    assert sub["is_dynamic_source"] == "fallback"
+    assert sub["energy_products"] == {}
+
+
+async def test_diagnostics_does_not_leak_raw_eans_from_contracts(
+    hass: HomeAssistant,
+) -> None:
+    """Raw EANs from the contracts payload must never appear serialised."""
+    entry = _build_entry_with_contracts_payload(
+        hass,
+        is_dynamic_override=True,
+        energy_contracts_payload={
+            "items": [
+                {
+                    "servicePointNumber": "541448820000000001_ID1",
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "productConfiguration": {"energyProduct": "DYNAMIC"},
+                },
+            ],
+        },
+    )
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    serialised = json.dumps(diag)
+    assert "541448820000000001_ID1" not in serialised

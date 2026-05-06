@@ -6,11 +6,14 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from homeassistant.components.sensor import SensorEntityDescription
 
+from custom_components.engie_be.const import SUBENTRY_TYPE_CUSTOMER_ACCOUNT
 from custom_components.engie_be.sensor import (
+    EngieBeEnergySensor,
     _build_sensor_descriptions,
     _detect_energy_type,
     _find_current_price,
@@ -200,3 +203,47 @@ def test_build_sensor_descriptions_uses_translation_keys_per_energy_type() -> No
     translation_keys = {desc.translation_key for desc, *_ in descriptions}
     assert any(k.startswith("electricity_") for k in translation_keys)
     assert any(k.startswith("gas_") for k in translation_keys)
+
+
+# ---------------------------------------------------------------------------
+# EngieBeEnergySensor unique_id shape
+# ---------------------------------------------------------------------------
+
+
+def test_energy_sensor_unique_id_includes_subentry_segment() -> None:
+    """
+    Energy price unique_ids must carry the subentry segment.
+
+    All v3 customer-account entities (peaks, calendar, EPEX) follow the
+    ``{entry_id}_{subentry_id}_{key}`` shape. Energy price sensors used
+    to omit the subentry segment, which made the platform produce a
+    different unique_id than the v2->v3 migration helper had registered
+    for the same sensor, resulting in duplicated entities after upgrades
+    from 0.7.x. This regression test pins the platform to the canonical
+    shape so that mismatch cannot return.
+    """
+    coordinator = MagicMock()
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.entry_id = "test_entry_id"
+
+    subentry = MagicMock()
+    subentry.subentry_id = "sub_xyz"
+    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.title = "Test Account"
+    subentry.data = {}
+
+    description = SensorEntityDescription(
+        key="541448820000000001_offtake",
+        translation_key="electricity_offtake_price_eur_per_kwh",
+    )
+
+    sensor = EngieBeEnergySensor(
+        coordinator=coordinator,
+        subentry=subentry,
+        entity_description=description,
+        ean="541448820000000001_ID1",
+        value_key="ELE_OFFTAKE",
+        slot_code="STD",
+    )
+
+    assert sensor.unique_id == "test_entry_id_sub_xyz_541448820000000001_offtake"

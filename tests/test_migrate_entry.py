@@ -13,7 +13,10 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.engie_be import async_migrate_entry
+from custom_components.engie_be import (
+    _async_heal_stale_subentry_links,
+    async_migrate_entry,
+)
 from custom_components.engie_be.api import EngieBeApiClientError
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
@@ -134,14 +137,16 @@ def _seed_v2_device_and_entities(
         device_id=v2_device.id,
     )
 
-    # Untouched: energy sensor (EAN-embedded key) and auth binary sensor
-    energy_uid = f"{entry.entry_id}_consumption_541448820000000001"
+    # Energy sensor (EAN-embedded key) gets renamed and reparented like the
+    # other subentry-scoped entities. Only the auth binary sensor stays at
+    # the v2 unique_id shape because it is login-scoped, not account-scoped.
+    energy_uid = f"{entry.entry_id}_541448820000000001_offtake"
     old_uids["energy"] = energy_uid
     entity_reg.async_get_or_create(
         "sensor",
         DOMAIN,
         energy_uid,
-        suggested_object_id="engie_be_consumption",
+        suggested_object_id="engie_be_offtake",
         config_entry=entry,
         device_id=v2_device.id,
     )
@@ -361,14 +366,17 @@ async def test_migrate_v2_to_v3_mutates_device_identifiers_in_place(
     assert migrated_device is not None
     assert migrated_device.identifiers == {(DOMAIN, subentry.subentry_id)}
     assert migrated_device.name_by_user == "My ENGIE Hub"
-    assert (
-        subentry.subentry_id
-        in migrated_device.config_entries_subentries[entry.entry_id]
-    )
+    # The post-migration device must carry exactly the subentry link.
+    # If the legacy ``(entry_id, None)`` link is also present, Home
+    # Assistant renders the device twice in the integration card
+    # (regression from 0.8.0b1).
+    assert migrated_device.config_entries_subentries[entry.entry_id] == {
+        subentry.subentry_id,
+    }
 
 
 # ---------------------------------------------------------------------------
-# Entity registry: rename the 9 affected entities, leave energy + auth alone
+# Entity registry: rename every v2 unique_id except authentication
 # ---------------------------------------------------------------------------
 
 
@@ -376,7 +384,7 @@ async def test_migrate_v2_to_v3_renames_only_subentry_scoped_unique_ids(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
-    """Peak/EPEX/calendar unique_ids are rewritten; energy + auth stay put."""
+    """All v2 unique_ids gain a subentry segment; only auth stays login-scoped."""
     entry = _build_v2_entry(hass)
     _v2_device_id, old_uids = _seed_v2_device_and_entities(hass, entry)
 
@@ -391,11 +399,12 @@ async def test_migrate_v2_to_v3_renames_only_subentry_scoped_unique_ids(
 
     subentry = next(iter(entry.subentries.values()))
     entity_reg = er.async_get(hass)
+    device_reg = dr.async_get(hass)
     all_entries = er.async_entries_for_config_entry(entity_reg, entry.entry_id)
     by_uid = {e.unique_id: e for e in all_entries}
 
-    # Renamed entities: old uid is gone, new uid is present, and the
-    # subentry_id is associated.
+    # Renamed entities: old uid is gone, new uid carries the subentry-id
+    # segment, and the entity is attached to the customer-account device.
     keys_to_rename = (
         "captar_monthly_peak_power",
         "captar_monthly_peak_energy",
@@ -407,15 +416,37 @@ async def test_migrate_v2_to_v3_renames_only_subentry_scoped_unique_ids(
         "epex_negative",
         "calendar",
     )
+    customer_device = device_reg.async_get_device(
+        identifiers={(DOMAIN, subentry.subentry_id)},
+    )
+    assert customer_device is not None
     for key in keys_to_rename:
         new_uid = f"{entry.entry_id}_{subentry.subentry_id}_{key}"
         assert old_uids[key] not in by_uid, f"old {key} unique_id should be gone"
         assert new_uid in by_uid, f"new {key} unique_id should exist"
         assert by_uid[new_uid].config_subentry_id == subentry.subentry_id
+        assert by_uid[new_uid].device_id == customer_device.id
 
-    # Energy and auth unique_ids are unchanged (no subentry_id segment added).
-    assert old_uids["energy"] in by_uid
+    # Energy sensors (EAN-embedded keys) are also renamed and stay on the
+    # customer-account device. Only the suffix after ``{entry_id}_`` differs.
+    new_energy_uid = (
+        f"{entry.entry_id}_{subentry.subentry_id}_541448820000000001_offtake"
+    )
+    assert old_uids["energy"] not in by_uid
+    assert new_energy_uid in by_uid
+    assert by_uid[new_energy_uid].config_subentry_id == subentry.subentry_id
+    assert by_uid[new_energy_uid].device_id == customer_device.id
+
+    # Auth binary sensor keeps its v2 unique_id (login-scoped) and is
+    # reparented onto a dedicated login device so it survives the
+    # device-link cleanup that drops the legacy ``(entry_id, None)`` link.
+    login_device = device_reg.async_get_device(
+        identifiers={(DOMAIN, f"login_{entry.entry_id}")},
+    )
+    assert login_device is not None
     assert old_uids["auth"] in by_uid
+    assert by_uid[old_uids["auth"]].device_id == login_device.id
+    assert by_uid[old_uids["auth"]].config_subentry_id is None
 
 
 # ---------------------------------------------------------------------------
@@ -514,3 +545,82 @@ async def test_migrate_v2_to_v3_is_idempotent_when_run_again(
     assert entry.version == first_version == 3
     assert dict(entry.data) == first_data
     assert dict(entry.subentries) == first_subentries
+
+
+# ---------------------------------------------------------------------------
+# Setup-time heal: drop the legacy (entry_id, None) link from 0.8.0b1 installs
+# ---------------------------------------------------------------------------
+
+
+async def test_heal_stale_subentry_links_drops_legacy_entry_only_link(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A device left with both ``None`` and subentry links must be healed."""
+    entry = _build_v2_entry(hass)
+    _seed_v2_device_and_entities(hass, entry)
+    relations = _load_relations_fixture()
+    client = _make_relations_client(relations=relations)
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        await async_migrate_entry(hass, entry)
+
+    subentry = next(iter(entry.subentries.values()))
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_device(
+        identifiers={(DOMAIN, subentry.subentry_id)},
+    )
+    assert device is not None
+
+    # Re-introduce the 0.8.0b1 bug shape: add the bare entry-only link
+    # alongside the existing entry+subentry link. This mirrors what
+    # ``add_config_subentry_id`` did in the old migration code.
+    device_reg.async_update_device(device.id, add_config_entry_id=entry.entry_id)
+    bugged = device_reg.async_get(device.id)
+    assert bugged is not None
+    assert bugged.config_entries_subentries[entry.entry_id] == {
+        None,
+        subentry.subentry_id,
+    }
+
+    await _async_heal_stale_subentry_links(hass, entry)
+
+    healed = device_reg.async_get(device.id)
+    assert healed is not None
+    assert healed.config_entries_subentries[entry.entry_id] == {
+        subentry.subentry_id,
+    }
+
+
+async def test_heal_stale_subentry_links_is_noop_on_healthy_device(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Running the heal on a clean install must not change anything."""
+    entry = _build_v2_entry(hass)
+    _seed_v2_device_and_entities(hass, entry)
+    relations = _load_relations_fixture()
+    client = _make_relations_client(relations=relations)
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        await async_migrate_entry(hass, entry)
+
+    subentry = next(iter(entry.subentries.values()))
+    device_reg = dr.async_get(hass)
+    device = device_reg.async_get_device(
+        identifiers={(DOMAIN, subentry.subentry_id)},
+    )
+    assert device is not None
+    before = dict(device.config_entries_subentries)
+
+    await _async_heal_stale_subentry_links(hass, entry)
+
+    after_device = device_reg.async_get(device.id)
+    assert after_device is not None
+    assert dict(after_device.config_entries_subentries) == before

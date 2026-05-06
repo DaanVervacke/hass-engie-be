@@ -444,10 +444,18 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
         self._ean = ean
         self._value_key = value_key
         self._slot_code = slot_code
-        # EAN is already embedded in entity_description.key, so the key
-        # is naturally unique across subentries on the same login.
+        # Subentry-scoped unique IDs match every other v3 customer-account
+        # entity (peaks, calendar, EPEX). Energy descriptors already embed
+        # the EAN, but keeping the subentry segment in the unique_id keeps
+        # the schema uniform across platforms and avoids collisions if two
+        # subentries on the same login ever share an EAN (e.g. address
+        # corrections at ENGIE that reuse the meter ID under a new CAN).
+        # The v2->v3 migration helper rewrites legacy
+        # ``{entry_id}_{key}`` energy unique_ids to this shape, so 0.7.x
+        # upgrades land on the right registry rows on first boot.
         self._attr_unique_id = (
-            f"{coordinator.config_entry.entry_id}_{entity_description.key}"
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_{entity_description.key}"
         )
         # Suggest a CAN-prefixed entity_id slug so price sensors for
         # different customer accounts on one login don't collide on

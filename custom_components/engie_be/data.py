@@ -60,11 +60,21 @@ class EngieBeSubentryData:
     coordinator, the per-account service-points lookup, and a peaks
     store keyed off the subentry id so historical peaks survive across
     restarts independently per account.
+
+    ``is_dynamic_override`` is set from the energy-contracts endpoint
+    during setup and takes precedence over the legacy payload-shape
+    heuristic when not None. It survives across coordinator refreshes
+    so a transient outage on the prices endpoint never silently flips
+    the account back to fixed. ``energy_contracts_payload`` retains the
+    raw contracts response for diagnostics so support bundles can
+    correlate per-EAN product codes with the detection result.
     """
 
     coordinator: EngieBeDataUpdateCoordinator
     service_points: dict[str, str] = field(default_factory=dict)
     peaks_store: EngieBePeaksStore | None = field(default=None)
+    is_dynamic_override: bool | None = field(default=None)
+    energy_contracts_payload: dict[str, Any] | None = field(default=None)
 
 
 @dataclass
