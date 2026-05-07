@@ -142,6 +142,40 @@ def test_monthly_peak_value_returns_none_when_peaks_missing() -> None:
     assert sensor.native_value is None
 
 
+def test_monthly_peak_value_returns_none_when_field_missing() -> None:
+    """
+    Missing or non-numeric peak fields yield ``None`` rather than raising.
+
+    Exercises the three defensive branches that protect against ENGIE
+    payload drift: the ``peakOfTheMonth`` dict is present but the
+    requested field is absent, ``None``, or non-coercible (a list / a
+    non-numeric string).
+    """
+    base = _wrap(_peaks())
+    # 1. Field absent entirely -> None
+    base["data"]["peakOfTheMonth"] = {"start": "2026-04-15T18:00:00+02:00"}
+    coordinator = _make_coordinator({"peaks": base})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
+    sensor = EngieBeMonthlyPeakValueSensor(
+        coordinator,
+        subentry,
+        sensors[0].entity_description,
+        field="peakKW",
+    )
+    assert sensor.native_value is None
+
+    # 2. Field present but non-coercible to float (TypeError on float([...]))
+    base["data"]["peakOfTheMonth"] = {"peakKW": [1, 2, 3]}
+    coordinator.data = {"peaks": base}
+    assert sensor.native_value is None
+
+    # 3. Field present but unparseable string (ValueError on float("abc"))
+    base["data"]["peakOfTheMonth"] = {"peakKW": "abc"}
+    coordinator.data = {"peaks": base}
+    assert sensor.native_value is None
+
+
 # ---------------------------------------------------------------------------
 # Monthly timestamp sensor
 # ---------------------------------------------------------------------------

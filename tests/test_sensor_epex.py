@@ -15,8 +15,10 @@ from custom_components.engie_be.sensor import (
     _EPEX_CURRENT,
     _EPEX_HIGH_TODAY,
     _EPEX_LOW_TODAY,
+    _EPEX_NEXT_HOUR,
     EngieBeEpexCurrentSensor,
     EngieBeEpexExtremaSensor,
+    EngieBeEpexNextHourSensor,
     _build_epex_sensors,
 )
 
@@ -104,9 +106,9 @@ def _make_epex_coordinator(
 # ---------------------------------------------------------------------------
 
 
-def test_build_epex_sensors_creates_three_entities() -> None:
+def test_build_epex_sensors_creates_four_entities() -> None:
     """
-    The builder always returns the three documented EPEX sensors.
+    The builder always returns the four documented EPEX sensors.
 
     The set + count is part of the public contract; a regression here
     would break user dashboards. Unique IDs are subentry-scoped because
@@ -120,7 +122,12 @@ def test_build_epex_sensors_creates_three_entities() -> None:
     sensors = _build_epex_sensors(coordinator, subentry)
 
     keys = {s.entity_description.key for s in sensors}
-    assert keys == {"epex_current", "epex_low_today", "epex_high_today"}
+    assert keys == {
+        "epex_current",
+        "epex_low_today",
+        "epex_high_today",
+        "epex_next_hour",
+    }
     for sensor in sensors:
         assert sensor.unique_id == (
             f"test_entry_id_sub_xyz_{sensor.entity_description.key}"
@@ -136,7 +143,7 @@ def test_build_epex_sensors_runs_without_payload() -> None:
     """
     coordinator = _make_epex_coordinator(None)
     subentry = _make_subentry()
-    assert len(_build_epex_sensors(coordinator, subentry)) == 3
+    assert len(_build_epex_sensors(coordinator, subentry)) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +334,8 @@ def test_low_today_sensor_selects_minimum_of_today_only() -> None:
         today=[(8, 0.115), (14, -0.0123), (18, 0.19840)],
         tomorrow=[(14, -0.5)],  # Lower than today, but must be ignored.
     )
-    coordinator = _make_epex_coordinator(payload)
+    last_fetch = datetime(2026, 5, 4, 13, 7, 21, tzinfo=UTC)
+    coordinator = _make_epex_coordinator(payload, last_fetch=last_fetch)
     subentry = _make_subentry()
     sensor = EngieBeEpexExtremaSensor(
         coordinator,
@@ -346,6 +354,7 @@ def test_low_today_sensor_selects_minimum_of_today_only() -> None:
     assert attrs["slot_start"] == "2026-05-04T14:00:00+02:00"
     assert attrs["slot_end"] == "2026-05-04T15:00:00+02:00"
     assert attrs["slot_duration_minutes"] == 60
+    assert attrs["last_fetched"] == last_fetch.isoformat()
 
 
 def test_high_today_sensor_selects_maximum_of_today_only() -> None:
@@ -420,6 +429,26 @@ def test_extrema_sensor_rejects_invalid_mode() -> None:
         )
 
 
+def test_extrema_sensor_native_value_is_none_without_payload() -> None:
+    """
+    ``native_value`` returns ``None`` when no payload is cached.
+
+    ``available`` already gates the entity to ``unavailable`` in this
+    state, but the value path is exercised independently to defend
+    against future changes that decouple the two (e.g. an availability
+    refactor that no longer short-circuits on payload presence).
+    """
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexExtremaSensor(
+        coordinator,
+        subentry,
+        _EPEX_LOW_TODAY,
+        mode="min",
+    )
+    assert sensor.native_value is None
+
+
 # ---------------------------------------------------------------------------
 # Entity description metadata
 # ---------------------------------------------------------------------------
@@ -435,7 +464,7 @@ def test_epex_sensors_use_eur_per_kwh_unit_and_measurement_state_class() -> None
     State class must be MEASUREMENT (not TOTAL_INCREASING) because
     wholesale prices can go negative and reset arbitrarily.
     """
-    for desc in (_EPEX_CURRENT, _EPEX_LOW_TODAY, _EPEX_HIGH_TODAY):
+    for desc in (_EPEX_CURRENT, _EPEX_LOW_TODAY, _EPEX_HIGH_TODAY, _EPEX_NEXT_HOUR):
         assert desc.native_unit_of_measurement == "EUR/kWh"
         assert desc.state_class == SensorStateClass.MEASUREMENT
         assert desc.device_class is None
@@ -444,3 +473,98 @@ def test_epex_sensors_use_eur_per_kwh_unit_and_measurement_state_class() -> None
         assert desc.suggested_display_precision == 4
         # Translation key must match strings.json entries.
         assert desc.translation_key == desc.key
+
+
+# ---------------------------------------------------------------------------
+# Next-hour sensor
+# ---------------------------------------------------------------------------
+
+
+def test_next_hour_sensor_picks_slot_covering_now_plus_one_hour() -> None:
+    """
+    ``native_value`` must return the price of the slot containing ``now+1h``.
+
+    With the 15:30 Brussels anchor, ``now+1h`` is 16:30, which falls
+    inside the 16:00 slot. The 15:00 slot (current) and the 17:00 slot
+    must NOT be selected -- a regression here would either re-publish
+    the current price or skip a slot ahead.
+    """
+    payload = _build_payload(
+        [
+            (15, 0.02565),
+            (16, 0.08040),
+            (17, 0.11200),
+        ],
+    )
+    last_fetch = datetime(2026, 5, 4, 13, 7, 21, tzinfo=UTC)
+    coordinator = _make_epex_coordinator(payload, last_fetch=last_fetch)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNextHourSensor(coordinator, subentry, _EPEX_NEXT_HOUR)
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.utcnow",
+        return_value=_NOW_UTC,
+    ):
+        assert sensor.native_value == pytest.approx(0.08040)
+        attrs = sensor.extra_state_attributes
+
+    assert attrs["slot_start"] == "2026-05-04T16:00:00+02:00"
+    assert attrs["slot_end"] == "2026-05-04T17:00:00+02:00"
+    assert attrs["slot_duration_minutes"] == 60
+    assert attrs["last_fetched"] == last_fetch.isoformat()
+
+
+def test_next_hour_sensor_crosses_midnight_into_tomorrow() -> None:
+    """
+    ``next_hour`` must follow into tomorrow's slate when ``now+1h`` does.
+
+    Late-evening anchor (23:30 Brussels) means ``now+1h`` is 00:30 the
+    next day, so the sensor must surface tomorrow's 00:00 slot rather
+    than fall back to ``None``.
+    """
+    payload = _build_payload(
+        today=[(23, 0.07000)],
+        tomorrow=[(0, 0.04500), (1, 0.04200)],
+    )
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNextHourSensor(coordinator, subentry, _EPEX_NEXT_HOUR)
+
+    late_brussels = datetime(2026, 5, 4, 23, 30, 0, tzinfo=_BRUSSELS)
+    late_utc = late_brussels.astimezone(UTC)
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.utcnow",
+        return_value=late_utc,
+    ):
+        assert sensor.native_value == pytest.approx(0.04500)
+
+
+def test_next_hour_sensor_returns_none_when_no_covering_slot() -> None:
+    """
+    No covering slot -> ``None`` value, empty attributes.
+
+    If the cached EPEX payload is too old (or tomorrow's slate is not
+    yet published in the late-evening window), ``native_value`` is
+    ``None`` and attributes are empty so we don't surface a stale slot.
+    """
+    # Slots only cover 14:00 and 15:00; ``now+1h`` (16:30) falls outside.
+    payload = _build_payload([(14, -0.0123), (15, 0.02565)])
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNextHourSensor(coordinator, subentry, _EPEX_NEXT_HOUR)
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.utcnow",
+        return_value=_NOW_UTC,
+    ):
+        assert sensor.native_value is None
+        assert sensor.extra_state_attributes == {}
+
+
+def test_next_hour_sensor_native_value_is_none_when_unavailable() -> None:
+    """No payload -> native_value None (mirrors the current sensor)."""
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNextHourSensor(coordinator, subentry, _EPEX_NEXT_HOUR)
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}

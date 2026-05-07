@@ -103,17 +103,18 @@ event description.
 
 ### Dynamic tariff (EPEX-indexed)
 
-Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get three
+Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get four
 extra sensors that surface day-ahead wholesale prices from the public EPEX
 endpoint.
 
 | Sensor | Entity ID |
 |---|---|
 | EPEX current price | `sensor.engie_belgium_epex_current_price` |
+| EPEX next hour price | `sensor.engie_belgium_epex_next_hour_price` |
 | EPEX lowest price today | `sensor.engie_belgium_epex_lowest_price_today` |
 | EPEX highest price today | `sensor.engie_belgium_epex_highest_price_today` |
 
-All three sensors are in **EUR/kWh** (4 decimals). Tomorrow's prices appear
+All four sensors are in **EUR/kWh** (4 decimals). Tomorrow's prices appear
 once ENGIE publishes them, typically shortly after 13:15 Europe/Brussels.
 
 The current-price sensor exposes the full today / tomorrow slate as
