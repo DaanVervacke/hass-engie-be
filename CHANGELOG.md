@@ -7,12 +7,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-### Chore
-- **CI now enforces a minimum test coverage of 85%.** The test
-  workflow fails when overall coverage of `custom_components.engie_be`
-  drops below this floor, protecting against regressions that quietly
-  remove tested code paths. Internal change only, with no
-  user-visible impact.
+### Added
+- **New `EPEX next hour price` sensor** for dynamic-tariff
+  electricity accounts. Shows the wholesale electricity price one
+  hour from now, so you can run appliances when the upcoming hour
+  is cheap.
 
 ## [0.8.1] - 2026-05-06
 

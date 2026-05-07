@@ -565,13 +565,21 @@ _EPEX_HIGH_TODAY = SensorEntityDescription(
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=_EPEX_PRECISION,
 )
+_EPEX_NEXT_HOUR = SensorEntityDescription(
+    key="epex_next_hour",
+    translation_key="epex_next_hour",
+    icon="mdi:cash-fast",
+    native_unit_of_measurement=_EPEX_UNIT,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=_EPEX_PRECISION,
+)
 
 
 def _build_epex_sensors(
     epex_coordinator: EngieBeEpexCoordinator,
     subentry: ConfigSubentry,
 ) -> list[SensorEntity]:
-    """Build the three shared EPEX day-ahead sensors for one subentry."""
+    """Build the four shared EPEX day-ahead sensors for one subentry."""
     return [
         EngieBeEpexCurrentSensor(epex_coordinator, subentry, _EPEX_CURRENT),
         EngieBeEpexExtremaSensor(
@@ -580,6 +588,7 @@ def _build_epex_sensors(
         EngieBeEpexExtremaSensor(
             epex_coordinator, subentry, _EPEX_HIGH_TODAY, mode="max"
         ),
+        EngieBeEpexNextHourSensor(epex_coordinator, subentry, _EPEX_NEXT_HOUR),
     ]
 
 
@@ -684,6 +693,50 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
                 self.coordinator.last_update_success_time.isoformat()
             )
         return attrs
+
+
+class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
+    """EPEX day-ahead price for the slot starting one hour from now."""
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the EUR/kWh price of the slot covering ``now + 1h``."""
+        payload = _epex_payload(self.coordinator)
+        if payload is None:
+            return None
+        target = dt_util.utcnow() + timedelta(hours=1)
+        for slot in payload.slots:
+            if slot.start <= target < slot.end:
+                return slot.value_eur_per_kwh
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """
+        Expose the start/end of the slot whose price is being reported.
+
+        Intentionally narrower than :class:`EngieBeEpexCurrentSensor`'s
+        attribute set: this is a point lookup for one specific future
+        slot, not a today/tomorrow slate browser, so the per-day arrays
+        and market metadata are omitted to keep the entity focused.
+        """
+        payload = _epex_payload(self.coordinator)
+        if payload is None:
+            return {}
+        target = dt_util.utcnow() + timedelta(hours=1)
+        for slot in payload.slots:
+            if slot.start <= target < slot.end:
+                attrs: dict[str, Any] = {
+                    "slot_start": slot.start.isoformat(),
+                    "slot_end": slot.end.isoformat(),
+                    "slot_duration_minutes": slot.duration_minutes,
+                }
+                if self.coordinator.last_update_success_time is not None:
+                    attrs["last_fetched"] = (
+                        self.coordinator.last_update_success_time.isoformat()
+                    )
+                return attrs
+        return {}
 
 
 class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):

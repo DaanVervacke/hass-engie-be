@@ -255,6 +255,9 @@
             },
             "epex_high_today": {
                 "name": "EPEX highest price today"
+            },
+            "epex_next_hour": {
+                "name": "EPEX next hour price"
             }
         },
         "binary_sensor": {
