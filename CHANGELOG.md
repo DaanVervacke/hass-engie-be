@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Structured DEBUG-level request/response logging** in the ENGIE
+  Belgium API client. Each HTTP call is bracketed with paired `→` /
+  `←` (or `✗` on failure) log lines tagged with an 8-character
+  correlation ID and elapsed milliseconds. URL query parameters,
+  request headers, request bodies, and response bodies are recursively
+  redacted: tokens are fully masked, while emails, EAN identifiers,
+  and customer IDs are partially masked (last 4 chars preserved).
+  HTML bodies are truncated to 120 characters to avoid dumping live
+  auth pages full of CSRF tokens. No behaviour changes; logging is
+  only emitted when the integration logger is at DEBUG.
+
+### Internal
+- Extracted `_log_request` / `_log_response` / `_log_error` helpers
+  in `api.py` so the `_api_wrapper` and EPEX inline paths share a
+  single source of truth for the `→ / ← / ✗` log format. Documented
+  the conscious divergence from `homeassistant.components.diagnostics`
+  `async_redact_data` (we need case-insensitive header matching and
+  tail-preserving partial masks for greppable PII identifiers).
+
 ## [0.8.2] - 2026-05-07
 
 ### Added

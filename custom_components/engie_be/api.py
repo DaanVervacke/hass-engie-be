@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
+import logging
 import os
 import re
 import socket
+import time
 import uuid
 from base64 import urlsafe_b64encode
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any, NoReturn
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import aiohttp
 
@@ -126,6 +131,407 @@ def _extract_from_body(body: str, pattern: str) -> str | None:
     """Extract a value from an HTML body using a regex pattern."""
     match = re.search(pattern, body)
     return match.group(1) if match else None
+
+
+# ---------------------------------------------------------------------------
+# Debug-logging helpers
+# ---------------------------------------------------------------------------
+#
+# Centralised redaction so DEBUG-level request/response logging can never
+# leak tokens, credentials, or PII.  Everything below is gated behind
+# ``LOGGER.isEnabledFor(logging.DEBUG)`` at the call sites so the cost on
+# the hot token-refresh path is one branch when debug is off.
+#
+# We deliberately do NOT use ``homeassistant.components.diagnostics``
+# ``async_redact_data`` even though it has overlapping recursive-walk
+# semantics.  Two features we need that it lacks:
+#   1. Case-insensitive key matching -- HTTP headers arrive with
+#      arbitrary casing (``Authorization`` vs ``authorization``) and we
+#      want a single key set to match both.
+#   2. Partial masking with tail-preservation (``***0001``) -- the
+#      ENGIE API returns EAN, customer-account, and similar identifiers
+#      whose tail is the only useful greppable token in support logs.
+#      ``async_redact_data`` only does full replacement
+#      (``"**REDACTED**"``).
+# Audit finding 2 documents this divergence; revisit if HA core grows
+# either feature upstream.
+
+_REDACTED = "***"
+
+# Header keys whose values must never be logged verbatim.  Compared
+# case-insensitively against header names actually sent on the wire.
+_REDACT_HEADER_KEYS: frozenset[str] = frozenset(
+    {
+        "authorization",
+        "cookie",
+        "set-cookie",
+        "x-csrf-token",
+    }
+)
+
+# JSON / form-body keys whose values are credentials, tokens, OAuth
+# secrets, or PKCE material.  Fully masked (``***``) recursively in any
+# nested dict.
+_REDACT_BODY_KEYS: frozenset[str] = frozenset(
+    {
+        "password",
+        "code",
+        "otp",
+        "access_token",
+        "refresh_token",
+        "id_token",
+        "code_verifier",
+        "code_challenge",
+        "client_secret",
+    }
+)
+
+# JSON / form-body keys carrying account-identifying PII surfaced by
+# the ENGIE API (relations, contracts, prices, peaks, service-points).
+# These are partially masked via ``_redact_text`` so log lines stay
+# greppable (e.g. ``***0001`` for an EAN tail) without leaking the full
+# identifier.  Compared case-insensitively against the JSON keys
+# returned on the wire.
+_PARTIAL_MASK_BODY_KEYS: frozenset[str] = frozenset(
+    {
+        # Identifiers
+        "ean",
+        "customeraccountnumber",
+        "businessagreementnumber",
+        "premisesnumber",
+        # Contact / personal
+        "name",
+        "firstname",
+        "lastname",
+        "email",
+        "emailaddress",
+        "phonenumber",
+        "mobilephonenumber",
+        # Address components
+        "street",
+        "housenumber",
+        "postalcode",
+        "city",
+    }
+)
+
+# Query-string keys carrying OAuth/PKCE state worth masking.  ``state``
+# is sensitive because it gates the auth flow; the verifier and
+# challenge are PKCE secrets.
+_REDACT_QUERY_KEYS: frozenset[str] = frozenset(
+    {
+        "code",
+        "state",
+        "code_verifier",
+        "code_challenge",
+        "nonce",
+    }
+)
+
+# Maximum HTML preview length kept in DEBUG logs.  Auth-flow HTML
+# responses are 50-200 KB and contain live CSRF tokens; we never log
+# the body in full.
+_HTML_PREVIEW_MAX = 120
+
+
+def _redact_text(value: str | None, keep: int = 4) -> str:
+    """
+    Mask all but the trailing *keep* characters of *value*.
+
+    Used for emails, EAN, customer-account numbers, and refresh-token
+    tails so log lines remain greppable without leaking the secret.
+    ``None`` and empty values are passed through unchanged.
+    """
+    if value is None:
+        return "<none>"
+    if not value:
+        return ""
+    if len(value) <= keep:
+        return _REDACTED
+    return f"{_REDACTED}{value[-keep:]}"
+
+
+def _redact_mapping(
+    data: Mapping[str, Any],
+    keys: frozenset[str],
+    partial_keys: frozenset[str] | None = None,
+) -> dict[str, Any]:
+    """
+    Return a copy of *data* with sensitive values masked.
+
+    Values whose key (case-insensitive) is in *keys* are replaced by
+    ``***``.  Values whose key is in *partial_keys* are passed through
+    ``_redact_text`` so the trailing 4 chars are kept for greppability
+    (intended for account-identifying PII like EAN / customer numbers
+    / addresses).  Dict values are recursed into; lists of dicts are
+    walked too.  Non-mapping inputs are returned as ``{}``.
+    """
+    if not isinstance(data, Mapping):
+        return {}
+    partial = partial_keys or frozenset()
+    result: dict[str, Any] = {}
+    for key, value in data.items():
+        key_lc = key.lower()
+        if key_lc in keys:
+            result[key] = _REDACTED
+        elif key_lc in partial:
+            # Partial-mask scalars; recurse into nested dicts/lists so
+            # an "address" sub-dict's "street" still gets masked.
+            if isinstance(value, str):
+                result[key] = _redact_text(value)
+            elif isinstance(value, (int, float)):
+                result[key] = _redact_text(str(value))
+            elif isinstance(value, Mapping):
+                result[key] = _redact_mapping(value, keys, partial)
+            elif isinstance(value, list):
+                result[key] = [
+                    _redact_mapping(item, keys, partial)
+                    if isinstance(item, Mapping)
+                    else (_redact_text(item) if isinstance(item, str) else item)
+                    for item in value
+                ]
+            else:
+                result[key] = _REDACTED
+        elif isinstance(value, Mapping):
+            result[key] = _redact_mapping(value, keys, partial)
+        elif isinstance(value, list):
+            result[key] = [
+                _redact_mapping(item, keys, partial)
+                if isinstance(item, Mapping)
+                else item
+                for item in value
+            ]
+        else:
+            result[key] = value
+    return result
+
+
+def _redact_url(url: str) -> str:
+    """
+    Return *url* with sensitive query-string parameters redacted.
+
+    Path and host are left intact (they are needed to identify which
+    endpoint was hit).  Only the query string is rewritten.
+    """
+    if "?" not in url:
+        return url
+    parts = urlsplit(url)
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    redacted_pairs = [
+        (k, _REDACTED if k.lower() in _REDACT_QUERY_KEYS else v) for k, v in pairs
+    ]
+    return urlunsplit(parts._replace(query=urlencode(redacted_pairs)))
+
+
+def _redact_body(body: Any, content_type: str | None) -> str:  # noqa: PLR0911, PLR0912
+    """
+    Render *body* for DEBUG logs with credentials masked.
+
+    JSON bodies are parsed, then both the credential keys
+    (``_REDACT_BODY_KEYS``, fully masked) and the PII keys
+    (``_PARTIAL_MASK_BODY_KEYS``, last-4-chars preserved) are walked
+    recursively before re-serialisation.
+    ``application/x-www-form-urlencoded`` strings are parsed, redacted,
+    and re-rendered.  ``text/html`` (or anything HTML-shaped) is
+    truncated to ``_HTML_PREVIEW_MAX`` chars to avoid dumping live
+    auth pages full of CSRF tokens.  Anything else is rendered with
+    ``repr`` and returned as-is (no length cap; per integration debug
+    policy non-HTML bodies are logged in full).
+    """
+    # NB: do NOT collapse to ``body in {b"", ""}`` -- ``body`` may be a
+    # dict / list (unhashable) which raises TypeError. The empty-body
+    # tests cover this; ruff PLR1714 disagrees but is wrong here.
+    if body is None or body == b"" or body == "":  # noqa: PLR1714
+        return "<empty>"
+
+    ct = (content_type or "").lower()
+
+    # JSON in / JSON out.
+    if isinstance(body, (dict, list)):
+        try:
+            return (
+                json.dumps(
+                    _redact_mapping(body, _REDACT_BODY_KEYS, _PARTIAL_MASK_BODY_KEYS),
+                    default=str,
+                )
+                if isinstance(body, Mapping)
+                else json.dumps(
+                    [
+                        _redact_mapping(
+                            item, _REDACT_BODY_KEYS, _PARTIAL_MASK_BODY_KEYS
+                        )
+                        if isinstance(item, Mapping)
+                        else item
+                        for item in body
+                    ],
+                    default=str,
+                )
+            )
+        except (TypeError, ValueError):
+            return repr(body)
+
+    if isinstance(body, bytes):
+        try:
+            body = body.decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - defensive; shouldn't happen with errors="replace"
+            return f"<{len(body)} bytes binary>"
+
+    if not isinstance(body, str):
+        return repr(body)
+
+    # HTML response: truncated preview only.
+    if "html" in ct or body.lstrip().startswith(("<!DOCTYPE", "<html", "<HTML")):
+        preview = body[:_HTML_PREVIEW_MAX]
+        return f"<html len={len(body)} preview={preview!r}>"
+
+    # JSON string: try to parse + redact.
+    if "json" in ct or body.lstrip().startswith(("{", "[")):
+        try:
+            parsed = json.loads(body)
+        except ValueError:
+            return body
+        if isinstance(parsed, Mapping):
+            return json.dumps(
+                _redact_mapping(parsed, _REDACT_BODY_KEYS, _PARTIAL_MASK_BODY_KEYS),
+                default=str,
+            )
+        if isinstance(parsed, list):
+            return json.dumps(
+                [
+                    _redact_mapping(item, _REDACT_BODY_KEYS, _PARTIAL_MASK_BODY_KEYS)
+                    if isinstance(item, Mapping)
+                    else item
+                    for item in parsed
+                ],
+                default=str,
+            )
+        return body
+
+    # Form-encoded: parse + redact.  Only credential keys are masked
+    # here (form bodies are used for OAuth / login posts, not for
+    # PII-bearing API responses).
+    if "form-urlencoded" in ct or ("=" in body and "&" in body and " " not in body):
+        try:
+            pairs = parse_qsl(body, keep_blank_values=True)
+        except ValueError:
+            return body
+        if pairs:
+            return urlencode(
+                [
+                    (k, _REDACTED if k.lower() in _REDACT_BODY_KEYS else v)
+                    for k, v in pairs
+                ]
+            )
+
+    # Plain text: passthrough.
+    return body
+
+
+def _new_req_id() -> str:
+    """Return an 8-char correlation ID for one request/response pair."""
+    return uuid.uuid4().hex[:8]
+
+
+# ---------------------------------------------------------------------------
+# Structured request / response logging helpers
+# ---------------------------------------------------------------------------
+#
+# Both ``_api_wrapper`` and the inline EPEX path emit identical
+# ``→ / ← / ✗`` lines.  Centralising them here avoids the two paths
+# drifting (audit finding 5).  Callers gate on
+# ``LOGGER.isEnabledFor(logging.DEBUG)`` themselves so that on the
+# disabled-debug hot path we pay one branch, not three; the helpers
+# therefore assume DEBUG is on and never re-check.
+
+
+def _log_request(  # noqa: PLR0913
+    req_id: str,
+    method: str,
+    url: str,
+    *,
+    params: Mapping[str, Any] | None,
+    headers: Mapping[str, str] | None,
+    body: Any,
+) -> None:
+    """Emit the ``→`` line for an outgoing request."""
+    req_ct = (headers or {}).get("Content-Type") or (headers or {}).get("content-type")
+    LOGGER.debug(
+        "→ %s %s [req_id=%s] params=%s headers=%s body=%s",
+        method,
+        _redact_url(url),
+        req_id,
+        _redact_mapping(params or {}, _REDACT_QUERY_KEYS),
+        _redact_mapping(headers or {}, _REDACT_HEADER_KEYS),
+        _redact_body(body, req_ct) if body is not None else "<empty>",
+    )
+
+
+def _log_response(  # noqa: PLR0913
+    req_id: str,
+    method: str,
+    url: str,
+    *,
+    status: int,
+    started: float,
+    ct: str | None,
+    body: Any,
+) -> None:
+    """Emit the ``←`` line for a successful response."""
+    LOGGER.debug(
+        "← %s %s [req_id=%s] status=%d in %.0fms ct=%s body=%s",
+        method,
+        _redact_url(url),
+        req_id,
+        status,
+        (time.monotonic() - started) * 1000,
+        ct,
+        _redact_body(body, ct),
+    )
+
+
+def _log_error(  # noqa: PLR0913
+    req_id: str,
+    method: str,
+    url: str,
+    started: float,
+    *,
+    status: int | None = None,
+    body: Any = None,
+    ct: str | None = None,
+    exc_name: str | None = None,
+    suffix: str | None = None,
+    exc_info: bool = False,
+) -> None:
+    """
+    Emit the ``✗`` line for any error path.
+
+    The format is built dynamically from whichever of *status* /
+    *exc_name* / *body* / *suffix* is supplied so a single helper
+    covers HTTP-error, timeout, ClientError, EPEX-404, and bare-
+    ``Exception`` variants without forcing each call site to assemble
+    the format string.
+    """
+    parts = ["✗ %s %s [req_id=%s]"]
+    args: list[Any] = [method, _redact_url(url), req_id]
+
+    if status is not None:
+        parts.append("status=%d")
+        args.append(status)
+    if exc_name is not None:
+        parts.append("%s")
+        args.append(exc_name)
+
+    parts.append("in %.0fms")
+    args.append((time.monotonic() - started) * 1000)
+
+    if body is not None:
+        parts.append("body=%s")
+        args.append(_redact_body(body, ct))
+
+    fmt = " ".join(parts)
+    if suffix:
+        fmt = f"{fmt} {suffix}"
+    LOGGER.debug(fmt, *args, exc_info=exc_info)
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +653,9 @@ class EngieBeApiClient:
             "User-Agent": USER_AGENT_NATIVE,
         }
 
+        debug_on = LOGGER.isEnabledFor(logging.DEBUG)
+        old_refresh_tail = _redact_text(self.refresh_token) if debug_on else ""
+
         result = await self._api_wrapper(
             session=self._session,
             method="POST",
@@ -258,6 +667,15 @@ class EngieBeApiClient:
 
         self.access_token = result["access_token"]
         self.refresh_token = result["refresh_token"]
+
+        if debug_on:
+            LOGGER.debug(
+                "Token refresh: rotated refresh_token %s → %s, expires_in=%s",
+                old_refresh_tail,
+                _redact_text(self.refresh_token),
+                result.get("expires_in"),
+            )
+
         return self.access_token, self.refresh_token
 
     # ------------------------------------------------------------------
@@ -479,6 +897,20 @@ class EngieBeApiClient:
         # status visibility to distinguish 404 from real failures, so
         # call session.request directly here -- mirroring _api_wrapper's
         # error mapping but without its 401/403 handling.
+        debug_on = LOGGER.isEnabledFor(logging.DEBUG)
+        req_id = _new_req_id() if debug_on else ""
+        started = time.monotonic() if debug_on else 0.0
+
+        if debug_on:
+            _log_request(
+                req_id,
+                "GET",
+                EPEX_BASE_URL,
+                params=params,
+                headers=headers,
+                body=None,
+            )
+
         try:
             async with asyncio.timeout(30):
                 response = await self._session.request(
@@ -490,6 +922,15 @@ class EngieBeApiClient:
                 )
                 status = response.status
                 if status == HTTPStatus.NOT_FOUND:
+                    if debug_on:
+                        _log_error(
+                            req_id,
+                            "GET",
+                            EPEX_BASE_URL,
+                            started,
+                            status=status,
+                            suffix="(EPEX not yet published)",
+                        )
                     msg = (
                         "EPEX prices not yet published for "
                         f"{params['from']}..{params['to']}"
@@ -497,18 +938,62 @@ class EngieBeApiClient:
                     raise EpexNotPublishedError(msg)
                 if status >= HTTPStatus.BAD_REQUEST:
                     body_preview = (await response.text())[:200]
+                    if debug_on:
+                        _log_error(
+                            req_id,
+                            "GET",
+                            EPEX_BASE_URL,
+                            started,
+                            status=status,
+                            body=body_preview,
+                            ct=response.headers.get("Content-Type")
+                            if hasattr(response, "headers")
+                            else None,
+                        )
                     msg = f"EPEX endpoint returned HTTP {status}: {body_preview}"
                     raise EngieBeApiClientCommunicationError(msg)
-                return await response.json()
+                result = await response.json()
+                if debug_on:
+                    resp_ct = (
+                        response.headers.get("Content-Type")
+                        if hasattr(response, "headers")
+                        else None
+                    )
+                    _log_response(
+                        req_id,
+                        "GET",
+                        EPEX_BASE_URL,
+                        status=status,
+                        started=started,
+                        ct=resp_ct,
+                        body=result,
+                    )
+                return result
         except EngieBeApiClientError:
             raise
         except TimeoutError as exception:
+            if debug_on:
+                _log_error(
+                    req_id,
+                    "GET",
+                    EPEX_BASE_URL,
+                    started,
+                    exc_name="timeout",
+                )
             msg = (
                 "Timeout communicating with EPEX endpoint "
                 f"({exception.__class__.__name__})"
             )
             raise EngieBeApiClientCommunicationError(msg) from exception
         except (aiohttp.ClientError, socket.gaierror) as exception:
+            if debug_on:
+                _log_error(
+                    req_id,
+                    "GET",
+                    EPEX_BASE_URL,
+                    started,
+                    exc_name=exception.__class__.__name__,
+                )
             msg = (
                 f"Error communicating with EPEX endpoint "
                 f"({exception.__class__.__name__})"
@@ -933,7 +1418,7 @@ class EngieBeApiClient:
     # Generic request wrapper
     # ------------------------------------------------------------------
 
-    async def _api_wrapper(  # noqa: PLR0913
+    async def _api_wrapper(  # noqa: PLR0912, PLR0913
         self,
         *,
         session: aiohttp.ClientSession,
@@ -956,7 +1441,28 @@ class EngieBeApiClient:
 
         When *include_headers* is ``True`` the return value is a tuple
         of ``(body_or_json, response_headers)`` instead of just the body.
+
+        At ``DEBUG`` log level this emits one ``→`` line before the
+        request and one ``←`` (success) or ``✗`` (error) line after,
+        correlated by an 8-char ``req_id``.  Tokens, credentials, OAuth
+        state, and HTML auth-page bodies are masked / truncated; see the
+        module-level redaction helpers.  When DEBUG is off, the cost is a
+        single ``isEnabledFor`` check.
         """
+        debug_on = LOGGER.isEnabledFor(logging.DEBUG)
+        req_id = _new_req_id() if debug_on else ""
+        started = time.monotonic() if debug_on else 0.0
+
+        if debug_on:
+            _log_request(
+                req_id,
+                method,
+                url,
+                params=params,
+                headers=headers,
+                body=data,
+            )
+
         try:
             async with asyncio.timeout(30):
                 response = await session.request(
@@ -972,18 +1478,50 @@ class EngieBeApiClient:
                         HTTPStatus.UNAUTHORIZED,
                         HTTPStatus.FORBIDDEN,
                     ):
+                        if debug_on:
+                            _log_error(
+                                req_id,
+                                method,
+                                url,
+                                started,
+                                status=response.status,
+                            )
                         _raise_auth_error(response.status)
 
                     # For auth-flow HTML pages, non-200/302 is likely an
                     # error but we don't raise_for_status on 3xx since we
                     # handle redirects manually.
                     if response.status >= HTTPStatus.BAD_REQUEST:
+                        if debug_on:
+                            _log_error(
+                                req_id,
+                                method,
+                                url,
+                                started,
+                                status=response.status,
+                            )
                         response.raise_for_status()
 
                 if json_response:
                     result = await response.json()
                 else:
                     result = await response.text()
+
+                if debug_on:
+                    resp_ct = (
+                        response.headers.get("Content-Type")
+                        if hasattr(response, "headers")
+                        else None
+                    )
+                    _log_response(
+                        req_id,
+                        method,
+                        url,
+                        status=response.status,
+                        started=started,
+                        ct=resp_ct,
+                        body=result,
+                    )
 
                 if include_headers:
                     return result, dict(response.headers)
@@ -992,14 +1530,39 @@ class EngieBeApiClient:
         except EngieBeApiClientError:
             raise
         except TimeoutError as exception:
+            if debug_on:
+                _log_error(
+                    req_id,
+                    method,
+                    url,
+                    started,
+                    exc_name="timeout",
+                )
             msg = (
                 f"Timeout communicating with Engie API ({exception.__class__.__name__})"
             )
             raise EngieBeApiClientCommunicationError(msg) from exception
         except (aiohttp.ClientError, socket.gaierror) as exception:
+            if debug_on:
+                _log_error(
+                    req_id,
+                    method,
+                    url,
+                    started,
+                    exc_name=exception.__class__.__name__,
+                )
             msg = f"Error communicating with Engie API ({exception.__class__.__name__})"
             raise EngieBeApiClientCommunicationError(msg) from exception
         except Exception as exception:
+            if debug_on:
+                _log_error(
+                    req_id,
+                    method,
+                    url,
+                    started,
+                    exc_name=exception.__class__.__name__,
+                    exc_info=True,
+                )
             msg = (
                 "Unexpected error communicating with Engie API "
                 f"({exception.__class__.__name__})"
