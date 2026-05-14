@@ -183,6 +183,11 @@ _REDACT_BODY_KEYS: frozenset[str] = frozenset(
         "code_verifier",
         "code_challenge",
         "client_secret",
+        # Auth0 opaque flow-state token. Sent as a query param on GETs
+        # (already covered by ``_REDACT_QUERY_KEYS``) AND embedded in
+        # the form body of every POST in the login flow -- both must
+        # be masked or the login session can be replayed from a log.
+        "state",
     }
 )
 
@@ -205,6 +210,11 @@ _PARTIAL_MASK_BODY_KEYS: frozenset[str] = frozenset(
         "lastname",
         "email",
         "emailaddress",
+        # Auth0 form field on /u/login/identifier and /u/login/password
+        # carries the user's email address verbatim. Partial-masked
+        # (last-4) so support logs stay greppable without leaking the
+        # full address.
+        "username",
         "phonenumber",
         "mobilephonenumber",
         # Address components
@@ -407,21 +417,27 @@ def _redact_body(body: Any, content_type: str | None) -> str:  # noqa: PLR0911, 
             )
         return body
 
-    # Form-encoded: parse + redact.  Only credential keys are masked
-    # here (form bodies are used for OAuth / login posts, not for
-    # PII-bearing API responses).
+    # Form-encoded: parse + redact.  Both credential keys (fully
+    # masked) and PII keys (partial-masked, last-4 preserved) are
+    # walked -- the Auth0 login flow sends ``username`` (an email)
+    # alongside ``password`` and ``state`` in the same form body, so
+    # the partial-mask set must apply here too.
     if "form-urlencoded" in ct or ("=" in body and "&" in body and " " not in body):
         try:
             pairs = parse_qsl(body, keep_blank_values=True)
         except ValueError:
             return body
         if pairs:
-            return urlencode(
-                [
-                    (k, _REDACTED if k.lower() in _REDACT_BODY_KEYS else v)
-                    for k, v in pairs
-                ]
-            )
+            redacted_pairs: list[tuple[str, str]] = []
+            for k, v in pairs:
+                k_lc = k.lower()
+                if k_lc in _REDACT_BODY_KEYS:
+                    redacted_pairs.append((k, _REDACTED))
+                elif k_lc in _PARTIAL_MASK_BODY_KEYS:
+                    redacted_pairs.append((k, _redact_text(v)))
+                else:
+                    redacted_pairs.append((k, v))
+            return urlencode(redacted_pairs)
 
     # Plain text: passthrough.
     return body

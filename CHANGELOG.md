@@ -19,6 +19,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   auth pages full of CSRF tokens. No behaviour changes; logging is
   only emitted when the integration logger is at DEBUG.
 
+### Fixed
+- **DEBUG logging redaction:** the Auth0 login form body printed the
+  user's email (`username` field) and the opaque flow `state` token
+  verbatim because neither key was in the body redaction sets. Both
+  are now masked: `username` is partial-masked (last-4 preserved) and
+  `state` is fully masked, on both the JSON and form-encoded body
+  paths. Affects users who enabled DEBUG logging on the unreleased
+  `chore/improve-debug-logging` beta -- previously logged sessions
+  should be considered leaked and the log files scrubbed.
+
 ### Internal
 - Extracted `_log_request` / `_log_response` / `_log_error` helpers
   in `api.py` so the `_api_wrapper` and EPEX inline paths share a
@@ -26,6 +36,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   the conscious divergence from `homeassistant.components.diagnostics`
   `async_redact_data` (we need case-insensitive header matching and
   tail-preserving partial masks for greppable PII identifiers).
+- Form-encoded body redaction now applies the partial-mask key set
+  (previously full-mask only), so PII fields posted through OAuth /
+  Auth0 endpoints are masked the same way as JSON bodies.
 
 ## [0.8.2] - 2026-05-07
 

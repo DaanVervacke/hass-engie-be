@@ -317,6 +317,51 @@ class TestRedactBody:
         assert parsed["premises"][0]["ean"] == f"{_REDACTED}0001"
         assert parsed["premises"][0]["address"]["city"] == f"{_REDACTED}sels"
 
+    def test_auth0_login_body_masks_username_and_state(self) -> None:
+        """Auth0 login POST body masks ``username`` and ``state``."""
+        # Regression for the PII leak observed in field-supplied DEBUG
+        # logs where the form body of the login POST printed
+        # ``"username": "user@example.com"`` and ``"state":
+        # "<auth0-opaque>"`` verbatim because neither key was in any
+        # redaction set.
+        body = {
+            "state": "hKFo2SBCX0xlN2JEWXJ1VVpaRk9nbjRRUE05NTluUXRhdGxOUKFur3VuaXZl",
+            "allow-passkeys": "true",
+            "username": "user.example@gmail.com",
+            "js-available": "true",
+        }
+        out = _redact_body(body, "application/json")
+        # Hard contracts: neither raw value appears in the logged string.
+        assert "user.example@gmail.com" not in out
+        assert "hKFo2SBC" not in out
+        parsed = json.loads(out)
+        # state -> fully masked (credential class wins over no class).
+        assert parsed["state"] == _REDACTED
+        # username -> partial-masked, last-4 preserved (".com").
+        assert parsed["username"].endswith(".com")
+        assert parsed["username"].startswith(_REDACTED)
+        # Non-sensitive fields untouched.
+        assert parsed["allow-passkeys"] == "true"
+        assert parsed["js-available"] == "true"
+
+    def test_auth0_login_body_form_encoded_masks_username_and_state(self) -> None:
+        """Same regression as JSON path but for form-encoded bodies."""
+        # Form-encoded bodies take a different code path inside
+        # ``_redact_body`` (parsed via ``parse_qsl`` then re-encoded),
+        # so we lock the contract on that path too.
+        body = "state=hKFo2SBC.opaque&username=user.example%40gmail.com&action=default"
+        out = _redact_body(body, "application/x-www-form-urlencoded")
+        assert "hKFo2SBC.opaque" not in out
+        assert "user.example" not in out
+        assert "user.example%40gmail.com" not in out
+        # state fully masked (URL-encoded ``***``).
+        assert "state=%2A%2A%2A" in out
+        # username partial-masked: tail (".com") preserved, body masked.
+        assert "username=" in out
+        assert ".com" in out
+        # Non-sensitive field untouched.
+        assert "action=default" in out
+
 
 # ---------------------------------------------------------------------------
 # E2E: ``_api_wrapper`` (via ``async_refresh_token``)
