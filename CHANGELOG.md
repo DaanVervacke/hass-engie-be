@@ -7,6 +7,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Internal
+- Hoisted the deferred `EpexPayload` import in `sensor.py:_epex_payload`
+  to the module-level imports and dropped the unjustified
+  `# noqa: PLC0415`. `data.py` has no runtime imports of any sibling
+  module (everything is `TYPE_CHECKING`-gated), so the local import
+  was not load-bearing. Audit hygiene only; no runtime behaviour
+  change.
+
 ### Changed
 - **Structured DEBUG-level request/response logging** in the ENGIE
   Belgium API client. Each HTTP call is bracketed with paired `→` /
