@@ -22,6 +22,7 @@ from .const import (
     LOGGER,
     SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
 )
+from .data import EpexPayload
 from .entity import EngieBeEntity, EngieBeEpexEntity
 
 # Coordinator centralises updates; entities never poll individually.
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
     from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
-    from .data import EngieBeConfigEntry, EpexPayload
+    from .data import EngieBeConfigEntry
 
 
 # Mapping from service-point division to display name.
@@ -594,10 +595,8 @@ def _build_epex_sensors(
 
 def _epex_payload(coordinator: EngieBeEpexCoordinator) -> EpexPayload | None:
     """Return the cached EPEX payload, or ``None`` if not yet fetched."""
-    from .data import EpexPayload as _EpexPayload  # noqa: PLC0415
-
     payload = coordinator.data
-    return payload if isinstance(payload, _EpexPayload) else None
+    return payload if isinstance(payload, EpexPayload) else None
 
 
 def _slots_for_date(payload: EpexPayload, target: date) -> list[Any]:
