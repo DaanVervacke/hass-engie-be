@@ -5,15 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.3] - 2026-05-18
 
-### Internal
-- Hoisted the deferred `EpexPayload` import in `sensor.py:_epex_payload`
-  to the module-level imports and dropped the unjustified
-  `# noqa: PLC0415`. `data.py` has no runtime imports of any sibling
-  module (everything is `TYPE_CHECKING`-gated), so the local import
-  was not load-bearing. Audit hygiene only; no runtime behaviour
-  change.
+### Fixed
+- **DEBUG logging redaction:** the Auth0 login form body printed the
+  user's email (`username` field) and the opaque flow `state` token
+  verbatim because neither key was in the body redaction sets. Both
+  are now masked: `username` is partial-masked (last-4 preserved) and
+  `state` is fully masked, on both the JSON and form-encoded body
+  paths ([#80]).
 
 ### Changed
 - **Structured DEBUG-level request/response logging** in the ENGIE
@@ -25,17 +25,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   and customer IDs are partially masked (last 4 chars preserved).
   HTML bodies are truncated to 120 characters to avoid dumping live
   auth pages full of CSRF tokens. No behaviour changes; logging is
-  only emitted when the integration logger is at DEBUG.
-
-### Fixed
-- **DEBUG logging redaction:** the Auth0 login form body printed the
-  user's email (`username` field) and the opaque flow `state` token
-  verbatim because neither key was in the body redaction sets. Both
-  are now masked: `username` is partial-masked (last-4 preserved) and
-  `state` is fully masked, on both the JSON and form-encoded body
-  paths. Affects users who enabled DEBUG logging on the unreleased
-  `chore/improve-debug-logging` beta -- previously logged sessions
-  should be considered leaked and the log files scrubbed.
+  only emitted when the integration logger is at DEBUG ([#80]).
 
 ### Internal
 - Extracted `_log_request` / `_log_response` / `_log_error` helpers
@@ -43,10 +33,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   single source of truth for the `→ / ← / ✗` log format. Documented
   the conscious divergence from `homeassistant.components.diagnostics`
   `async_redact_data` (we need case-insensitive header matching and
-  tail-preserving partial masks for greppable PII identifiers).
+  tail-preserving partial masks for greppable PII identifiers) ([#80]).
 - Form-encoded body redaction now applies the partial-mask key set
   (previously full-mask only), so PII fields posted through OAuth /
-  Auth0 endpoints are masked the same way as JSON bodies.
+  Auth0 endpoints are masked the same way as JSON bodies ([#80]).
+- Hoisted the deferred `EpexPayload` import in `sensor.py:_epex_payload`
+  to the module-level imports and dropped the unjustified
+  `# noqa: PLC0415`. `data.py` has no runtime imports of any sibling
+  module (everything is `TYPE_CHECKING`-gated), so the local import
+  was not load-bearing. Audit hygiene only; no runtime behaviour
+  change ([#82]).
 
 ## [0.8.2] - 2026-05-07
 
@@ -348,8 +344,11 @@ No user-visible changes.
 [#58]: https://github.com/DaanVervacke/hass-engie-be/pull/58
 [#59]: https://github.com/DaanVervacke/hass-engie-be/pull/59
 [#61]: https://github.com/DaanVervacke/hass-engie-be/pull/61
+[#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
+[#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.7.1...v0.8.0
