@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -25,6 +24,7 @@ from .api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
     EpexNotPublishedError,
+    _redact_body,
 )
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
@@ -205,23 +205,33 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["peaks"] = peaks_wrapper
             self._record_peak_history(peaks_wrapper)
 
-        # Debug-only: probe the happy-hour-event endpoint and log the
-        # raw response so users can share it with the integration author.
-        # This branch (`debug/happy-hour-event`) is not meant to be merged.
-        await self._async_log_happy_hour_event(client, self.business_agreement_number)
+        # Debug-only: probe the happy-hour-event endpoint on every
+        # refresh and log the redacted response so users can share it
+        # with the integration author. Happy-hour windows are time-
+        # bounded, so a one-shot probe at startup would miss any user
+        # who restarts HA outside an active window. This branch
+        # (`debug/happy-hour-event`) is not meant to be merged.
+        await self._async_log_happy_hour_event(client)
 
         self.last_successful_fetch = dt_util.utcnow()
         return data
 
-    async def _async_log_happy_hour_event(
-        self,
-        client: Any,
-        business_agreement_number: str,
-    ) -> None:
-        """Fetch the happy-hour-event endpoint and log the raw response."""
+    async def _async_log_happy_hour_event(self, client: EngieBeApiClient) -> None:
+        """
+        Fetch the happy-hour-event endpoint and log the redacted response.
+
+        Failure paths stay at WARNING because they surface a real
+        upstream problem worth user attention. The success path logs at
+        DEBUG (per HA Labs guidance for non-critical preview-feature
+        diagnostics) and routes the response through ``_redact_body``
+        so account-identifying fields (``businessAgreementNumber``,
+        ``ean``, ``customerAccountNumber``, address fragments, ...)
+        are masked the same way as the existing wire-format
+        ``← OK`` debug line.
+        """
         try:
             response = await client.async_get_happy_hour_event(
-                business_agreement_number,
+                self.business_agreement_number,
             )
         except EngieBeApiClientAuthenticationError as exception:
             LOGGER.warning(
@@ -236,20 +246,9 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return
 
-        try:
-            payload = json.dumps(response, ensure_ascii=False, sort_keys=True)
-        except (TypeError, ValueError) as exception:
-            LOGGER.warning(
-                "happy-hour-event response could not be JSON-serialised "
-                "(%s); raw value: %r",
-                exception,
-                response,
-            )
-            return
-
-        LOGGER.warning(
+        LOGGER.debug(
             "happy-hour-event response (please share with the integration author): %s",
-            payload,
+            _redact_body(response, "application/json"),
         )
 
     def _record_peak_history(self, peaks_wrapper: dict[str, Any]) -> None:
