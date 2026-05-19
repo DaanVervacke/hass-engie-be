@@ -451,9 +451,6 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
         # the schema uniform across platforms and avoids collisions if two
         # subentries on the same login ever share an EAN (e.g. address
         # corrections at ENGIE that reuse the meter ID under a new CAN).
-        # The v2->v3 migration helper rewrites legacy
-        # ``{entry_id}_{key}`` energy unique_ids to this shape, so 0.7.x
-        # upgrades land on the right registry rows on first boot.
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}"
             f"_{subentry.subentry_id}_{entity_description.key}"
