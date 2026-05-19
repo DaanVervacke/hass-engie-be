@@ -11,9 +11,9 @@ them as sensors.
 
 > ## Upgrading from v0.8.x or earlier? Read this first.
 >
-> **v0.9.0 is a hard break.** There is no in-place upgrade path from any
-> earlier version. After installing v0.9.0, every existing ENGIE Belgium
-> config entry will be flagged with `setup_error` in Home Assistant and
+> **v0.9.0 is a breaking schema change.** There is no in-place upgrade path
+> from any earlier version. After installing v0.9.0, every existing ENGIE
+> Belgium config entry will be flagged with `setup_error` in Home Assistant and
 > appear under **Settings** > **Repairs**. No devices or entities will be
 > exposed until you re-add the integration.
 >

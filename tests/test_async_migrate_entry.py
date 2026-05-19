@@ -1,8 +1,8 @@
 """
 Tests for :func:`custom_components.engie_be.async_migrate_entry`.
 
-v0.9.0 is a hard break: the v1->v2->v3->v4 migration chain was
-deleted to drop ~3000 LOC of one-shot upgrade code. Users on any
+v0.9.0 is a breaking schema change: the v1->v2->v3->v4 migration chain
+was deleted to drop ~3000 LOC of one-shot upgrade code. Users on any
 pre-v0.9.0 install must remove and re-add the integration. The
 migration hook now returns ``False`` for every prior version, which
 causes Home Assistant to flag the entry as ``setup_error`` and

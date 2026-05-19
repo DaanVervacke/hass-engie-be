@@ -352,7 +352,7 @@ def test_persist_tokens_writes_only_token_fields(
 
 
 # ---------------------------------------------------------------------------
-# Config-entry migration (v0.9.0 hard break)
+# Config-entry migration (v0.9.0 breaking schema change)
 # ---------------------------------------------------------------------------
 
 
@@ -383,7 +383,7 @@ async def test_migrate_entry_refuses_pre_v5_entries(
         result = await async_migrate_entry(hass, entry)
 
     assert result is False
-    assert "hard break" in caplog.text
+    assert "breaking schema change" in caplog.text
     assert "version 4" in caplog.text or "from version 4" in caplog.text
 
 

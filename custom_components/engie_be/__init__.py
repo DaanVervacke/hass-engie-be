@@ -52,19 +52,19 @@ async def async_migrate_entry(
     """
     Refuse to migrate config entries from before v0.9.0.
 
-    v0.9.0 is a hard break: the v1->v2->v3->v4 migration chain was
-    removed to drop ~3000 LOC of one-shot upgrade code that had to
+    v0.9.0 is a breaking schema change: the v1->v2->v3->v4 migration chain
+    was removed to drop ~3000 LOC of one-shot upgrade code that had to
     survive long-tail upgrade paths. Users on any pre-v0.9.0 install
     must remove the integration from Home Assistant and re-add it
     through the UI; that re-add walks the current config flow and
     produces a fresh v5 entry. Returning ``False`` here causes HA to
     flag the entry as ``setup_error`` and surface a Repairs notice,
-    which is the intended UX for this break.
+    which is the intended UX for this change.
     """
     LOGGER.error(
         "Cannot migrate ENGIE Belgium config entry from version %s. "
-        "v0.9.0 is a hard break: remove this integration from Settings "
-        "-> Devices & Services and add it again. See the v0.9.0 "
+        "v0.9.0 is a breaking schema change: remove this integration from "
+        "Settings -> Devices & Services and add it again. See the v0.9.0 "
         "changelog for details.",
         entry.version,
     )
