@@ -18,15 +18,18 @@ them as sensors.
 > exposed until you re-add the integration.
 >
 > **v0.9.0 is currently in beta** (the first beta is `v0.9.0b1`). HACS
-> only shows beta releases when you opt in for this integration via the
-> three-dot menu > **Redownload** > **Show beta versions**, or via the
-> repository's settings page in HACS. Stable users on v0.8.x will not
-> be offered v0.9.0b1 automatically.
+> will not surface a pre-release as an available update unless you
+> enable the `switch.engie_be_include_pre_releases` entity under
+> **Settings** > **Devices & services** > **HACS** > **Entities**.
+> Without that switch, `v0.9.0b1` only appears in the manual version
+> picker (three-dot menu > **Redownload** > version dropdown).
+> Stable users on v0.8.x will not be offered v0.9.0b1 automatically.
 >
 > **To upgrade:**
 >
-> 1. Install v0.9.0 (or the latest beta) through HACS and restart Home
->    Assistant.
+> 1. Open HACS, find the ENGIE Belgium card, click the three-dot menu,
+>    pick **Redownload**, and choose `0.9.0b1` from the version
+>    dropdown. Restart Home Assistant.
 > 2. Go to **Settings** > **Devices & services**, open the ENGIE Belgium
 >    integration, and click **Delete**.
 > 3. Click **Add Integration**, search for "ENGIE Belgium", and log in

@@ -9,11 +9,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [0.9.0b1] - 2026-05-19
 
-> **Pre-release (beta).** This is the first beta of v0.9.0. To
-> install, enable "Show beta versions" on the integration in
-> HACS. Production users on v0.8.x should not install this
-> unless they are willing to re-add the integration; there is
-> no in-place upgrade path (see Breaking section).
+> **Pre-release (beta).** This is the first beta of v0.9.0. HACS will
+> not surface a pre-release as an available update unless you enable
+> the `switch.engie_be_include_pre_releases` entity under
+> Settings > Devices & services > HACS > Entities. Otherwise the
+> beta only shows up in the manual version picker (three-dot menu >
+> Redownload > version dropdown). Production users on v0.8.x should
+> not install this unless they are willing to re-add the integration;
+> there is no in-place upgrade path (see Breaking section).
 >
 > **Breaking change.** This release requires every existing user to
 > remove the integration from Home Assistant and add it again. There
