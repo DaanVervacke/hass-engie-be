@@ -104,18 +104,6 @@ def find_agreement_for_ban(
     return None
 
 
-def pick_active_agreement(
-    agreements: list[dict[str, Any]] | None,
-) -> dict[str, Any] | None:
-    """Return the first active business agreement, or the first one available."""
-    if not agreements:
-        return None
-    for agreement in agreements:
-        if agreement.get("active"):
-            return agreement
-    return agreements[0]
-
-
 def subentry_title(account: dict[str, Any]) -> str:
     """
     Build a user-friendly subentry title.
