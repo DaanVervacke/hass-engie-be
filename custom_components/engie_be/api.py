@@ -1019,10 +1019,10 @@ class EngieBeApiClient:
 
     async def async_get_happy_hour_event(
         self,
-        customer_number: str,
+        business_agreement_number: str,
     ) -> Any:
         """
-        Fetch the happy-hour event payload for a given customer.
+        Fetch the happy-hour event payload for a given business agreement.
 
         Debug-only helper for the ``debug/happy-hour-event`` branch.
         Returns the raw parsed JSON (or text, if not JSON) so it can be
@@ -1030,7 +1030,7 @@ class EngieBeApiClient:
         """
         url = (
             f"{HAPPY_HOUR_BASE_URL}/business-agreements/"
-            f"{customer_number.replace(' ', '')}/happy-hour-event"
+            f"{business_agreement_number.replace(' ', '')}/happy-hour-event"
         )
         headers = {
             "User-Agent": USER_AGENT_NATIVE,

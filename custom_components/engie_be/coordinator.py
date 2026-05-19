@@ -208,7 +208,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Debug-only: probe the happy-hour-event endpoint and log the
         # raw response so users can share it with the integration author.
         # This branch (`debug/happy-hour-event`) is not meant to be merged.
-        await self._async_log_happy_hour_event(client, self.customer_number)
+        await self._async_log_happy_hour_event(client, self.business_agreement_number)
 
         self.last_successful_fetch = dt_util.utcnow()
         return data
@@ -216,11 +216,13 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_log_happy_hour_event(
         self,
         client: Any,
-        customer_number: str,
+        business_agreement_number: str,
     ) -> None:
         """Fetch the happy-hour-event endpoint and log the raw response."""
         try:
-            response = await client.async_get_happy_hour_event(customer_number)
+            response = await client.async_get_happy_hour_event(
+                business_agreement_number,
+            )
         except EngieBeApiClientAuthenticationError as exception:
             LOGGER.warning(
                 "happy-hour-event probe failed (auth): %s",
