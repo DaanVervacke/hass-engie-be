@@ -92,6 +92,26 @@ def test_calendar_unique_id_namespaced_to_subentry() -> None:
     assert calendar.unique_id == "test_entry_id_sub_xyz_calendar"
 
 
+def test_calendar_naming_contract_delegates_to_ha_composition() -> None:
+    """
+    Pin has_entity_name=True + translation_key naming for HA 2026.4+.
+
+    Regression guard for the v0.9.0b1 -> b2 fix: setting
+    ``_attr_has_entity_name = False`` together with a brand-prefixed
+    ``_attr_name`` produced a doubled friendly_name on HA 2026.4+, where
+    the composition logic prepends the device name regardless of the
+    has_entity_name flag when the registry stores no rename. The
+    calendar must inherit has_entity_name=True and expose its name via
+    translation key so HA composes ``<device-name> ENGIE Belgium``.
+    """
+    coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
+    assert calendar.has_entity_name is True
+    assert calendar.translation_key == "engie_belgium"
+    assert not hasattr(calendar, "_attr_name") or calendar._attr_name is None
+
+
 def test_event_property_returns_captar_peak() -> None:
     """``event`` exposes the captar peak window as a ``CalendarEvent``."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})

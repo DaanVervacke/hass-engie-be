@@ -7,6 +7,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.0b2] - 2026-05-19
+
+> **Pre-release (beta).** Follow-up to v0.9.0b1 with a single fix.
+> Same upgrade caveats as v0.9.0b1: there is no in-place upgrade from
+> v0.8.x; remove and re-add the integration.
+
+### Fixed
+- **Calendar entity friendly name no longer doubled.** On Home Assistant
+  2026.4 and newer, the per-agreement calendar entity rendered its
+  friendly name as `<address> ENGIE Belgium <address>`. The calendar
+  now follows the standard Home Assistant naming convention and reads
+  as `<address> ENGIE Belgium`.
+
 ## [0.9.0b1] - 2026-05-19
 
 > **Pre-release (beta).** This is the first beta of v0.9.0. HACS will
@@ -391,6 +404,7 @@ No user-visible changes.
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0b1...HEAD
+[0.9.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0b1...v0.9.0b2
 [0.9.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...v0.9.0b1
 [0.8.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.1...v0.8.2
