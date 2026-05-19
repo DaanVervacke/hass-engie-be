@@ -14,82 +14,39 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > the `switch.engie_be_include_pre_releases` entity under
 > Settings > Devices & services > HACS > Entities. Otherwise the
 > beta only shows up in the manual version picker (three-dot menu >
-> Redownload > version dropdown). Production users on v0.8.x should
-> not install this unless they are willing to re-add the integration;
-> there is no in-place upgrade path (see Breaking section).
->
-> **Breaking change.** This release requires every existing user to
-> remove the integration from Home Assistant and add it again. There
-> is no in-place upgrade path. On first boot after the update, every
-> pre-v0.9.0 config entry is flagged with `setup_error` and a
-> Repairs notice; nothing is lost, but no devices or entities are
-> exposed until the user re-adds the integration through the UI.
-> See "Upgrade instructions" in the README before installing.
+> Redownload > version dropdown).
 
-### Breaking
-- **Config-entry schema bumped to v5** (`VERSION = 5`). The
-  cascading v1 to v2 to v3 to v4 migration chain has been removed
-  entirely. `async_migrate_entry` now returns `False` for any
-  entry below v5, which causes Home Assistant to mark the entry
-  as `setup_error` and surface a Repairs notice. The user must
-  manually delete the entry from Settings > Devices & Services
-  and re-add it; the re-add walks the current config flow and
-  produces a fresh v5 entry keyed on business-agreement numbers
-  (BANs).
-- **Subentry data shape changed.** `customer_number` is no
-  longer stored on subentries; `business_agreement_number` is
-  the sole identifier. The subentry type literal also changed
-  from `customer_account` to `business_agreement`.
-- **Storage rename**: every entity ID and unique ID is now
-  derived from the BAN. Users who relied on the pre-v0.9.0
-  entity IDs in dashboards, automations, scripts, or templates
-  must update those references after re-adding the integration.
-  The peaks history store filename remains
-  `engie_be.peaks_history.{subentry_id}` but the `subentry_id`
-  changes on re-add, so historical capacity-tariff peak data
-  from earlier installs is not carried over.
+> [!CAUTION]
+> There is no in-place upgrade path. After installing v0.9.0b1, every
+> pre-v0.9.0 config entry is flagged with `setup_error` and surfaces
+> a Repairs notice. Nothing is lost, but no devices or entities are
+> exposed until you remove the integration from **Settings** >
+> **Devices & services** and add it again through the UI.
 
-### Why
-- The v1 to v4 migration chain and the slug-rename / unique-id
-  heal helpers together accounted for roughly 3000 lines of
-  one-shot upgrade code that had to be regression-tested on
-  every release and survive every long-tail upgrade path. Pre-1.0
-  is the right window to take this hit; from v0.9.0 onward the
-  codebase keeps only the data shape it actually wants to live
-  with.
+### Added
+- **One device per active business agreement.** If your ENGIE customer
+  account holds several active business agreements (BANs), each one
+  now becomes its own device with its own sensors and calendar,
+  instead of being collapsed under a single customer-account device.
+  Pick which agreements to add at the end of the setup wizard. To add
+  another agreement later, open the ENGIE Belgium card under
+  **Settings** > **Devices & services** and click
+  **Add business agreement**.
 
 ### Changed
-- `_relations.py` slimmed: the legacy helpers
-  `extract_accounts`, `iter_account_identifiers`,
-  `find_account_for_customer_number`, and
-  `flatten_customer_account*` are removed. New helper
-  `find_agreement_for_ban(relations, ban)` is used by the
-  coordinator backfill in place of the old CAN-based lookup.
-- User-facing strings updated to use "business agreement"
-  throughout the config flow (picker title, subentry type
-  label, error messages) rather than the ambiguous
-  "customer account".
+- **Entity IDs now include the business-agreement number** instead
+  of the customer-account number (for example
+  `sensor.engie_belgium_<ban>_gas_offtake_price`). Long-term
+  statistics and history from v0.8.x will not carry over.
+- **Calendar leads with the brand name and BAN** for the same reason
+  (`ENGIE Belgium <ban> <address>`).
+- **Setup wizard wording** now says **business agreement** throughout
+  instead of **customer account**.
 
-### Removed
-- All cascading migration helpers in `__init__.py`
-  (`_async_migrate_v1_*`, `_async_migrate_v2_*`,
-  `_async_migrate_v3_to_v4`).
-- `_async_migrate_entity_id_slugs` and
-  `_async_try_heal_legacy_unique_ids` (slug-rename and
-  BAN-to-CAN heal one-shots).
-- Constant `CONF_CUSTOMER_NUMBER` and constant
-  `SUBENTRY_TYPE_CUSTOMER_ACCOUNT`.
-
-### Tests
-- Deleted `tests/test_migrate_entry.py` (866 LOC) and
-  `tests/test_heal_b1_energy_unique_ids.py` (388 LOC).
-- Rewrote `tests/test_relations.py` against the v5 helper
-  surface; 15 tests, all passing.
-- New `tests/test_async_migrate_entry.py` asserts every legacy
-  version 1 to 4 is rejected with an error-level log line.
-- Remaining test files updated to `version=5`, the new subentry
-  type literal, and BAN-only subentry data; dead migration /
-  slug / heal tests removed.
+### Migration
+- Delete the integration and re-add it. There is no automatic
+  migration path. The integration deliberately refuses to load any
+  config entry created by v0.8.x or earlier.
 
 ## [0.8.3] - 2026-05-18
 
