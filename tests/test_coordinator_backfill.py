@@ -1,13 +1,13 @@
 """
 Tests for the per-subentry coordinator's one-shot relations backfill.
 
-When a customer-account ``ConfigSubentry`` is missing one or more of the
-display fields normally populated from the customer-account-relations
-endpoint (account holder name, consumption address, business agreement
-number, premises number), the coordinator attempts to fill them in from
-the relations endpoint on its first successful refresh. The attempt
-runs at most once per Home Assistant process, even if the relations
-call fails or returns no data for this customer.
+When a business-agreement ``ConfigSubentry`` is missing one or more of
+the display fields normally populated from the customer-account-relations
+endpoint (account holder name, consumption address, premises number),
+the coordinator attempts to fill them in from the relations endpoint on
+its first successful refresh. The attempt runs at most once per Home
+Assistant process, even if the relations call fails or returns no data
+for this BAN.
 """
 
 from __future__ import annotations
@@ -30,12 +30,11 @@ from custom_components.engie_be.const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
-    CONF_CUSTOMER_NUMBER,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     DEFAULT_CLIENT_ID,
     DOMAIN,
-    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from custom_components.engie_be.coordinator import EngieBeDataUpdateCoordinator
 from custom_components.engie_be.data import EngieBeData
@@ -53,17 +52,20 @@ _RELATIONS_FIXTURE = (
     Path(__file__).parent / "fixtures" / "customer_account_relations_sample.json"
 )
 
+# BAN present in the fixture under the first active customer account.
+_FIXTURE_BAN = "002200000001"
+
 
 def _build_entry_with_subentry(
     hass: HomeAssistant,
     *,
-    customer_number: str,
+    business_agreement_number: str,
     subentry_data: dict[str, Any],
 ) -> MockConfigEntry:
-    """Build a v3 entry with a single customer-account subentry."""
+    """Build a v5 entry with a single business-agreement subentry."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=3,
+        version=5,
         title="user@example.com",
         unique_id="user_example_com",
         data={
@@ -76,10 +78,13 @@ def _build_entry_with_subentry(
         options={"update_interval": 60},
         subentries_data=[
             ConfigSubentryData(
-                subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
                 title="placeholder",
-                unique_id=customer_number,
-                data={CONF_CUSTOMER_NUMBER: customer_number, **subentry_data},
+                unique_id=business_agreement_number,
+                data={
+                    CONF_BUSINESS_AGREEMENT_NUMBER: business_agreement_number,
+                    **subentry_data,
+                },
             ),
         ],
     )
@@ -88,7 +93,7 @@ def _build_entry_with_subentry(
 
 
 def _only_subentry(entry: MockConfigEntry) -> ConfigSubentry:
-    """Return the single customer-account subentry on the test entry."""
+    """Return the single business-agreement subentry on the test entry."""
     return next(iter(entry.subentries.values()))
 
 
@@ -132,7 +137,7 @@ async def test_backfill_populates_missing_fields_on_first_refresh(
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
     entry = _build_entry_with_subentry(
         hass,
-        customer_number="1500000001",
+        business_agreement_number=_FIXTURE_BAN,
         subentry_data={},  # no display fields yet
     )
     subentry = _only_subentry(entry)
@@ -153,7 +158,7 @@ async def test_backfill_populates_missing_fields_on_first_refresh(
 
     # Subentry data now carries the relations-derived fields.
     refreshed = entry.subentries[subentry.subentry_id]
-    assert refreshed.data[CONF_BUSINESS_AGREEMENT_NUMBER] == "002200000001"
+    assert refreshed.data[CONF_BUSINESS_AGREEMENT_NUMBER] == _FIXTURE_BAN
     assert refreshed.data[CONF_PREMISES_NUMBER] == "5100000001"
     assert refreshed.data[CONF_ACCOUNT_HOLDER_NAME] == "Test Customer One"
     assert "TESTSTRAAT 1" in refreshed.data[CONF_CONSUMPTION_ADDRESS]
@@ -169,9 +174,8 @@ async def test_backfill_skipped_when_all_fields_already_present(
     """Coordinator must not call relations when nothing is missing."""
     entry = _build_entry_with_subentry(
         hass,
-        customer_number="1500000001",
+        business_agreement_number=_FIXTURE_BAN,
         subentry_data={
-            CONF_BUSINESS_AGREEMENT_NUMBER: "B-EXISTING",
             CONF_PREMISES_NUMBER: "P-EXISTING",
             CONF_ACCOUNT_HOLDER_NAME: "Existing Name",
             CONF_CONSUMPTION_ADDRESS: "Existing Address 1, 1000 City",
@@ -196,7 +200,6 @@ async def test_backfill_skipped_when_all_fields_already_present(
 
     # Existing values are preserved (not overwritten by upstream data).
     refreshed = entry.subentries[subentry.subentry_id]
-    assert refreshed.data[CONF_BUSINESS_AGREEMENT_NUMBER] == "B-EXISTING"
     assert refreshed.data[CONF_ACCOUNT_HOLDER_NAME] == "Existing Name"
 
 
@@ -207,7 +210,7 @@ async def test_backfill_runs_only_once_even_across_multiple_refreshes(
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
     entry = _build_entry_with_subentry(
         hass,
-        customer_number="1500000001",
+        business_agreement_number=_FIXTURE_BAN,
         subentry_data={},
     )
     subentry = _only_subentry(entry)
@@ -234,7 +237,7 @@ async def test_backfill_failure_is_swallowed_and_flag_cleared(
     """A failing relations call must not raise and must clear the flag."""
     entry = _build_entry_with_subentry(
         hass,
-        customer_number="1500000001",
+        business_agreement_number=_FIXTURE_BAN,
         subentry_data={},
     )
     subentry = _only_subentry(entry)
@@ -259,14 +262,14 @@ async def test_backfill_failure_is_swallowed_and_flag_cleared(
     assert coordinator._needs_relations_backfill is False
 
 
-async def test_backfill_no_match_for_customer_leaves_subentry_untouched(
+async def test_backfill_no_match_for_ban_leaves_subentry_untouched(
     hass: HomeAssistant,
 ) -> None:
-    """When relations has no entry for our customer, do nothing."""
+    """When relations has no entry for our BAN, do nothing."""
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
     entry = _build_entry_with_subentry(
         hass,
-        customer_number="9999999999",  # not present in fixture
+        business_agreement_number="999999999999",  # not present in fixture
         subentry_data={},
     )
     subentry = _only_subentry(entry)
@@ -295,10 +298,10 @@ async def test_backfill_only_fills_missing_keys(
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
     entry = _build_entry_with_subentry(
         hass,
-        customer_number="1500000001",
+        business_agreement_number=_FIXTURE_BAN,
         subentry_data={
             CONF_ACCOUNT_HOLDER_NAME: "User Edited Name",
-            # business agreement, premises, address are missing
+            # premises, address are missing
         },
     )
     subentry = _only_subentry(entry)
@@ -317,49 +320,7 @@ async def test_backfill_only_fills_missing_keys(
     # Edited field preserved.
     assert refreshed.data[CONF_ACCOUNT_HOLDER_NAME] == "User Edited Name"
     # Missing fields filled.
-    assert refreshed.data[CONF_BUSINESS_AGREEMENT_NUMBER] == "002200000001"
     assert refreshed.data[CONF_PREMISES_NUMBER] == "5100000001"
-    assert "TESTSTRAAT 1" in refreshed.data[CONF_CONSUMPTION_ADDRESS]
-
-
-async def test_backfill_matches_legacy_business_agreement_number(
-    hass: HomeAssistant,
-) -> None:
-    """
-    Legacy v2 entries stored businessAgreementNumber as customer_number.
-
-    The coordinator backfill must still locate the owning customer
-    account via the businessAgreements walk so the address and holder
-    name can be filled in. The stored ``customer_number`` is left
-    untouched (the prices/peaks endpoints accept either identifier),
-    only the display fields are populated.
-    """
-    relations = json.loads(_RELATIONS_FIXTURE.read_text())
-    legacy_ban = "002200000001"  # 12-digit BAN, not a CAN
-    entry = _build_entry_with_subentry(
-        hass,
-        customer_number=legacy_ban,
-        subentry_data={},
-    )
-    subentry = _only_subentry(entry)
-    client = _make_client(relations_return=relations)
-    _attach_runtime(entry, client)
-
-    coordinator = EngieBeDataUpdateCoordinator(
-        hass=hass,
-        config_entry=entry,
-        subentry=subentry,
-    )
-
-    await coordinator._async_update_data()
-
-    refreshed = entry.subentries[subentry.subentry_id]
-    # The originally-stored identifier is preserved (used for API calls).
-    assert refreshed.data[CONF_CUSTOMER_NUMBER] == legacy_ban
-    # Display fields are populated from the matched customer account.
-    assert refreshed.data[CONF_BUSINESS_AGREEMENT_NUMBER] == "002200000001"
-    assert refreshed.data[CONF_PREMISES_NUMBER] == "5100000001"
-    assert refreshed.data[CONF_ACCOUNT_HOLDER_NAME] == "Test Customer One"
     assert "TESTSTRAAT 1" in refreshed.data[CONF_CONSUMPTION_ADDRESS]
 
 
@@ -369,17 +330,16 @@ async def test_backfill_refreshes_subentry_title_and_device_name(
     """
     Successful backfill must update the subentry title and rename the device.
 
-    Before backfill the subentry title is the bare customer number (the
-    fallback used when no relations data is available at creation time).
-    After backfill the title falls through to the consumption address,
-    and the matching device must be renamed in place so the registry
-    reflects the new label without requiring the user to remove and
-    re-add the entry.
+    Before backfill the subentry title is the bare BAN (the fallback used
+    when no relations data is available at creation time). After backfill
+    the title falls through to the consumption address, and the matching
+    device must be renamed in place so the registry reflects the new
+    label without requiring the user to remove and re-add the entry.
     """
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
     entry = _build_entry_with_subentry(
         hass,
-        customer_number="1500000001",
+        business_agreement_number=_FIXTURE_BAN,
         subentry_data={},
     )
     subentry = _only_subentry(entry)
@@ -424,7 +384,7 @@ async def test_backfill_preserves_user_named_device(
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
     entry = _build_entry_with_subentry(
         hass,
-        customer_number="1500000001",
+        business_agreement_number=_FIXTURE_BAN,
         subentry_data={},
     )
     subentry = _only_subentry(entry)

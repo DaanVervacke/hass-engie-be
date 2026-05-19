@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 from homeassistant.components.calendar import CalendarEvent
 
 from custom_components.engie_be.calendar import EngieBeCalendar
-from custom_components.engie_be.const import SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 
 _PEAKS_FIXTURE = Path(__file__).parent / "fixtures" / "peaks_2026_04.json"
 
@@ -43,7 +43,7 @@ def _make_subentry(
     """Build a MagicMock ConfigSubentry stub."""
     subentry = MagicMock()
     subentry.subentry_id = subentry_id
-    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
     subentry.title = title
     return subentry
 

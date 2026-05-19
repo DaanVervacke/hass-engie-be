@@ -22,7 +22,11 @@ from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.util import dt as dt_util
 
 from ._peaks import captar_peak_events
-from .const import CONF_CUSTOMER_NUMBER, LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from .const import (
+    CONF_BUSINESS_AGREEMENT_NUMBER,
+    LOGGER,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+)
 from .entity import EngieBeEntity
 
 # Coordinator centralises updates; entities never poll individually.
@@ -54,7 +58,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the calendar platform, one entity per customer-account subentry."""
     for subentry in entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+        if subentry.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
             continue
 
         sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
@@ -109,16 +113,19 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_calendar"
         )
-        # Suggest a CAN-prefixed entity_id slug so each customer
-        # account gets its own predictable calendar entity_id without
-        # HA auto-suffixing on the friendly name. There is only one
-        # calendar entity per subentry, so no trailing ``_calendar``
-        # is needed. Only effective on first registration; existing
-        # installs are migrated via ``_async_migrate_entity_id_slugs``
-        # in ``__init__``.
-        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
-        if can:
-            self._attr_suggested_object_id = f"engie_belgium_{can}"
+        # Force a BAN-prefixed entity_id so each business agreement
+        # gets a predictable, collision-proof calendar entity_id
+        # regardless of address. HA's auto-derived slug would key off
+        # the friendly name (which embeds the address) and append
+        # ``_2`` if two agreements share an address. Setting
+        # ``self.entity_id`` directly is the supported escape hatch
+        # (``_attr_suggested_object_id`` is not honoured by
+        # ``Entity.suggested_object_id``, which reads ``self.name``).
+        # Only effective on first registration; entity registry
+        # overrides on subsequent boots.
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = f"calendar.engie_belgium_{ban}"
 
     def _all_events(self) -> list[CalendarEvent]:
         """Collect events from every registered provider."""

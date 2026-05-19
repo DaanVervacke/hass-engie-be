@@ -26,14 +26,13 @@ OAUTH_SCOPES = "openid profile roles offline_access"
 OAUTH_AUDIENCE = "customer"
 
 # Config entry keys (beyond homeassistant.const CONF_USERNAME / CONF_PASSWORD)
-CONF_CUSTOMER_NUMBER = "customer_number"
 CONF_MFA_METHOD = "mfa_method"
 CONF_CLIENT_ID = "client_id"
 CONF_ACCESS_TOKEN = "access_token"  # noqa: S105
 CONF_REFRESH_TOKEN = "refresh_token"  # noqa: S105
 
-# Subentry data keys (one ConfigSubentry per ENGIE customer account)
-SUBENTRY_TYPE_CUSTOMER_ACCOUNT = "customer_account"
+# Subentry data keys (one ConfigSubentry per active ENGIE business agreement)
+SUBENTRY_TYPE_BUSINESS_AGREEMENT = "business_agreement"
 CONF_BUSINESS_AGREEMENT_NUMBER = "business_agreement_number"
 CONF_PREMISES_NUMBER = "premises_number"
 CONF_ACCOUNT_HOLDER_NAME = "account_holder_name"

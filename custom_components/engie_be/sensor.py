@@ -17,10 +17,10 @@ from homeassistant.util import dt as dt_util
 
 from ._peaks import peaks_meta, peaks_payload
 from .const import (
-    CONF_CUSTOMER_NUMBER,
+    CONF_BUSINESS_AGREEMENT_NUMBER,
     EPEX_TZ,
     LOGGER,
-    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from .data import EpexPayload
 from .entity import EngieBeEntity, EngieBeEpexEntity
@@ -205,7 +205,7 @@ async def async_setup_entry(
     epex_coordinator = entry.runtime_data.epex_coordinator
 
     for subentry in entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+        if subentry.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
             continue
 
         sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
@@ -337,16 +337,16 @@ class _EngieBePeakSensorBase(EngieBeEntity, SensorEntity):
             f"{coordinator.config_entry.entry_id}"
             f"_{subentry.subentry_id}_{entity_description.key}"
         )
-        # Suggest a CAN-prefixed entity_id slug so a second customer
-        # account on the same login does not collide on the friendly
-        # name and end up auto-suffixed with ``_2``. Only effective on
-        # first registration; existing installs are migrated separately
-        # via ``_async_migrate_entity_id_slugs`` in ``__init__``.
-        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
-        if can:
-            self._attr_suggested_object_id = (
-                f"engie_belgium_{can}_{entity_description.key}"
-            )
+        # Force a BAN-prefixed entity_id so two business agreements
+        # on the same login never collide on the translated friendly
+        # name. ``_attr_suggested_object_id`` is not honoured by
+        # ``Entity.suggested_object_id`` (which reads ``self.name``);
+        # setting ``self.entity_id`` directly is the supported escape
+        # hatch. Only effective on first registration; entity
+        # registry overrides on subsequent boots.
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = f"sensor.engie_belgium_{ban}_{entity_description.key}"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -458,16 +458,18 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
             f"{coordinator.config_entry.entry_id}"
             f"_{subentry.subentry_id}_{entity_description.key}"
         )
-        # Suggest a CAN-prefixed entity_id slug so price sensors for
-        # different customer accounts on one login don't collide on
-        # their translated friendly name. Only effective on first
-        # registration; existing installs are migrated via
-        # ``_async_migrate_entity_id_slugs`` in ``__init__``.
-        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
-        if can:
-            self._attr_suggested_object_id = (
-                f"engie_belgium_{can}_{entity_description.key}"
-            )
+        # Force a BAN-prefixed entity_id so price sensors for
+        # different business agreements on one login don't collide
+        # on their translated friendly name. The energy descriptor
+        # key already embeds EAN + direction, so the final slug is
+        # ``engie_belgium_{ban}_{ean}_{direction}[_excl_vat]`` which
+        # is globally unique. ``_attr_suggested_object_id`` is not
+        # honoured by ``Entity.suggested_object_id``; setting
+        # ``self.entity_id`` directly is the supported escape hatch.
+        # Only effective on first registration.
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = f"sensor.engie_belgium_{ban}_{entity_description.key}"
 
     @property
     def native_value(self) -> float | None:
@@ -622,16 +624,15 @@ class _EngieBeEpexSensorBase(EngieBeEpexEntity, SensorEntity):
             f"{coordinator.config_entry.entry_id}"
             f"_{subentry.subentry_id}_{entity_description.key}"
         )
-        # Suggest a CAN-prefixed entity_id slug so EPEX sensors stay
-        # distinct per customer account on multi-account dynamic-tariff
-        # logins. Only effective on first registration; existing
-        # installs are migrated via ``_async_migrate_entity_id_slugs``
-        # in ``__init__``.
-        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
-        if can:
-            self._attr_suggested_object_id = (
-                f"engie_belgium_{can}_{entity_description.key}"
-            )
+        # Force a BAN-prefixed entity_id so EPEX sensors stay
+        # distinct per business agreement on multi-agreement
+        # dynamic-tariff logins. ``_attr_suggested_object_id`` is
+        # not honoured by ``Entity.suggested_object_id``; setting
+        # ``self.entity_id`` directly is the supported escape hatch.
+        # Only effective on first registration.
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = f"sensor.engie_belgium_{ban}_{entity_description.key}"
 
     @property
     def available(self) -> bool:

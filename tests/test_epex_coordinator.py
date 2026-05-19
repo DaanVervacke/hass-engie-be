@@ -44,10 +44,10 @@ _NOW_UTC = _NOW_BRUSSELS.astimezone(UTC)
 
 
 def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Build a v3 parent ConfigEntry. EPEX coord doesn't need subentries."""
+    """Build a v4 parent ConfigEntry. EPEX coord doesn't need subentries."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=3,
+        version=5,
         title="user@example.com",
         unique_id="user_example_com",
         data={

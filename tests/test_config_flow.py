@@ -31,7 +31,6 @@ from custom_components.engie_be.const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
-    CONF_CUSTOMER_NUMBER,
     CONF_MFA_METHOD,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
@@ -43,7 +42,7 @@ from custom_components.engie_be.const import (
     MFA_METHOD_EMAIL,
     MFA_METHOD_SMS,
     MIN_UPDATE_INTERVAL_MINUTES,
-    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 
 if TYPE_CHECKING:
@@ -91,7 +90,7 @@ def _build_parent_entry(
     *,
     subentries: tuple[ConfigSubentryData, ...] = (),
 ) -> MockConfigEntry:
-    """Build a v3 parent config entry, optionally with pre-existing subentries."""
+    """Build a v5 parent config entry, optionally with pre-existing subentries."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="user_example_com",
@@ -102,7 +101,7 @@ def _build_parent_entry(
             CONF_ACCESS_TOKEN: "old-access",
             CONF_REFRESH_TOKEN: "old-refresh",
         },
-        version=3,
+        version=5,
         subentries_data=subentries,
     )
     entry.add_to_hass(hass)
@@ -156,8 +155,8 @@ async def test_user_flow_happy_path_sms(
     assert result["title"] == _EXPECTED_TITLE
     assert result["data"][CONF_ACCESS_TOKEN] == _TOKENS[0]
     assert result["data"][CONF_REFRESH_TOKEN] == _TOKENS[1]
-    # v3: customer number lives on subentries, not on the parent entry data.
-    assert CONF_CUSTOMER_NUMBER not in result["data"]
+    # v5: BAN identifiers live on subentries, not on the parent entry data.
+    assert CONF_BUSINESS_AGREEMENT_NUMBER not in result["data"]
     assert result["result"].subentries == {}
 
 
@@ -195,23 +194,30 @@ async def test_user_flow_happy_path_with_account_picker(
         assert result["type"] is data_entry_flow.FlowResultType.FORM
         assert result["step_id"] == "select_accounts"
 
-        # Pick only the first account; the second must NOT become a subentry.
-        first_can = relations["items"][0]["customerAccount"]["customerAccountNumber"]
+        # v4: picker offers BANs, one per active business agreement. The
+        # first item's first agreement is the canonical "single household"
+        # of the test fixture, so picking only its BAN must produce
+        # exactly one subentry keyed by that BAN.
+        first_ban = relations["items"][0]["customerAccount"]["businessAgreements"][0][
+            "businessAgreementNumber"
+        ]
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {"selected_accounts": [first_can]},
+            {"selected_accounts": [first_ban]},
         )
 
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
     assert result["title"] == _EXPECTED_TITLE
     assert result["data"][CONF_ACCESS_TOKEN] == _TOKENS[0]
-    assert CONF_CUSTOMER_NUMBER not in result["data"]
+    assert CONF_BUSINESS_AGREEMENT_NUMBER not in result["data"]
 
     entry = result["result"]
     assert len(entry.subentries) == 1
     only_subentry = next(iter(entry.subentries.values()))
-    assert only_subentry.unique_id == first_can
-    assert only_subentry.data[CONF_CUSTOMER_NUMBER] == first_can
+    assert only_subentry.unique_id == first_ban
+    # v5: each subentry is keyed by the BAN (canonical identifier for every
+    # downstream endpoint).
+    assert only_subentry.data[CONF_BUSINESS_AGREEMENT_NUMBER] == first_ban
 
 
 async def test_user_flow_select_accounts_requires_selection(
@@ -575,7 +581,7 @@ async def _init_subentry_flow(
 ) -> dict[str, Any]:
     """Start the customer-account subentry flow against the given parent entry."""
     return await hass.config_entries.subentries.async_init(
-        (entry.entry_id, SUBENTRY_TYPE_CUSTOMER_ACCOUNT),
+        (entry.entry_id, SUBENTRY_TYPE_BUSINESS_AGREEMENT),
         context=SubentryFlowContext(source=SOURCE_USER),
     )
 
@@ -598,15 +604,18 @@ async def test_subentry_picker_creates_first_and_appends_extras(
 
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            {CONF_SELECTED_ACCOUNTS: ["1500000001", "1500000002"]},
+            # v4 picker offers BANs, not CANs. The shared fixture has one
+            # active BAN per customer account, so the BANs map 1:1 to the
+            # legacy CANs the v3 picker used to expose.
+            {CONF_SELECTED_ACCOUNTS: ["002200000001", "002200000002"]},
         )
 
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
     # Two subentries on the parent entry: first via async_create_entry,
     # second auto-added by the picker via async_add_subentry.
     assert len(entry.subentries) == 2
-    customer_numbers = {sub.unique_id for sub in entry.subentries.values()}
-    assert customer_numbers == {"1500000001", "1500000002"}
+    business_agreements = {sub.unique_id for sub in entry.subentries.values()}
+    assert business_agreements == {"002200000001", "002200000002"}
 
 
 async def test_subentry_picker_skips_already_configured(
@@ -614,17 +623,17 @@ async def test_subentry_picker_skips_already_configured(
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
     """Accounts already attached as subentries are filtered out of the picker."""
+    # v5 subentry: business_agreement_number is the canonical BAN identifier.
     existing = ConfigSubentryData(
         data={
-            CONF_CUSTOMER_NUMBER: "1500000001",
             CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
             CONF_PREMISES_NUMBER: "5100000001",
             CONF_ACCOUNT_HOLDER_NAME: "Test Customer One",
             CONF_CONSUMPTION_ADDRESS: "TESTSTRAAT 1, 1000 BRUSSELS",
         },
-        subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+        subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
         title="TESTSTRAAT 1, 1000 BRUSSELS",
-        unique_id="1500000001",
+        unique_id="002200000001",
     )
     entry = _build_parent_entry(hass, subentries=(existing,))
     relations = _load_relations_fixture()
@@ -636,10 +645,10 @@ async def test_subentry_picker_skips_already_configured(
         result = await _init_subentry_flow(hass, entry)
         assert result["type"] is data_entry_flow.FlowResultType.FORM
 
-        # Only the second account should be selectable now.
+        # Only the second BAN should be selectable now.
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            {CONF_SELECTED_ACCOUNTS: ["1500000002"]},
+            {CONF_SELECTED_ACCOUNTS: ["002200000002"]},
         )
 
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
@@ -651,107 +660,26 @@ async def test_subentry_picker_aborts_when_all_configured(
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
     """When every relation account is already a subentry, the picker aborts."""
+    # v5 subentries: keyed by business_agreement_number (BAN).
     existing = (
         ConfigSubentryData(
-            data={CONF_CUSTOMER_NUMBER: "1500000001"},
-            subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
-            title="One",
-            unique_id="1500000001",
-        ),
-        ConfigSubentryData(
-            data={CONF_CUSTOMER_NUMBER: "1500000002"},
-            subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
-            title="Two",
-            unique_id="1500000002",
-        ),
-    )
-    entry = _build_parent_entry(hass, subentries=existing)
-    relations = _load_relations_fixture()
-
-    with patch(
-        "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
-        AsyncMock(return_value=relations),
-    ):
-        result = await _init_subentry_flow(hass, entry)
-
-    assert result["type"] is data_entry_flow.FlowResultType.ABORT
-    assert result["reason"] == "no_accounts_available"
-
-
-async def test_subentry_picker_dedupes_by_business_agreement_number(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """
-    Legacy BAN-shaped unique_ids must dedupe candidates whose CAN differs.
-
-    Reproduces the duplicate-device bug: a v2-migrated subentry stores
-    its identifier as a businessAgreementNumber, but the picker
-    candidate carries the canonical customerAccountNumber. Without the
-    BAN-aware dedupe the same physical premises gets added a second
-    time.
-    """
-    legacy_subentry = ConfigSubentryData(
-        data={
-            # Legacy v2-migrated shape: customer_number holds the BAN
-            # because that is what the legacy v2 endpoints accepted.
-            CONF_CUSTOMER_NUMBER: "002200000001",
-            CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
-        },
-        subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
-        title="Legacy",
-        unique_id="002200000001",
-    )
-    entry = _build_parent_entry(hass, subentries=(legacy_subentry,))
-    relations = _load_relations_fixture()
-
-    with patch(
-        "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
-        AsyncMock(return_value=relations),
-    ):
-        result = await _init_subentry_flow(hass, entry)
-        assert result["type"] is data_entry_flow.FlowResultType.FORM
-
-        # Only CAN 1500000002 should remain selectable; CAN 1500000001
-        # is the canonical match for the legacy BAN-keyed subentry and
-        # must be filtered out.
-        result = await hass.config_entries.subentries.async_configure(
-            result["flow_id"],
-            {CONF_SELECTED_ACCOUNTS: ["1500000002"]},
-        )
-
-    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert len(entry.subentries) == 2
-    stored_ids = {s.unique_id for s in entry.subentries.values()}
-    assert stored_ids == {"002200000001", "1500000002"}
-
-
-async def test_subentry_picker_aborts_when_only_legacy_ban_match_available(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """All candidates matched by BAN must abort, not silently fall through."""
-    legacy_subentries = (
-        ConfigSubentryData(
             data={
-                CONF_CUSTOMER_NUMBER: "002200000001",
                 CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
             },
-            subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
-            title="Legacy 1",
+            subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+            title="One",
             unique_id="002200000001",
         ),
         ConfigSubentryData(
             data={
-                CONF_CUSTOMER_NUMBER: "002200000002",
                 CONF_BUSINESS_AGREEMENT_NUMBER: "002200000002",
             },
-            subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
-            title="Legacy 2",
+            subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+            title="Two",
             unique_id="002200000002",
         ),
     )
-    entry = _build_parent_entry(hass, subentries=legacy_subentries)
+    entry = _build_parent_entry(hass, subentries=existing)
     relations = _load_relations_fixture()
 
     with patch(
@@ -874,8 +802,8 @@ async def test_reauth_flow_updates_tokens(
     # Stored credentials must remain untouched
     assert entry.data[CONF_USERNAME] == _USER_INPUT[CONF_USERNAME]
     assert entry.data[CONF_PASSWORD] == _USER_INPUT[CONF_PASSWORD]
-    # v3: parent entry never carried customer_number; reauth must not add it.
-    assert CONF_CUSTOMER_NUMBER not in entry.data
+    # v5: parent entry never carries a BAN; reauth must not add one.
+    assert CONF_BUSINESS_AGREEMENT_NUMBER not in entry.data
 
 
 async def test_reauth_flow_email_updates_tokens(

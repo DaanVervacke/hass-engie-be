@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from homeassistant.components.sensor import SensorEntityDescription
 
-from custom_components.engie_be.const import SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.sensor import (
     EngieBeEnergySensor,
     _build_sensor_descriptions,
@@ -228,7 +228,7 @@ def test_energy_sensor_unique_id_includes_subentry_segment() -> None:
 
     subentry = MagicMock()
     subentry.subentry_id = "sub_xyz"
-    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
     subentry.title = "Test Account"
     subentry.data = {}
 

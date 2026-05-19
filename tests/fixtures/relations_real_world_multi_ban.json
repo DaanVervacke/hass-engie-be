@@ -1,0 +1,68 @@
+{
+  "items": [
+    {
+      "id": "102b926a-bd34-4553-b738-0e0ba2a8719b",
+      "admin": true,
+      "customerAccount": {
+        "customerAccountNumber": "1500005108",
+        "segment": "RESIDENTIAL",
+        "businessAgreements": [
+          {
+            "businessAgreementNumber": "002200002351",
+            "active": true,
+            "consumptionAddress": {
+              "postalCode": "1000",
+              "city": "LEUVEN",
+              "country": null,
+              "street": "TESTSTRAAT",
+              "houseNumber": "1",
+              "premisesNumber": "5100006506",
+              "boxNumber": null,
+              "countryCode": "BE",
+              "floor": null,
+              "locationSupplement": null,
+              "roomNumber": null,
+              "supplement": null
+            },
+            "electricityContract": {
+              "hasSmartMeter": true,
+              "active": true,
+              "hasSolar": true
+            },
+            "gasContract": {
+              "hasSmartMeter": true,
+              "active": true
+            }
+          },
+          {
+            "businessAgreementNumber": "002200001506",
+            "active": true,
+            "consumptionAddress": {
+              "postalCode": "2800",
+              "city": "MECHELEN",
+              "country": null,
+              "street": "RUEDETEST",
+              "houseNumber": "1",
+              "premisesNumber": "5100002698",
+              "boxNumber": null,
+              "countryCode": "BE",
+              "floor": null,
+              "locationSupplement": null,
+              "roomNumber": null,
+              "supplement": null
+            },
+            "electricityContract": {
+              "hasSmartMeter": true,
+              "active": true,
+              "hasSolar": true
+            },
+            "gasContract": null
+          }
+        ],
+        "language": null,
+        "name": "REDACTED"
+      },
+      "label": null
+    }
+  ]
+}

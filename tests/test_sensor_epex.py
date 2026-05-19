@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from homeassistant.components.sensor import SensorStateClass
 
-from custom_components.engie_be.const import EPEX_TZ, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from custom_components.engie_be.const import EPEX_TZ, SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.data import EpexPayload, EpexSlot
 from custom_components.engie_be.sensor import (
     _EPEX_CURRENT,
@@ -73,7 +73,7 @@ def _make_subentry(
     """Build a MagicMock ConfigSubentry stub."""
     subentry = MagicMock()
     subentry.subentry_id = subentry_id
-    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
     subentry.title = title
     return subentry
 

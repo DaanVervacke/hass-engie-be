@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 from homeassistant.components.sensor import SensorDeviceClass
 
-from custom_components.engie_be.const import SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.sensor import (
     EngieBeMonthlyPeakTimestampSensor,
     EngieBeMonthlyPeakValueSensor,
@@ -47,7 +47,7 @@ def _make_subentry(
     """Build a MagicMock ConfigSubentry stub."""
     subentry = MagicMock()
     subentry.subentry_id = subentry_id
-    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
     subentry.title = title
     return subentry
 

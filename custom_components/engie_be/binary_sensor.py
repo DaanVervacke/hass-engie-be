@@ -12,7 +12,11 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.const import EntityCategory
 from homeassistant.util import dt as dt_util
 
-from .const import LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from .const import (
+    CONF_BUSINESS_AGREEMENT_NUMBER,
+    LOGGER,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+)
 from .data import EpexPayload
 from .entity import EngieBeAuthEntity, EngieBeEpexEntity
 
@@ -89,7 +93,7 @@ async def async_setup_entry(
     )
 
     for subentry in entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+        if subentry.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
             continue
 
         sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
@@ -184,6 +188,13 @@ class EngieBeEpexNegativeSensor(EngieBeEpexEntity, BinarySensorEntity):
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_epex_negative"
         )
+        # BAN-prefixed entity_id keeps the slug stable and collision-free
+        # across multiple dynamic-tariff business agreements on one login.
+        # Only effective on first registration; entity registry overrides
+        # on subsequent boots.
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = f"binary_sensor.engie_belgium_{ban}_epex_negative"
 
     @property
     def available(self) -> bool:

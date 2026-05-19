@@ -24,14 +24,13 @@ from custom_components.engie_be.const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
-    CONF_CUSTOMER_NUMBER,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
-    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from custom_components.engie_be.coordinator import EngieBeDataUpdateCoordinator
 from custom_components.engie_be.data import EngieBeData
@@ -48,12 +47,12 @@ def _build_entry(
     hass: HomeAssistant,
     *,
     options: dict[str, object] | None = None,
-    customer_number: str = "000000000000",
+    business_agreement_number: str = "B-0001",
 ) -> MockConfigEntry:
-    """Build a v3 MockConfigEntry with one customer-account subentry."""
+    """Build a v5 MockConfigEntry with one business-agreement subentry."""
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=3,
+        version=5,
         title="user@example.com",
         unique_id="user_example_com",
         data={
@@ -66,15 +65,14 @@ def _build_entry(
         options=options if options is not None else {"update_interval": 60},
         subentries_data=[
             ConfigSubentryData(
-                subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
                 title="placeholder",
-                unique_id=customer_number,
+                unique_id=business_agreement_number,
                 data={
-                    CONF_CUSTOMER_NUMBER: customer_number,
                     # Provide all relations-backfillable keys so the
                     # coordinator's one-shot backfill stays disabled and
                     # we don't need to mock the relations endpoint.
-                    CONF_BUSINESS_AGREEMENT_NUMBER: "B-0001",
+                    CONF_BUSINESS_AGREEMENT_NUMBER: business_agreement_number,
                     CONF_PREMISES_NUMBER: "P-0001",
                     CONF_CONSUMPTION_ADDRESS: "Test 1, 1000 Brussels",
                 },
@@ -86,7 +84,7 @@ def _build_entry(
 
 
 def _only_subentry(entry: MockConfigEntry) -> ConfigSubentry:
-    """Return the single customer-account subentry on the test entry."""
+    """Return the single business-agreement subentry on the test entry."""
     return next(iter(entry.subentries.values()))
 
 
