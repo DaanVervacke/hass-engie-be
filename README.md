@@ -17,9 +17,16 @@ them as sensors.
 > appear under **Settings** > **Repairs**. No devices or entities will be
 > exposed until you re-add the integration.
 >
+> **v0.9.0 is currently in beta** (the first beta is `v0.9.0b1`). HACS
+> only shows beta releases when you opt in for this integration via the
+> three-dot menu > **Redownload** > **Show beta versions**, or via the
+> repository's settings page in HACS. Stable users on v0.8.x will not
+> be offered v0.9.0b1 automatically.
+>
 > **To upgrade:**
 >
-> 1. Install v0.9.0 through HACS and restart Home Assistant.
+> 1. Install v0.9.0 (or the latest beta) through HACS and restart Home
+>    Assistant.
 > 2. Go to **Settings** > **Devices & services**, open the ENGIE Belgium
 >    integration, and click **Delete**.
 > 3. Click **Add Integration**, search for "ENGIE Belgium", and log in

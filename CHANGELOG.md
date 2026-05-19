@@ -7,8 +7,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-## [0.9.0] - 2026-05-19
+## [0.9.0b1] - 2026-05-19
 
+> **Pre-release (beta).** This is the first beta of v0.9.0. To
+> install, enable "Show beta versions" on the integration in
+> HACS. Production users on v0.8.x should not install this
+> unless they are willing to re-add the integration; there is
+> no in-place upgrade path (see Breaking section).
+>
 > **Breaking change.** This release requires every existing user to
 > remove the integration from Home Assistant and add it again. There
 > is no in-place upgrade path. On first boot after the update, every
@@ -424,7 +430,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0b1...HEAD
+[0.9.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...v0.9.0b1
 [0.8.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.0...v0.8.1
