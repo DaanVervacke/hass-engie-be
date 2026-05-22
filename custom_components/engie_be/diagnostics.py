@@ -176,6 +176,11 @@ def _summarise_subentry(
         "peaks_history": (
             sub_data.peaks_store.summary() if sub_data.peaks_store is not None else None
         ),
+        "happy_hours_history": (
+            sub_data.happy_hours_store.summary()
+            if sub_data.happy_hours_store is not None
+            else None
+        ),
         "coordinator": {
             "last_update_success": coordinator.last_update_success,
             "update_interval_seconds": (

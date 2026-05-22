@@ -15,9 +15,21 @@ API_BASE_URL = "https://www.engie.be/api/engie/be/ms/billing/customer/v1"
 PREMISES_BASE_URL = "https://www.engie.be/api/engie/be/ms/premises/customer/v1"
 PEAKS_BASE_URL = "https://api.engie.be/engie/ms/b2c-energy-insights/v1"
 ACCOUNTS_BASE_URL = "https://api.engie.be/engie/ms/accounts/customer/v1"
+HAPPY_HOUR_BASE_URL = "https://api.engie.be/engie/ms/energy-insights/customer/v1"
+FEATURE_FLAGS_BASE_URL = (
+    "https://api.engie.be/engie/ms/feature-flags/customer/v1/group-feature-flags/_query"
+)
 BUSINESS_AGREEMENTS_BASE_URL = (
     "https://www.engie.be/api/engie/be/ms/business-agreements/customer/v1"
 )
+
+# Feature-flags response key that authoritatively reports per-BAN Happy
+# Hour enrolment. The endpoint also returns ``happy-hours-shown`` which
+# governs Smart App UI visibility, but ``-service-enabled`` is the one
+# that flips to ``true`` once a user signs the agreement; using it as
+# the gate keeps the integration aligned with the actual service state
+# rather than a UI quirk.
+HAPPY_HOURS_SERVICE_ENABLED_KEY = "happy-hours-service-enabled"
 
 # OAuth configuration (public mobile-app client, no secret needed)
 DEFAULT_CLIENT_ID = "R0PQyUdjO5B2tBaRnltgitVnnUmjGyld"

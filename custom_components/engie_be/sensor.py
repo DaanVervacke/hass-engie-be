@@ -15,7 +15,9 @@ from homeassistant.components.sensor import (
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.util import dt as dt_util
 
+from ._happy_hour import happy_hour_window
 from ._peaks import peaks_meta, peaks_payload
+from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     EPEX_TZ,
@@ -240,6 +242,28 @@ async def async_setup_entry(
             for desc, ean, value_key, slot_code in sensor_defs
         ]
         entities.extend(_build_peak_sensors(coordinator, subentry))
+        # Only surface Happy Hour timestamp sensors when this BAN is
+        # enrolled in the Happy Hours service. Enrolment is detected
+        # from the feature-flags endpoint during the coordinator's
+        # first refresh; the parent entry is reloaded automatically
+        # when enrolment flips so entities track the service status.
+        if sub_data.is_happy_hour_enrolled:
+            happy_hour_sensors = _build_happy_hour_sensors(coordinator, subentry)
+            LOGGER.debug(
+                "Subentry %s (BAN %s): enrolled in Happy Hours, "
+                "registering %d Happy Hour timestamp sensors",
+                subentry.subentry_id,
+                mask_identifier(coordinator.business_agreement_number),
+                len(happy_hour_sensors),
+            )
+            entities.extend(happy_hour_sensors)
+        else:
+            LOGGER.debug(
+                "Subentry %s (BAN %s): not enrolled in Happy Hours, "
+                "skipping Happy Hour timestamp sensors",
+                subentry.subentry_id,
+                mask_identifier(coordinator.business_agreement_number),
+            )
         if coordinator.is_dynamic:
             entities.extend(_build_epex_sensors(epex_coordinator, subentry))
 
@@ -425,6 +449,80 @@ class EngieBeMonthlyPeakTimestampSensor(_EngieBePeakSensorBase):
             return datetime.fromisoformat(raw)
         except ValueError:
             return None
+
+
+# ---------------------------------------------------------------------------
+# Happy Hour sensors
+# ---------------------------------------------------------------------------
+
+_HAPPY_HOUR_NEXT_START = SensorEntityDescription(
+    key="happy_hour_next_start",
+    translation_key="happy_hour_next_start",
+    icon="mdi:weather-sunset-up",
+    device_class=SensorDeviceClass.TIMESTAMP,
+)
+_HAPPY_HOUR_NEXT_END = SensorEntityDescription(
+    key="happy_hour_next_end",
+    translation_key="happy_hour_next_end",
+    icon="mdi:weather-sunset-down",
+    device_class=SensorDeviceClass.TIMESTAMP,
+)
+
+
+def _build_happy_hour_sensors(
+    coordinator: EngieBeDataUpdateCoordinator,
+    subentry: ConfigSubentry,
+) -> list[SensorEntity]:
+    """Build the start/end timestamp sensors for the next Happy Hour window."""
+    return [
+        EngieBeHappyHourTimestampSensor(
+            coordinator,
+            subentry,
+            _HAPPY_HOUR_NEXT_START,
+            field="start",
+        ),
+        EngieBeHappyHourTimestampSensor(
+            coordinator,
+            subentry,
+            _HAPPY_HOUR_NEXT_END,
+            field="end",
+        ),
+    ]
+
+
+class EngieBeHappyHourTimestampSensor(EngieBeEntity, SensorEntity):
+    """Start or end of the next upcoming Happy Hour window."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        entity_description: SensorEntityDescription,
+        field: str,
+    ) -> None:
+        """Initialise the sensor, recording which window endpoint to expose."""
+        super().__init__(coordinator, subentry)
+        self.entity_description = entity_description
+        # Field is either "start" or "end": which end of the
+        # ``happy_hour_window`` tuple to expose.
+        self._field = field
+        # Subentry-scoped unique ID, matching the peak-sensor convention.
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_{entity_description.key}"
+        )
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = f"sensor.engie_belgium_{ban}_{entity_description.key}"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the start or end of the next happy-hour window, if any."""
+        window = happy_hour_window(self.coordinator)
+        if window is None:
+            return None
+        start, end = window
+        return start if self._field == "start" else end
 
 
 class EngieBeEnergySensor(EngieBeEntity, SensorEntity):

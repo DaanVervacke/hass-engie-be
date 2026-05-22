@@ -530,7 +530,20 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.exception(exception)
                 errors["base"] = "unknown"
             else:
-                return self.async_update_reload_and_abort(
+                # Use ``async_update_and_abort`` (not
+                # ``async_update_reload_and_abort``) because the integration
+                # also registers ``add_update_listener(async_reload_entry)``
+                # in ``__init__.py`` to drive options-change and subentry
+                # add/remove reloads. Combining a config-entry listener
+                # with a reloading method in a config flow is deprecated
+                # in HA 2026.6 and errors in 2026.12. The listener still
+                # fires for any ``async_update_entry`` write (including
+                # this one) and short-circuits to no-op when options /
+                # subentry-id set are unchanged, so reauth completion
+                # still triggers exactly one reload via the listener.
+                # See ``.opencode/audit-v0.10.0b1-prerelease.md`` Blocker
+                # B1b and HA dev blog 2026-05-07.
+                return self.async_update_and_abort(
                     self._get_reauth_entry(),
                     data_updates={
                         CONF_ACCESS_TOKEN: access_token,
@@ -606,6 +619,19 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         # the parent entry. The first pick is returned via async_create_entry
         # so the framework persists it via the standard ConfigSubentryFlow
         # finish path.
+        #
+        # Each ``async_add_subentry`` call fires the entry's update
+        # listeners, including our own ``async_reload_entry``. For a
+        # multi-pick selection this means N back-to-back reloads. HA core
+        # serialises them via ``ConfigEntry.setup_lock`` (no corruption)
+        # but the resulting setup-storm is wasteful and visible in logs
+        # for multi-BAN customers. The clean fix would require either
+        # batching at the framework level (not available in HA 2026.3) or
+        # dropping the update-listener entirely (deprecation 2026.6 -> 2026.12
+        # pushes us that direction eventually). Documented as a Low finding
+        # in .opencode/audit-v0.10.0b1-prerelease.md (CFG-9) and revisited
+        # post-beta. See also the HA dev blog post 2026-05-07 on listener
+        # deprecation.
         for extra in picked[1:]:
             self.hass.config_entries.async_add_subentry(
                 entry,

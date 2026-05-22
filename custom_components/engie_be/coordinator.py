@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
+from ._happy_hour import happy_hour_flag_reason, is_enrolled_from_flags
 from ._relations import (
     RELATIONS_BACKFILLABLE_KEYS,
     find_agreement_for_ban,
@@ -24,6 +25,7 @@ from .api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
     EpexNotPublishedError,
+    mask_identifier,
 )
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
@@ -193,8 +195,230 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["peaks"] = peaks_wrapper
             self._record_peak_history(peaks_wrapper)
 
+        # Probe the feature-flags endpoint to learn whether this BAN is
+        # enrolled in Happy Hours. The endpoint is the authoritative
+        # signal: ``/happy-hour-event`` returns ``{}`` both for
+        # un-enrolled BANs and for enrolled BANs without a scheduled
+        # window, so the event payload alone cannot distinguish the two.
+        # Soft-fail on errors: an un-readable flag is treated as "no
+        # signal change" so a transient outage never silently drops or
+        # creates Happy Hour entities.
+        previous_enrolled = self._read_cached_enrollment()
+        new_enrolled = await self._async_fetch_enrollment(
+            client,
+            business_agreement_number,
+            previous_enrolled=previous_enrolled,
+        )
+
+        # Only poll the Happy Hour event endpoint for enrolled BANs.
+        # When un-enrolled, drop any stale wrapper so the entities (if
+        # they exist from a previous enrolled run that has not been
+        # reloaded yet) immediately report no scheduled window.
+        if new_enrolled:
+            previous_happy_hour_wrapper: dict[str, Any] | None = None
+            if isinstance(self.data, dict):
+                existing_hh = self.data.get("happy_hour")
+                if isinstance(existing_hh, dict):
+                    previous_happy_hour_wrapper = existing_hh
+
+            happy_hour_wrapper = await self._async_fetch_happy_hour(
+                client,
+                business_agreement_number,
+                previous_happy_hour_wrapper,
+            )
+            if happy_hour_wrapper is not None:
+                data["happy_hour"] = happy_hour_wrapper
+                self._record_happy_hour_history(happy_hour_wrapper)
+
+        # Push the enrolment outcome onto subentry runtime data and
+        # schedule a config-entry reload when the state flips. The first
+        # observation (previous_enrolled is None) sets the cache without
+        # scheduling a reload because platforms have not yet been set up
+        # against it; subsequent flips reconcile entity presence with
+        # the new enrolment state.
+        self._async_apply_enrollment(
+            previous_enrolled=previous_enrolled,
+            new_enrolled=new_enrolled,
+        )
+
         self.last_successful_fetch = dt_util.utcnow()
         return data
+
+    def _read_cached_enrollment(self) -> bool | None:
+        """Return the previously-observed Happy Hour enrolment, or ``None``."""
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        if runtime is None:
+            return None
+        subentry_data = runtime.subentry_data.get(self.subentry.subentry_id)
+        if subentry_data is None:
+            return None
+        return subentry_data.is_happy_hour_enrolled
+
+    async def _async_fetch_enrollment(
+        self,
+        client: EngieBeApiClient,
+        business_agreement_number: str,
+        *,
+        previous_enrolled: bool | None,
+    ) -> bool:
+        """
+        Fetch and interpret the feature-flags response for this BAN.
+
+        Returns ``True``/``False`` based on
+        ``happy-hours-service-enabled.value``. Auth failures escalate;
+        all other failures soft-fail to the previous cached state
+        (``False`` when there is no prior observation) so a transient
+        outage never silently flips entities in or out.
+        """
+        try:
+            flags = await client.async_get_feature_flags(business_agreement_number)
+        except EngieBeApiClientAuthenticationError as exception:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+            ) from exception
+        except EngieBeApiClientError as exception:
+            LOGGER.warning(
+                "Failed to fetch feature flags for BAN %s, "
+                "keeping last-known Happy Hour enrolment (%s): %s",
+                mask_identifier(business_agreement_number),
+                previous_enrolled,
+                exception,
+            )
+            return bool(previous_enrolled)
+
+        enrolled = is_enrolled_from_flags(flags)
+        reason = happy_hour_flag_reason(flags)
+        LOGGER.debug(
+            "BAN %s: Happy Hour enrolment from feature flags is %s (reason=%s)",
+            mask_identifier(business_agreement_number),
+            enrolled,
+            reason,
+        )
+        return enrolled
+
+    @callback
+    def _async_apply_enrollment(
+        self,
+        *,
+        previous_enrolled: bool | None,
+        new_enrolled: bool,
+    ) -> None:
+        """
+        Persist the new enrolment value and schedule a reload on a flip.
+
+        ``previous_enrolled`` is ``None`` on the very first refresh of a
+        coordinator; in that case we just set the cache so ``__init__``
+        and the platform setups can read it on subsequent passes,
+        without scheduling a reload (platforms have not yet been set up
+        against the old value, so there is nothing to reconcile).
+
+        On a true flip (``True`` <-> ``False``) we mark the parent entry
+        for reload and queue an ``async_reload`` call. The
+        ``reload_pending`` flag on ``EngieBeData`` debounces the case
+        where multiple subentries flip in the same refresh tick.
+        """
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        if runtime is None:
+            return
+        subentry_data = runtime.subentry_data.get(self.subentry.subentry_id)
+        if subentry_data is None:
+            return
+
+        subentry_data.is_happy_hour_enrolled = new_enrolled
+
+        if previous_enrolled is None:
+            LOGGER.debug(
+                "BAN %s: initial Happy Hour enrolment observed as %s; "
+                "platforms will register accordingly",
+                mask_identifier(self.business_agreement_number),
+                new_enrolled,
+            )
+            return
+        if previous_enrolled == new_enrolled:
+            return
+        if runtime.reload_pending:
+            return
+
+        runtime.reload_pending = True
+        LOGGER.info(
+            "Happy Hour enrolment changed for BAN %s (%s -> %s); "
+            "reloading config entry to reconcile entities",
+            mask_identifier(self.business_agreement_number),
+            previous_enrolled,
+            new_enrolled,
+        )
+        # ``async_create_background_task`` (not ``async_create_task``) so the
+        # reload survives the teardown of the very coordinator that scheduled
+        # it. ``async_reload`` will cancel our own update task; a foreground
+        # ``async_create_task`` would be cancelled with us, leaving the entry
+        # in a half-reloaded state. The named background task is also visible
+        # in HA developer tools for diagnostics. See CFG-2 in the pre-release
+        # audit.
+        self.hass.async_create_background_task(
+            self.hass.config_entries.async_reload(self.config_entry.entry_id),
+            name=(
+                "engie_be_reload_on_happy_hour_enrolment_change_"
+                f"{self.config_entry.entry_id}"
+            ),
+        )
+
+    async def _async_fetch_happy_hour(
+        self,
+        client: EngieBeApiClient,
+        business_agreement_number: str,
+        previous_wrapper: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """
+        Fetch the upcoming Happy Hour event for this business agreement.
+
+        Returns a wrapper ``{"data": <payload-or-None>}``: ``data`` is the
+        raw API payload when one is returned (including the empty ``{}``
+        case, which means "no event scheduled"), and ``None`` only when
+        the API call failed and no prior wrapper is available.
+
+        Auth failures escalate to reauth; all other failures keep the
+        last-known wrapper so sensors don't blank on a transient outage.
+        """
+        try:
+            payload = await client.async_get_happy_hour_event(
+                business_agreement_number,
+            )
+        except EngieBeApiClientAuthenticationError as exception:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+            ) from exception
+        except EngieBeApiClientError as exception:
+            LOGGER.warning(
+                "Failed to fetch happy-hour event, keeping last-known value: %s",
+                exception,
+            )
+            return previous_wrapper
+
+        wrapper = {"data": payload if isinstance(payload, dict) else None}
+        ban_masked = mask_identifier(business_agreement_number)
+        if isinstance(payload, dict):
+            tomorrow = payload.get("tomorrow")
+            if isinstance(tomorrow, dict):
+                LOGGER.debug(
+                    "BAN %s: Happy Hour payload reports window for tomorrow "
+                    "(start=%s end=%s)",
+                    ban_masked,
+                    tomorrow.get("startTime"),
+                    tomorrow.get("endTime"),
+                )
+            else:
+                LOGGER.debug(
+                    "BAN %s: Happy Hour payload empty (no window scheduled)",
+                    ban_masked,
+                )
+        else:
+            LOGGER.debug(
+                "BAN %s: Happy Hour payload was not a dict; storing None",
+                ban_masked,
+            )
+        return wrapper
 
     def _record_peak_history(self, peaks_wrapper: dict[str, Any]) -> None:
         """Persist the current month's peak window if it is not a fallback."""
@@ -236,6 +460,72 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             peak_kwh=monthly.get("peakKWh"),
         )
 
+    def _record_happy_hour_history(self, happy_hour_wrapper: dict[str, Any]) -> None:
+        """
+        Persist the upcoming Happy Hour window if one is scheduled.
+
+        Idempotent: the same ``tomorrow`` payload may be observed many
+        times between the moment ENGIE announces a window and the
+        moment it expires, but the store dedups on ``start``.
+        """
+        ban = mask_identifier(self.business_agreement_number)
+        payload = happy_hour_wrapper.get("data")
+        if not isinstance(payload, dict):
+            LOGGER.debug(
+                "BAN %s: skipping Happy Hour history record, payload is not a dict",
+                ban,
+            )
+            return
+        tomorrow = payload.get("tomorrow")
+        if not isinstance(tomorrow, dict):
+            LOGGER.debug(
+                "BAN %s: skipping Happy Hour history record, no 'tomorrow' window",
+                ban,
+            )
+            return
+        start = tomorrow.get("startTime")
+        end = tomorrow.get("endTime")
+        if not isinstance(start, str) or not isinstance(end, str):
+            LOGGER.debug(
+                "BAN %s: skipping Happy Hour history record, "
+                "start/end not strings (start=%r end=%r)",
+                ban,
+                start,
+                end,
+            )
+            return
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        subentry_data = (
+            runtime.subentry_data.get(self.subentry.subentry_id)
+            if runtime is not None
+            else None
+        )
+        store = (
+            getattr(subentry_data, "happy_hours_store", None)
+            if subentry_data is not None
+            else None
+        )
+        if store is None:
+            LOGGER.debug(
+                "BAN %s: skipping Happy Hour history record, store not available",
+                ban,
+            )
+            return
+        changed = store.upsert(start=start, end=end)
+        if changed:
+            LOGGER.debug(
+                "BAN %s: persisted Happy Hour window to history (start=%s end=%s)",
+                ban,
+                start,
+                end,
+            )
+        else:
+            LOGGER.debug(
+                "BAN %s: Happy Hour window already in history (start=%s)",
+                ban,
+                start,
+            )
+
     async def _async_try_backfill_subentry(
         self,
         client: EngieBeApiClient,
@@ -270,7 +560,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             LOGGER.debug(
                 "Relations response has no entry for BAN %s; "
                 "leaving subentry %s untouched",
-                self.business_agreement_number,
+                mask_identifier(self.business_agreement_number),
                 self.subentry.subentry_id,
             )
             return

@@ -99,6 +99,8 @@ def _build_dynamic_client() -> MagicMock:
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value={"items": []})
     client.async_get_monthly_peaks = AsyncMock(return_value=peaks)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     return client
 
 
@@ -139,6 +141,8 @@ async def test_non_dynamic_account_records_is_dynamic_false(
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=prices)
     client.async_get_monthly_peaks = AsyncMock(return_value=peaks)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     _attach_runtime(entry, client)
 
     coordinator = _make_coordinator(hass, entry)
@@ -219,6 +223,8 @@ async def test_is_dynamic_property_reflects_latest_refresh(
 
     client = MagicMock()
     client.async_get_monthly_peaks = AsyncMock(return_value=peaks)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     # First poll: dynamic. Second poll: fixed.
     client.async_get_prices = AsyncMock(side_effect=[{"items": []}, prices])
     _attach_runtime(entry, client)
@@ -278,6 +284,8 @@ async def test_override_true_wins_over_populated_prices(
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=prices)
     client.async_get_monthly_peaks = AsyncMock(return_value=peaks)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     sid = _attach_runtime_with_override(entry, client, override=True)
 
     coordinator = _make_coordinator(hass, entry)
