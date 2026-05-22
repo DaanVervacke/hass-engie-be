@@ -11,43 +11,28 @@ them as sensors.
 
 > ## Upgrading from v0.8.x or earlier? Read this first.
 >
-> **v0.9.0 is a breaking schema change.** There is no in-place upgrade path
-> from any earlier version. After installing v0.9.0, every existing ENGIE
-> Belgium config entry will be flagged with `setup_error` in Home Assistant and
-> appear under **Settings** > **Repairs**. No devices or entities will be
-> exposed until you re-add the integration.
+> **v0.9.0 requires a one-time remove-and-re-add, including
+> logging in to ENGIE again with 2FA.** There is no automatic
+> upgrade from any earlier version.
 >
-> **v0.9.0 is currently in beta** (the first beta is `v0.9.0b1`). HACS
-> will not surface a pre-release as an available update unless you
-> enable the `switch.engie_be_include_pre_releases` entity under
-> **Settings** > **Devices & services** > **HACS** > **Entities**.
-> Without that switch, `v0.9.0b1` only appears in the manual version
-> picker (three-dot menu > **Redownload** > version dropdown).
-> Stable users on v0.8.x will not be offered v0.9.0b1 automatically.
+> After you install v0.9.0 through HACS and restart Home Assistant:
 >
-> **To upgrade:**
+> 1. Open **Settings** > **Devices & services**, find the
+>    **ENGIE Belgium** card, and click **Delete**.
+> 2. Click **+ Add integration**, search for **ENGIE Belgium**,
+>    and log in with the same ENGIE account you used before. You
+>    will need to enter the 2FA code that ENGIE sends to you.
+> 3. At the end of the setup wizard, pick the business
+>    agreements you want Home Assistant to track.
 >
-> 1. Open HACS, find the ENGIE Belgium card, click the three-dot menu,
->    pick **Redownload**, and choose `0.9.0b1` from the version
->    dropdown. Restart Home Assistant.
-> 2. Go to **Settings** > **Devices & services**, open the ENGIE Belgium
->    integration, and click **Delete**.
-> 3. Click **Add Integration**, search for "ENGIE Belgium", and log in
->    again. The config flow will pick up every active business agreement
->    on your login.
+> **Heads-up on entity names.** v0.9.0 numbers each device by its
+> **business-agreement number** instead of the customer-account
+> number. Any dashboards, automations, or scripts that mention the
+> old `sensor.engie_belgium_<old-id>_*` entities need to be updated
+> to the new names after re-adding the integration. Long-term
+> statistics from v0.8.x will not carry over into the new entities.
 >
-> **What changes:** entity IDs and unique IDs are now derived from the
-> business-agreement number (BAN), not the customer-account number (CAN).
-> Any dashboards, automations, scripts, or templates that reference the
-> old `sensor.engie_belgium_{customer_number}_*` IDs must be updated to
-> the new `sensor.engie_belgium_{business_agreement_number}_*` IDs after
-> re-adding the integration. Historical capacity-tariff peak data from
-> earlier installs is not carried over because the underlying subentry
-> identifier changes on re-add.
->
-> **Why:** see the v0.9.0 entry in [CHANGELOG.md](CHANGELOG.md). The
-> short version: pre-1.0 is the right window to drop several thousand
-> lines of one-shot migration / heal code, and this is that drop.
+> Full details: see the v0.9.0 entry in [CHANGELOG.md](CHANGELOG.md).
 
 ## Features
 
