@@ -30,7 +30,7 @@ from .const import (
 from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
 from .data import EngieBeData, EngieBeSubentryData
 from .diagnostics import _hash_ean
-from .store import EngieBePeaksStore
+from .store import EngieBeHappyHoursStore, EngieBePeaksStore
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
@@ -141,13 +141,6 @@ async def async_setup_entry(
         entry.runtime_data.authenticated = True
         LOGGER.debug("Token refreshed successfully")
 
-    cancel_refresh = async_track_time_interval(
-        hass,
-        _refresh_token_callback,
-        timedelta(seconds=TOKEN_REFRESH_INTERVAL_SECONDS),
-    )
-    entry.async_on_unload(cancel_refresh)
-
     # Build per-subentry coordinators, peak stores and service-points
     # lookups, then do their initial refreshes in parallel so that a
     # user with N business agreements does not pay sum(latency) at setup.
@@ -164,19 +157,44 @@ async def async_setup_entry(
             subentry=subentry,
         )
         peaks_store = await _async_init_peaks_store(hass, subentry.subentry_id)
+        happy_hours_store = await _async_init_happy_hours_store(
+            hass, subentry.subentry_id
+        )
         entry.runtime_data.subentry_data[subentry.subentry_id] = EngieBeSubentryData(
             coordinator=coordinator,
             peaks_store=peaks_store,
+            happy_hours_store=happy_hours_store,
         )
 
     # Refresh EPEX once at startup alongside the per-subentry data;
     # EPEX is shared across subentries so this is one fetch total.
+    #
+    # ``return_exceptions=True`` so a failure in one coordinator does not
+    # cancel siblings mid-flight, leaking in-flight aiohttp requests and
+    # committing partial state (peaks history upsert, enrolment cache)
+    # for some subentries but not others. After all tasks settle we
+    # re-raise the most-actionable exception:
+    #
+    #   1. ``ConfigEntryAuthFailed`` -> HA triggers reauth flow
+    #   2. ``ConfigEntryNotReady``   -> HA retries setup later
+    #   3. anything else             -> first one wins (propagates)
+    #
+    # See ``.opencode/audit-v0.10.0b1-prerelease.md`` CFG-1.
     refresh_calls = [epex_coordinator.async_config_entry_first_refresh()]
     refresh_calls.extend(
         sub_data.coordinator.async_config_entry_first_refresh()
         for sub_data in entry.runtime_data.subentry_data.values()
     )
-    await asyncio.gather(*refresh_calls)
+    results = await asyncio.gather(*refresh_calls, return_exceptions=True)
+    exceptions = [r for r in results if isinstance(r, BaseException)]
+    if exceptions:
+        for exc in exceptions:
+            if isinstance(exc, ConfigEntryAuthFailed):
+                raise exc
+        for exc in exceptions:
+            if isinstance(exc, ConfigEntryNotReady):
+                raise exc
+        raise exceptions[0]
 
     # Resolve energy type for each EAN per subentry. Service-point lookups
     # are fanned out across all subentries' EANs in a single gather so
@@ -192,6 +210,25 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+    # Recurring token refresh registered AFTER every step that can raise
+    # ``ConfigEntryNotReady`` (initial token refresh at the top of this
+    # function, plus per-subentry ``async_config_entry_first_refresh``
+    # which wraps ``UpdateFailed`` from ``coordinator.py:_async_update_data``
+    # into ``ConfigEntryNotReady``). Registering earlier would leak the
+    # timer on a half-set-up entry: HA tears down ``async_on_unload``
+    # callbacks on retry, but only for the entry that successfully reached
+    # this point. If a later setup step raises, the timer keeps firing,
+    # rotating refresh tokens that never get persisted (because the
+    # ``_persist_tokens`` write inside the callback targets the same
+    # half-set-up entry), and the next real setup attempt fails reauth.
+    # See ``.opencode/audit-v0.10.0b1-prerelease.md`` Blocker B1a.
+    cancel_refresh = async_track_time_interval(
+        hass,
+        _refresh_token_callback,
+        timedelta(seconds=TOKEN_REFRESH_INTERVAL_SECONDS),
+    )
+    entry.async_on_unload(cancel_refresh)
 
     return True
 
@@ -258,6 +295,16 @@ async def _async_init_peaks_store(
 ) -> EngieBePeaksStore:
     """Build and load the persistent peaks-history store for one subentry."""
     store = EngieBePeaksStore(hass, subentry_id)
+    await store.async_load()
+    return store
+
+
+async def _async_init_happy_hours_store(
+    hass: HomeAssistant,
+    subentry_id: str,
+) -> EngieBeHappyHoursStore:
+    """Build and load the persistent Happy Hour history store for one subentry."""
+    store = EngieBeHappyHoursStore(hass, subentry_id)
     await store.async_load()
     return store
 

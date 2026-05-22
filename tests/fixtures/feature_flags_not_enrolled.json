@@ -1,0 +1,10 @@
+{
+    "happy-hours-service-enabled": {
+        "value": false,
+        "reason": "DEFAULT"
+    },
+    "happy-hours-shown": {
+        "value": false,
+        "reason": "DEFAULT"
+    }
+}

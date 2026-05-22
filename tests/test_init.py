@@ -116,6 +116,12 @@ def _make_client(  # noqa: PLR0913 - kwargs-only test helper, one knob per endpo
     client.async_get_monthly_peaks = AsyncMock(
         return_value=peaks_return or {"peakOfTheMonth": None, "dailyPeaks": []},
     )
+    # Happy-hour endpoint is hit by every per-subentry coordinator
+    # refresh; default to ``{}`` (no event scheduled) so sensors report
+    # ``unknown`` without raising. Tests that exercise an active window
+    # can override on the per-test client.
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     # Energy-contracts endpoint is hit by ``_async_populate_dynamic_flags``
     # at setup; default to an empty payload so detection silently leaves
     # the override at None and falls back to the legacy heuristic.

@@ -12,6 +12,7 @@ from custom_components.engie_be.binary_sensor import (
     EPEX_NEGATIVE_SENSOR_DESCRIPTION,
     EngieBeAuthSensor,
     EngieBeEpexNegativeSensor,
+    EngieBeHappyHourActiveSensor,
     async_setup_entry,
 )
 from custom_components.engie_be.const import (
@@ -251,11 +252,24 @@ def test_slot_boundary_is_half_open() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_sub_data(*, is_dynamic: bool) -> MagicMock:
-    """Build a per-subentry runtime-data stub with a coordinator stub."""
+def _make_sub_data(
+    *,
+    is_dynamic: bool,
+    is_happy_hour_enrolled: bool = True,
+) -> MagicMock:
+    """
+    Build a per-subentry runtime-data stub with a coordinator stub.
+
+    ``is_happy_hour_enrolled`` defaults to True to preserve the
+    pre-gating baseline for existing tests; pass False to exercise the
+    Happy Hour skip path on the binary_sensor platform setup.
+    """
     sub_data = MagicMock()
     sub_data.coordinator = MagicMock()
     sub_data.coordinator.is_dynamic = is_dynamic
+    sub_data.coordinator.config_entry = MagicMock()
+    sub_data.coordinator.config_entry.entry_id = "test_entry_id"
+    sub_data.is_happy_hour_enrolled = is_happy_hour_enrolled
     return sub_data
 
 
@@ -298,15 +312,18 @@ async def test_setup_entry_omits_negative_sensor_for_non_dynamic_account() -> No
 
     await async_setup_entry(MagicMock(), entry, _add)
 
-    # Only the per-entry auth sensor; no EPEX negative entity.
-    assert len(added) == 1
-    assert isinstance(added[0], EngieBeAuthSensor)
+    # Auth sensor (per-entry) + Happy Hour sensor (per-subentry); no
+    # EPEX negative entity because the account is not dynamic.
+    assert len(added) == 2
+    assert any(isinstance(e, EngieBeAuthSensor) for e in added)
+    assert not any(isinstance(e, EngieBeEpexNegativeSensor) for e in added)
     # Auth sensor is a diagnostic entity so it stays out of default dashboards.
-    assert added[0].entity_category is EntityCategory.DIAGNOSTIC
+    auth_sensor = next(e for e in added if isinstance(e, EngieBeAuthSensor))
+    assert auth_sensor.entity_category is EntityCategory.DIAGNOSTIC
 
 
 async def test_setup_entry_adds_negative_sensor_for_dynamic_account() -> None:
-    """Dynamic accounts get both the auth sensor and the EPEX indicator."""
+    """Dynamic accounts get the auth sensor, EPEX indicator, and happy-hour."""
     epex_coordinator = _make_epex_coordinator(None)
     subentry = _make_subentry(subentry_id="sub_dynamic")
     entry = _make_entry(
@@ -322,7 +339,8 @@ async def test_setup_entry_adds_negative_sensor_for_dynamic_account() -> None:
 
     await async_setup_entry(MagicMock(), entry, _add)
 
-    assert len(added) == 2
+    # Auth (per-entry) + EPEX-negative + Happy-Hour (per-subentry) = 3.
+    assert len(added) == 3
     assert any(isinstance(e, EngieBeAuthSensor) for e in added)
     assert any(isinstance(e, EngieBeEpexNegativeSensor) for e in added)
 
@@ -383,3 +401,93 @@ async def test_setup_entry_only_adds_negative_sensor_for_dynamic_subentries() ->
     assert len(epex_entities) == 1
     # And the one created sensor is bound to the dynamic subentry.
     assert epex_entities[0].unique_id == "test_entry_id_sub_dyn_epex_negative"
+
+
+async def test_setup_entry_omits_happy_hour_for_un_enrolled_subentry() -> None:
+    """
+    Un-enrolled subentry must NOT get the Happy Hour active sensor.
+
+    A subentry with ``is_happy_hour_enrolled=False`` is on a tariff
+    without the ENGIE Happy Hours service, so no Happy Hour entities
+    should be surfaced.
+    """
+    epex_coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry(subentry_id="sub_no_hh")
+    entry = _make_entry(
+        epex_coordinator,
+        subentries={"sub_no_hh": subentry},
+        sub_runtime={
+            "sub_no_hh": _make_sub_data(is_dynamic=False, is_happy_hour_enrolled=False),
+        },
+    )
+
+    added: list = []
+
+    def _add(entities, *_args: object, **_kwargs: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    # Only the per-entry auth sensor is created: not dynamic and not
+    # enrolled in Happy Hours means the subentry contributes nothing.
+    assert len(added) == 1
+    assert isinstance(added[0], EngieBeAuthSensor)
+    assert not any(isinstance(e, EngieBeHappyHourActiveSensor) for e in added)
+
+
+async def test_setup_entry_adds_happy_hour_for_enrolled_subentry() -> None:
+    """An enrolled subentry gets the Happy Hour active binary sensor."""
+    epex_coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry(subentry_id="sub_hh")
+    entry = _make_entry(
+        epex_coordinator,
+        subentries={"sub_hh": subentry},
+        sub_runtime={
+            "sub_hh": _make_sub_data(is_dynamic=False, is_happy_hour_enrolled=True),
+        },
+    )
+
+    added: list = []
+
+    def _add(entities, *_args: object, **_kwargs: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    # Auth (per-entry) + Happy Hour (per-subentry) = 2 entities.
+    assert len(added) == 2
+    assert any(isinstance(e, EngieBeHappyHourActiveSensor) for e in added)
+
+
+async def test_setup_entry_mixed_enrolment_only_adds_happy_hour_where_enrolled() -> (
+    None
+):
+    """
+    Mixed enrolment: only the enrolled subentry gets the Happy Hour sensor.
+
+    Two subentries with different enrolment status are wired up; only
+    the enrolled one gets a Happy Hour active sensor, and both still
+    skip EPEX because they are on the fixed tariff.
+    """
+    epex_coordinator = _make_epex_coordinator(None)
+    sub_yes = _make_subentry(subentry_id="sub_yes", title="Enrolled")
+    sub_no = _make_subentry(subentry_id="sub_no", title="Not Enrolled")
+    entry = _make_entry(
+        epex_coordinator,
+        subentries={"sub_yes": sub_yes, "sub_no": sub_no},
+        sub_runtime={
+            "sub_yes": _make_sub_data(is_dynamic=False, is_happy_hour_enrolled=True),
+            "sub_no": _make_sub_data(is_dynamic=False, is_happy_hour_enrolled=False),
+        },
+    )
+
+    added: list = []
+
+    def _add(entities, *_args: object, **_kwargs: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    hh_entities = [e for e in added if isinstance(e, EngieBeHappyHourActiveSensor)]
+    assert len(hh_entities) == 1
+    assert hh_entities[0].unique_id == "test_entry_id_sub_yes_happy_hour_active"

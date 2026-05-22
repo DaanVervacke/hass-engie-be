@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 from homeassistant.components.calendar import CalendarEvent
 
-from custom_components.engie_be.calendar import EngieBeCalendar
+from custom_components.engie_be.calendar import EngieBeCalendar, happy_hour_events
 from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 
 _PEAKS_FIXTURE = Path(__file__).parent / "fixtures" / "peaks_2026_04.json"
@@ -88,7 +88,7 @@ def test_calendar_unique_id_namespaced_to_subentry() -> None:
     """The calendar carries a stable per-subentry unique_id."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())}, subentry_id="sub_xyz")
     subentry = _make_subentry(subentry_id="sub_xyz")
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     assert calendar.unique_id == "test_entry_id_sub_xyz_calendar"
 
 
@@ -106,7 +106,7 @@ def test_calendar_naming_contract_delegates_to_ha_composition() -> None:
     """
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     assert calendar.has_entity_name is True
     assert calendar.translation_key == "engie_belgium"
     assert not hasattr(calendar, "_attr_name") or calendar._attr_name is None
@@ -116,7 +116,7 @@ def test_event_property_returns_captar_peak() -> None:
     """``event`` exposes the captar peak window as a ``CalendarEvent``."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     event = calendar.event
     assert isinstance(event, CalendarEvent)
     assert event.summary == "Captar monthly peak"
@@ -131,7 +131,7 @@ def test_event_returns_none_when_no_providers_yield_events() -> None:
     """``event`` is ``None`` when no provider yields anything."""
     coordinator = _make_coordinator({"items": []})
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     assert calendar.event is None
 
 
@@ -146,7 +146,7 @@ def test_event_fallback_does_not_annotate_description() -> None:
         {"peaks": _wrap(_peaks(), year=2026, month=3, is_fallback=True)},
     )
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     event = calendar.event
     assert event is not None
     assert event.description is not None
@@ -157,7 +157,7 @@ async def test_async_get_events_returns_event_when_overlapping() -> None:
     """``async_get_events`` returns the event when its window overlaps."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
@@ -171,7 +171,7 @@ async def test_async_get_events_returns_empty_outside_window() -> None:
     """``async_get_events`` returns ``[]`` when the window does not overlap."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-05-01T00:00:00+02:00"),
@@ -184,7 +184,7 @@ async def test_async_get_events_returns_empty_when_no_providers_yield() -> None:
     """``async_get_events`` returns ``[]`` when no provider yields anything."""
     coordinator = _make_coordinator({"items": []})
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
@@ -215,7 +215,7 @@ async def test_async_get_events_returns_history_plus_current_month() -> None:
     ]
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())}, history=history)
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-01-01T00:00:00+01:00"),
@@ -243,7 +243,7 @@ async def test_history_does_not_duplicate_current_month() -> None:
     ]
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())}, history=history)
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
@@ -262,7 +262,7 @@ async def test_async_get_events_handles_missing_subentry_runtime() -> None:
     coordinator.config_entry.runtime_data = runtime
 
     subentry = _make_subentry()
-    calendar = EngieBeCalendar(coordinator, subentry)
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     events = await calendar.async_get_events(
         hass=MagicMock(),
         start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
@@ -271,3 +271,116 @@ async def test_async_get_events_handles_missing_subentry_runtime() -> None:
     # Only the current-month live event survives.
     assert len(events) == 1
     assert events[0].start == datetime.fromisoformat("2026-04-15T18:00:00+02:00")
+
+
+# ---------------------------------------------------------------------------
+# Happy Hour event provider
+# ---------------------------------------------------------------------------
+
+_HAPPY_HOUR_SCHEDULED = {
+    "tomorrow": {
+        "startTime": "2026-05-23T12:00:00+02:00",
+        "endTime": "2026-05-23T15:00:00+02:00",
+    },
+}
+
+
+def test_event_property_surfaces_happy_hour_when_no_peak() -> None:
+    """Without peaks, the ``event`` property surfaces the happy-hour window."""
+    coordinator = _make_coordinator(
+        {"happy_hour": {"data": _HAPPY_HOUR_SCHEDULED}},
+    )
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
+    event = calendar.event
+    assert isinstance(event, CalendarEvent)
+    assert event.summary == "Happy Hour"
+    assert event.start == datetime.fromisoformat("2026-05-23T12:00:00+02:00")
+    assert event.end == datetime.fromisoformat("2026-05-23T15:00:00+02:00")
+    assert event.description == "Free energy window"
+
+
+async def test_async_get_events_returns_happy_hour_when_overlapping() -> None:
+    """A scheduled happy-hour window is returned for an overlapping range."""
+    coordinator = _make_coordinator(
+        {"happy_hour": {"data": _HAPPY_HOUR_SCHEDULED}},
+    )
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
+    events = await calendar.async_get_events(
+        hass=MagicMock(),
+        start_date=datetime.fromisoformat("2026-05-23T00:00:00+02:00"),
+        end_date=datetime.fromisoformat("2026-05-23T23:59:59+02:00"),
+    )
+    assert len(events) == 1
+    assert events[0].summary == "Happy Hour"
+
+
+async def test_async_get_events_skips_happy_hour_outside_window() -> None:
+    """A non-overlapping range yields no happy-hour event."""
+    coordinator = _make_coordinator(
+        {"happy_hour": {"data": _HAPPY_HOUR_SCHEDULED}},
+    )
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
+    events = await calendar.async_get_events(
+        hass=MagicMock(),
+        start_date=datetime.fromisoformat("2026-05-24T00:00:00+02:00"),
+        end_date=datetime.fromisoformat("2026-05-24T23:59:59+02:00"),
+    )
+    assert events == []
+
+
+async def test_async_get_events_combines_peak_and_happy_hour() -> None:
+    """Peak + happy-hour events are both yielded by ``async_get_events``."""
+    coordinator = _make_coordinator(
+        {
+            "peaks": _wrap(_peaks()),
+            "happy_hour": {"data": _HAPPY_HOUR_SCHEDULED},
+        },
+    )
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
+    events = await calendar.async_get_events(
+        hass=MagicMock(),
+        start_date=datetime.fromisoformat("2026-04-01T00:00:00+02:00"),
+        end_date=datetime.fromisoformat("2026-05-31T23:59:59+02:00"),
+    )
+    summaries = sorted(event.summary for event in events)
+    assert summaries == ["Captar monthly peak", "Happy Hour"]
+
+
+def test_event_property_returns_none_when_happy_hour_empty() -> None:
+    """An empty ``{}`` happy-hour payload yields no event."""
+    coordinator = _make_coordinator({"happy_hour": {"data": {}}})
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
+    assert calendar.event is None
+
+
+def test_event_providers_omits_happy_hour_when_not_enrolled() -> None:
+    """
+    Un-enrolled calendar must not register the Happy Hour event provider.
+
+    When ``happy_hour_enrolled=False`` the per-instance event-provider
+    list must NOT include :func:`happy_hour_events`. The baseline
+    captar peak provider stays in place.
+    """
+    coordinator = _make_coordinator({})
+    subentry = _make_subentry()
+
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=False)
+
+    assert happy_hour_events not in calendar._event_providers
+    # Baseline providers still apply; the list is non-empty.
+    assert len(calendar._event_providers) >= 1
+
+
+def test_event_providers_includes_happy_hour_when_enrolled() -> None:
+    """The enrolled path appends :func:`happy_hour_events`."""
+    coordinator = _make_coordinator({})
+    subentry = _make_subentry()
+
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
+
+    assert happy_hour_events in calendar._event_providers

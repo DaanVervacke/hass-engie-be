@@ -7,6 +7,74 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0b1] - 2026-05-22
+
+> [!CAUTION]
+> **Upgrade from v0.9.0 only.** If you are still on v0.8.x or any
+> earlier version, install v0.9.0 first (which requires a clean
+> reinstall, see its release notes) and only then move to this
+> release. Skipping v0.9.0 leaves your config entry on a schema this
+> release no longer migrates, and the integration will refuse to load.
+
+### Added
+
+- **Happy Hour support.** ENGIE Belgium occasionally schedules Happy
+  Hour windows during which the energy you use at home is free. These
+  windows are announced the day before via the ENGIE app, and the
+  integration now surfaces them for every account enrolled in the
+  Happy Hours program:
+  - A binary sensor that turns on while a Happy Hour window is active.
+  - Two timestamp sensors showing when the next window starts and ends.
+  - A "Happy Hour" event on the per-account calendar, alongside the
+    monthly captar peak. Past Happy Hour windows you have seen are
+    kept in a local history file so the calendar can show the full
+    archive across restarts. Windows that ran before you installed
+    the integration cannot be retrieved.
+
+  The integration auto-detects enrolment by checking ENGIE's feature
+  flags on every refresh. Entities appear shortly after you enrol an
+  address and disappear shortly after you opt out. You do not need to
+  remove and re-add the integration when your enrolment changes.
+
+  Happy Hours is an opt-in program. You need to enrol each address
+  separately through the ENGIE Smart App under "Je diensten". See
+  [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/) for
+  eligibility and the latest details.
+
+### Changed
+
+- Renamed the Happy Hour binary sensor from "Happy Hour active" to
+  "Happy Hour is active" so the label reads naturally in dashboards
+  and voice assistants.
+- More descriptive debug logging across the Happy Hour code paths
+  (enrolment detection, payload interpretation, history persistence,
+  platform setup gating). Enable
+  `custom_components.engie_be: debug` to see why the integration did
+  or did not surface a Happy Hour window. The pre-existing peaks
+  history log now also includes the subentry identifier so users with
+  multiple addresses can tell the entries apart.
+
+### Fixed
+
+- Scheduled token refresh no longer rotates ENGIE refresh tokens
+  against a half-set-up integration during retry. The recurring
+  refresh timer now starts only after every setup step has
+  completed, so a transient ENGIE outage during setup no longer
+  cascades into a reauth prompt on the next retry.
+- Reauthentication no longer triggers two reloads of the integration
+  in quick succession. This also removes a Home Assistant deprecation
+  warning that would otherwise have become an error in Home Assistant
+  2026.12.
+
+### Known limitations
+
+- Auth-flow unit test coverage in `api.py` is at 65% (project-wide
+  coverage is comfortably above the 85% floor). Steps in the multi-step
+  ENGIE login flow, the MFA detours, and the timeout / connection-error
+  arms are exercised only against the live API today. This is tracked
+  for a follow-up release. Report any login failures you hit during
+  the beta so the missing paths get fixtures.
+
 ## [0.9.0] - 2026-05-19
 
 > [!CAUTION]
@@ -419,7 +487,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b1...HEAD
+[0.10.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0b1
 [0.9.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.1...v0.8.2

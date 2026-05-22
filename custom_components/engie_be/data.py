@@ -15,7 +15,7 @@ if TYPE_CHECKING:
         EngieBeDataUpdateCoordinator,
         EngieBeEpexCoordinator,
     )
-    from .store import EngieBePeaksStore
+    from .store import EngieBeHappyHoursStore, EngieBePeaksStore
 
 
 type EngieBeConfigEntry = ConfigEntry[EngieBeData]
@@ -68,13 +68,31 @@ class EngieBeSubentryData:
     the account back to fixed. ``energy_contracts_payload`` retains the
     raw contracts response for diagnostics so support bundles can
     correlate per-EAN product codes with the detection result.
+
+    ``is_happy_hour_enrolled`` mirrors the latest reading of the ENGIE
+    feature-flags endpoint (``happy-hours-service-enabled.value``). It
+    is ``None`` until the first successful refresh, ``True`` once the
+    customer signs the agreement in the Smart App, and ``False`` when
+    the flag is absent or false. The coordinator schedules a config
+    entry reload whenever this flips so Happy Hour entities appear or
+    disappear without manual intervention.
+
+    ``happy_hours_store`` persists every Happy Hour window the
+    coordinator observes (the API only ever returns the next upcoming
+    window under ``tomorrow``, so historical windows would otherwise
+    disappear the moment they expire). Stays ``None`` for un-enrolled
+    accounts at first observation; the store is created up front so
+    enrolment that flips on later can start recording immediately
+    without a second wiring pass.
     """
 
     coordinator: EngieBeDataUpdateCoordinator
     service_points: dict[str, str] = field(default_factory=dict)
     peaks_store: EngieBePeaksStore | None = field(default=None)
+    happy_hours_store: EngieBeHappyHoursStore | None = field(default=None)
     is_dynamic_override: bool | None = field(default=None)
     energy_contracts_payload: dict[str, Any] | None = field(default=None)
+    is_happy_hour_enrolled: bool | None = field(default=None)
 
 
 @dataclass
@@ -87,6 +105,11 @@ class EngieBeData:
     are account-agnostic, so polling them once per login is correct).
     Per-account state lives under ``subentry_data`` keyed by
     ``ConfigSubentry.subentry_id``.
+
+    ``reload_pending`` is a one-shot debounce flag set by the coordinator
+    when a Happy Hour enrolment flip is detected. It guarantees that a
+    refresh tick which observes simultaneous flips on multiple subentries
+    schedules at most one ``async_reload`` call per parent entry.
     """
 
     client: EngieBeApiClient
@@ -95,3 +118,4 @@ class EngieBeData:
     authenticated: bool = field(default=False)
     last_options: dict[str, Any] = field(default_factory=dict)
     last_subentry_ids: set[str] = field(default_factory=set)
+    reload_pending: bool = field(default=False)

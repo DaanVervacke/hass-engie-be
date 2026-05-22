@@ -16,3 +16,19 @@ coverage.xml
 # Home Assistant configuration
 config/*
 !config/configuration.yaml
+
+
+# logs (repo-wide; covers home-assistant_engie_be_*.log dumps at repo root)
+*.log
+
+
+# screenshots at repo root only; do NOT match tracked brand assets under
+# custom_components/engie_be/brand/*.png (HA Brands Proxy requires these)
+/*.png
+
+
+# local working scratch (developer-only backups and source snapshots)
+config-bak*/
+config-pre-*/
+.swap-source/
+.v071-source/

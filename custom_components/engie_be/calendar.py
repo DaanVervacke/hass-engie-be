@@ -2,9 +2,11 @@
 Calendar platform for the ENGIE Belgium integration.
 
 One calendar entity is created per customer-account ConfigSubentry,
-attached to that subentry's device. Today this exposes only the monthly
-capacity-tariff (captar) peak window, but new event types can be added
-without spawning a new calendar entity by registering an additional
+attached to that subentry's device. Today this exposes the monthly
+capacity-tariff (captar) peak window for every account and the
+upcoming Happy Hour window for accounts that are enrolled in the
+ENGIE Happy Hours service. New event types can be added without
+spawning a new calendar entity by registering an additional
 ``EventProvider`` below.
 
 Each ``EventProvider`` is a callable that takes the per-subentry
@@ -21,6 +23,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.util import dt as dt_util
 
+from ._happy_hour import happy_hour_events
 from ._peaks import captar_peak_events
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
@@ -44,8 +47,10 @@ if TYPE_CHECKING:
 
 EventProvider = Callable[["EngieBeDataUpdateCoordinator"], list[CalendarEvent]]
 
-# Add new event sources by appending a provider here. Each provider returns
-# zero or more CalendarEvent objects from the coordinator payload.
+# Providers that are always active for every customer-account calendar.
+# Account-conditional providers (e.g. Happy Hour for enrolled BANs only)
+# are appended in ``EngieBeCalendar.__init__`` based on subentry runtime
+# data rather than hard-coded here.
 EVENT_PROVIDERS: list[EventProvider] = [
     captar_peak_events,
 ]
@@ -70,7 +75,13 @@ async def async_setup_entry(
             continue
 
         async_add_entities(
-            [EngieBeCalendar(sub_data.coordinator, subentry)],
+            [
+                EngieBeCalendar(
+                    sub_data.coordinator,
+                    subentry,
+                    happy_hour_enrolled=bool(sub_data.is_happy_hour_enrolled),
+                )
+            ],
             config_subentry_id=subentry.subentry_id,
         )
 
@@ -98,6 +109,8 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
         self,
         coordinator: EngieBeDataUpdateCoordinator,
         subentry: ConfigSubentry,
+        *,
+        happy_hour_enrolled: bool,
     ) -> None:
         """Initialise the calendar entity for one customer-account subentry."""
         super().__init__(coordinator, subentry)
@@ -106,6 +119,16 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_calendar"
         )
+        # Build the per-instance provider list. Baseline providers
+        # (captar) apply to every account; Happy Hour events are only
+        # surfaced for accounts that are enrolled in the ENGIE Happy
+        # Hours service. The parent entry is reloaded automatically
+        # when enrolment flips so this list always reflects the current
+        # service status without needing a runtime re-check on every
+        # event read.
+        self._event_providers: list[EventProvider] = list(EVENT_PROVIDERS)
+        if happy_hour_enrolled:
+            self._event_providers.append(happy_hour_events)
         # Force a BAN-prefixed entity_id so each business agreement
         # gets a predictable, collision-proof calendar entity_id
         # regardless of address. HA's auto-derived slug would key off
@@ -123,7 +146,7 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
     def _all_events(self) -> list[CalendarEvent]:
         """Collect events from every registered provider."""
         events: list[CalendarEvent] = []
-        for provider in EVENT_PROVIDERS:
+        for provider in self._event_providers:
             events.extend(provider(self.coordinator))
         return events
 

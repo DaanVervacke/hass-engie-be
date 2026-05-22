@@ -117,6 +117,8 @@ async def test_update_merges_peaks_into_payload(hass: HomeAssistant) -> None:
 
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=prices)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     client.async_get_monthly_peaks = AsyncMock(return_value=peaks)
     _attach_runtime(entry, client)
 
@@ -151,6 +153,8 @@ async def test_update_keeps_last_known_peaks_on_peaks_failure(
 
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=prices)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     client.async_get_monthly_peaks = AsyncMock(
         side_effect=EngieBeApiClientError("upstream 503"),
     )
@@ -177,6 +181,8 @@ async def test_update_omits_peaks_key_when_no_previous_and_fetch_fails(
 
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=prices)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     client.async_get_monthly_peaks = AsyncMock(
         side_effect=EngieBeApiClientError("boom"),
     )
@@ -196,6 +202,8 @@ async def test_peaks_auth_error_triggers_reauth(hass: HomeAssistant) -> None:
 
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=prices)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     client.async_get_monthly_peaks = AsyncMock(
         side_effect=EngieBeApiClientAuthenticationError("token rejected"),
     )
@@ -218,6 +226,8 @@ async def test_falls_back_to_previous_month_when_current_has_no_peak(
 
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=prices)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     client.async_get_monthly_peaks = AsyncMock(
         side_effect=[empty_current, previous_peaks],
     )
@@ -255,6 +265,8 @@ async def test_january_falls_back_to_previous_december(
 
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=prices)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     client.async_get_monthly_peaks = AsyncMock(
         side_effect=[empty_current, previous_peaks],
     )
@@ -287,6 +299,8 @@ async def test_fallback_failure_keeps_empty_current_wrapper(
 
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value=prices)
+    client.async_get_happy_hour_event = AsyncMock(return_value={})
+    client.async_get_feature_flags = AsyncMock(return_value={})
     client.async_get_monthly_peaks = AsyncMock(
         side_effect=[empty_current, EngieBeApiClientError("upstream 500")],
     )

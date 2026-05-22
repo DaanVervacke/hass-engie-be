@@ -40,6 +40,7 @@ them as sensors.
 - Auto-detects gas and electricity contracts, including dynamic (EPEX-indexed) tariffs
 - Creates price sensors per energy type, direction (offtake / injection), and tariff rate
 - Tracks the monthly capacity-tariff (captar) peak window for each electricity meter
+- Surfaces ENGIE's Happy Hour free-energy promotions on each account, both as sensors and as calendar events
 - Supports multiple households (business agreements) under a single ENGIE login, including several active addresses under one customer account
 - Configurable update interval
 
@@ -167,6 +168,43 @@ series:
 A binary sensor `binary_sensor.engie_belgium_epex_price_is_negative` turns on
 when the current wholesale slot has a negative price, so you can build simple
 state-based automations without a template.
+
+### Happy Hour
+
+ENGIE Belgium occasionally schedules "Happy Hour" windows during which the
+energy consumed at your address is free. These are announced the day
+before via the ENGIE app and are exposed here for every account enrolled
+in the Happy Hours program.
+
+| Entity | Entity ID |
+|---|---|
+| Happy Hour is active | `binary_sensor.engie_belgium_happy_hour_active` |
+| Happy Hour next start | `sensor.engie_belgium_happy_hour_next_start` |
+| Happy Hour next end | `sensor.engie_belgium_happy_hour_next_end` |
+
+The binary sensor is `on` while the current moment falls inside a scheduled
+window, and `off` otherwise. It is always available, and the `off` state
+covers both "no window scheduled" and "scheduled but not active right now".
+If you need to tell those two cases apart, look at the timestamp sensors
+instead. They report `unknown` when nothing is scheduled.
+
+The scheduled window also appears as a "Happy Hour" event on the per-account
+calendar entity, alongside the captar peak event. Past Happy Hour windows
+the integration has observed are kept in a local history file so the
+calendar can show the full archive across restarts. Windows that ran before
+you installed the integration cannot be retrieved because ENGIE does not
+expose Happy Hour history.
+
+Happy Hours is an opt-in program from ENGIE. You need to enrol each address
+separately through the ENGIE Smart App under "Je diensten". See
+[engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/) for
+eligibility and the latest details.
+
+The integration checks your enrolment status on every refresh, which runs
+about every 20 minutes. The three Happy Hour entities and the calendar
+events appear shortly after you enrol an address and disappear shortly
+after you opt out. You do not need to remove and re-add the integration
+when your enrolment changes.
 
 ### Authentication
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.engie_be.store import EngieBePeaksStore
+from custom_components.engie_be.store import EngieBeHappyHoursStore, EngieBePeaksStore
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -224,3 +224,157 @@ async def test_summary_when_empty(
         "newest": None,
         "latest_peakKW": None,
     }
+
+
+# ---------------------------------------------------------------------------
+# EngieBeHappyHoursStore
+# ---------------------------------------------------------------------------
+
+
+async def test_happy_hours_load_starts_empty_when_no_persisted_data(
+    fake_store_load: MagicMock,
+) -> None:
+    """A fresh Happy Hour store with no persisted data exposes empty windows."""
+    fake_store_load.async_load.return_value = None
+    store = EngieBeHappyHoursStore(MagicMock(), subentry_id="abc")
+    await store.async_load()
+    assert store.windows == []
+
+
+async def test_happy_hours_load_skips_invalid_entries(
+    fake_store_load: MagicMock,
+) -> None:
+    """Malformed entries in the persisted payload are dropped on load."""
+    fake_store_load.async_load.return_value = {
+        "windows": [
+            {"start": "2026-05-23T12:00:00+02:00", "end": "2026-05-23T15:00:00+02:00"},
+            {"start": "2026-05-23T12:00:00+02:00"},  # missing end
+            {"end": "2026-05-23T15:00:00+02:00"},  # missing start
+            "not a dict",
+            {"start": 123, "end": 456},  # wrong types
+        ],
+    }
+    store = EngieBeHappyHoursStore(MagicMock(), subentry_id="abc")
+    await store.async_load()
+    assert store.windows == [
+        {"start": "2026-05-23T12:00:00+02:00", "end": "2026-05-23T15:00:00+02:00"},
+    ]
+
+
+async def test_happy_hours_upsert_new_window_appends_and_schedules_save(
+    fake_store_load: MagicMock,
+) -> None:
+    """Adding a previously-unseen window returns True and saves."""
+    store = EngieBeHappyHoursStore(MagicMock(), subentry_id="abc")
+    await store.async_load()
+
+    changed = store.upsert(
+        start="2026-05-23T12:00:00+02:00",
+        end="2026-05-23T15:00:00+02:00",
+    )
+    assert changed is True
+    assert store.windows == [
+        {"start": "2026-05-23T12:00:00+02:00", "end": "2026-05-23T15:00:00+02:00"},
+    ]
+    fake_store_load.async_delay_save.assert_called_once()
+
+
+async def test_happy_hours_upsert_identical_entry_is_noop(
+    fake_store_load: MagicMock,
+) -> None:
+    """Re-upserting an identical window returns False and does not save."""
+    store = EngieBeHappyHoursStore(MagicMock(), subentry_id="abc")
+    await store.async_load()
+    store.upsert(
+        start="2026-05-23T12:00:00+02:00",
+        end="2026-05-23T15:00:00+02:00",
+    )
+    fake_store_load.async_delay_save.reset_mock()
+
+    changed = store.upsert(
+        start="2026-05-23T12:00:00+02:00",
+        end="2026-05-23T15:00:00+02:00",
+    )
+    assert changed is False
+    fake_store_load.async_delay_save.assert_not_called()
+
+
+async def test_happy_hours_upsert_overwrites_when_end_differs(
+    fake_store_load: MagicMock,
+) -> None:
+    """Same ``start`` with a different ``end`` overwrites in place."""
+    store = EngieBeHappyHoursStore(MagicMock(), subentry_id="abc")
+    await store.async_load()
+    store.upsert(
+        start="2026-05-23T12:00:00+02:00",
+        end="2026-05-23T15:00:00+02:00",
+    )
+    fake_store_load.async_delay_save.reset_mock()
+
+    changed = store.upsert(
+        start="2026-05-23T12:00:00+02:00",
+        end="2026-05-23T16:00:00+02:00",
+    )
+    assert changed is True
+    assert store.windows == [
+        {"start": "2026-05-23T12:00:00+02:00", "end": "2026-05-23T16:00:00+02:00"},
+    ]
+    fake_store_load.async_delay_save.assert_called_once()
+
+
+async def test_happy_hours_windows_sorted_ascending(
+    fake_store_load: MagicMock,  # noqa: ARG001 - patches Store for the test
+) -> None:
+    """``windows`` returns entries sorted by ``start``."""
+    store = EngieBeHappyHoursStore(MagicMock(), subentry_id="abc")
+    await store.async_load()
+    store.upsert(
+        start="2026-05-23T12:00:00+02:00",
+        end="2026-05-23T15:00:00+02:00",
+    )
+    store.upsert(
+        start="2026-05-21T10:00:00+02:00",
+        end="2026-05-21T13:00:00+02:00",
+    )
+    store.upsert(
+        start="2026-05-22T11:00:00+02:00",
+        end="2026-05-22T14:00:00+02:00",
+    )
+
+    starts = [w["start"] for w in store.windows]
+    assert starts == [
+        "2026-05-21T10:00:00+02:00",
+        "2026-05-22T11:00:00+02:00",
+        "2026-05-23T12:00:00+02:00",
+    ]
+
+
+async def test_happy_hours_summary_reports_oldest_newest_and_count(
+    fake_store_load: MagicMock,  # noqa: ARG001 - patches Store for the test
+) -> None:
+    """``summary`` reflects the persisted history at a glance."""
+    store = EngieBeHappyHoursStore(MagicMock(), subentry_id="abc")
+    await store.async_load()
+    store.upsert(
+        start="2026-05-23T12:00:00+02:00",
+        end="2026-05-23T15:00:00+02:00",
+    )
+    store.upsert(
+        start="2026-05-21T10:00:00+02:00",
+        end="2026-05-21T13:00:00+02:00",
+    )
+
+    assert store.summary() == {
+        "count": 2,
+        "oldest": "2026-05-21T10:00:00+02:00",
+        "newest": "2026-05-23T12:00:00+02:00",
+    }
+
+
+async def test_happy_hours_summary_when_empty(
+    fake_store_load: MagicMock,  # noqa: ARG001 - patches Store for the test
+) -> None:
+    """``summary`` returns zeroed fields when nothing is persisted."""
+    store = EngieBeHappyHoursStore(MagicMock(), subentry_id="abc")
+    await store.async_load()
+    assert store.summary() == {"count": 0, "oldest": None, "newest": None}

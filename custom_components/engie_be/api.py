@@ -27,6 +27,8 @@ from .const import (
     AUTH_BASE_URL,
     BUSINESS_AGREEMENTS_BASE_URL,
     EPEX_BASE_URL,
+    FEATURE_FLAGS_BASE_URL,
+    HAPPY_HOUR_BASE_URL,
     LOGGER,
     MFA_METHOD_SMS,
     OAUTH_AUDIENCE,
@@ -259,6 +261,14 @@ def _redact_text(value: str | None, keep: int = 4) -> str:
     if len(value) <= keep:
         return _REDACTED
     return f"{_REDACTED}{value[-keep:]}"
+
+
+# Public re-export so non-HTTP modules (coordinator, platforms) can mask
+# identifiers in their own log lines using the same scheme as the HTTP
+# layer's body/URL redaction (``***NNNN`` with last-4 preserved).  Keep
+# this in sync with ``_PARTIAL_MASK_BODY_KEYS`` semantics: any identifier
+# masked there must also be masked when logged elsewhere.
+mask_identifier = _redact_text
 
 
 def _redact_mapping(
@@ -575,6 +585,15 @@ class EngieBeApiClient:
         self._client_id = client_id
         self.access_token = access_token
         self.refresh_token = refresh_token
+        # Serialises async_refresh_token against itself. ENGIE rotates the
+        # refresh token on every call, so two concurrent refreshes (e.g.
+        # the periodic 60s timer firing while a coordinator's auth-failure
+        # retry path also calls refresh) would consume the same refresh
+        # token twice and the second caller would 400 -> spurious reauth.
+        # The lock + "did someone else refresh while I was waiting?" check
+        # inside async_refresh_token make refresh idempotent under racing
+        # callers. See .opencode/audit-v0.10.0b1-prerelease.md CFG-4/CFG-5.
+        self._token_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Phase 1: start authentication (config-flow step 1 triggers this)
@@ -650,49 +669,70 @@ class EngieBeApiClient:
 
         Returns (new_access_token, new_refresh_token).
         The refresh token is rotated on every call.
+
+        Serialised by self._token_lock against concurrent callers. If a
+        racing caller already rotated the pair while we were waiting on
+        the lock, we return the freshly-rotated pair without issuing a
+        second refresh request (which would 400 on the now-consumed
+        refresh token). See CFG-4/CFG-5 in the pre-release audit.
         """
         if not self.refresh_token:
             msg = "No refresh token available"
             raise EngieBeApiClientAuthenticationError(msg)
 
-        data = {
-            "refresh_token": self.refresh_token,
-            "audience": OAUTH_AUDIENCE,
-            "grant_type": "refresh_token",
-            "scope": OAUTH_SCOPES,
-            "redirect_uri": REDIRECT_URI,
-            "client_id": self._client_id,
-        }
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": USER_AGENT_NATIVE,
-        }
+        # Snapshot before awaiting the lock so we can detect a racing
+        # refresh that completed while we were queued.
+        refresh_at_entry = self.refresh_token
 
-        debug_on = LOGGER.isEnabledFor(logging.DEBUG)
-        old_refresh_tail = _redact_text(self.refresh_token) if debug_on else ""
+        async with self._token_lock:
+            if self.refresh_token != refresh_at_entry:
+                # Another caller rotated the pair while we were waiting.
+                # Return the fresh pair instead of replaying our (now
+                # consumed) refresh token.
+                LOGGER.debug(
+                    "Token refresh: racing caller already rotated tokens; "
+                    "returning fresh pair without re-issuing request"
+                )
+                return self.access_token, self.refresh_token
 
-        result = await self._api_wrapper(
-            session=self._session,
-            method="POST",
-            url=f"{AUTH_BASE_URL}/oauth/token",
-            data=data,
-            headers=headers,
-            json_response=True,
-        )
+            data = {
+                "refresh_token": self.refresh_token,
+                "audience": OAUTH_AUDIENCE,
+                "grant_type": "refresh_token",
+                "scope": OAUTH_SCOPES,
+                "redirect_uri": REDIRECT_URI,
+                "client_id": self._client_id,
+            }
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": USER_AGENT_NATIVE,
+            }
 
-        self.access_token = result["access_token"]
-        self.refresh_token = result["refresh_token"]
+            debug_on = LOGGER.isEnabledFor(logging.DEBUG)
+            old_refresh_tail = _redact_text(self.refresh_token) if debug_on else ""
 
-        if debug_on:
-            LOGGER.debug(
-                "Token refresh: rotated refresh_token %s → %s, expires_in=%s",
-                old_refresh_tail,
-                _redact_text(self.refresh_token),
-                result.get("expires_in"),
+            result = await self._api_wrapper(
+                session=self._session,
+                method="POST",
+                url=f"{AUTH_BASE_URL}/oauth/token",
+                data=data,
+                headers=headers,
+                json_response=True,
             )
 
-        return self.access_token, self.refresh_token
+            self.access_token = result["access_token"]
+            self.refresh_token = result["refresh_token"]
+
+            if debug_on:
+                LOGGER.debug(
+                    "Token refresh: rotated refresh_token %s → %s, expires_in=%s",
+                    old_refresh_tail,
+                    _redact_text(self.refresh_token),
+                    result.get("expires_in"),
+                )
+
+            return self.access_token, self.refresh_token
 
     # ------------------------------------------------------------------
     # Data retrieval
@@ -866,6 +906,90 @@ class EngieBeApiClient:
             url=url,
             headers=headers,
             params={"year": str(year), "month": str(month)},
+            json_response=True,
+        )
+
+    async def async_get_happy_hour_event(
+        self,
+        business_agreement_number: str,
+    ) -> dict[str, Any]:
+        """
+        Fetch the upcoming Happy Hour event for a business agreement.
+
+        ``business_agreement_number`` is the 12-digit BAN. Passing a
+        ``customerAccountNumber`` / CAN here returns HTTP 400.
+
+        Returns the parsed JSON response. Shape observed in production:
+
+        * No event scheduled: ``{}`` (empty object).
+        * Event scheduled: ``{"tomorrow": {"startTime": "...", "endTime": "..."}}``
+          where times are ISO-8601 with explicit offsets.
+
+        The endpoint is not gated on dynamic-tariff status, so it is
+        polled for every active business agreement.
+        """
+        url = (
+            f"{HAPPY_HOUR_BASE_URL}/business-agreements/"
+            f"{business_agreement_number.replace(' ', '')}/happy-hour-event"
+        )
+        headers = {
+            "User-Agent": USER_AGENT_NATIVE,
+            "Accept": "application/json, application/problem+json",
+            "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
+        }
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            json_response=True,
+        )
+
+    async def async_get_feature_flags(
+        self,
+        business_agreement_number: str,
+    ) -> dict[str, Any]:
+        """
+        Fetch the per-BAN feature flags reported by the ENGIE Smart App.
+
+        The endpoint is the authoritative signal for Happy Hour
+        enrolment: the ``/happy-hour-event`` endpoint returns ``{}`` both
+        when the customer is not enrolled and when they are enrolled but
+        no window is scheduled yet, so the event payload alone cannot
+        distinguish the two states. The feature-flags response carries
+        a ``happy-hours-service-enabled`` block whose ``value`` flips
+        to ``true`` once the agreement has been signed.
+
+        The ``customerAccountNumber`` field that the Smart App sends in
+        ``additionalContext`` is accepted but not required; omitting it
+        keeps the integration aligned with the v5 subentry schema which
+        deliberately drops the CAN.
+
+        Returns the parsed JSON response as a dict keyed by flag name.
+        """
+        headers = {
+            "User-Agent": USER_AGENT_NATIVE,
+            "Accept": "application/json, application/problem+json",
+            "Content-Type": "application/json",
+            "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
+        }
+        body = {
+            "name": "ENGIE_APP",
+            "additionalContext": {
+                "contractAccountId": business_agreement_number.replace(" ", ""),
+                "platform": "android",
+                "platformVersion": "16",
+                "appVersion": "4.19.0.703",
+            },
+        }
+        return await self._api_wrapper(
+            session=self._session,
+            method="POST",
+            url=FEATURE_FLAGS_BASE_URL,
+            headers=headers,
+            json_body=body,
             json_response=True,
         )
 
@@ -1442,6 +1566,7 @@ class EngieBeApiClient:
         url: str,
         headers: dict[str, str] | None = None,
         data: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
         params: dict[str, str] | None = None,
         json_response: bool = False,
         allow_redirects: bool = False,
@@ -1476,7 +1601,7 @@ class EngieBeApiClient:
                 url,
                 params=params,
                 headers=headers,
-                body=data,
+                body=data if data is not None else json_body,
             )
 
         try:
@@ -1486,6 +1611,7 @@ class EngieBeApiClient:
                     url=url,
                     headers=headers,
                     data=data,
+                    json=json_body,
                     params=params,
                     allow_redirects=allow_redirects,
                 )
