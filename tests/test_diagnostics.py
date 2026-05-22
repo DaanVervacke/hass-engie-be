@@ -18,12 +18,11 @@ from custom_components.engie_be.const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
-    CONF_CUSTOMER_NUMBER,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     DEFAULT_CLIENT_ID,
     DOMAIN,
-    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from custom_components.engie_be.data import EngieBeData, EngieBeSubentryData
 from custom_components.engie_be.diagnostics import (
@@ -45,10 +44,10 @@ _TEST_HOLDER = "John Doe"
 
 
 def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Build a v3 MockConfigEntry with one customer subentry + runtime data."""
-    entry = MockConfigEntry(
+    """Build a v5 entry with one business-agreement subentry and runtime data."""
+    entry: MockConfigEntry = MockConfigEntry(
         domain=DOMAIN,
-        version=3,
+        version=5,
         title="user@example.com",
         data={
             CONF_USERNAME: "user@example.com",
@@ -61,11 +60,10 @@ def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
         unique_id="user_example_com",
         subentries_data=[
             ConfigSubentryData(
-                subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
                 title=_TEST_SUBENTRY_TITLE,
-                unique_id="000000000000",
+                unique_id="002200000999",
                 data={
-                    CONF_CUSTOMER_NUMBER: "000000000000",
                     CONF_BUSINESS_AGREEMENT_NUMBER: "002200000999",
                     CONF_PREMISES_NUMBER: "5100009999",
                     CONF_ACCOUNT_HOLDER_NAME: _TEST_HOLDER,
@@ -130,7 +128,6 @@ async def test_redacts_pii_on_subentry_data(hass: HomeAssistant) -> None:
     sub = next(iter(subentries.values()))
     sub_data = sub["data"]
     for key in (
-        CONF_CUSTOMER_NUMBER,
         CONF_BUSINESS_AGREEMENT_NUMBER,
         CONF_PREMISES_NUMBER,
         CONF_ACCOUNT_HOLDER_NAME,
@@ -162,7 +159,7 @@ async def test_payload_structure_and_ean_hashing(hass: HomeAssistant) -> None:
     diag = await async_get_config_entry_diagnostics(hass, entry)
 
     assert set(diag.keys()) == {"entry", "runtime", "epex_coordinator", "subentries"}
-    assert diag["entry"]["version"] == 3
+    assert diag["entry"]["version"] == 5
     assert diag["entry"]["options"] == {"update_interval": 60}
 
     # Per-subentry coordinator + service points
@@ -183,7 +180,7 @@ async def test_payload_structure_and_ean_hashing(hass: HomeAssistant) -> None:
     assert "541448820000000001_ID1" not in serialised
     assert "541448820000000002_ID1" not in serialised
     assert "hunter2" not in serialised
-    assert "000000000000" not in serialised
+    assert "002200000999" not in serialised
     assert "v1.fake_refresh_token" not in serialised
 
 
@@ -242,10 +239,10 @@ async def test_epex_coordinator_summary_present_when_no_payload(
 
 
 def _build_entry_without_runtime(hass: HomeAssistant) -> MockConfigEntry:
-    """Build a v3 entry without runtime_data attached (early-failure shape)."""
+    """Build a v5 entry without runtime_data attached (early-failure shape)."""
     entry: MockConfigEntry = MockConfigEntry(
         domain=DOMAIN,
-        version=3,
+        version=5,
         title="user@example.com",
         data={
             CONF_USERNAME: "user@example.com",
@@ -258,10 +255,10 @@ def _build_entry_without_runtime(hass: HomeAssistant) -> MockConfigEntry:
         unique_id="user_example_com",
         subentries_data=[
             ConfigSubentryData(
-                subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
                 title=_TEST_SUBENTRY_TITLE,
-                unique_id="000000000000",
-                data={CONF_CUSTOMER_NUMBER: "000000000000"},
+                unique_id="002200000999",
+                data={CONF_BUSINESS_AGREEMENT_NUMBER: "002200000999"},
             ),
         ],
     )

@@ -2,161 +2,114 @@
 Helpers for parsing ENGIE customer-account-relations responses.
 
 Kept in a small module of its own so the config flow (which uses it
-during initial setup) and the coordinator (which uses it to backfill
+during the picker) and the coordinator (which uses it to backfill
 missing subentry fields on first refresh) can share the parsing logic
 without ``coordinator`` having to import ``config_flow``.
+
+Schema (v5)
+-----------
+
+One ``ConfigSubentry`` per *active* ``businessAgreement``. The
+12-digit BAN is the canonical identifier every downstream endpoint
+keys on (prices, peaks, contracts, service-points); the CAN is no
+longer stored. :func:`extract_business_agreements` fans the relations
+response out to one row per active BAN; the picker dedups on BAN
+alone.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
+from typing import Any
 
 from .const import (
     CONF_ACCOUNT_HOLDER_NAME,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CONSUMPTION_ADDRESS,
-    CONF_CUSTOMER_NUMBER,
     CONF_PREMISES_NUMBER,
 )
 
 # The set of subentry-data keys that the relations endpoint can
-# populate. The customer number itself is not included: it is the
-# subentry's identity and is set at creation time.
+# populate during runtime backfill. The BAN itself is not included:
+# it is the subentry's identity and is set at creation time.
 RELATIONS_BACKFILLABLE_KEYS: tuple[str, ...] = (
-    CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_PREMISES_NUMBER,
     CONF_ACCOUNT_HOLDER_NAME,
     CONF_CONSUMPTION_ADDRESS,
 )
 
 
-def extract_accounts(relations: dict[str, Any]) -> list[dict[str, Any]]:
-    """
-    Flatten a customer-account-relations response into per-account dicts.
-
-    Each returned dict carries the subset of fields stored in the
-    corresponding ``ConfigSubentry``. Inactive business agreements are
-    skipped; if no active agreement is present the account is still
-    surfaced so the user can pick it (the address fields stay empty).
-    """
-    accounts: list[dict[str, Any]] = []
-    for item in relations.get("items", []):
-        customer_account = item.get("customerAccount") or {}
-        customer_number = customer_account.get("customerAccountNumber")
-        if not customer_number:
-            continue
-
-        accounts.append(flatten_customer_account(customer_account))
-    return accounts
-
-
-def iter_account_identifiers(customer_account: dict[str, Any]) -> Iterator[str]:
-    """
-    Yield every identifier (CAN + BANs) a stored subentry could carry.
-
-    Stored ``customer_number`` values can take one of two shapes
-    depending on when the subentry was created:
-
-    * v3 subentries created via the picker hold the canonical
-      ``customerAccountNumber`` (CAN, 10 digits, no leading zeros).
-    * v2-migrated subentries -- and entries created before the picker
-      existed -- can hold a ``businessAgreementNumber`` (BAN, 12 digits
-      with leading zeros), because the legacy v2 prices/peaks endpoints
-      accepted either identifier in the same path slot.
-
-    Callers that need to test "is this candidate already configured?"
-    should compare against the union of every identifier each existing
-    subentry could possibly carry, not just the canonical one. This
-    helper produces that union for a single ``customerAccount`` node.
-
-    Inactive business agreements are still yielded: a subentry created
-    when the agreement was active retains its BAN even after ENGIE
-    deactivates the agreement, and we still want to deduplicate it.
-
-    Empty / missing identifiers are filtered out. Order is CAN first,
-    then BANs in the order ENGIE returns them.
-    """
-    customer_number = customer_account.get("customerAccountNumber")
-    if customer_number:
-        yield customer_number
-    for agreement in customer_account.get("businessAgreements") or []:
-        ban = agreement.get("businessAgreementNumber")
-        if ban:
-            yield ban
-
-
-def find_account_for_customer_number(
+def extract_business_agreements(
     relations: dict[str, Any],
-    stored_number: str,
-) -> dict[str, Any] | None:
+) -> list[dict[str, Any]]:
     """
-    Find the relations record whose stored identifier matches a subentry.
+    Flatten a customer-account-relations response into per-active-BAN dicts.
 
-    The v3 ``customer_number`` subentry field nominally holds a
-    ``customerAccountNumber`` (10 digits, no leading zeros), but legacy
-    v2 entries -- and entries created before the picker-based config
-    flow existed -- can still hold a ``businessAgreementNumber`` (12
-    digits with leading zeros) because the v2 prices/peaks endpoints
-    accept either identifier in the same path slot. To keep backfill
-    working for those entries we match against both keys.
+    Walks every ``customerAccount`` in the payload and emits one dict
+    for every *active* ``businessAgreement`` underneath it. The
+    returned dict shape matches what a ``ConfigSubentry`` for this
+    agreement would store.
 
-    Returns the same flattened dict shape as :func:`extract_accounts`
-    on the active business agreement, or ``None`` when no match is
-    found. The returned dict's ``CONF_CUSTOMER_NUMBER`` always reflects
-    the canonical ``customerAccountNumber`` from the API; callers that
-    want to preserve the originally-stored value must merge explicitly.
+    Inactive business agreements are skipped entirely: they cannot be
+    polled (prices/peaks return empty), and surfacing them would create
+    permanently-stale devices. If ENGIE later re-activates a BAN the
+    user can re-run the picker.
+
+    Customer accounts whose ``customerAccountNumber`` is missing, and
+    BANs whose ``businessAgreementNumber`` is missing, are dropped
+    without raising -- relations responses occasionally arrive with
+    partial records during partner-side migrations.
     """
-    if not stored_number:
-        return None
+    rows: list[dict[str, Any]] = []
     for item in relations.get("items", []):
         customer_account = item.get("customerAccount") or {}
-        customer_number = customer_account.get("customerAccountNumber")
-        if not customer_number:
+        if not customer_account.get("customerAccountNumber"):
             continue
-        if customer_number == stored_number:
-            return flatten_customer_account(customer_account)
+        holder_name = customer_account.get("name")
         for agreement in customer_account.get("businessAgreements") or []:
-            if agreement.get("businessAgreementNumber") == stored_number:
-                return flatten_customer_account(customer_account)
-    return None
+            if not agreement.get("active"):
+                continue
+            ban = agreement.get("businessAgreementNumber")
+            if not ban:
+                continue
+            address = agreement.get("consumptionAddress") or {}
+            rows.append(
+                {
+                    CONF_BUSINESS_AGREEMENT_NUMBER: ban,
+                    CONF_PREMISES_NUMBER: address.get("premisesNumber"),
+                    CONF_ACCOUNT_HOLDER_NAME: holder_name,
+                    CONF_CONSUMPTION_ADDRESS: format_address(address),
+                },
+            )
+    return rows
 
 
-def flatten_customer_account(customer_account: dict[str, Any]) -> dict[str, Any]:
-    """Produce the per-account subentry dict for a ``customerAccount`` node."""
-    agreement = pick_active_agreement(customer_account.get("businessAgreements"))
-    address = (agreement or {}).get("consumptionAddress") or {}
-    return {
-        CONF_CUSTOMER_NUMBER: customer_account.get("customerAccountNumber"),
-        CONF_BUSINESS_AGREEMENT_NUMBER: (agreement or {}).get(
-            "businessAgreementNumber",
-        ),
-        CONF_PREMISES_NUMBER: address.get("premisesNumber"),
-        CONF_ACCOUNT_HOLDER_NAME: customer_account.get("name"),
-        CONF_CONSUMPTION_ADDRESS: format_address(address),
-    }
-
-
-def pick_active_agreement(
-    agreements: list[dict[str, Any]] | None,
+def find_agreement_for_ban(
+    relations: dict[str, Any],
+    ban: str,
 ) -> dict[str, Any] | None:
-    """Return the first active business agreement, or the first one available."""
-    if not agreements:
+    """
+    Find the per-BAN row in a relations response matching ``ban``.
+
+    Returns the same flattened dict shape as
+    :func:`extract_business_agreements` for the matching active BAN, or
+    ``None`` when no match is found. Used by the coordinator's one-shot
+    backfill to fill in display fields for a subentry that was created
+    without a complete relations payload.
+    """
+    if not ban:
         return None
-    for agreement in agreements:
-        if agreement.get("active"):
-            return agreement
-    return agreements[0]
+    for row in extract_business_agreements(relations):
+        if row.get(CONF_BUSINESS_AGREEMENT_NUMBER) == ban:
+            return row
+    return None
 
 
 def subentry_title(account: dict[str, Any]) -> str:
     """
     Build a user-friendly subentry title.
 
-    Falls back from address to account holder name to customer number so the
-    title always renders something useful.
+    Falls back from address to account holder name to BAN so the title
+    always renders something useful.
     """
     address = account.get(CONF_CONSUMPTION_ADDRESS)
     if address:
@@ -164,7 +117,7 @@ def subentry_title(account: dict[str, Any]) -> str:
     holder = account.get(CONF_ACCOUNT_HOLDER_NAME)
     if holder:
         return holder
-    return account[CONF_CUSTOMER_NUMBER]
+    return account[CONF_BUSINESS_AGREEMENT_NUMBER]
 
 
 def format_address(address: dict[str, Any]) -> str:

@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from homeassistant.components.sensor import SensorStateClass
 
-from custom_components.engie_be.const import EPEX_TZ, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from custom_components.engie_be.const import EPEX_TZ, SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.data import EpexPayload, EpexSlot
 from custom_components.engie_be.sensor import (
     _EPEX_CURRENT,
@@ -73,7 +73,7 @@ def _make_subentry(
     """Build a MagicMock ConfigSubentry stub."""
     subentry = MagicMock()
     subentry.subentry_id = subentry_id
-    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
     subentry.title = title
     return subentry
 
@@ -87,7 +87,7 @@ def _make_epex_coordinator(
     Build a MagicMock EPEX coordinator stub.
 
     ``    EngieBeEpexCoordinator.data`` is now an ``EpexPayload | None``
-    (no longer a dict with KEY_EPEX/KEY_IS_DYNAMIC). The current sensor
+    (no longer a dict). The current sensor
     reads ``last_update_success_time`` for the ``last_fetched`` attr,
     which is a custom property on ``EngieBeEpexCoordinator`` set on
     every successful parse.

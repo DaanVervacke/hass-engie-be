@@ -22,7 +22,11 @@ from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.util import dt as dt_util
 
 from ._peaks import captar_peak_events
-from .const import CONF_CUSTOMER_NUMBER, LOGGER, SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from .const import (
+    CONF_BUSINESS_AGREEMENT_NUMBER,
+    LOGGER,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+)
 from .entity import EngieBeEntity
 
 # Coordinator centralises updates; entities never poll individually.
@@ -54,7 +58,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the calendar platform, one entity per customer-account subentry."""
     for subentry in entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+        if subentry.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
             continue
 
         sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
@@ -74,22 +78,21 @@ async def async_setup_entry(
 class EngieBeCalendar(EngieBeEntity, CalendarEntity):
     """Aggregated calendar entity for one ENGIE Belgium customer account."""
 
-    # Override the inherited ``_attr_has_entity_name = True`` so the
-    # friendly name is taken verbatim from ``_attr_name`` instead of
-    # being composed as ``<device-name> <entity-name>``. This lets us
-    # lead with the brand ("ENGIE Belgium") and then the address,
-    # rather than the address followed by the brand. The standard
-    # composition is fine for sensors (which read e.g. ``<address>
-    # Captar monthly peak power``), but the calendar entity has no
-    # per-feature suffix, so without this override the only label HA
-    # would compose for the calendar dropdown is the address alone or
-    # ``<address> ENGIE Belgium`` (with the brand truncated in narrow
-    # panels). Trade-off: a user-renamed device no longer propagates
-    # into the calendar's friendly name. Acceptable because the
-    # device name is the consumption address, which is stable and
-    # rarely user-edited.
-    _attr_has_entity_name = False
+    # Inherit ``_attr_has_entity_name = True`` from ``EngieBeEntity`` and
+    # let HA compose the friendly name as ``<device-name> <entity-name>``,
+    # which on HA 2026.4+ resolves to ``<address> ENGIE Belgium``. The
+    # entity name itself is supplied via the ``engie_belgium`` translation
+    # key below so it stays consistent with every other engie_be entity
+    # naming pattern. Earlier versions hard-coded a brand-prefixed
+    # ``_attr_name`` and set ``_attr_has_entity_name = False`` to suppress
+    # composition; HA 2026.4 changed the composition logic so that opt-out
+    # no longer prevents the device-name prefix from being prepended,
+    # producing a doubled friendly name ("<address> ENGIE Belgium
+    # <address>"). Aligning with the standard convention fixes that and
+    # also lets the calendar count toward the ``has-entity-name`` quality
+    # scale rule.
     _attr_icon = "mdi:calendar"
+    _attr_translation_key = "engie_belgium"
 
     def __init__(
         self,
@@ -98,27 +101,24 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
     ) -> None:
         """Initialise the calendar entity for one customer-account subentry."""
         super().__init__(coordinator, subentry)
-        # Brand-leading literal friendly name. Composed at init time
-        # because ``_attr_has_entity_name`` is False (see class docstring
-        # rationale above). The brand string is intentionally untranslated:
-        # "ENGIE Belgium" is a proper noun and rendered identically in
-        # every locale ENGIE itself uses.
-        self._attr_name = f"ENGIE Belgium {subentry.title}"
         # Subentry-scoped unique ID: the calendar descriptor repeats
         # across every customer account on a single login.
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_calendar"
         )
-        # Suggest a CAN-prefixed entity_id slug so each customer
-        # account gets its own predictable calendar entity_id without
-        # HA auto-suffixing on the friendly name. There is only one
-        # calendar entity per subentry, so no trailing ``_calendar``
-        # is needed. Only effective on first registration; existing
-        # installs are migrated via ``_async_migrate_entity_id_slugs``
-        # in ``__init__``.
-        can = subentry.data.get(CONF_CUSTOMER_NUMBER)
-        if can:
-            self._attr_suggested_object_id = f"engie_belgium_{can}"
+        # Force a BAN-prefixed entity_id so each business agreement
+        # gets a predictable, collision-proof calendar entity_id
+        # regardless of address. HA's auto-derived slug would key off
+        # the friendly name (which embeds the address) and append
+        # ``_2`` if two agreements share an address. Setting
+        # ``self.entity_id`` directly is the supported escape hatch
+        # (``_attr_suggested_object_id`` is not honoured by
+        # ``Entity.suggested_object_id``, which reads ``self.name``).
+        # Only effective on first registration; entity registry
+        # overrides on subsequent boots.
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = f"calendar.engie_belgium_{ban}"
 
     def _all_events(self) -> list[CalendarEvent]:
         """Collect events from every registered provider."""

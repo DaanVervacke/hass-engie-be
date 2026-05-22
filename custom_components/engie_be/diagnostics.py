@@ -15,11 +15,10 @@ from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
-    CONF_CUSTOMER_NUMBER,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     KEY_IS_DYNAMIC,
-    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from .data import EpexPayload
 
@@ -34,7 +33,6 @@ TO_REDACT: set[str] = {
     CONF_PASSWORD,
     CONF_ACCESS_TOKEN,
     CONF_REFRESH_TOKEN,
-    CONF_CUSTOMER_NUMBER,
     CONF_CLIENT_ID,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_PREMISES_NUMBER,
@@ -199,7 +197,7 @@ async def async_get_config_entry_diagnostics(
 
     subentries_summary: dict[str, dict[str, Any]] = {}
     for subentry in entry.subentries.values():
-        if subentry.subentry_type != SUBENTRY_TYPE_CUSTOMER_ACCOUNT:
+        if subentry.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
             continue
         sub_data = (
             runtime.subentry_data.get(subentry.subentry_id)

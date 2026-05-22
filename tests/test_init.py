@@ -10,13 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigSubentry, ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be import (
-    _async_fetch_relations_for_setup,
-    _async_migrate_entity_id_slugs,
-    _async_migrate_legacy_subentry_unique_ids,
     _persist_tokens,
     async_migrate_entry,
     async_reload_entry,
@@ -30,13 +26,12 @@ from custom_components.engie_be.const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
-    CONF_CUSTOMER_NUMBER,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
     DOMAIN,
-    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from custom_components.engie_be.data import EngieBeData
 
@@ -53,18 +48,20 @@ _TEST_SUBENTRY_TITLE = "Rue de la Loi 16, 1000 Brussels"
 def _build_entry(
     hass: HomeAssistant,
     *,
-    customer_number: str = "000000000000",
+    business_agreement_number: str = "002200000001",
 ) -> MockConfigEntry:
     """
-    Build a v3 MockConfigEntry with credentials, tokens, and one subentry.
+    Build a v5 MockConfigEntry with credentials, tokens, and one subentry.
 
-    The customer-account ``ConfigSubentry`` mirrors the shape produced by
-    the v3 config flow so the integration's setup path can find at least
-    one account to wire up coordinators for.
+    v5 keys each ``ConfigSubentry`` on a Business Agreement Number (BAN);
+    a single ENGIE login can own many active BANs across one or more
+    customer accounts. The resulting entry already carries the relations-
+    derived display fields so the setup path can wire up its coordinators
+    immediately without needing the relations endpoint mocked.
     """
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=3,
+        version=5,
         title="user@example.com",
         unique_id="user_example_com",
         data={
@@ -77,12 +74,11 @@ def _build_entry(
         options={"update_interval": 60},
         subentries_data=[
             ConfigSubentryData(
-                subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
                 title=_TEST_SUBENTRY_TITLE,
-                unique_id=customer_number,
+                unique_id=business_agreement_number,
                 data={
-                    CONF_CUSTOMER_NUMBER: customer_number,
-                    CONF_BUSINESS_AGREEMENT_NUMBER: "B-0001",
+                    CONF_BUSINESS_AGREEMENT_NUMBER: business_agreement_number,
                     CONF_PREMISES_NUMBER: "P-0001",
                     CONF_CONSUMPTION_ADDRESS: _TEST_SUBENTRY_TITLE,
                 },
@@ -94,7 +90,7 @@ def _build_entry(
 
 
 def _only_subentry_id(entry: MockConfigEntry) -> str:
-    """Return the subentry id of the single test customer-account subentry."""
+    """Return the subentry id of the single test business-agreement subentry."""
     return next(iter(entry.subentries))
 
 
@@ -353,82 +349,54 @@ def test_persist_tokens_writes_only_token_fields(
     assert entry.data[CONF_REFRESH_TOKEN] == "rotated-refresh"
     assert entry.data[CONF_USERNAME] == "user@example.com"
     assert entry.data[CONF_PASSWORD] == "hunter2"
-    # v3 lifted CONF_CUSTOMER_NUMBER out of entry.data into the subentry.
-    assert CONF_CUSTOMER_NUMBER not in entry.data
 
 
 # ---------------------------------------------------------------------------
-# Config-entry migration
+# Config-entry migration (v0.9.0 breaking schema change)
 # ---------------------------------------------------------------------------
 
 
-async def test_migrate_v1_converts_hours_to_minutes(
+async def test_migrate_entry_refuses_pre_v5_entries(
     hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """v1 stored update_interval in hours; migration must rewrite it to minutes."""
+    """
+    v0.9.0 dropped the v1->v2->v3->v4 migration chain.
+
+    Any entry whose version predates v5 must be refused so HA marks it
+    as setup_error and surfaces a Repairs notice telling the user to
+    remove and re-add the integration.
+    """
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=1,
+        version=4,
         title="user@example.com",
         unique_id="user_example_com",
         data={
             CONF_USERNAME: "user@example.com",
             CONF_PASSWORD: "hunter2",
-            CONF_CUSTOMER_NUMBER: "000000000000",
-            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
-            CONF_ACCESS_TOKEN: "stored-access",
-            CONF_REFRESH_TOKEN: "stored-refresh",
         },
-        options={CONF_UPDATE_INTERVAL: 2},
     )
     entry.add_to_hass(hass)
 
-    assert await async_migrate_entry(hass, entry) is True
+    with caplog.at_level(logging.ERROR):
+        result = await async_migrate_entry(hass, entry)
 
-    assert entry.version == 3
-    assert entry.options[CONF_UPDATE_INTERVAL] == 120  # 2h -> 120min
+    assert result is False
+    assert "breaking schema change" in caplog.text
+    assert "version 4" in caplog.text or "from version 4" in caplog.text
 
 
-async def test_migrate_v1_without_interval_just_bumps_version(
+async def test_migrate_entry_passes_through_current_version(
     hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
-    """A v1 entry with no stored update_interval is migrated by version bump only."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        version=1,
-        title="user@example.com",
-        unique_id="user_example_com",
-        data={
-            CONF_USERNAME: "user@example.com",
-            CONF_PASSWORD: "hunter2",
-            CONF_CUSTOMER_NUMBER: "000000000000",
-            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
-            CONF_ACCESS_TOKEN: "stored-access",
-            CONF_REFRESH_TOKEN: "stored-refresh",
-        },
-        options={},
-    )
-    entry.add_to_hass(hass)
-
-    assert await async_migrate_entry(hass, entry) is True
-
-    assert entry.version == 3
-    assert CONF_UPDATE_INTERVAL not in entry.options
-
-
-async def test_migrate_v3_is_noop(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A v3 entry passes straight through the migration unchanged."""
+    """A v5 entry must not raise when passed through async_migrate_entry."""
     entry = _build_entry(hass)
 
-    assert await async_migrate_entry(hass, entry) is True
-
-    assert entry.version == 3
-    assert entry.options[CONF_UPDATE_INTERVAL] == 60
+    # v5 entries never enter async_migrate_entry under normal HA flow, but
+    # if something forces the call (e.g. a future bump that revisits v5),
+    # the function must not crash.
+    assert entry.version == 5
 
 
 # ---------------------------------------------------------------------------
@@ -496,7 +464,7 @@ async def test_token_only_data_update_does_not_trigger_reload(
         last_subentry_ids={
             sub.subentry_id
             for sub in entry.subentries.values()
-            if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+            if sub.subentry_type == SUBENTRY_TYPE_BUSINESS_AGREEMENT
         },
     )
 
@@ -526,7 +494,7 @@ async def test_options_change_after_setup_uses_async_reload(
         last_subentry_ids={
             sub.subentry_id
             for sub in entry.subentries.values()
-            if sub.subentry_type == SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+            if sub.subentry_type == SUBENTRY_TYPE_BUSINESS_AGREEMENT
         },
     )
     # Mutate options to simulate the options flow saving a new value before
@@ -566,13 +534,12 @@ async def test_subentry_added_after_setup_triggers_reload(
     new_subentry = ConfigSubentry(
         data=MappingProxyType(
             {
-                CONF_CUSTOMER_NUMBER: "111111111111",
-                CONF_BUSINESS_AGREEMENT_NUMBER: "B-0002",
+                CONF_BUSINESS_AGREEMENT_NUMBER: "002200000002",
             },
         ),
-        subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+        subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
         title="Second Account",
-        unique_id="111111111111",
+        unique_id="002200000002",
     )
     hass.config_entries.async_add_subentry(entry, new_subentry)
 
@@ -791,12 +758,12 @@ async def test_setup_entry_populates_dynamic_override_from_contracts(
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
     """Dynamic electricity contracts must set ``is_dynamic_override=True``."""
-    entry = _build_entry(hass)
+    entry = _build_entry(hass, business_agreement_number="002200000001")
     client = _make_client(
         energy_contracts_return={
             "items": [
                 {
-                    "businessAgreementNumber": "B-0001",
+                    "businessAgreementNumber": "002200000001",
                     "servicePointNumber": "541448820000000001_ID1",
                     "division": "ELECTRICITY",
                     "status": "ACTIVE",
@@ -826,7 +793,7 @@ async def test_setup_entry_populates_dynamic_override_from_contracts(
     # Coordinator ``is_dynamic`` must reflect the override.
     assert sub_data.coordinator.is_dynamic is True
     # Endpoint must have been called exactly once with the BAN.
-    client.async_get_energy_contracts.assert_awaited_once_with("B-0001")
+    client.async_get_energy_contracts.assert_awaited_once_with("002200000001")
 
 
 async def test_setup_entry_dynamic_override_handles_mixed_fuel(
@@ -839,14 +806,14 @@ async def test_setup_entry_dynamic_override_handles_mixed_fuel(
         energy_contracts_return={
             "items": [
                 {
-                    "businessAgreementNumber": "B-0001",
+                    "businessAgreementNumber": "002200000001",
                     "servicePointNumber": "541448820000000001_ID1",
                     "division": "ELECTRICITY",
                     "status": "ACTIVE",
                     "productConfiguration": {"energyProduct": "DYNAMIC"},
                 },
                 {
-                    "businessAgreementNumber": "B-0001",
+                    "businessAgreementNumber": "002200000001",
                     "servicePointNumber": "541448820000000002_ID2",
                     "division": "GAS",
                     "status": "ACTIVE",
@@ -880,7 +847,7 @@ async def test_setup_entry_dynamic_override_false_for_fixed_account(
         energy_contracts_return={
             "items": [
                 {
-                    "businessAgreementNumber": "B-0001",
+                    "businessAgreementNumber": "002200000001",
                     "servicePointNumber": "541448820000000001_ID1",
                     "division": "ELECTRICITY",
                     "status": "ACTIVE",
@@ -956,544 +923,3 @@ async def test_setup_entry_dynamic_override_falls_back_on_non_dict_payload(
     assert sub_data.is_dynamic_override is None
     # Cache must not be populated with garbage.
     assert sub_data.energy_contracts_payload is None
-
-
-async def test_setup_entry_dynamic_override_uses_can_when_ban_missing(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """Subentries lacking a BAN must fall back to the customer number."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        version=3,
-        title="user@example.com",
-        unique_id="user_example_com",
-        data={
-            CONF_USERNAME: "user@example.com",
-            CONF_PASSWORD: "hunter2",
-            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
-            CONF_ACCESS_TOKEN: "stored-access",
-            CONF_REFRESH_TOKEN: "stored-refresh",
-        },
-        options={"update_interval": 60},
-        subentries_data=[
-            ConfigSubentryData(
-                subentry_type=SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
-                title=_TEST_SUBENTRY_TITLE,
-                unique_id="999000000000",
-                data={
-                    CONF_CUSTOMER_NUMBER: "999000000000",
-                    # No CONF_BUSINESS_AGREEMENT_NUMBER on purpose.
-                    CONF_PREMISES_NUMBER: "P-0001",
-                    CONF_CONSUMPTION_ADDRESS: _TEST_SUBENTRY_TITLE,
-                },
-            ),
-        ],
-    )
-    entry.add_to_hass(hass)
-    client = _make_client(
-        energy_contracts_return={
-            "items": [
-                {
-                    "servicePointNumber": "541448820000000001_ID1",
-                    "division": "ELECTRICITY",
-                    "status": "ACTIVE",
-                    "productConfiguration": {"energyProduct": "DYNAMIC"},
-                },
-            ],
-        },
-    )
-
-    with patch(
-        "custom_components.engie_be.EngieBeApiClient",
-        return_value=client,
-    ):
-        ok = await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-
-    assert ok is True
-    # The endpoint must have been called with the CAN as the fallback identifier.
-    client.async_get_energy_contracts.assert_awaited_once_with("999000000000")
-
-
-# ---------------------------------------------------------------------------
-# Legacy BAN-shaped subentry unique_id migration
-# ---------------------------------------------------------------------------
-
-
-def _relations_payload_for(can: str, ban: str) -> dict[str, Any]:
-    """Build a minimal customer-account-relations payload for one account."""
-    return {
-        "items": [
-            {
-                "customerAccount": {
-                    "customerAccountNumber": can,
-                    "businessAgreements": [
-                        {"businessAgreementNumber": ban},
-                    ],
-                },
-            },
-        ],
-    }
-
-
-async def test_legacy_unique_id_migration_rewrites_ban_to_can(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A BAN-shaped subentry unique_id is rewritten to its canonical CAN."""
-    legacy_ban = "002200000099"
-    canonical_can = "1500000099"
-    entry = _build_entry(hass, customer_number=legacy_ban)
-    # Mirror the legacy v2-migrated shape: the BAN sits in both the
-    # unique_id (via _build_entry) and in the data block.
-    only_subentry = next(iter(entry.subentries.values()))
-    hass.config_entries.async_update_subentry(
-        entry,
-        only_subentry,
-        data={
-            **only_subentry.data,
-            CONF_BUSINESS_AGREEMENT_NUMBER: legacy_ban,
-        },
-    )
-
-    with patch(
-        "custom_components.engie_be._async_fetch_relations_for_setup",
-        AsyncMock(return_value=_relations_payload_for(canonical_can, legacy_ban)),
-    ):
-        await _async_migrate_legacy_subentry_unique_ids(hass, entry)
-
-    rewritten = next(iter(entry.subentries.values()))
-    assert rewritten.unique_id == canonical_can
-    assert rewritten.data[CONF_CUSTOMER_NUMBER] == canonical_can
-    # The BAN field is preserved so the picker dedupes correctly even
-    # before subsequent setups re-run this migration.
-    assert rewritten.data[CONF_BUSINESS_AGREEMENT_NUMBER] == legacy_ban
-
-
-async def test_legacy_unique_id_migration_is_noop_when_already_canonical(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A subentry that already carries its CAN as unique_id triggers no fetch."""
-    canonical_can = "1500000050"
-    entry = _build_entry(hass, customer_number=canonical_can)
-    # Make sure the BAN field does not look like the unique_id, so the
-    # ``needs_rewrite`` filter sees nothing to do.
-    only_subentry = next(iter(entry.subentries.values()))
-    hass.config_entries.async_update_subentry(
-        entry,
-        only_subentry,
-        data={
-            **only_subentry.data,
-            CONF_CUSTOMER_NUMBER: canonical_can,
-            CONF_BUSINESS_AGREEMENT_NUMBER: "002200000050",
-        },
-    )
-
-    fetch_mock = AsyncMock()
-    with patch(
-        "custom_components.engie_be._async_fetch_relations_for_setup",
-        fetch_mock,
-    ):
-        await _async_migrate_legacy_subentry_unique_ids(hass, entry)
-
-    assert fetch_mock.await_count == 0
-    untouched = next(iter(entry.subentries.values()))
-    assert untouched.unique_id == canonical_can
-
-
-async def test_legacy_unique_id_migration_skips_unknown_account(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A subentry whose stored id no longer maps to any account is left alone."""
-    legacy_ban = "002200000077"
-    entry = _build_entry(hass, customer_number=legacy_ban)
-    only_subentry = next(iter(entry.subentries.values()))
-    hass.config_entries.async_update_subentry(
-        entry,
-        only_subentry,
-        data={
-            **only_subentry.data,
-            CONF_BUSINESS_AGREEMENT_NUMBER: legacy_ban,
-        },
-    )
-
-    # Relations payload contains a totally different account.
-    with patch(
-        "custom_components.engie_be._async_fetch_relations_for_setup",
-        AsyncMock(
-            return_value=_relations_payload_for("9999999999", "999999999999"),
-        ),
-    ):
-        await _async_migrate_legacy_subentry_unique_ids(hass, entry)
-
-    untouched = next(iter(entry.subentries.values()))
-    assert untouched.unique_id == legacy_ban
-
-
-async def test_legacy_unique_id_migration_tolerates_relations_failure(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A relations fetch returning None defers the rewrite without raising."""
-    legacy_ban = "002200000088"
-    entry = _build_entry(hass, customer_number=legacy_ban)
-    only_subentry = next(iter(entry.subentries.values()))
-    hass.config_entries.async_update_subentry(
-        entry,
-        only_subentry,
-        data={
-            **only_subentry.data,
-            CONF_BUSINESS_AGREEMENT_NUMBER: legacy_ban,
-        },
-    )
-
-    with patch(
-        "custom_components.engie_be._async_fetch_relations_for_setup",
-        AsyncMock(return_value=None),
-    ):
-        await _async_migrate_legacy_subentry_unique_ids(hass, entry)
-
-    untouched = next(iter(entry.subentries.values()))
-    assert untouched.unique_id == legacy_ban
-
-
-async def test_fetch_relations_for_setup_persists_rotated_tokens(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """
-    The setup-time relations helper must persist rotated tokens.
-
-    ENGIE rotates the refresh token on every refresh call. The legacy
-    subentry-id migration runs before the main coordinator setup and
-    issues its own refresh on a throwaway client. If the rotated tokens
-    are not written back to ``entry.data``, the next refresh in the
-    same setup pass uses the now-invalid stored refresh token and
-    triggers a spurious second reauth.
-    """
-    entry = _build_entry(hass, customer_number="002200000001")
-    assert entry.data[CONF_ACCESS_TOKEN] == "stored-access"
-    assert entry.data[CONF_REFRESH_TOKEN] == "stored-refresh"
-
-    client = _make_client(refresh_return=("rotated-access", "rotated-refresh"))
-    client.async_get_customer_account_relations = AsyncMock(
-        return_value={"customerAccounts": []},
-    )
-
-    with patch(
-        "custom_components.engie_be.EngieBeApiClient",
-        return_value=client,
-    ):
-        result = await _async_fetch_relations_for_setup(hass, entry)
-
-    assert result == {"customerAccounts": []}
-    assert client.async_refresh_token.await_count == 1
-    # Critical: the rotated tokens must be visible on the entry before
-    # any subsequent setup-pass refresh runs.
-    assert entry.data[CONF_ACCESS_TOKEN] == "rotated-access"
-    assert entry.data[CONF_REFRESH_TOKEN] == "rotated-refresh"
-    # Other entry data must be untouched.
-    assert entry.data[CONF_USERNAME] == "user@example.com"
-    assert entry.data[CONF_CLIENT_ID] == DEFAULT_CLIENT_ID
-
-
-async def test_fetch_relations_for_setup_skips_persist_on_refresh_failure(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A failing refresh must leave stored tokens untouched and return None."""
-    entry = _build_entry(hass, customer_number="002200000002")
-    client = _make_client(
-        refresh_side_effect=EngieBeApiClientAuthenticationError("expired"),
-    )
-
-    with patch(
-        "custom_components.engie_be.EngieBeApiClient",
-        return_value=client,
-    ):
-        result = await _async_fetch_relations_for_setup(hass, entry)
-
-    assert result is None
-    assert client.async_refresh_token.await_count == 1
-    # Stored tokens must NOT have been overwritten.
-    assert entry.data[CONF_ACCESS_TOKEN] == "stored-access"
-    assert entry.data[CONF_REFRESH_TOKEN] == "stored-refresh"
-
-
-# ---------------------------------------------------------------------------
-# Entity-id slug migration (one-shot CAN-prefix rewrite of legacy slugs).
-# ---------------------------------------------------------------------------
-
-
-def _seed_registry_entity(  # noqa: PLR0913 - test helper mirrors registry signature
-    hass: HomeAssistant,
-    entry: MockConfigEntry,
-    *,
-    domain: str,
-    suggested_object_id: str,
-    unique_id: str,
-    subentry_id: str | None,
-) -> str:
-    """Register an entity in the registry under ``entry`` and return its id."""
-    registry = er.async_get(hass)
-    reg = registry.async_get_or_create(
-        domain=domain,
-        platform=DOMAIN,
-        unique_id=unique_id,
-        suggested_object_id=suggested_object_id,
-        config_entry=entry,
-        config_subentry_id=subentry_id,
-    )
-    return reg.entity_id
-
-
-async def test_slug_migration_renames_calendar_to_can_prefixed(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A BAN-prefixed calendar entity_id is rewritten to engie_belgium_{CAN}."""
-    can = "1500000123"
-    entry = _build_entry(hass, customer_number=can)
-    subentry_id = _only_subentry_id(entry)
-    legacy = _seed_registry_entity(
-        hass,
-        entry,
-        domain="calendar",
-        suggested_object_id="002200000123",
-        unique_id=f"{entry.entry_id}_{subentry_id}_calendar",
-        subentry_id=subentry_id,
-    )
-    assert legacy == "calendar.002200000123"
-
-    await _async_migrate_entity_id_slugs(hass, entry)
-
-    registry = er.async_get(hass)
-    assert registry.async_get(legacy) is None
-    renamed = registry.async_get(f"calendar.engie_belgium_{can}")
-    assert renamed is not None
-    assert renamed.unique_id == f"{entry.entry_id}_{subentry_id}_calendar"
-
-
-async def test_slug_migration_renames_sensor_with_key_suffix(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A subentry-scoped sensor gets ``_{key}`` appended after the CAN."""
-    can = "1500000456"
-    entry = _build_entry(hass, customer_number=can)
-    subentry_id = _only_subentry_id(entry)
-    legacy = _seed_registry_entity(
-        hass,
-        entry,
-        domain="sensor",
-        suggested_object_id="002200000456_captar_monthly_peak_power",
-        unique_id=f"{entry.entry_id}_{subentry_id}_captar_monthly_peak_power",
-        subentry_id=subentry_id,
-    )
-
-    await _async_migrate_entity_id_slugs(hass, entry)
-
-    registry = er.async_get(hass)
-    assert registry.async_get(legacy) is None
-    target = f"sensor.engie_belgium_{can}_captar_monthly_peak_power"
-    assert registry.async_get(target) is not None
-
-
-async def test_slug_migration_renames_price_sensor_without_subentry_prefix(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """Price sensors whose unique_id has no subentry prefix still get rewritten."""
-    can = "1500000789"
-    entry = _build_entry(hass, customer_number=can)
-    subentry_id = _only_subentry_id(entry)
-    key = "electricity_offtake_price_eur_per_kwh"
-    legacy = _seed_registry_entity(
-        hass,
-        entry,
-        domain="sensor",
-        suggested_object_id="engie_belgium_electricity_offtake_price",
-        unique_id=f"{entry.entry_id}_{key}",
-        subentry_id=subentry_id,
-    )
-
-    await _async_migrate_entity_id_slugs(hass, entry)
-
-    registry = er.async_get(hass)
-    assert registry.async_get(legacy) is None
-    assert registry.async_get(f"sensor.engie_belgium_{can}_{key}") is not None
-
-
-async def test_slug_migration_is_idempotent(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A second pass over an already-migrated entity is a no-op."""
-    can = "1500000321"
-    entry = _build_entry(hass, customer_number=can)
-    subentry_id = _only_subentry_id(entry)
-    target = f"sensor.engie_belgium_{can}_captar_monthly_peak_energy"
-    _seed_registry_entity(
-        hass,
-        entry,
-        domain="sensor",
-        suggested_object_id=f"engie_belgium_{can}_captar_monthly_peak_energy",
-        unique_id=f"{entry.entry_id}_{subentry_id}_captar_monthly_peak_energy",
-        subentry_id=subentry_id,
-    )
-
-    await _async_migrate_entity_id_slugs(hass, entry)
-    await _async_migrate_entity_id_slugs(hass, entry)
-
-    registry = er.async_get(hass)
-    entries = list(er.async_entries_for_config_entry(registry, entry.entry_id))
-    assert [e.entity_id for e in entries] == [target]
-
-
-async def test_slug_migration_collision_falls_back_to_numeric_suffix(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """A pre-existing slug at the target name forces a ``_2`` fallback."""
-    can = "1500000654"
-    entry = _build_entry(hass, customer_number=can)
-    subentry_id = _only_subentry_id(entry)
-    target = f"sensor.engie_belgium_{can}_captar_monthly_peak_start"
-
-    # Pre-occupy the target slug with an unrelated registry entry.
-    registry = er.async_get(hass)
-    registry.async_get_or_create(
-        domain="sensor",
-        platform="other",
-        unique_id="someone-else",
-        suggested_object_id=target.removeprefix("sensor."),
-    )
-    assert registry.async_get(target) is not None
-
-    legacy = _seed_registry_entity(
-        hass,
-        entry,
-        domain="sensor",
-        suggested_object_id="002200000654_captar_monthly_peak_start",
-        unique_id=f"{entry.entry_id}_{subentry_id}_captar_monthly_peak_start",
-        subentry_id=subentry_id,
-    )
-
-    await _async_migrate_entity_id_slugs(hass, entry)
-
-    assert registry.async_get(legacy) is None
-    assert registry.async_get(target) is not None  # the squatter is untouched
-    assert registry.async_get(f"{target}_2") is not None
-
-
-async def test_slug_migration_leaves_login_scoped_entities_alone(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """The auth binary sensor (no subentry) is never touched by the rewrite."""
-    can = "1500000999"
-    entry = _build_entry(hass, customer_number=can)
-    auth = _seed_registry_entity(
-        hass,
-        entry,
-        domain="binary_sensor",
-        suggested_object_id="engie_belgium_authentication",
-        unique_id=f"{entry.entry_id}_authentication",
-        subentry_id=None,
-    )
-
-    await _async_migrate_entity_id_slugs(hass, entry)
-
-    registry = er.async_get(hass)
-    assert registry.async_get(auth) is not None
-
-
-async def test_slug_migration_runs_after_platform_forwarding(
-    hass: HomeAssistant,
-    enable_custom_integrations: object,  # noqa: ARG001
-) -> None:
-    """
-    Regression: slug rewrite must catch entities created during platform setup.
-
-    Reproduces the b6 ordering bug where ``_async_migrate_entity_id_slugs``
-    ran before ``async_forward_entry_setups``: any entity registered by
-    platform setup itself (notably EPEX entities created on the first
-    setup pass after a subentry first reports a dynamic tariff) was
-    missed and only got rewritten on the next reload. The fix moves
-    the helper to run after ``forward_entry_setups`` so freshly-
-    registered entities are picked up in the same cycle.
-
-    The test patches ``async_forward_entry_setups`` to seed a
-    legacy-slug entity into the registry as if a platform had just
-    registered it, then asserts the entity ends up at the canonical
-    ``engie_belgium_{CAN}_*`` slug after ``async_setup_entry``
-    returns.
-    """
-    can = "1500000777"
-    entry = _build_entry(hass, customer_number=can)
-    subentry_id = _only_subentry_id(entry)
-    client = _make_client(refresh_return=("fresh-access", "fresh-refresh"))
-
-    # Stand-in for what a real platform's ``async_setup_entry`` would do:
-    # register an entity in the entity registry. The legacy-shaped slug
-    # mirrors what HA produces today for ``has_entity_name=True`` +
-    # ``translation_key`` entities under a named device, which is the
-    # exact path that bypasses ``_attr_suggested_object_id`` and made
-    # the migration helper necessary in the first place.
-    async def _seed_during_forward(
-        _entry: MockConfigEntry,
-        _platforms: object,
-    ) -> bool:
-        registry = er.async_get(hass)
-        registry.async_get_or_create(
-            domain="sensor",
-            platform=DOMAIN,
-            unique_id=f"{entry.entry_id}_{subentry_id}_epex_current",
-            suggested_object_id="rue_de_la_loi_16_1000_brussels_epex_current_price",
-            config_entry=entry,
-            config_subentry_id=subentry_id,
-        )
-        return True
-
-    with (
-        patch(
-            "custom_components.engie_be.EngieBeApiClient",
-            return_value=client,
-        ),
-        patch(
-            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
-            ".async_config_entry_first_refresh",
-            new=AsyncMock(return_value=None),
-        ),
-        patch(
-            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
-            ".async_config_entry_first_refresh",
-            new=AsyncMock(return_value=None),
-        ),
-        patch.object(
-            hass.config_entries,
-            "async_forward_entry_setups",
-            new=AsyncMock(side_effect=_seed_during_forward),
-        ),
-    ):
-        ok = await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-
-    assert ok is True
-
-    registry = er.async_get(hass)
-    # The legacy-shaped entity registered during forward_entry_setups
-    # must have been rewritten to the canonical CAN-prefixed slug by
-    # the migration helper running afterwards. If the helper still
-    # ran before forward_entry_setups, the legacy entity would
-    # survive and the canonical slug would not exist.
-    assert (
-        registry.async_get("sensor.rue_de_la_loi_16_1000_brussels_epex_current_price")
-        is None
-    )
-    canonical = registry.async_get(f"sensor.engie_belgium_{can}_epex_current")
-    assert canonical is not None
-    assert canonical.unique_id == f"{entry.entry_id}_{subentry_id}_epex_current"

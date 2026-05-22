@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 from homeassistant.components.calendar import CalendarEvent
 
 from custom_components.engie_be.calendar import EngieBeCalendar
-from custom_components.engie_be.const import SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 
 _PEAKS_FIXTURE = Path(__file__).parent / "fixtures" / "peaks_2026_04.json"
 
@@ -43,7 +43,7 @@ def _make_subentry(
     """Build a MagicMock ConfigSubentry stub."""
     subentry = MagicMock()
     subentry.subentry_id = subentry_id
-    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
     subentry.title = title
     return subentry
 
@@ -90,6 +90,26 @@ def test_calendar_unique_id_namespaced_to_subentry() -> None:
     subentry = _make_subentry(subentry_id="sub_xyz")
     calendar = EngieBeCalendar(coordinator, subentry)
     assert calendar.unique_id == "test_entry_id_sub_xyz_calendar"
+
+
+def test_calendar_naming_contract_delegates_to_ha_composition() -> None:
+    """
+    Pin has_entity_name=True + translation_key naming for HA 2026.4+.
+
+    Regression guard for the v0.9.0b1 -> b2 fix: setting
+    ``_attr_has_entity_name = False`` together with a brand-prefixed
+    ``_attr_name`` produced a doubled friendly_name on HA 2026.4+, where
+    the composition logic prepends the device name regardless of the
+    has_entity_name flag when the registry stores no rename. The
+    calendar must inherit has_entity_name=True and expose its name via
+    translation key so HA composes ``<device-name> ENGIE Belgium``.
+    """
+    coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry)
+    assert calendar.has_entity_name is True
+    assert calendar.translation_key == "engie_belgium"
+    assert not hasattr(calendar, "_attr_name") or calendar._attr_name is None
 
 
 def test_event_property_returns_captar_peak() -> None:

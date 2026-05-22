@@ -16,7 +16,7 @@ from custom_components.engie_be.binary_sensor import (
 )
 from custom_components.engie_be.const import (
     EPEX_TZ,
-    SUBENTRY_TYPE_CUSTOMER_ACCOUNT,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from custom_components.engie_be.data import EpexPayload, EpexSlot
 
@@ -54,7 +54,7 @@ def _make_subentry(
     """Build a MagicMock ConfigSubentry with the given id and title."""
     subentry = MagicMock()
     subentry.subentry_id = subentry_id
-    subentry.subentry_type = SUBENTRY_TYPE_CUSTOMER_ACCOUNT
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
     subentry.title = title
     return subentry
 

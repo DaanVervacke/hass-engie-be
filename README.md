@@ -9,13 +9,38 @@ Custom [Home Assistant](https://www.home-assistant.io/) integration for
 data and monthly capacity-tariff peaks from the ENGIE Belgium API and exposes
 them as sensors.
 
+> ## Upgrading from v0.8.x or earlier? Read this first.
+>
+> **v0.9.0 requires a one-time remove-and-re-add, including
+> logging in to ENGIE again with 2FA.** There is no automatic
+> upgrade from any earlier version.
+>
+> After you install v0.9.0 through HACS and restart Home Assistant:
+>
+> 1. Open **Settings** > **Devices & services**, find the
+>    **ENGIE Belgium** card, and click **Delete**.
+> 2. Click **+ Add integration**, search for **ENGIE Belgium**,
+>    and log in with the same ENGIE account you used before. You
+>    will need to enter the 2FA code that ENGIE sends to you.
+> 3. At the end of the setup wizard, pick the business
+>    agreements you want Home Assistant to track.
+>
+> **Heads-up on entity names.** v0.9.0 numbers each device by its
+> **business-agreement number** instead of the customer-account
+> number. Any dashboards, automations, or scripts that mention the
+> old `sensor.engie_belgium_<old-id>_*` entities need to be updated
+> to the new names after re-adding the integration. Long-term
+> statistics from v0.8.x will not carry over into the new entities.
+>
+> Full details: see the v0.9.0 entry in [CHANGELOG.md](CHANGELOG.md).
+
 ## Features
 
 - Authenticates with your ENGIE Belgium account using two-factor authentication
 - Auto-detects gas and electricity contracts, including dynamic (EPEX-indexed) tariffs
 - Creates price sensors per energy type, direction (offtake / injection), and tariff rate
 - Tracks the monthly capacity-tariff (captar) peak window for each electricity meter
-- Supports multiple customer accounts under a single ENGIE login
+- Supports multiple households (business agreements) under a single ENGIE login, including several active addresses under one customer account
 - Configurable update interval
 
 ## Sensors
@@ -26,13 +51,14 @@ exposes its EAN, the validity window, and the applicable VAT rate as
 attributes. Every sensor below is also available as an `_excl_vat` variant
 (same name, `_excl_vat` suffix on both the entity ID and the friendly name).
 
-> Every entity ID created by the integration is prefixed with your ENGIE
-> customer number, regardless of whether your login owns one customer account
-> or several. For example: `sensor.engie_belgium_1500000123_gas_offtake_price`.
+> Every entity ID created by the integration is prefixed with the
+> business-agreement number (BAN) of the business agreement it belongs
+> to. For example: `sensor.engie_belgium_002200001234_gas_offtake_price`.
 > The bare `sensor.engie_belgium_*` IDs shown in the tables below are
-> illustrative. Replace `engie_belgium_` with `engie_belgium_{your_customer_number}_`
-> when referencing a sensor in automations or dashboards. The customer number
-> is visible in **Developer tools** > **States**.
+> illustrative. Replace `engie_belgium_` with `engie_belgium_{your_business_agreement_number}_`
+> when referencing a sensor in automations or dashboards. The BAN is
+> visible in **Developer tools** > **States** and in the device name
+> in **Settings** > **Devices & services**.
 
 ### Gas
 
@@ -212,8 +238,10 @@ badge in [Installation](#hacs-recommended) or open
    - **Two-factor authentication method**: choose SMS or Email.
 2. Click **Submit**. You will receive a verification code via your chosen method.
 3. Enter the 6-digit code and click **Submit**.
-4. Pick one or more customer accounts from the list of accounts your login can
-   access. Each selection becomes its own device with its own sensors.
+4. Pick one or more households from the list. Each address (business
+   agreement) your login can access becomes its own device with its own
+   sensors, even if several of them are billed under the same customer
+   account.
 
 The integration will then fetch your energy prices and capacity-tariff peaks
 and create the appropriate sensors.
@@ -228,20 +256,25 @@ After setup, you can change the price update interval:
 2. Click **Configure** (the cog wheel icon).
 3. Set the **Update interval** (5-1440 minutes, default: 60 minutes).
 
-## Multiple customer accounts
+## Multiple households
 
-A single ENGIE login can be linked to several customer accounts (for example a
-private home and a holiday house). After you finish 2FA during setup, the
-integration shows a picker of every customer account your login can access. Pick
-one or more, and each becomes its own device with its own sensors.
+A single ENGIE login can be linked to several households. This includes the
+case where two or more addresses are billed under the same ENGIE customer
+account (for example a primary residence and a holiday home grouped under
+one residential account). After you finish 2FA during setup, the
+integration shows a picker of every active address (business agreement)
+your login can access. Pick one or more, and each becomes its own device
+with its own sensors and its own captar peaks history.
 
-To add another customer account later, open the ENGIE Belgium card in
-**Settings** > **Devices & Services** and click **Add customer account**. To remove
-one, delete its subentry.
+To add another household later, open the ENGIE Belgium card in
+**Settings** > **Devices & Services** and click **Add business agreement**.
+To remove one, delete its subentry.
 
-> Existing single-account installs are upgraded automatically and your sensor
-> history is preserved. If any of your automations or dashboards reference an
-> old entity ID, update them to include the customer number.
+> Each subentry is keyed on its business-agreement number (BAN), so the
+> picker hides every BAN you have already added. If you replace the EAN
+> on an existing BAN (for example after a meter swap or a move), the
+> integration picks up the new metering point automatically on the next
+> refresh.
 
 ## Re-authentication
 

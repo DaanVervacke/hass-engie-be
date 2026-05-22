@@ -26,14 +26,13 @@ OAUTH_SCOPES = "openid profile roles offline_access"
 OAUTH_AUDIENCE = "customer"
 
 # Config entry keys (beyond homeassistant.const CONF_USERNAME / CONF_PASSWORD)
-CONF_CUSTOMER_NUMBER = "customer_number"
 CONF_MFA_METHOD = "mfa_method"
 CONF_CLIENT_ID = "client_id"
 CONF_ACCESS_TOKEN = "access_token"  # noqa: S105
 CONF_REFRESH_TOKEN = "refresh_token"  # noqa: S105
 
-# Subentry data keys (one ConfigSubentry per ENGIE customer account)
-SUBENTRY_TYPE_CUSTOMER_ACCOUNT = "customer_account"
+# Subentry data keys (one ConfigSubentry per active ENGIE business agreement)
+SUBENTRY_TYPE_BUSINESS_AGREEMENT = "business_agreement"
 CONF_BUSINESS_AGREEMENT_NUMBER = "business_agreement_number"
 CONF_PREMISES_NUMBER = "premises_number"
 CONF_ACCOUNT_HOLDER_NAME = "account_holder_name"
@@ -73,21 +72,14 @@ EPEX_TZ = "Europe/Brussels"
 # Hourly slots today; carried as a constant so a future 15-min rollout
 # only requires touching one place.
 EPEX_SLOT_DURATION_MINUTES = 60
-# Daily publication of next-day prices typically lands shortly after
-# 13:00 Brussels time. Schedule a single retry tick so tomorrow's
-# slate is picked up the same day instead of waiting for the next
-# coordinator interval.
-EPEX_PUBLICATION_HOUR = 13
-EPEX_PUBLICATION_MINUTE = 15
 
 # Raw EPEX values are EUR/MWh; the integration normalises everything
 # to EUR/kWh for consistency with the existing supplier-energy-prices
 # sensors.
 EPEX_MWH_TO_KWH = 1000.0
 
-# Coordinator payload keys for EPEX data (kept namespaced to avoid
-# clashing with future ENGIE response fields).
-KEY_EPEX = "epex"
+# Coordinator payload key for the dynamic-tariff flag (kept namespaced
+# to avoid clashing with future ENGIE response fields).
 KEY_IS_DYNAMIC = "is_dynamic"
 
 # Energy-contracts product codes that identify a dynamic (EPEX-indexed)

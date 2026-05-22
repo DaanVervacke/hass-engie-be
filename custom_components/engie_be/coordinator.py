@@ -17,7 +17,7 @@ from homeassistant.util import dt as dt_util
 
 from ._relations import (
     RELATIONS_BACKFILLABLE_KEYS,
-    find_account_for_customer_number,
+    find_agreement_for_ban,
     subentry_title,
 )
 from .api import (
@@ -27,7 +27,6 @@ from .api import (
 )
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
-    CONF_CUSTOMER_NUMBER,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
@@ -55,11 +54,12 @@ _BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
 
 class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """
-    Coordinator for one ENGIE customer account (subentry).
+    Coordinator for one ENGIE business agreement (subentry).
 
     Polls supplier energy prices and capacity-tariff peaks for a single
-    ``customerAccountNumber``. EPEX day-ahead prices are account-agnostic
-    and live in :class:`EngieBeEpexCoordinator` on the parent entry.
+    ``businessAgreementNumber``. EPEX day-ahead prices are
+    agreement-agnostic and live in :class:`EngieBeEpexCoordinator` on
+    the parent entry.
     """
 
     config_entry: EngieBeConfigEntry
@@ -79,31 +79,20 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             LOGGER,
             config_entry=config_entry,
-            name=f"{DOMAIN} customer {subentry.title}",
+            name=f"{DOMAIN} agreement {subentry.title}",
             update_interval=timedelta(minutes=update_minutes),
         )
         self.subentry = subentry
-        self.customer_number: str = subentry.data[CONF_CUSTOMER_NUMBER]
-        # The data endpoints (prices, monthly peaks) key off the 12-digit
-        # ``businessAgreementNumber`` (BAN), not the shorter
-        # ``customerAccountNumber`` (CAN) we use as the canonical
-        # subentry identity. New subentries always carry the BAN
-        # alongside the CAN; legacy v2-migrated subentries created
-        # before the BAN was tracked separately stored the BAN under
-        # ``customer_number``, so fall back to that when the dedicated
-        # field is missing. ``__init__.py`` migrates and backfills
-        # legacy subentries on setup so this fallback is only hit on
-        # the very first refresh after a multi-account upgrade.
-        self.business_agreement_number: str = (
-            subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER) or self.customer_number
-        )
+        self.business_agreement_number: str = subentry.data[
+            CONF_BUSINESS_AGREEMENT_NUMBER
+        ]
         self.last_successful_fetch: datetime | None = None
-        # One-shot backfill: when the subentry was created (or migrated)
-        # without all relations-derived display fields, we attempt to
-        # populate them from the customer-account-relations endpoint on
-        # the first successful refresh. The flag is cleared after a
-        # single attempt regardless of outcome to avoid hammering the
-        # API on every poll for an account that simply has no data.
+        # One-shot backfill: when the subentry was created without all
+        # relations-derived display fields, we attempt to populate them
+        # from the customer-account-relations endpoint on the first
+        # successful refresh. The flag is cleared after a single attempt
+        # regardless of outcome to avoid hammering the API on every poll
+        # for an account that simply has no data.
         self._needs_relations_backfill: bool = any(
             not subentry.data.get(key) for key in RELATIONS_BACKFILLABLE_KEYS
         )
@@ -254,9 +243,9 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         Best-effort fill of relations-derived fields on the subentry.
 
-        Called once per HA run for subentries that were created (or
-        migrated) without a complete ``relations`` payload. Only missing
-        fields are written; existing values are preserved so a user who
+        Called once per HA run for subentries that were created without
+        a complete ``relations`` payload. Only missing fields are
+        written; existing values are preserved so a user who
         deliberately edited a subentry isn't overwritten by upstream
         data. Any error during the relations call is logged at warning
         level and swallowed; the next refresh proceeds normally without
@@ -273,15 +262,15 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         accounts_payload = relations if isinstance(relations, dict) else {}
-        match = find_account_for_customer_number(
+        match = find_agreement_for_ban(
             accounts_payload,
-            self.customer_number,
+            self.business_agreement_number,
         )
         if match is None:
             LOGGER.debug(
-                "Relations response has no entry for customer %s; "
+                "Relations response has no entry for BAN %s; "
                 "leaving subentry %s untouched",
-                self.customer_number,
+                self.business_agreement_number,
                 self.subentry.subentry_id,
             )
             return

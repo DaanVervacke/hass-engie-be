@@ -55,13 +55,13 @@
                 }
             },
             "select_accounts": {
-                "title": "Choose customer accounts",
-                "description": "Authentication for {username} succeeded. Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own sensors. You can add or remove accounts later from the integration page.",
+                "title": "Choose business agreements",
+                "description": "Authentication for {username} succeeded. Pick the ENGIE business agreements you want to add to Home Assistant. Each selection becomes its own device with its own sensors. You can add or remove business agreements later from the integration page.",
                 "data": {
-                    "selected_accounts": "Customer accounts"
+                    "selected_accounts": "Business agreements"
                 },
                 "data_description": {
-                    "selected_accounts": "Select one or more customer accounts to configure."
+                    "selected_accounts": "Select one or more business agreements to configure."
                 }
             }
         },
@@ -70,7 +70,7 @@
             "connection": "Unable to connect to ENGIE Belgium.",
             "unknown": "An unknown error occurred.",
             "invalid_mfa_code": "Invalid verification code. Please try again.",
-            "no_accounts_selected": "Select at least one customer account."
+            "no_accounts_selected": "Select at least one business agreement."
         },
         "abort": {
             "already_configured": "This account is already configured.",
@@ -78,32 +78,32 @@
         }
     },
     "config_subentries": {
-        "customer_account": {
+        "business_agreement": {
             "initiate_flow": {
-                "user": "Add customer account"
+                "user": "Add business agreement"
             },
-            "entry_type": "Customer account",
+            "entry_type": "Business agreement",
             "step": {
                 "user": {
-                    "title": "Choose customer accounts",
-                    "description": "Pick the ENGIE customer accounts you want to add to Home Assistant. Each selection becomes its own device with its own sensors.",
+                    "title": "Choose business agreements",
+                    "description": "Pick the ENGIE business agreements you want to add to Home Assistant. Each selection becomes its own device with its own sensors.",
                     "data": {
-                        "selected_accounts": "Customer accounts"
+                        "selected_accounts": "Business agreements"
                     },
                     "data_description": {
-                        "selected_accounts": "Select one or more customer accounts to configure."
+                        "selected_accounts": "Select one or more business agreements to configure."
                     }
                 }
             },
             "error": {
-                "no_accounts_selected": "Select at least one customer account."
+                "no_accounts_selected": "Select at least one business agreement."
             },
             "abort": {
-                "no_accounts_available": "All customer accounts on this login are already configured.",
-                "auth": "Authentication with ENGIE Belgium failed while loading customer accounts.",
-                "connection": "Unable to connect to ENGIE Belgium while loading customer accounts.",
-                "unknown": "An unknown error occurred while loading customer accounts.",
-                "already_configured": "This customer account is already configured."
+                "no_accounts_available": "All business agreements on this login are already configured.",
+                "auth": "Authentication with ENGIE Belgium failed while loading business agreements.",
+                "connection": "Unable to connect to ENGIE Belgium while loading business agreements.",
+                "unknown": "An unknown error occurred while loading business agreements.",
+                "already_configured": "This business agreement is already configured."
             }
         }
     },
@@ -132,6 +132,11 @@
         }
     },
     "entity": {
+        "calendar": {
+            "engie_belgium": {
+                "name": "ENGIE Belgium"
+            }
+        },
         "sensor": {
             "gas_offtake": {
                 "name": "Gas offtake price"
@@ -255,6 +260,9 @@
             },
             "epex_high_today": {
                 "name": "EPEX highest price today"
+            },
+            "epex_next_hour": {
+                "name": "EPEX next hour price"
             }
         },
         "binary_sensor": {

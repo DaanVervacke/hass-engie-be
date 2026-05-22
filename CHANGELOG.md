@@ -5,6 +5,78 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.9.0] - 2026-05-19
+
+> [!CAUTION]
+> **This update requires you to remove the integration, log in to
+> ENGIE again (including 2FA), and pick your business agreements
+> from scratch.** There is no automatic upgrade path from v0.8.x or
+> any earlier version.
+>
+> Until you do this, the ENGIE Belgium integration will show
+> "Failed to set up" in **Settings** > **Devices & services** and
+> raise a notice under **Settings** > **Repairs**. Your existing
+> sensors, calendars, and history will stay visible but will stop
+> updating until you complete the steps below.
+
+### What you need to do after updating
+
+1. Open **Settings** > **Devices & services**, find the
+   **ENGIE Belgium** card, and click **Delete**. Confirm. This
+   removes the old config. Home Assistant keeps your existing
+   sensor history so you can still look at past graphs.
+2. Click **+ Add integration** (bottom-right), search for
+   **ENGIE Belgium**, and log in again with the same ENGIE
+   account. You will need to complete the 2FA code that ENGIE
+   sends to your phone or email.
+3. At the end of the setup wizard, tick the business agreements
+   you want Home Assistant to track. Each one becomes its own
+   device.
+4. (Optional) If you have automations, dashboards, or scripts
+   that use the old entity names, update them. See
+   **What changes** below.
+
+### What you get
+
+- **One device per business agreement.** If your ENGIE account
+  covers more than one address or contract (ENGIE calls this a
+  **business agreement**, or BAN), each one now shows up as its
+  own device in Home Assistant, with its own sensors and its own
+  capacity-tariff calendar. In earlier versions, every contract
+  on the same ENGIE customer account (CAN) was bundled under one
+  device, which made multi-address setups hard to read.
+- **Add more business agreements later without logging in again.**
+  Open the ENGIE Belgium card and click
+  **Add business agreement** to bring in a contract you skipped
+  during setup.
+- **Cleaner setup wizard wording.** The flow now talks about
+  **business agreements** throughout, matching what ENGIE shows
+  in their own app and customer portal.
+
+### What changes (and what does not carry over)
+
+- **Entity names now end in the BAN, not the CAN.** For example,
+  what was `sensor.engie_belgium_1234567890_gas_offtake_price`
+  may become
+  `sensor.engie_belgium_002201234567_gas_offtake_price`. Anywhere
+  you use the old entity names (dashboards, automations, scripts)
+  needs to be updated to the new names once you have re-added the
+  integration.
+- **Long-term statistics and history from v0.8.x will not flow
+  into the new sensors.** Home Assistant keeps the old data
+  attached to the old entity names, so nothing is deleted, but
+  graphs that span the upgrade date will show a gap. You can
+  delete the orphaned entities later under **Settings** >
+  **Devices & services** > **Entities** if you want to clean
+  them up.
+- **Captar (capacity-tariff) peak history starts fresh.** The
+  monthly peak that the integration tracks per electricity meter
+  is now tracked against the new device, so the rolling history
+  resets on first run. The integration will catch up the current
+  month's peak automatically on the next refresh.
+
 ## [0.8.3] - 2026-05-18
 
 ### Fixed
@@ -347,7 +419,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.0...v0.8.1

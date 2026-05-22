@@ -1,0 +1,92 @@
+{
+  "items": [
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "admin": false,
+      "label": null,
+      "customerAccount": {
+        "customerAccountNumber": "1500000050",
+        "segment": "RESIDENTIAL",
+        "language": null,
+        "name": "Multi BAN Customer",
+        "businessAgreements": [
+          {
+            "businessAgreementNumber": "002200005001",
+            "active": true,
+            "consumptionAddress": {
+              "postalCode": "1000",
+              "city": "BRUSSELS",
+              "country": null,
+              "countryCode": "BE",
+              "street": "FIRSTSTRAAT",
+              "houseNumber": "1",
+              "floor": null,
+              "roomNumber": null,
+              "boxNumber": null,
+              "supplement": null,
+              "locationSupplement": null,
+              "premisesNumber": "5100005001"
+            },
+            "electricityContract": {
+              "hasSmartMeter": true,
+              "active": true,
+              "hasSolar": true
+            },
+            "gasContract": {
+              "hasSmartMeter": true,
+              "active": true
+            }
+          },
+          {
+            "businessAgreementNumber": "002200005002",
+            "active": true,
+            "consumptionAddress": {
+              "postalCode": "2000",
+              "city": "ANTWERP",
+              "country": null,
+              "countryCode": "BE",
+              "street": "SECONDLAAN",
+              "houseNumber": "2",
+              "floor": null,
+              "roomNumber": null,
+              "boxNumber": null,
+              "supplement": null,
+              "locationSupplement": null,
+              "premisesNumber": "5100005002"
+            },
+            "electricityContract": {
+              "hasSmartMeter": true,
+              "active": true,
+              "hasSolar": false
+            },
+            "gasContract": null
+          },
+          {
+            "businessAgreementNumber": "002200005003",
+            "active": false,
+            "consumptionAddress": {
+              "postalCode": "3000",
+              "city": "LEUVEN",
+              "country": null,
+              "countryCode": "BE",
+              "street": "OLDSTRAAT",
+              "houseNumber": "3",
+              "floor": null,
+              "roomNumber": null,
+              "boxNumber": null,
+              "supplement": null,
+              "locationSupplement": null,
+              "premisesNumber": "5100005003"
+            },
+            "electricityContract": {
+              "hasSmartMeter": false,
+              "active": false,
+              "hasSolar": false
+            },
+            "gasContract": null
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -54,12 +54,12 @@ class EngieBeSubentryData:
     """
     Per-subentry runtime state.
 
-    One instance lives in :class:`EngieBeData.subentry_data` per ENGIE
-    customer account (one ``ConfigSubentry`` of type
-    ``customer_account``). Each subentry owns its own customer-data
+    One instance lives in :class:`EngieBeData.subentry_data` per active
+    business agreement (one ``ConfigSubentry`` of type
+    ``business_agreement``). Each subentry owns its own customer-data
     coordinator, the per-account service-points lookup, and a peaks
     store keyed off the subentry id so historical peaks survive across
-    restarts independently per account.
+    restarts independently per business agreement.
 
     ``is_dynamic_override`` is set from the energy-contracts endpoint
     during setup and takes precedence over the legacy payload-shape
