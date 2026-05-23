@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from homeassistant.components.binary_sensor import BinarySensorEntity
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Awaitable, Callable, Generator
+
+    from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity import Entity
 
 pytest_plugins = ["pytest_homeassistant_custom_component"]
 
@@ -55,3 +59,35 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "backfill: test exercises relations-backfill behaviour; do not stub it",
     )
+
+
+@pytest.fixture
+def add_sensor() -> Callable[[HomeAssistant, Entity], Awaitable[None]]:
+    """
+    Bind an entity to ``hass`` and drive ``async_added_to_hass``.
+
+    Used by the boundary-scheduler tests across both binary_sensor and
+    sensor platforms. Avoids spinning up a full config entry / platform
+    pipeline: the scheduler behaviour under test depends only on
+    ``self.hass`` being a real HomeAssistant instance, not on the entity
+    being registered with a platform. The platform stub carries just
+    enough attributes for ``async_write_ha_state`` to render a
+    translation key.
+
+    The fallback ``entity_id`` slug is derived from the entity's class
+    name so binary sensors land under ``binary_sensor.`` and sensors
+    under ``sensor.`` without per-call wiring.
+    """
+
+    async def _add(hass: HomeAssistant, entity: Entity) -> None:
+        entity.hass = hass
+        domain = "binary_sensor" if isinstance(entity, BinarySensorEntity) else "sensor"
+        platform = MagicMock()
+        platform.platform_name = "engie_be"
+        platform.domain = domain
+        entity.platform = platform
+        if entity.entity_id is None:
+            entity.entity_id = f"{domain}.test_{type(entity).__name__.lower()}"
+        await entity.async_added_to_hass()
+
+    return _add

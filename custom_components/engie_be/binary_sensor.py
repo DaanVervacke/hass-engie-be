@@ -12,7 +12,8 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.const import EntityCategory
 from homeassistant.util import dt as dt_util
 
-from ._happy_hour import is_happy_hour_active
+from ._epex import next_epex_slot_boundary
+from ._happy_hour import happy_hour_window, is_happy_hour_active
 from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
@@ -20,12 +21,19 @@ from .const import (
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from .data import EpexPayload
-from .entity import EngieBeAuthEntity, EngieBeEntity, EngieBeEpexEntity
+from .entity import (
+    EngieBeAuthEntity,
+    EngieBeEntity,
+    EngieBeEpexEntity,
+    _BoundaryScheduleMixin,
+)
 
 # Coordinator centralises updates; entities never poll individually.
 PARALLEL_UPDATES = 0
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -193,7 +201,9 @@ def _epex_payload(coordinator: EngieBeEpexCoordinator) -> EpexPayload | None:
     return payload if isinstance(payload, EpexPayload) else None
 
 
-class EngieBeEpexNegativeSensor(EngieBeEpexEntity, BinarySensorEntity):
+class EngieBeEpexNegativeSensor(
+    _BoundaryScheduleMixin, EngieBeEpexEntity, BinarySensorEntity
+):
     """
     Binary sensor that turns ``on`` when the current EPEX slot is negative.
 
@@ -216,6 +226,11 @@ class EngieBeEpexNegativeSensor(EngieBeEpexEntity, BinarySensorEntity):
       the account silently flipped off the dynamic tariff between
       polls without a config-entry reload (defensive only; the entity
       isn't created at all on accounts that are non-dynamic at setup).
+
+    The ``_BoundaryScheduleMixin`` arms a point-in-UTC-time callback at
+    the next slot boundary so the entity flips at the exact second the
+    market moves between negative and non-negative slots, rather than
+    waiting up to a full coordinator refresh interval.
     """
 
     entity_description = EPEX_NEGATIVE_SENSOR_DESCRIPTION
@@ -275,8 +290,25 @@ class EngieBeEpexNegativeSensor(EngieBeEpexEntity, BinarySensorEntity):
                 return slot.value_eur_per_kwh < 0
         return None
 
+    def _next_boundary(self) -> datetime | None:
+        """
+        Return the next EPEX slot boundary in UTC, or ``None``.
 
-class EngieBeHappyHourActiveSensor(EngieBeEntity, BinarySensorEntity):
+        Delegates to :func:`next_epex_slot_boundary` so the helper is
+        shared with the EPEX current-price and next-hour sensors. When
+        the cached payload is fully in the past (multi-hour outage),
+        returns ``None``; the next coordinator update re-arms via
+        :meth:`_handle_coordinator_update` once a fresh payload lands.
+        """
+        payload = _epex_payload(self.coordinator)
+        if payload is None:
+            return None
+        return next_epex_slot_boundary(payload, dt_util.utcnow())
+
+
+class EngieBeHappyHourActiveSensor(
+    _BoundaryScheduleMixin, EngieBeEntity, BinarySensorEntity
+):
     """
     Binary sensor that turns ``on`` during a scheduled Happy Hour window.
 
@@ -296,6 +328,11 @@ class EngieBeHappyHourActiveSensor(EngieBeEntity, BinarySensorEntity):
     consult the ``happy_hour_next_start`` / ``happy_hour_next_end``
     timestamp sensors (which are ``unknown`` when no window is
     scheduled).
+
+    The ``_BoundaryScheduleMixin`` arms a point-in-UTC-time callback
+    at the next window boundary so the entity flips on and off at the
+    exact second the window starts and ends, rather than waiting up to
+    a full coordinator refresh interval.
     """
 
     entity_description = HAPPY_HOUR_ACTIVE_SENSOR_DESCRIPTION
@@ -319,3 +356,23 @@ class EngieBeHappyHourActiveSensor(EngieBeEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         """Return True iff the current moment is inside a scheduled window."""
         return is_happy_hour_active(self.coordinator, dt_util.utcnow())
+
+    def _next_boundary(self) -> datetime | None:
+        """
+        Return the next happy-hour boundary in UTC, or ``None``.
+
+        Picks ``start`` while the window is still in the future, ``end``
+        while we are inside it, and ``None`` once both endpoints are in
+        the past (the next coordinator refresh either replaces the
+        cached payload with the next day's window or with ``{}``).
+        """
+        window = happy_hour_window(self.coordinator)
+        if window is None:
+            return None
+        start, end = window
+        now = dt_util.utcnow()
+        if now < start:
+            return start
+        if now < end:
+            return end
+        return None
