@@ -7,6 +7,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0b2] - 2026-05-23
+
+> [!CAUTION]
+> **Upgrade from v0.9.0 or v0.10.0b1 only.** If you are still on
+> v0.8.x or any earlier version, install v0.9.0 first (which
+> requires a clean reinstall, see its release notes) and only then
+> move to this release. Skipping v0.9.0 leaves your config entry on
+> a schema this release no longer migrates, and the integration
+> will refuse to load.
+
 ### Fixed
 
 - **Happy Hour active binary sensor now flips at the second.** The
@@ -514,7 +524,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b1...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b2...HEAD
+[0.10.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b1...v0.10.0b2
 [0.10.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0b1
 [0.9.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...v0.9.0
 [0.8.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.2...v0.8.3
