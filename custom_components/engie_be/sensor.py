@@ -15,6 +15,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.util import dt as dt_util
 
+from ._epex import next_epex_slot_boundary
 from ._happy_hour import happy_hour_window
 from ._peaks import peaks_meta, peaks_payload
 from .api import mask_identifier
@@ -25,7 +26,7 @@ from .const import (
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from .data import EpexPayload
-from .entity import EngieBeEntity, EngieBeEpexEntity
+from .entity import EngieBeEntity, EngieBeEpexEntity, _BoundaryScheduleMixin
 
 # Coordinator centralises updates; entities never poll individually.
 PARALLEL_UPDATES = 0
@@ -701,8 +702,18 @@ def _slots_for_date(payload: EpexPayload, target: date) -> list[Any]:
     return [slot for slot in payload.slots if slot.start.date() == target]
 
 
-class _EngieBeEpexSensorBase(EngieBeEpexEntity, SensorEntity):
-    """Common base for EPEX day-ahead sensors."""
+class _EngieBeEpexSensorBase(_BoundaryScheduleMixin, EngieBeEpexEntity, SensorEntity):
+    """
+    Common base for EPEX day-ahead sensors.
+
+    The ``_BoundaryScheduleMixin`` arms a point-in-UTC-time callback at
+    the next EPEX slot boundary so both the current-price and
+    next-hour-price sensors update at the exact second the market moves
+    between slots, rather than waiting up to a full coordinator refresh
+    interval. The same boundary serves both: at each hourly transition
+    the current slot becomes the previous-hour slot AND the next-hour
+    slot shifts, so a single callback covers every dependent value.
+    """
 
     def __init__(
         self,
@@ -733,6 +744,20 @@ class _EngieBeEpexSensorBase(EngieBeEpexEntity, SensorEntity):
     def available(self) -> bool:
         """Available only when a parsed payload exists for the entry."""
         return super().available and _epex_payload(self.coordinator) is not None
+
+    def _next_boundary(self) -> datetime | None:
+        """
+        Return the next EPEX slot boundary in UTC, or ``None``.
+
+        Shared by the current-price and next-hour-price sensors: at
+        every hourly transition the current slot rolls over AND the
+        next-hour slot shifts, so a single callback at the next slot
+        boundary covers both dependent values.
+        """
+        payload = _epex_payload(self.coordinator)
+        if payload is None:
+            return None
+        return next_epex_slot_boundary(payload, dt_util.utcnow())
 
 
 class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):

@@ -7,6 +7,33 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- **Happy Hour active binary sensor now flips at the second.** The
+  `binary_sensor.*_happy_hour_active` entity previously only updated
+  when the coordinator next refreshed, which meant the on/off
+  transition could lag by up to a full refresh interval. The sensor
+  now schedules a precise point-in-time callback at the start and
+  end of each window, mirroring the pattern used by Home Assistant's
+  built-in Time of Day helper. Automations that key off this sensor
+  (for example, to start an EV charger or run the dishwasher) now
+  see the transition within a second of the window boundary.
+  ([#25][])
+- **EPEX negative-price binary sensor now flips at the slot
+  boundary.** The `binary_sensor.*_epex_negative_now` entity used the
+  same coordinator-refresh cadence as the Happy Hour sensor and could
+  lag by up to an hour at the top of each market slot. It now uses the
+  same point-in-time scheduler, so the on/off transition lines up with
+  the exact second the EPEX market moves to the next hourly slot.
+- **EPEX current-price and next-hour sensors now roll at the slot
+  boundary.** `sensor.*_epex_current` and `sensor.*_epex_next_hour`
+  share the same scheduler and now publish the new slot's price the
+  instant the market rolls over, instead of waiting for the next
+  coordinator refresh. Dashboards and price-driven automations no
+  longer need a tight refresh interval to track hourly transitions.
+
+[#25]: https://github.com/DaanVervacke/hass-engie-be/issues/25
+
 ## [0.10.0b1] - 2026-05-22
 
 > [!CAUTION]
