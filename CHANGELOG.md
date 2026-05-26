@@ -19,23 +19,24 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
-- **Login no longer fails for accounts that skip the passkey-
-  enrollment prompt.** After MFA acceptance, Auth0 has two possible
-  outcomes per session: it either redirects to a passkey-enrollment
-  interstitial (the previous code path), or it short-circuits and
-  redirects directly to the native callback URI
-  `be.engie.smart://login-callback/nl?code=...`. The latter shape is
-  what older accounts and accounts that previously dismissed
-  enrollment receive. Pre-v0.10.0b3 always parsed the response body
-  for `state=` as if it were a passkey-enrollment state, which on the
-  callback branch returned the OAuth `state` nonce instead, then
-  re-resumed the (already-consumed) Auth0 session and got back
-  `error=access_denied&error_description=...we couldn't find your
-  session...`. The integration now inspects the step-9 `Location`
-  header first: if it matches the callback URI, the auth code is
-  extracted directly and the passkey-enrollment dance is skipped;
-  otherwise the existing path runs. Reauth + initial setup now
-  succeed on both account types.
+- **Setup and re-authentication could fail with "Invalid username
+  or password." even when the password and verification code were
+  both correct.** The integration now handles the second of two
+  sign-in shapes that the ENGIE login system can return after the
+  verification code is accepted. Previously only the first shape
+  worked, and accounts that received the second one could not
+  complete sign-in.
+
+### Changed
+
+- **Different error message when sign-in fails after the
+  verification code is accepted.** The verification-code screen
+  used to show "Invalid username or password." for any failure
+  that happened after the code was submitted. It now shows a
+  separate message indicating the failure occurred after the code
+  was accepted and suggesting you cancel and start setup again.
+  The "Invalid username or password." message is unchanged on the
+  email/password screen.
 
 ### Tests
 
@@ -43,7 +44,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   (callback short-circuit and passkey-enrollment interstitial) plus
   defensive negative cases (callback URI without a `code` parameter,
   passkey body without an extractable state). Coverage of `api.py`
-  rises from ~68% to ~73%; overall coverage from ~85% to ~92%.
+  rises from ~68% to ~73%, overall coverage from ~85% to ~92%.
+- New `test_user_step_credential_error_keeps_auth_key` guards
+  against accidentally rerouting the pre-MFA `auth` branch when
+  future changes touch the post-MFA error mapping.
+- `test_mfa_step_auth_error_recovers` and
+  `test_reauth_mfa_auth_error` updated to assert the new
+  `post_mfa_auth_failed` key.
 
 ## [0.10.0b2] - 2026-05-23
 

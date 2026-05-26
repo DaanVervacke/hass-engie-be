@@ -236,8 +236,12 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.warning(exception)
                 errors["base"] = "invalid_mfa_code"
             except EngieBeApiClientAuthenticationError as exception:
+                # Reached here only AFTER the MFA code was accepted (steps
+                # 9 to 13). The credentials and the code are both valid;
+                # the Auth0 session itself failed to complete. Telling
+                # the user their password is wrong would be misleading.
                 LOGGER.warning(exception)
-                errors["base"] = "auth"
+                errors["base"] = "post_mfa_auth_failed"
             except EngieBeApiClientCommunicationError as exception:
                 LOGGER.error(exception)
                 errors["base"] = "connection"
@@ -521,8 +525,11 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.warning(exception)
                 errors["base"] = "invalid_mfa_code"
             except EngieBeApiClientAuthenticationError as exception:
+                # Same reasoning as ``async_step_mfa``: reaching this
+                # branch means MFA was accepted but the post-MFA Auth0
+                # sequence failed. Don't blame the user's password.
                 LOGGER.warning(exception)
-                errors["base"] = "auth"
+                errors["base"] = "post_mfa_auth_failed"
             except EngieBeApiClientCommunicationError as exception:
                 LOGGER.error(exception)
                 errors["base"] = "connection"

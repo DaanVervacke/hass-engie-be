@@ -485,7 +485,14 @@ async def test_mfa_step_auth_error_recovers(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
-    """An auth failure during MFA exchange surfaces and is recoverable."""
+    """
+    A post-MFA auth failure maps to post_mfa_auth_failed, not auth.
+
+    The user already proved their password and verification code in
+    earlier steps; surfacing ``auth`` ("Invalid username or password.")
+    here would be misleading. The dedicated key explains the issue
+    happened after MFA acceptance.
+    """
     complete = AsyncMock(side_effect=[EngieBeApiClientAuthenticationError("expired")])
     with (
         patch(
@@ -509,6 +516,35 @@ async def test_mfa_step_auth_error_recovers(
 
     assert result["type"] is data_entry_flow.FlowResultType.FORM
     assert result["step_id"] == "mfa_sms"
+    assert result["errors"] == {"base": "post_mfa_auth_failed"}
+
+
+async def test_user_step_credential_error_keeps_auth_key(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    The user step (pre-MFA) must still surface 'auth' for bad creds.
+
+    Regression guard for the post_mfa_auth_failed split: only the
+    post-MFA branches were rerouted. A failed
+    ``async_start_authentication`` call genuinely means the username or
+    password was wrong, so the original ``auth`` key (and its "Invalid
+    username or password." message) must remain in place.
+    """
+    with patch(
+        "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+        AsyncMock(side_effect=EngieBeApiClientAuthenticationError("bad creds")),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "user"
     assert result["errors"] == {"base": "auth"}
 
 
@@ -954,7 +990,12 @@ async def test_reauth_mfa_auth_error(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
-    """Reauth MFA step: auth error surfaces as 'auth'."""
+    """
+    Reauth MFA step: post-MFA auth error maps to 'post_mfa_auth_failed'.
+
+    Same reasoning as ``test_mfa_step_auth_error_recovers``: the user
+    already passed credentials and MFA before this branch can fire.
+    """
     entry = _build_parent_entry(hass)
 
     with (
@@ -976,7 +1017,7 @@ async def test_reauth_mfa_auth_error(
         )
 
     assert result["step_id"] == "reauth_mfa"
-    assert result["errors"] == {"base": "auth"}
+    assert result["errors"] == {"base": "post_mfa_auth_failed"}
 
 
 async def test_reauth_mfa_connection_error(

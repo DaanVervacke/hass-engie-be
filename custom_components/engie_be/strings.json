@@ -70,6 +70,7 @@
             "connection": "Unable to connect to ENGIE Belgium.",
             "unknown": "An unknown error occurred.",
             "invalid_mfa_code": "Invalid verification code. Please try again.",
+            "post_mfa_auth_failed": "Sign-in could not be completed after the verification code was accepted. This is usually a temporary issue on the ENGIE side. Please cancel and start the setup again.",
             "no_accounts_selected": "Select at least one business agreement."
         },
         "abort": {
