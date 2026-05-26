@@ -7,6 +7,44 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0b3] - 2026-05-26
+
+> [!CAUTION]
+> **Upgrade from v0.9.0, v0.10.0b1, or v0.10.0b2 only.** If you are
+> still on v0.8.x or any earlier version, install v0.9.0 first
+> (which requires a clean reinstall, see its release notes) and only
+> then move to this release. Skipping v0.9.0 leaves your config entry
+> on a schema this release no longer migrates, and the integration
+> will refuse to load.
+
+### Fixed
+
+- **Login no longer fails for accounts that skip the passkey-
+  enrollment prompt.** After MFA acceptance, Auth0 has two possible
+  outcomes per session: it either redirects to a passkey-enrollment
+  interstitial (the previous code path), or it short-circuits and
+  redirects directly to the native callback URI
+  `be.engie.smart://login-callback/nl?code=...`. The latter shape is
+  what older accounts and accounts that previously dismissed
+  enrollment receive. Pre-v0.10.0b3 always parsed the response body
+  for `state=` as if it were a passkey-enrollment state, which on the
+  callback branch returned the OAuth `state` nonce instead, then
+  re-resumed the (already-consumed) Auth0 session and got back
+  `error=access_denied&error_description=...we couldn't find your
+  session...`. The integration now inspects the step-9 `Location`
+  header first: if it matches the callback URI, the auth code is
+  extracted directly and the passkey-enrollment dance is skipped;
+  otherwise the existing path runs. Reauth + initial setup now
+  succeed on both account types.
+
+### Tests
+
+- New `tests/test_api_auth_step9.py` locks both Auth0 outcomes
+  (callback short-circuit and passkey-enrollment interstitial) plus
+  defensive negative cases (callback URI without a `code` parameter,
+  passkey body without an extractable state). Coverage of `api.py`
+  rises from ~68% to ~73%; overall coverage from ~85% to ~92%.
+
 ## [0.10.0b2] - 2026-05-23
 
 > [!CAUTION]

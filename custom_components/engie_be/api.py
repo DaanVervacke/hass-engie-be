@@ -1325,56 +1325,33 @@ class EngieBeApiClient:
 
         LOGGER.debug("Auth step 8 complete: MFA code accepted")
 
-        # Step 9: GET /authorize/resume (post-MFA)
-        body = await self._api_wrapper(
-            session=session,
-            method="GET",
-            url=f"{AUTH_BASE_URL}/authorize/resume",
-            params={"state": flow_state.login_state},
-            headers=_BROWSER_HEADERS,
-            allow_redirects=False,
-        )
-        passkey_state = _extract_from_body(body, r"state=([a-zA-Z0-9_-]+)")
-        if not passkey_state:
-            msg = "Failed to extract passkey enrollment state"
-            raise EngieBeApiClientAuthenticationError(msg)
-
-        LOGGER.debug("Auth step 9 complete: got passKeyState")
-
-        # Step 10: GET /u/passkey-enrollment (load passkey page)
-        await self._api_wrapper(
-            session=session,
-            method="GET",
-            url=f"{AUTH_BASE_URL}/u/passkey-enrollment",
-            params={"state": passkey_state, "ui_locales": "nl"},
-            headers=_BROWSER_HEADERS,
-            allow_redirects=False,
-        )
-        LOGGER.debug("Auth step 10 complete: loaded passkey page")
-
-        # Step 11: POST /u/passkey-enrollment (abort enrollment)
-        # The Auth0 flow uses followRedirects=true, but the redirect chain
-        # ends at a non-HTTP app-scheme URL that aiohttp cannot follow.
-        # We skip following redirects here since the code is extracted in
-        # step 12.
-        await self._api_wrapper(
-            session=session,
-            method="POST",
-            url=f"{AUTH_BASE_URL}/u/passkey-enrollment",
-            params={"state": passkey_state, "ui_locales": "nl"},
-            headers=_BROWSER_HEADERS,
-            data={
-                "state": passkey_state,
-                "action": "abort-passkey-enrollment",
-            },
-            allow_redirects=False,
-        )
-        LOGGER.debug("Auth step 11 complete: passkey enrollment aborted")
-
-        # Step 12: GET /authorize/resume (final - extract auth code)
-        # Uses loginState (not passKeyState), exactly as in the API
-        # auth flow.  The response body contains the authorization code,
-        # but some responses return it only in the Location header.
+        # Step 9: GET /authorize/resume (post-MFA).
+        #
+        # Auth0 has two possible outcomes here, and the choice is per
+        # session/account (not configurable client-side):
+        #
+        #   A. **Callback short-circuit.** Auth0 finalizes the session
+        #      immediately and redirects to the native callback URI
+        #      ``be.engie.smart://login-callback/nl?code=...&state=...``.
+        #      This is what older / passkey-dismissed accounts get. The
+        #      auth code is already in the ``Location`` header; steps
+        #      10-12 must be skipped because the Auth0 session is gone
+        #      (a second ``/authorize/resume`` would return
+        #      ``error=access_denied``).
+        #
+        #   B. **Passkey-enrollment interstitial.** Auth0 redirects to
+        #      ``/u/passkey-enrollment?state=<passKeyState>`` so the
+        #      user can register a passkey. The body contains a fresh
+        #      state we must extract; we then load (step 10) and abort
+        #      (step 11) enrollment, and re-resume (step 12) to get the
+        #      code.
+        #
+        # We distinguish the two by inspecting the ``Location`` header
+        # first. Falling back to body-only parsing the way the previous
+        # implementation did is wrong for outcome A: the body's
+        # ``state=`` is the *OAuth* state (the integration's own nonce
+        # from step 1), not a ``passKeyState``. Using it as such
+        # produces a stale-session error at step 12.
         body, resp_headers = await self._api_wrapper(
             session=session,
             method="GET",
@@ -1384,19 +1361,88 @@ class EngieBeApiClient:
             allow_redirects=False,
             include_headers=True,
         )
-        auth_code = _extract_from_body(body, r"code=([a-zA-Z0-9_-]+)")
-        if auth_code:
-            LOGGER.debug("Auth step 12 complete: got authorization code from body")
-        else:
-            location = resp_headers.get("Location", "")
+
+        location = resp_headers.get("Location", "")
+        if location.startswith(REDIRECT_URI):
+            # Outcome A: Auth code is already in the Location header.
             auth_code = _extract_from_body(location, r"code=([a-zA-Z0-9_-]+)")
-            if auth_code:
-                LOGGER.debug(
-                    "Auth step 12 complete: got authorization code from Location header"
+            if not auth_code:
+                msg = (
+                    "Step 9 redirected to the native callback URI but the "
+                    "authorization code was missing"
                 )
-            else:
-                msg = "Failed to extract auth code from body and Location header"
                 raise EngieBeApiClientAuthenticationError(msg)
+            LOGGER.debug(
+                "Auth step 9 complete: got authorization code from callback "
+                "Location header (no passkey enrollment)"
+            )
+        else:
+            # Outcome B: Passkey-enrollment interstitial.
+            passkey_state = _extract_from_body(body, r"state=([a-zA-Z0-9_-]+)")
+            if not passkey_state:
+                msg = "Failed to extract passkey enrollment state"
+                raise EngieBeApiClientAuthenticationError(msg)
+
+            LOGGER.debug("Auth step 9 complete: got passKeyState")
+
+            # Step 10: GET /u/passkey-enrollment (load passkey page)
+            await self._api_wrapper(
+                session=session,
+                method="GET",
+                url=f"{AUTH_BASE_URL}/u/passkey-enrollment",
+                params={"state": passkey_state, "ui_locales": "nl"},
+                headers=_BROWSER_HEADERS,
+                allow_redirects=False,
+            )
+            LOGGER.debug("Auth step 10 complete: loaded passkey page")
+
+            # Step 11: POST /u/passkey-enrollment (abort enrollment).
+            # The Auth0 flow uses followRedirects=true, but the redirect
+            # chain ends at a non-HTTP app-scheme URL that aiohttp cannot
+            # follow. We skip following redirects here since the code is
+            # extracted in step 12.
+            await self._api_wrapper(
+                session=session,
+                method="POST",
+                url=f"{AUTH_BASE_URL}/u/passkey-enrollment",
+                params={"state": passkey_state, "ui_locales": "nl"},
+                headers=_BROWSER_HEADERS,
+                data={
+                    "state": passkey_state,
+                    "action": "abort-passkey-enrollment",
+                },
+                allow_redirects=False,
+            )
+            LOGGER.debug("Auth step 11 complete: passkey enrollment aborted")
+
+            # Step 12: GET /authorize/resume (final - extract auth code).
+            # Uses loginState (not passKeyState), exactly as in the API
+            # auth flow. The response body contains the authorization
+            # code, but some responses return it only in the Location
+            # header.
+            body, resp_headers = await self._api_wrapper(
+                session=session,
+                method="GET",
+                url=f"{AUTH_BASE_URL}/authorize/resume",
+                params={"state": flow_state.login_state},
+                headers=_BROWSER_HEADERS,
+                allow_redirects=False,
+                include_headers=True,
+            )
+            auth_code = _extract_from_body(body, r"code=([a-zA-Z0-9_-]+)")
+            if auth_code:
+                LOGGER.debug("Auth step 12 complete: got authorization code from body")
+            else:
+                location = resp_headers.get("Location", "")
+                auth_code = _extract_from_body(location, r"code=([a-zA-Z0-9_-]+)")
+                if auth_code:
+                    LOGGER.debug(
+                        "Auth step 12 complete: got authorization code from "
+                        "Location header"
+                    )
+                else:
+                    msg = "Failed to extract auth code from body and Location header"
+                    raise EngieBeApiClientAuthenticationError(msg)
 
         # Step 13: POST /oauth/token (exchange code for tokens)
         token_result = await self._api_wrapper(
