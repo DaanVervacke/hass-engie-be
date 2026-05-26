@@ -7,6 +7,41 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.9.1-debug.1] - 2026-05-26
+
+> [!WARNING]
+> **Diagnostic prerelease.** Branched off `v0.9.0`. Ships *only*
+> additional DEBUG / ERROR logging to root-cause an Auth0 regression
+> in step 12 of the login flow ([#TBD]). No behaviour changes, no
+> bug fixes. Install only if you have been asked to capture a trace.
+
+### Added
+
+- Loud DEBUG trace for every request against the Auth0 tenant
+  (`account.engie.be`): response headers (`Location`,
+  `x-auth0-requestid`, `Set-Cookie` *names*) are now emitted on the
+  `←` line; HTML bodies are logged in full instead of the 120-char
+  preview; OAuth `state` / `code` / `nonce` query and form
+  parameters are preserved verbatim. **Passwords, MFA codes,
+  access/refresh tokens, cookie values, CSRF tokens, and the PKCE
+  `code_verifier` / `code_challenge` remain redacted** — the goal
+  is wire visibility, not credential exposure.
+- "About to" DEBUG line before each of the 13 auth steps (and ALT
+  steps 1-4) so a top-to-bottom read of the log is sequential.
+- Structured ERROR dump tagged `ENGIE_BE_AUTH_DIAGNOSTIC v1` when
+  step 12 fails to extract the authorization code. Includes the raw
+  `Location` header, full response body, `urlsplit` breakdown of
+  the redirect target, every response header, and a "would-have-
+  matched" probe across six regex variants (canonical, with-dot,
+  percent-encoded, fragment, `href=`, `action=`).
+
+### Removed / not in scope
+
+- No fix for the underlying extraction failure. The next release
+  will use the trace captured here to ship a real fix on `main`.
+- Non-Auth0 hosts (`api.engie.be`, EPEX, peaks, accounts, ...) keep
+  the strict redaction contract documented in `api.py`.
+
 ## [0.9.0] - 2026-05-19
 
 > [!CAUTION]

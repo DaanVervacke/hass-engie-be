@@ -21,11 +21,13 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import quote as _urlencode_quote
 
 import aiohttp
 import pytest
 
 from custom_components.engie_be.api import (
+    _AUTH_DIAG_MARKER,
     _HTML_PREVIEW_MAX,
     _PARTIAL_MASK_BODY_KEYS,
     _REDACT_BODY_KEYS,
@@ -34,10 +36,16 @@ from custom_components.engie_be.api import (
     EngieBeApiClient,
     EngieBeApiClientCommunicationError,
     EpexNotPublishedError,
+    _format_response_headers_auth0_debug,
+    _is_auth0_debug_host,
+    _log_step12_failure,
     _redact_body,
+    _redact_body_auth0_debug,
+    _redact_headers_auth0_debug,
     _redact_mapping,
     _redact_text,
     _redact_url,
+    _redact_url_auth0_debug,
 )
 
 _LOGGER_NAME = "custom_components.engie_be"
@@ -690,3 +698,336 @@ async def test_authorization_header_redacted_in_logs(
     # The header key is preserved (so logs remain greppable) but value masked.
     assert "authorization" in blob.lower()
     assert _REDACTED in blob
+
+
+# ---------------------------------------------------------------------------
+# Auth0 diagnostic mode (debug/0.9.0-auth-trace branch, 0.9.1-debug.1)
+# ---------------------------------------------------------------------------
+
+
+class TestAuth0DebugHost:
+    """``_is_auth0_debug_host`` only matches the Auth0 tenant."""
+
+    def test_matches_auth0_tenant(self) -> None:
+        """The ENGIE Auth0 tenant triggers verbose mode."""
+        assert _is_auth0_debug_host(
+            "https://account.engie.be/authorize/resume?state=abc"
+        )
+
+    def test_does_not_match_api_host(self) -> None:
+        """The API host stays on the strict redaction path."""
+        assert not _is_auth0_debug_host("https://api.engie.be/v1/relations")
+
+    def test_does_not_match_epex_host(self) -> None:
+        """The EPEX provider host stays on the strict redaction path."""
+        assert not _is_auth0_debug_host(
+            "https://api.energyzero.nl/v1/energyprices?fromDate=2026-05-26"
+        )
+
+    def test_malformed_url_returns_false(self) -> None:
+        """Malformed URLs without a hostname do not enable Auth0 mode."""
+        assert not _is_auth0_debug_host("not-a-url")
+
+
+class TestRedactUrlAuth0Debug:
+    """Auth0-mode URL redaction preserves OAuth flow params."""
+
+    def test_preserves_state_and_code(self) -> None:
+        """OAuth ``state`` + ``code`` survive verbatim for trace readability."""
+        url = "https://account.engie.be/authorize/resume?state=ST_123&code=AUTH_XYZ"
+        out = _redact_url_auth0_debug(url)
+        assert "state=ST_123" in out
+        assert "code=AUTH_XYZ" in out
+
+    def test_preserves_nonce_and_code_challenge(self) -> None:
+        """``nonce`` + ``code_challenge`` are flow inputs, not secrets."""
+        url = (
+            "https://account.engie.be/authorize?nonce=NONCE_1"
+            "&code_challenge=CC_1&scope=openid"
+        )
+        out = _redact_url_auth0_debug(url)
+        assert "nonce=NONCE_1" in out
+        assert "code_challenge=CC_1" in out
+
+    def test_masks_code_verifier(self) -> None:
+        """``code_verifier`` is masked even on Auth0 hosts (defence in depth)."""
+        url = "https://account.engie.be/oauth/token?code_verifier=SECRET_VERIFIER"
+        out = _redact_url_auth0_debug(url)
+        assert "SECRET_VERIFIER" not in out
+        # ``urlencode`` percent-encodes the asterisks of ``_REDACTED``.
+        assert _urlencode_quote(_REDACTED) in out
+
+    def test_no_query_string_passthrough(self) -> None:
+        """URLs without a query string are returned untouched."""
+        url = "https://account.engie.be/u/login"
+        assert _redact_url_auth0_debug(url) == url
+
+
+class TestRedactBodyAuth0Debug:
+    """Auth0-mode body redaction: HTML full, form preserves state."""
+
+    def test_empty_body(self) -> None:
+        """Empty bodies render as the ``<empty>`` sentinel."""
+        assert _redact_body_auth0_debug("", "text/html") == "<empty>"
+        assert _redact_body_auth0_debug(b"", "text/html") == "<empty>"
+        assert _redact_body_auth0_debug(None, "text/html") == "<empty>"
+
+    def test_html_logged_in_full_with_len_prefix(self) -> None:
+        """HTML bodies bypass the ``_HTML_PREVIEW_MAX`` cap on Auth0 hosts."""
+        html = "<!DOCTYPE html><html><body>" + ("x" * 5000) + "</body></html>"
+        out = _redact_body_auth0_debug(html, "text/html; charset=utf-8")
+        assert out.startswith("<html len=")
+        assert "full=" in out
+        # Cap from strict mode must NOT apply.
+        assert len(out) > _HTML_PREVIEW_MAX
+        # The full body content is present.
+        assert "x" * 5000 in out
+
+    def test_html_detected_by_doctype_when_content_type_missing(self) -> None:
+        """HTML is recognised even when the content-type header is absent."""
+        html = "<!DOCTYPE html><html><body>abc</body></html>"
+        out = _redact_body_auth0_debug(html, None)
+        assert out.startswith("<html len=")
+
+    def test_form_preserves_state_and_csrf_login_pair_masks_password(self) -> None:
+        """``state`` preserved verbatim; ``password`` masked even on Auth0 hosts."""
+        body = "state=ST_42&username=user%40example.com&password=hunter2"
+        out = _redact_body_auth0_debug(body, "application/x-www-form-urlencoded")
+        assert "state=ST_42" in out
+        assert "hunter2" not in out
+        assert _urlencode_quote(_REDACTED) in out
+
+    def test_form_masks_mfa_code_when_state_and_code_co_present(self) -> None:
+        """MFA POST shape (state + code) masks the user-supplied code."""
+        body = "state=MFA_STATE&code=123456"
+        out = _redact_body_auth0_debug(body, "application/x-www-form-urlencoded")
+        assert "state=MFA_STATE" in out
+        assert "123456" not in out
+        assert _urlencode_quote(_REDACTED) in out
+
+    def test_form_masks_code_verifier_and_client_secret(self) -> None:
+        """PKCE verifier + OAuth client_secret stay masked on Auth0 hosts."""
+        body = "code_verifier=VVV&client_secret=SSS&grant_type=authorization_code"
+        out = _redact_body_auth0_debug(body, "application/x-www-form-urlencoded")
+        assert "VVV" not in out
+        assert "SSS" not in out
+        assert "grant_type=authorization_code" in out
+
+    def test_json_dict_preserves_state_masks_password(self) -> None:
+        """JSON dict body: ``state`` survives, ``password`` is masked."""
+        body = {"state": "ST_77", "password": "hunter2"}
+        out = _redact_body_auth0_debug(body, "application/json")
+        parsed = json.loads(out)
+        assert parsed["state"] == "ST_77"
+        assert parsed["password"] == _REDACTED
+
+    def test_json_string_body_redacted(self) -> None:
+        """JSON encoded as a string body is parsed + redacted."""
+        body = '{"state": "ST_88", "access_token": "tok-1"}'
+        out = _redact_body_auth0_debug(body, "application/json")
+        parsed = json.loads(out)
+        assert parsed["state"] == "ST_88"
+        assert parsed["access_token"] == _REDACTED
+
+    def test_bytes_body_decoded(self) -> None:
+        """``bytes`` bodies are decoded as UTF-8 before redaction."""
+        body = b"<!DOCTYPE html><html><body>hi</body></html>"
+        out = _redact_body_auth0_debug(body, "text/html")
+        assert out.startswith("<html len=")
+
+    def test_json_list_of_dicts_redacted(self) -> None:
+        """JSON arrays of objects walk the redaction map per element."""
+        body = '[{"state": "S1", "access_token": "T1"}, {"state": "S2"}]'
+        out = _redact_body_auth0_debug(body, "application/json")
+        parsed = json.loads(out)
+        assert parsed[0]["state"] == "S1"
+        assert parsed[0]["access_token"] == _REDACTED
+        assert parsed[1]["state"] == "S2"
+
+    def test_json_list_dict_request_body(self) -> None:
+        """A Python ``list`` request body is JSON-serialised + redacted."""
+        body = [{"state": "S1", "password": "p1"}]
+        out = _redact_body_auth0_debug(body, "application/json")
+        parsed = json.loads(out)
+        assert parsed[0]["state"] == "S1"
+        assert parsed[0]["password"] == _REDACTED
+
+    def test_unparseable_form_body_passthrough(self) -> None:
+        """Plain text that isn't form-encoded is returned untouched."""
+        body = "this is just a free-form text body with no = or &"
+        out = _redact_body_auth0_debug(body, "text/plain")
+        assert out == body
+
+    def test_non_string_non_mapping_body_repr(self) -> None:
+        """Numeric / other primitive bodies fall back to ``repr``."""
+        out = _redact_body_auth0_debug(42, None)  # type: ignore[arg-type]
+        assert out == "42"
+
+
+class TestFormatResponseHeadersAuth0Debug:
+    """Response headers: Set-Cookie name-only, x-* preserved."""
+
+    def test_set_cookie_collapsed_to_names(self) -> None:
+        """Multi ``Set-Cookie`` values collapse to a name-only list."""
+        headers = {
+            "Set-Cookie": (
+                "did=value1; Path=/; HttpOnly,"
+                " auth0=value2; Path=/; HttpOnly,"
+                " did_compat=value3; Path=/"
+            ),
+        }
+        out = _format_response_headers_auth0_debug(headers)
+        assert "value1" not in str(out)
+        assert "value2" not in str(out)
+        assert "value3" not in str(out)
+        # Names appear in the collapsed marker.
+        assert "did" in str(out["Set-Cookie"])
+        assert "auth0" in str(out["Set-Cookie"])
+        assert "did_compat" in str(out["Set-Cookie"])
+
+    def test_location_preserved_verbatim(self) -> None:
+        """``Location`` + ``Date`` survive unchanged so the trace is readable."""
+        headers = {
+            "Location": "https://account.engie.be/u/passkey-enrollment?state=ABC",
+            "Date": "Tue, 26 May 2026 10:00:00 GMT",
+        }
+        out = _format_response_headers_auth0_debug(headers)
+        assert out["Location"] == headers["Location"]
+        assert out["Date"] == headers["Date"]
+
+    def test_x_auth0_headers_preserved(self) -> None:
+        """Every ``x-*`` header is preserved (Auth0 carries request IDs there)."""
+        headers = {
+            "x-auth0-requestid": "req-abc-123",
+            "x-ratelimit-remaining": "59",
+        }
+        out = _format_response_headers_auth0_debug(headers)
+        assert out["x-auth0-requestid"] == "req-abc-123"
+        assert out["x-ratelimit-remaining"] == "59"
+
+    def test_unknown_header_collapsed_to_char_count(self) -> None:
+        """A header outside the known set + ``x-*`` prefix logs only its length."""
+        headers = {"Server": "nginx/1.27.4 (special-build-id-12345)"}
+        out = _format_response_headers_auth0_debug(headers)
+        assert "nginx" not in str(out)
+        assert "chars" in out["Server"]
+
+
+class TestRedactHeadersAuth0Debug:
+    """Request-side header redaction for Auth0 hosts."""
+
+    def test_cookie_collapsed_to_names(self) -> None:
+        """The request-side ``Cookie`` header collapses to a name-only list."""
+        headers = {
+            "Cookie": "did=v1; auth0=v2; did_compat=v3",
+            "User-Agent": "Mozilla/5.0",
+        }
+        out = _redact_headers_auth0_debug(headers)
+        assert "v1" not in str(out["Cookie"])
+        assert "v2" not in str(out["Cookie"])
+        assert "did" in str(out["Cookie"])
+        assert "auth0" in str(out["Cookie"])
+        assert out["User-Agent"] == "Mozilla/5.0"
+
+    def test_authorization_redacted(self) -> None:
+        """``Authorization`` is always redacted, Auth0 host or not."""
+        headers = {"Authorization": "Bearer eyJSECRET"}
+        out = _redact_headers_auth0_debug(headers)
+        assert "eyJSECRET" not in str(out)
+        assert out["Authorization"] == _REDACTED
+
+
+class TestLogStep12Failure:
+    """Step-12 ERROR dump carries the diagnostic marker + probes."""
+
+    def test_emits_marker_and_login_state(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The ``ENGIE_BE_AUTH_DIAGNOSTIC v1`` marker + login_state are present."""
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            _log_step12_failure(
+                body="<html><body>no code here</body></html>",
+                response_headers={"Location": "engiehome://app/callback"},
+                login_state="LOGIN_STATE_42",
+            )
+        blob = "\n".join(r.getMessage() for r in caplog.records)
+        assert _AUTH_DIAG_MARKER in blob
+        assert "login_state=LOGIN_STATE_42" in blob
+        assert "step=12" in blob
+
+    def test_probes_recover_code_with_dot(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The ``with_dot`` probe catches codes the canonical regex misses."""
+        location = "https://app.engie.be/callback?code=ABC.DEF.GHI&state=ST"
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            _log_step12_failure(
+                body="",
+                response_headers={"Location": location},
+                login_state="LS",
+            )
+        blob = "\n".join(r.getMessage() for r in caplog.records)
+        assert "location:with_dot" in blob
+        # The recovered token should appear in the probes payload.
+        assert "ABC.DEF.GHI" in blob
+
+    def test_probes_recover_fragment_response(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Fragment / ``href`` probes recover codes embedded in HTML bodies."""
+        body = '<a href="https://app.engie.be/cb#code=FRAG_CODE_1">resume</a>'
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            _log_step12_failure(
+                body=body,
+                response_headers={},
+                login_state="LS",
+            )
+        blob = "\n".join(r.getMessage() for r in caplog.records)
+        assert "body:fragment" in blob or "body:href_attr" in blob
+        assert "FRAG_CODE_1" in blob
+
+    def test_body_truncated_to_500_in_preview(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """``body_len`` reflects the full size; ``body_preview`` caps at 500 chars."""
+        body = "<html>" + ("y" * 2000) + "</html>"
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            _log_step12_failure(
+                body=body,
+                response_headers={},
+                login_state="LS",
+            )
+        blob = "\n".join(r.getMessage() for r in caplog.records)
+        # body_len reflects the full body size.
+        assert f"body_len={len(body)}" in blob
+        # body_preview is capped at 500 chars (plus quoting).
+        assert "y" * 2000 not in blob
+
+    def test_response_headers_formatted_with_auth0_helper(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Response headers in the dump are filtered through the Auth0 helper."""
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            _log_step12_failure(
+                body="",
+                response_headers={
+                    "Set-Cookie": "did=SECRET; Path=/",
+                    "x-auth0-requestid": "req-xyz",
+                },
+                login_state="LS",
+            )
+        blob = "\n".join(r.getMessage() for r in caplog.records)
+        assert "SECRET" not in blob
+        assert "did" in blob
+        assert "req-xyz" in blob
+
+    def test_no_location_does_not_crash(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A response without a ``Location`` header still emits a clean dump."""
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            _log_step12_failure(
+                body="<html/>",
+                response_headers={},
+                login_state="LS",
+            )
+        blob = "\n".join(r.getMessage() for r in caplog.records)
+        assert "raw_location=None" in blob

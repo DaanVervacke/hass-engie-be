@@ -243,6 +243,289 @@ _REDACT_QUERY_KEYS: frozenset[str] = frozenset(
 # the body in full.
 _HTML_PREVIEW_MAX = 120
 
+# ---------------------------------------------------------------------------
+# Auth0 diagnostic mode (debug/0.9.0-auth-trace branch, v0.9.1-debug.1+)
+# ---------------------------------------------------------------------------
+#
+# Maintenance prerelease that ships a *much* louder DEBUG trace for
+# requests against the Auth0 tenant (``account.engie.be``).  This is
+# how we capture enough wire data to root-cause the step-12 auth-code
+# extraction regression reported in v0.9.0 without asking users to run
+# tcpdump.  Behaviour:
+#
+#   * State / code / nonce / code_challenge query params are logged
+#     verbatim instead of ``***``.  (``password``, ``otp``, MFA codes,
+#     access/refresh tokens, Cookie / Set-Cookie *values*, and CSRF
+#     tokens are still redacted -- the goal is wire visibility, not
+#     credential exposure.)
+#   * HTML bodies are logged in full instead of the 120-char preview,
+#     so the auth-code-bearing response can be inspected for whatever
+#     shape Auth0 has shifted to.
+#   * Response headers are emitted on the ``←`` line.  ``Location``,
+#     ``x-auth0-requestid`` and every ``x-*`` diagnostic header pass
+#     through verbatim; ``Set-Cookie`` is reduced to a list of cookie
+#     *names* (no values) so we can spot tenant/consent cookies Auth0
+#     may have added without leaking the user's session.
+#   * Each of the 13 auth steps logs a "about to <action>" line before
+#     the wire call, so reading the trace top-to-bottom is sequential.
+#   * On step-12 extraction failure the WARNING is upgraded to an
+#     ERROR carrying the ``ENGIE_BE_AUTH_DIAGNOSTIC v1`` marker plus
+#     a structured dump (raw Location, body length, content-type, all
+#     response headers, every regex / urlparse "would-have-matched"
+#     probe).
+#
+# All of the above is gated on the host matching
+# ``_AUTH0_DEBUG_HOSTS`` so non-auth API traffic keeps the strict
+# redaction contract documented above.  When DEBUG is off the cost is
+# still a single ``isEnabledFor`` check; the host comparison only
+# happens inside the debug branch.
+
+_AUTH0_DEBUG_HOSTS: frozenset[str] = frozenset({"account.engie.be"})
+
+# Response header keys whose values are *always* worth logging verbatim
+# on Auth0 hosts.  ``Set-Cookie`` is special-cased (name-only) below.
+# ``Cookie`` (request side) is name-only via ``_redact_headers_auth0_debug``.
+_AUTH0_KEEP_RESPONSE_HEADER_PREFIXES: tuple[str, ...] = ("x-",)
+_AUTH0_KEEP_RESPONSE_HEADER_KEYS: frozenset[str] = frozenset(
+    {
+        "location",
+        "date",
+        "content-type",
+        "content-length",
+        "cache-control",
+        "pragma",
+    }
+)
+
+
+def _is_auth0_debug_host(url: str) -> bool:
+    """Return ``True`` when *url* targets a host in ``_AUTH0_DEBUG_HOSTS``."""
+    try:
+        return urlsplit(url).hostname in _AUTH0_DEBUG_HOSTS
+    except ValueError:
+        return False
+
+
+def _redact_url_auth0_debug(url: str) -> str:
+    """
+    Variant of ``_redact_url`` that preserves OAuth flow params.
+
+    ``state``, ``code``, ``nonce``, ``code_challenge`` are logged
+    verbatim so the trace shows exactly which Auth0 flow-state token
+    was sent on each hop.  ``code_verifier`` would normally appear
+    only in the step-13 ``/oauth/token`` POST body, never as a query
+    param, but stays redacted as a defence-in-depth measure should
+    Auth0 ever start echoing it back.
+    """
+    if "?" not in url:
+        return url
+    parts = urlsplit(url)
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    redacted_pairs = [
+        (k, _REDACTED if k.lower() == "code_verifier" else v) for k, v in pairs
+    ]
+    return urlunsplit(parts._replace(query=urlencode(redacted_pairs)))
+
+
+# Body keys still fully masked even on Auth0 hosts: credentials, MFA
+# codes, tokens, PKCE secret.  Note the explicit exclusion of
+# ``state`` -- that *is* unmasked here, which is the whole point of
+# the diagnostic mode.
+_AUTH0_DEBUG_BODY_REDACT_KEYS: frozenset[str] = frozenset(
+    {
+        "password",
+        "otp",
+        "access_token",
+        "refresh_token",
+        "id_token",
+        "code_verifier",
+        "code_challenge",
+        "client_secret",
+    }
+)
+
+
+def _redact_body_auth0_debug(body: Any, content_type: str | None) -> str:  # noqa: PLR0911, PLR0912
+    """
+    Variant of ``_redact_body`` for Auth0 hosts.
+
+    HTML bodies are logged in full (no ``_HTML_PREVIEW_MAX`` cap).
+    ``state`` is preserved in form bodies; ``password`` / ``otp`` /
+    tokens / ``code_verifier`` / ``code_challenge`` stay masked.
+    The Auth0 SMS / email MFA POST bodies carry the user-supplied
+    code as ``code=...`` -- to keep the trace useful while still
+    redacting the MFA code, ``code`` is masked when the surrounding
+    body looks like the form-encoded MFA submission (presence of
+    ``state=`` + ``code=``); the same key on the
+    ``/authorize/resume`` HTML response is part of the OAuth grant
+    string we are trying to *capture*, so it must NOT be masked
+    there -- but that response is HTML, not form-encoded, so the
+    form-redaction path never sees it.
+    """
+    if body is None or body == b"" or body == "":  # noqa: PLR1714
+        return "<empty>"
+
+    ct = (content_type or "").lower()
+
+    if isinstance(body, (dict, list)):
+        # JSON request bodies -- masking is identical to the strict
+        # path except we do NOT add ``state`` / ``code`` to the
+        # redacted set.
+        try:
+            return (
+                json.dumps(
+                    _redact_mapping(
+                        body,
+                        _AUTH0_DEBUG_BODY_REDACT_KEYS,
+                        _PARTIAL_MASK_BODY_KEYS,
+                    ),
+                    default=str,
+                )
+                if isinstance(body, Mapping)
+                else json.dumps(
+                    [
+                        _redact_mapping(
+                            item,
+                            _AUTH0_DEBUG_BODY_REDACT_KEYS,
+                            _PARTIAL_MASK_BODY_KEYS,
+                        )
+                        if isinstance(item, Mapping)
+                        else item
+                        for item in body
+                    ],
+                    default=str,
+                )
+            )
+        except (TypeError, ValueError):
+            return repr(body)
+
+    if isinstance(body, bytes):
+        try:
+            body = body.decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            return f"<{len(body)} bytes binary>"
+
+    if not isinstance(body, str):
+        return repr(body)
+
+    # HTML response: full body (no truncation) so step-12's
+    # auth-code-bearing page can be inspected end-to-end.  Length
+    # prefix kept for easy grep.
+    if "html" in ct or body.lstrip().startswith(("<!DOCTYPE", "<html", "<HTML")):
+        return f"<html len={len(body)} full={body!r}>"
+
+    # JSON string: parse + redact (state/code preserved).
+    if "json" in ct or body.lstrip().startswith(("{", "[")):
+        try:
+            parsed = json.loads(body)
+        except ValueError:
+            return body
+        if isinstance(parsed, Mapping):
+            return json.dumps(
+                _redact_mapping(
+                    parsed,
+                    _AUTH0_DEBUG_BODY_REDACT_KEYS,
+                    _PARTIAL_MASK_BODY_KEYS,
+                ),
+                default=str,
+            )
+        if isinstance(parsed, list):
+            return json.dumps(
+                [
+                    _redact_mapping(
+                        item,
+                        _AUTH0_DEBUG_BODY_REDACT_KEYS,
+                        _PARTIAL_MASK_BODY_KEYS,
+                    )
+                    if isinstance(item, Mapping)
+                    else item
+                    for item in parsed
+                ],
+                default=str,
+            )
+        return body
+
+    if "form-urlencoded" in ct or ("=" in body and "&" in body and " " not in body):
+        try:
+            pairs = parse_qsl(body, keep_blank_values=True)
+        except ValueError:
+            return body
+        if pairs:
+            # MFA POSTs are detected by ``state=`` + ``code=`` co-presence:
+            # those go to /u/mfa-sms-challenge or /u/mfa-email-challenge
+            # and the ``code`` field carries the user's MFA token, which
+            # must stay masked.
+            keys_present = {k.lower() for k, _ in pairs}
+            mask_code = "state" in keys_present and "code" in keys_present
+            redacted_pairs: list[tuple[str, str]] = []
+            for k, v in pairs:
+                k_lc = k.lower()
+                if k_lc in _AUTH0_DEBUG_BODY_REDACT_KEYS or (
+                    k_lc == "code" and mask_code
+                ):
+                    redacted_pairs.append((k, _REDACTED))
+                elif k_lc in _PARTIAL_MASK_BODY_KEYS:
+                    redacted_pairs.append((k, _redact_text(v)))
+                else:
+                    redacted_pairs.append((k, v))
+            return urlencode(redacted_pairs)
+
+    return body
+
+
+def _format_response_headers_auth0_debug(headers: Mapping[str, str]) -> dict[str, Any]:
+    """
+    Return a dict suitable for logging an Auth0 response's headers.
+
+    ``Set-Cookie`` collapses to a list of cookie *names* only (e.g.
+    ``["did", "auth0", "did_compat"]``) so we can spot any new
+    cookies Auth0 has added without leaking session material.  Every
+    other header is passed through.
+    """
+    out: dict[str, Any] = {}
+    set_cookie_names: list[str] = []
+    for key, value in headers.items():
+        key_lc = key.lower()
+        if key_lc == "set-cookie":
+            # aiohttp collapses multi-Set-Cookie into a single comma-
+            # joined string; ``getall`` would give us individual values
+            # but we only have a Mapping at this point.  Split heuristically:
+            # cookie names end at the first ``=`` of each segment.
+            for chunk in str(value).split(","):
+                name = chunk.strip().split("=", 1)[0].strip()
+                if name and name not in set_cookie_names:
+                    set_cookie_names.append(name)
+            continue
+        if key_lc in _AUTH0_KEEP_RESPONSE_HEADER_KEYS or key_lc.startswith(
+            _AUTH0_KEEP_RESPONSE_HEADER_PREFIXES
+        ):
+            out[key] = value
+        else:
+            # Anything else we don't recognise -- log key + length only.
+            out[key] = f"<{len(str(value))} chars>"
+    if set_cookie_names:
+        out["Set-Cookie"] = f"<names: {set_cookie_names}>"
+    return out
+
+
+def _redact_headers_auth0_debug(headers: Mapping[str, str]) -> dict[str, Any]:
+    """Request-side header redaction for Auth0 hosts (Cookie name-only)."""
+    out: dict[str, Any] = {}
+    for key, value in headers.items():
+        key_lc = key.lower()
+        if key_lc == "cookie":
+            names = [
+                chunk.split("=", 1)[0].strip()
+                for chunk in str(value).split(";")
+                if chunk.strip()
+            ]
+            out[key] = f"<names: {names}>"
+        elif key_lc in _REDACT_HEADER_KEYS:
+            out[key] = _REDACTED
+        else:
+            out[key] = value
+    return out
+
 
 def _redact_text(value: str | None, keep: int = 4) -> str:
     """
@@ -449,6 +732,80 @@ def _new_req_id() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Step-12 diagnostic dump (debug/0.9.0-auth-trace branch)
+# ---------------------------------------------------------------------------
+
+
+_AUTH_DIAG_MARKER = "ENGIE_BE_AUTH_DIAGNOSTIC v1"
+
+# Multiple "would-have-matched" regexes for step-12 auth-code recovery.
+# Logged side-by-side so we can see which (if any) of them matched on a
+# user's failing flow even when the canonical pattern returns None.
+_AUTH_CODE_PROBES: tuple[tuple[str, str], ...] = (
+    ("canonical", r"code=([a-zA-Z0-9_-]+)"),
+    ("with_dot", r"code=([a-zA-Z0-9_.\-]+)"),
+    ("percent_encoded", r"code%3D([a-zA-Z0-9_.\-]+)"),
+    ("fragment", r"#code=([a-zA-Z0-9_.\-]+)"),
+    ("href_attr", r'href="[^"]*code=([a-zA-Z0-9_.\-]+)'),
+    ("action_attr", r'action="[^"]*code=([a-zA-Z0-9_.\-]+)'),
+)
+
+
+def _log_step12_failure(
+    *,
+    body: str,
+    response_headers: Mapping[str, str],
+    login_state: str,
+) -> None:
+    """
+    Emit a structured ERROR-level dump when step-12 fails to extract code.
+
+    Lives behind the ``ENGIE_BE_AUTH_DIAGNOSTIC v1`` marker so a user
+    grepping their HA log can find one anchor line and paste the
+    surrounding context.  The dump is intentionally large -- this is
+    a maintenance prerelease (``0.9.1-debug.1``) shipped to capture
+    enough wire data to root-cause an Auth0 regression.
+    """
+    raw_location = response_headers.get("Location") or response_headers.get("location")
+    body_text = body if isinstance(body, str) else repr(body)
+    probes: dict[str, str | None] = {}
+    for label, pattern in _AUTH_CODE_PROBES:
+        body_match = re.search(pattern, body_text or "")
+        loc_match = re.search(pattern, raw_location or "")
+        probes[f"body:{label}"] = body_match.group(1) if body_match else None
+        probes[f"location:{label}"] = loc_match.group(1) if loc_match else None
+
+    parsed_location: dict[str, Any] = {}
+    if raw_location:
+        try:
+            parts = urlsplit(raw_location)
+            parsed_location = {
+                "scheme": parts.scheme,
+                "netloc": parts.netloc,
+                "path": parts.path,
+                "query_pairs": parse_qsl(parts.query, keep_blank_values=True),
+                "fragment": parts.fragment,
+            }
+        except ValueError as exc:
+            parsed_location = {"urlsplit_error": str(exc)}
+
+    LOGGER.error(
+        "%s step=12 login_state=%s "
+        "body_len=%d body_preview=%r "
+        "raw_location=%r parsed_location=%s "
+        "response_headers=%s probes=%s",
+        _AUTH_DIAG_MARKER,
+        login_state,
+        len(body_text or ""),
+        (body_text or "")[:500],
+        raw_location,
+        parsed_location,
+        _format_response_headers_auth0_debug(response_headers),
+        probes,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Structured request / response logging helpers
 # ---------------------------------------------------------------------------
 #
@@ -471,6 +828,21 @@ def _log_request(  # noqa: PLR0913
 ) -> None:
     """Emit the ``→`` line for an outgoing request."""
     req_ct = (headers or {}).get("Content-Type") or (headers or {}).get("content-type")
+    if _is_auth0_debug_host(url):
+        # Auth0-host diagnostic mode: preserve state / code / nonce in
+        # the URL and params, render Cookie headers as name-only, and
+        # log HTML bodies in full.  Credential / token / MFA-code
+        # values stay masked -- see ``_redact_body_auth0_debug``.
+        LOGGER.debug(
+            "→ %s %s [req_id=%s] [auth0_debug] params=%s headers=%s body=%s",
+            method,
+            _redact_url_auth0_debug(url),
+            req_id,
+            dict(params or {}),
+            _redact_headers_auth0_debug(headers or {}),
+            _redact_body_auth0_debug(body, req_ct) if body is not None else "<empty>",
+        )
+        return
     LOGGER.debug(
         "→ %s %s [req_id=%s] params=%s headers=%s body=%s",
         method,
@@ -491,8 +863,32 @@ def _log_response(  # noqa: PLR0913
     started: float,
     ct: str | None,
     body: Any,
+    response_headers: Mapping[str, str] | None = None,
 ) -> None:
-    """Emit the ``←`` line for a successful response."""
+    """
+    Emit the ``←`` line for a successful response.
+
+    On Auth0 hosts the line is augmented with the response headers
+    (``Location``, ``x-auth0-requestid``, ``Set-Cookie`` names, ...)
+    so the step-12 extraction failure can be diagnosed without re-
+    running the flow under tcpdump.  ``response_headers`` is optional
+    so the EPEX path (which doesn't currently capture them) still
+    compiles unchanged.
+    """
+    if _is_auth0_debug_host(url):
+        LOGGER.debug(
+            "← %s %s [req_id=%s] [auth0_debug] status=%d in %.0fms ct=%s "
+            "headers=%s body=%s",
+            method,
+            _redact_url_auth0_debug(url),
+            req_id,
+            status,
+            (time.monotonic() - started) * 1000,
+            ct,
+            _format_response_headers_auth0_debug(response_headers or {}),
+            _redact_body_auth0_debug(body, ct),
+        )
+        return
     LOGGER.debug(
         "← %s %s [req_id=%s] status=%d in %.0fms ct=%s body=%s",
         method,
@@ -1051,6 +1447,7 @@ class EngieBeApiClient:
             "app_scheme": "be-engie-smart",
             "cancel_redirect": "be-engie-smart://cancel-registration-redirect",
         }
+        LOGGER.debug("Auth step 1: about to GET /authorize (mfa_method=%s)", mfa_method)
         body = await self._api_wrapper(
             session=session,
             method="GET",
@@ -1067,6 +1464,7 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 1 complete: got authorizeState")
 
         # Step 2: GET /u/login/identifier (load login page)
+        LOGGER.debug("Auth step 2: about to GET /u/login/identifier")
         await self._api_wrapper(
             session=session,
             method="GET",
@@ -1078,6 +1476,7 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 2 complete: loaded login page")
 
         # Step 3: POST /u/login/identifier (submit username)
+        LOGGER.debug("Auth step 3: about to POST /u/login/identifier (submit username)")
         await self._api_wrapper(
             session=session,
             method="POST",
@@ -1100,6 +1499,7 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 3 complete: submitted username")
 
         # Step 4: GET /u/login/password (load password page)
+        LOGGER.debug("Auth step 4: about to GET /u/login/password")
         await self._api_wrapper(
             session=session,
             method="GET",
@@ -1111,6 +1511,9 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 4 complete: loaded password page")
 
         # Step 5: POST /u/login/password (submit credentials)
+        LOGGER.debug(
+            "Auth step 5: about to POST /u/login/password (submit credentials)"
+        )
         body = await self._api_wrapper(
             session=session,
             method="POST",
@@ -1136,6 +1539,9 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 5 complete: got loginState")
 
         # Step 6: GET /authorize/resume (triggers MFA)
+        LOGGER.debug(
+            "Auth step 6: about to GET /authorize/resume (trigger MFA challenge)"
+        )
         body = await self._api_wrapper(
             session=session,
             method="GET",
@@ -1153,6 +1559,9 @@ class EngieBeApiClient:
 
         if mfa_method == MFA_METHOD_SMS:
             # Step 7: GET /u/mfa-sms-challenge (triggers SMS send)
+            LOGGER.debug(
+                "Auth step 7: about to GET /u/mfa-sms-challenge (trigger SMS send)"
+            )
             await self._api_wrapper(
                 session=session,
                 method="GET",
@@ -1186,6 +1595,10 @@ class EngieBeApiClient:
         """Run auth steps 8-13 (submit MFA -> get tokens)."""
         session = flow_state.session
 
+        LOGGER.debug(
+            "Auth step 8: about to POST /u/mfa-%s-challenge (submit MFA code)",
+            mfa_method,
+        )
         if mfa_method == MFA_METHOD_SMS:
             body = await self._submit_sms_mfa(flow_state, mfa_code)
         else:
@@ -1202,6 +1615,7 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 8 complete: MFA code accepted")
 
         # Step 9: GET /authorize/resume (post-MFA)
+        LOGGER.debug("Auth step 9: about to GET /authorize/resume (post-MFA)")
         body = await self._api_wrapper(
             session=session,
             method="GET",
@@ -1218,6 +1632,7 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 9 complete: got passKeyState")
 
         # Step 10: GET /u/passkey-enrollment (load passkey page)
+        LOGGER.debug("Auth step 10: about to GET /u/passkey-enrollment (load page)")
         await self._api_wrapper(
             session=session,
             method="GET",
@@ -1233,6 +1648,9 @@ class EngieBeApiClient:
         # ends at a non-HTTP app-scheme URL that aiohttp cannot follow.
         # We skip following redirects here since the code is extracted in
         # step 12.
+        LOGGER.debug(
+            "Auth step 11: about to POST /u/passkey-enrollment (abort enrollment)"
+        )
         await self._api_wrapper(
             session=session,
             method="POST",
@@ -1251,6 +1669,9 @@ class EngieBeApiClient:
         # Uses loginState (not passKeyState), exactly as in the API
         # auth flow.  The response body contains the authorization code,
         # but some responses return it only in the Location header.
+        LOGGER.debug(
+            "Auth step 12: about to GET /authorize/resume (final, extract auth code)"
+        )
         body, resp_headers = await self._api_wrapper(
             session=session,
             method="GET",
@@ -1271,10 +1692,23 @@ class EngieBeApiClient:
                     "Auth step 12 complete: got authorization code from Location header"
                 )
             else:
+                # Diagnostic prerelease (0.9.1-debug.1): emit the
+                # ENGIE_BE_AUTH_DIAGNOSTIC v1 marker with full body,
+                # raw Location, all response headers, and every
+                # "would-have-matched" regex probe so the failure can
+                # be root-caused from a single user log paste.
+                _log_step12_failure(
+                    body=body,
+                    response_headers=resp_headers,
+                    login_state=flow_state.login_state,
+                )
                 msg = "Failed to extract auth code from body and Location header"
                 raise EngieBeApiClientAuthenticationError(msg)
 
         # Step 13: POST /oauth/token (exchange code for tokens)
+        LOGGER.debug(
+            "Auth step 13: about to POST /oauth/token (exchange code for tokens)"
+        )
         token_result = await self._api_wrapper(
             session=session,
             method="POST",
@@ -1379,6 +1813,9 @@ class EngieBeApiClient:
         triggers the email send.
         """
         # ALT-1: POST /u/mfa-sms-challenge with action=pick-authenticator
+        LOGGER.debug(
+            "Auth ALT-1: about to POST /u/mfa-sms-challenge (pick-authenticator)"
+        )
         await self._api_wrapper(
             session=session,
             method="POST",
@@ -1394,6 +1831,7 @@ class EngieBeApiClient:
         LOGGER.debug("Auth ALT-1 complete: picked authenticator")
 
         # ALT-2: GET /u/mfa-login-options (load MFA method selection)
+        LOGGER.debug("Auth ALT-2: about to GET /u/mfa-login-options")
         await self._api_wrapper(
             session=session,
             method="GET",
@@ -1405,6 +1843,7 @@ class EngieBeApiClient:
         LOGGER.debug("Auth ALT-2 complete: loaded login options")
 
         # ALT-3: POST /u/mfa-login-options with action=email::1
+        LOGGER.debug("Auth ALT-3: about to POST /u/mfa-login-options (select email)")
         await self._api_wrapper(
             session=session,
             method="POST",
@@ -1420,6 +1859,9 @@ class EngieBeApiClient:
         LOGGER.debug("Auth ALT-3 complete: selected email MFA")
 
         # ALT-4: GET /u/mfa-email-challenge (triggers email send)
+        LOGGER.debug(
+            "Auth ALT-4: about to GET /u/mfa-email-challenge (trigger email send)"
+        )
         await self._api_wrapper(
             session=session,
             method="GET",
@@ -1537,6 +1979,7 @@ class EngieBeApiClient:
                         started=started,
                         ct=resp_ct,
                         body=result,
+                        response_headers=getattr(response, "headers", None),
                     )
 
                 if include_headers:
