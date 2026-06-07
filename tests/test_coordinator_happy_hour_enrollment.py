@@ -494,3 +494,72 @@ async def test_history_record_tolerates_missing_store(
     # Must not raise.
     result = await coord._async_update_data()
     assert "happy_hour" in result
+
+
+async def test_enrolled_refresh_upserts_today_key_window(
+    hass: HomeAssistant,
+) -> None:
+    """A post-midnight ``today``-only window is persisted (regression)."""
+    entry = _build_entry(hass)
+    subentry = _subentries(entry)[0]
+    client = _make_client(
+        flags=_load(_FLAGS_ENROLLED),
+        happy_hour_payload={
+            "today": {
+                "startTime": "2026-05-23T12:00:00+02:00",
+                "endTime": "2026-05-23T15:00:00+02:00",
+            },
+        },
+    )
+    coord = _coordinator(hass, entry, subentry)
+    _wire_runtime(entry, client, {subentry.subentry_id: coord})
+
+    store = MagicMock()
+    store.upsert = MagicMock(return_value=True)
+    entry.runtime_data.subentry_data[subentry.subentry_id].happy_hours_store = store
+
+    await coord._async_update_data()
+
+    store.upsert.assert_called_once_with(
+        start="2026-05-23T12:00:00+02:00",
+        end="2026-05-23T15:00:00+02:00",
+    )
+
+
+async def test_enrolled_refresh_upserts_both_today_and_tomorrow_windows(
+    hass: HomeAssistant,
+) -> None:
+    """Both keys in one payload are each persisted (order-independent)."""
+    entry = _build_entry(hass)
+    subentry = _subentries(entry)[0]
+    client = _make_client(
+        flags=_load(_FLAGS_ENROLLED),
+        happy_hour_payload={
+            "today": {
+                "startTime": "2026-05-23T12:00:00+02:00",
+                "endTime": "2026-05-23T15:00:00+02:00",
+            },
+            "tomorrow": {
+                "startTime": "2026-05-24T11:00:00+02:00",
+                "endTime": "2026-05-24T14:00:00+02:00",
+            },
+        },
+    )
+    coord = _coordinator(hass, entry, subentry)
+    _wire_runtime(entry, client, {subentry.subentry_id: coord})
+
+    store = MagicMock()
+    store.upsert = MagicMock(return_value=True)
+    entry.runtime_data.subentry_data[subentry.subentry_id].happy_hours_store = store
+
+    await coord._async_update_data()
+
+    assert store.upsert.call_count == 2
+    store.upsert.assert_any_call(
+        start="2026-05-23T12:00:00+02:00",
+        end="2026-05-23T15:00:00+02:00",
+    )
+    store.upsert.assert_any_call(
+        start="2026-05-24T11:00:00+02:00",
+        end="2026-05-24T14:00:00+02:00",
+    )

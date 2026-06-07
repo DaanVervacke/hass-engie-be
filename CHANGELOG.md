@@ -7,6 +7,36 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0b4] - 2026-06-07
+
+> [!CAUTION]
+> **Upgrade from v0.9.0, v0.10.0b1, v0.10.0b2, or v0.10.0b3 only.** If
+> you are still on v0.8.x or any earlier version, install v0.9.0 first
+> (which requires a clean reinstall, see its release notes) and only
+> then move to this release. Skipping v0.9.0 leaves your config entry
+> on a schema this release no longer migrates, and the integration
+> will refuse to load.
+
+### Fixed
+
+- **Happy Hour sensors could go blank or show the wrong state after a
+  restart later in the day.** When a Happy Hour window falls on the
+  current day, ENGIE reports it under a different field than the one
+  it uses for the next day. The integration previously read only the
+  next-day field, so after a restart (or the first scheduled refresh)
+  past midnight the "Happy Hour next start" and "Happy Hour next end"
+  sensors could show *unknown* and the "Happy Hour active" sensor
+  could stay *off* during a live Happy Hour window. Both day fields
+  are now read, so the sensors stay correct throughout the day.
+
+### Tests
+
+- Extended the Happy Hour unit and platform tests to cover the
+  current-day payload field: window parsing, active-state detection,
+  the next start/end timestamp sensors, the active binary sensor
+  (including its instant-flip scheduler), and per-subentry history
+  persistence.
+
 ## [0.10.0b3] - 2026-05-26
 
 > [!CAUTION]
@@ -569,7 +599,9 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b2...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b4...HEAD
+[0.10.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b3...v0.10.0b4
+[0.10.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b2...v0.10.0b3
 [0.10.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b1...v0.10.0b2
 [0.10.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0b1
 [0.9.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...v0.9.0

@@ -919,11 +919,14 @@ class EngieBeApiClient:
         ``business_agreement_number`` is the 12-digit BAN. Passing a
         ``customerAccountNumber`` / CAN here returns HTTP 400.
 
-        Returns the parsed JSON response. Shape observed in production:
+        Returns the parsed JSON response. Shapes observed in production:
 
         * No event scheduled: ``{}`` (empty object).
-        * Event scheduled: ``{"tomorrow": {"startTime": "...", "endTime": "..."}}``
-          where times are ISO-8601 with explicit offsets.
+        * Event scheduled: the upcoming window under a ``tomorrow`` key
+          (announced the day before) and/or a ``today`` key (the same
+          window, re-published once midnight passes), each shaped
+          ``{"startTime": "...", "endTime": "..."}`` with ISO-8601 times
+          carrying explicit offsets.
 
         The endpoint is not gated on dynamic-tariff status, so it is
         polled for every active business agreement.

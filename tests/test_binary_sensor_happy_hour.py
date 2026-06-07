@@ -33,6 +33,14 @@ _SCHEDULED = {
     },
 }
 
+# The same window re-published under the ``today`` key once midnight passes.
+_TODAY_SCHEDULED = {
+    "today": {
+        "startTime": "2026-05-23T12:00:00+02:00",
+        "endTime": "2026-05-23T15:00:00+02:00",
+    },
+}
+
 
 def _make_subentry(subentry_id: str = "sub_test") -> MagicMock:
     """Build a MagicMock ``ConfigSubentry`` stub."""
@@ -120,6 +128,14 @@ def test_is_on_false_outside_window() -> None:
         assert sensor.is_on is False
 
 
+def test_is_on_true_inside_today_key_window() -> None:
+    """A ``today``-key live window reports ``on`` (post-midnight regression)."""
+    coordinator = _make_coordinator(_wrap(_TODAY_SCHEDULED))
+    sensor = EngieBeHappyHourActiveSensor(coordinator, _make_subentry())
+    with _patched_now(_NOW_INSIDE):
+        assert sensor.is_on is True
+
+
 def test_is_on_false_when_no_event_scheduled() -> None:
     """Empty ``{}`` payload -> always ``off`` regardless of ``now``."""
     coordinator = _make_coordinator(_wrap({}))
@@ -167,6 +183,13 @@ _FUTURE_PAYLOAD = {
 # Same window as UTC datetimes for assertions / time travel.
 _FUTURE_START_UTC = datetime(2099, 6, 15, 10, 0, tzinfo=UTC)
 _FUTURE_END_UTC = datetime(2099, 6, 15, 13, 0, tzinfo=UTC)
+# The same future window re-published under the ``today`` key.
+_TODAY_FUTURE_PAYLOAD = {
+    "today": {
+        "startTime": "2099-06-15T12:00:00+02:00",
+        "endTime": "2099-06-15T15:00:00+02:00",
+    },
+}
 # An alternative window that starts earlier; used for the reschedule test.
 _ALT_PAYLOAD = {
     "tomorrow": {
@@ -194,6 +217,33 @@ async def test_scheduler_arms_at_start_when_now_before_window(
         assert sensor._unsub_boundary is not None
     # Fire the start boundary; sensor should now be on and a new
     # timer should be armed for the end boundary.
+    with patch(
+        "custom_components.engie_be.binary_sensor.dt_util.utcnow",
+        return_value=_FUTURE_START_UTC,
+    ):
+        async_fire_time_changed(hass, _FUTURE_START_UTC)
+        await hass.async_block_till_done()
+        assert sensor.is_on is True
+        assert sensor._unsub_boundary is not None
+
+
+async def test_scheduler_arms_for_today_key_window(
+    hass: HomeAssistant,
+    add_sensor: AddSensor,
+) -> None:
+    """A ``today``-key future window arms the timer and flips on like ``tomorrow``."""
+    coordinator = _make_coordinator(_wrap(_TODAY_FUTURE_PAYLOAD))
+    sensor = EngieBeHappyHourActiveSensor(coordinator, _make_subentry())
+    before = _FUTURE_START_UTC - timedelta(minutes=5)
+    with patch(
+        "custom_components.engie_be.binary_sensor.dt_util.utcnow",
+        return_value=before,
+    ):
+        await add_sensor(hass, sensor)
+        assert sensor.is_on is False
+        assert sensor._unsub_boundary is not None
+    # Firing the start boundary flips the sensor on, proving the scheduler
+    # honours ``today``-key windows identically to ``tomorrow``-key ones.
     with patch(
         "custom_components.engie_be.binary_sensor.dt_util.utcnow",
         return_value=_FUTURE_START_UTC,

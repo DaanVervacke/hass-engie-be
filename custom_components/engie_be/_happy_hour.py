@@ -2,8 +2,11 @@
 Shared helpers for Happy Hour event data.
 
 The Happy Hour endpoint (``/business-agreements/{BAN}/happy-hour-event``)
-returns either ``{}`` (no event scheduled) or
-``{"tomorrow": {"startTime": "...", "endTime": "..."}}``.
+returns ``{}`` (no event scheduled) or a payload carrying the upcoming
+window under a ``tomorrow`` key (announced the day before) and/or a
+``today`` key (the *same* window, re-published once midnight passes).
+Both keys are honoured so a window is not lost across a post-midnight
+restart.
 
 The coordinator stores the response under ``coordinator.data["happy_hour"]``
 as ``{"data": <payload-or-None>}``. These helpers unwrap that wrapper so
@@ -93,24 +96,21 @@ def happy_hour_payload(
     return payload if isinstance(payload, dict) else None
 
 
-def happy_hour_window(
-    coordinator: EngieBeDataUpdateCoordinator,
-) -> tuple[datetime, datetime] | None:
-    """
-    Return the upcoming happy-hour ``(start, end)``, or ``None``.
+_HAPPY_HOUR_PAYLOAD_KEYS = ("today", "tomorrow")
 
-    Returns ``None`` when no event is scheduled, when the payload is
-    missing, or when timestamps fail to parse. Both datetimes are
-    timezone-aware (ENGIE returns explicit offsets, e.g. ``+02:00``).
+
+def _parse_window(sub: Any) -> tuple[datetime, datetime] | None:
     """
-    payload = happy_hour_payload(coordinator)
-    if not payload:
+    Parse one happy-hour sub-payload (``{"startTime": ..., "endTime": ...}``).
+
+    Returns a timezone-aware ``(start, end)`` tuple, or ``None`` when the
+    sub-payload is missing, not a dict, malformed, unparseable, or
+    timezone-naive (ENGIE returns explicit offsets, e.g. ``+02:00``).
+    """
+    if not isinstance(sub, dict):
         return None
-    tomorrow = payload.get("tomorrow")
-    if not isinstance(tomorrow, dict):
-        return None
-    start_raw = tomorrow.get("startTime")
-    end_raw = tomorrow.get("endTime")
+    start_raw = sub.get("startTime")
+    end_raw = sub.get("endTime")
     if not isinstance(start_raw, str) or not isinstance(end_raw, str):
         return None
     try:
@@ -123,16 +123,52 @@ def happy_hour_window(
     return start, end
 
 
+def happy_hour_windows(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> list[tuple[datetime, datetime]]:
+    """
+    Return every scheduled happy-hour ``(start, end)`` window, earliest first.
+
+    ENGIE announces a window under a ``tomorrow`` key the day before, then
+    re-publishes the same window under a ``today`` key once midnight passes;
+    both keys are parsed so a window observed after a post-midnight restart
+    is not lost. Returns ``[]`` when no event is scheduled or the payload is
+    missing. Malformed or timezone-naive sub-payloads are skipped. Windows
+    are sorted by start, so the earliest-starting window is first.
+    """
+    payload = happy_hour_payload(coordinator)
+    if not payload:
+        return []
+    windows: list[tuple[datetime, datetime]] = []
+    for key in _HAPPY_HOUR_PAYLOAD_KEYS:
+        window = _parse_window(payload.get(key))
+        if window is not None:
+            windows.append(window)
+    windows.sort(key=lambda window: window[0])
+    return windows
+
+
+def happy_hour_window(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> tuple[datetime, datetime] | None:
+    """
+    Return the earliest upcoming happy-hour ``(start, end)``, or ``None``.
+
+    Thin wrapper over :func:`happy_hour_windows` returning the first
+    (earliest-start) window, or ``None`` when none is scheduled. Both
+    datetimes are timezone-aware. Intentionally ``now``-agnostic: it may
+    return a window whose start already lies in the past.
+    """
+    windows = happy_hour_windows(coordinator)
+    return windows[0] if windows else None
+
+
 def is_happy_hour_active(
     coordinator: EngieBeDataUpdateCoordinator,
     now: datetime,
 ) -> bool:
-    """Return True iff ``now`` falls inside the scheduled happy-hour window."""
-    window = happy_hour_window(coordinator)
-    if window is None:
-        return False
-    start, end = window
-    return start <= now < end
+    """Return True iff ``now`` falls inside any scheduled happy-hour window."""
+    return any(start <= now < end for start, end in happy_hour_windows(coordinator))
 
 
 def happy_hour_events(
@@ -142,10 +178,11 @@ def happy_hour_events(
     Return calendar events for every known Happy Hour window.
 
     Combines persisted historical windows (from the per-subentry
-    Happy Hour history store) with the live ``tomorrow`` window from
-    the current coordinator payload. Entries are deduplicated by
-    ``start`` so the live payload does not produce a duplicate event
-    when the store has already recorded it during an earlier refresh.
+    Happy Hour history store) with the live window(s) from the current
+    coordinator payload (``today`` and/or ``tomorrow``). Entries are
+    deduplicated by ``start`` so the live payload does not produce a
+    duplicate event when the store has already recorded it during an
+    earlier refresh, nor when the same window appears under both keys.
 
     The integration can only ever surface windows it has observed
     while running because ENGIE does not expose Happy Hour history.
@@ -171,9 +208,7 @@ def happy_hour_events(
             if event is not None:
                 events_by_start[entry["start"]] = event
 
-    window = happy_hour_window(coordinator)
-    if window is not None:
-        start, end = window
+    for start, end in happy_hour_windows(coordinator):
         event = _build_event(start.isoformat(), end.isoformat())
         if event is not None:
             events_by_start[start.isoformat()] = event

@@ -20,6 +20,14 @@ _SCHEDULED = {
     },
 }
 
+# The same window re-published under the ``today`` key once midnight passes.
+_TODAY_SCHEDULED = {
+    "today": {
+        "startTime": "2026-06-07T11:00:00+02:00",
+        "endTime": "2026-06-07T17:00:00+02:00",
+    },
+}
+
 
 def _make_subentry(subentry_id: str = "sub_test") -> MagicMock:
     """Build a MagicMock ``ConfigSubentry`` stub."""
@@ -106,6 +114,20 @@ def test_end_sensor_returns_window_end() -> None:
     value = end_sensor.native_value
     assert isinstance(value, datetime)
     assert value == datetime.fromisoformat("2026-05-23T15:00:00+02:00")
+
+
+def test_native_value_uses_today_key_after_midnight() -> None:
+    """A ``today`` key payload populates both timestamp sensors (regression)."""
+    coordinator = _make_coordinator(_wrap(_TODAY_SCHEDULED))
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_sensors(coordinator, subentry)
+    values = {s.entity_description.key: s.native_value for s in sensors}
+    assert values["happy_hour_next_start"] == datetime.fromisoformat(
+        "2026-06-07T11:00:00+02:00"
+    )
+    assert values["happy_hour_next_end"] == datetime.fromisoformat(
+        "2026-06-07T17:00:00+02:00"
+    )
 
 
 def test_native_value_is_none_when_no_event_scheduled() -> None:

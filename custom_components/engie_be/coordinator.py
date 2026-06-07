@@ -399,15 +399,21 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         wrapper = {"data": payload if isinstance(payload, dict) else None}
         ban_masked = mask_identifier(business_agreement_number)
         if isinstance(payload, dict):
-            tomorrow = payload.get("tomorrow")
-            if isinstance(tomorrow, dict):
-                LOGGER.debug(
-                    "BAN %s: Happy Hour payload reports window for tomorrow "
-                    "(start=%s end=%s)",
-                    ban_masked,
-                    tomorrow.get("startTime"),
-                    tomorrow.get("endTime"),
-                )
+            scheduled = {
+                key: payload[key]
+                for key in ("today", "tomorrow")
+                if isinstance(payload.get(key), dict)
+            }
+            if scheduled:
+                for key, window in scheduled.items():
+                    LOGGER.debug(
+                        "BAN %s: Happy Hour payload reports window for %s "
+                        "(start=%s end=%s)",
+                        ban_masked,
+                        key,
+                        window.get("startTime"),
+                        window.get("endTime"),
+                    )
             else:
                 LOGGER.debug(
                     "BAN %s: Happy Hour payload empty (no window scheduled)",
@@ -462,11 +468,16 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _record_happy_hour_history(self, happy_hour_wrapper: dict[str, Any]) -> None:
         """
-        Persist the upcoming Happy Hour window if one is scheduled.
+        Persist every scheduled Happy Hour window if one is announced.
 
-        Idempotent: the same ``tomorrow`` payload may be observed many
-        times between the moment ENGIE announces a window and the
-        moment it expires, but the store dedups on ``start``.
+        ENGIE publishes the upcoming window under a ``tomorrow`` key the
+        day before and re-publishes the same window under a ``today`` key
+        once midnight passes; both keys are recorded so a window seen only
+        after a post-midnight restart still reaches the history store.
+
+        Idempotent: the same window may be observed many times (and under
+        both keys) between announcement and expiry, but the store dedups
+        on ``start``.
         """
         ban = mask_identifier(self.business_agreement_number)
         payload = happy_hour_wrapper.get("data")
@@ -476,22 +487,15 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ban,
             )
             return
-        tomorrow = payload.get("tomorrow")
-        if not isinstance(tomorrow, dict):
+        windows = [
+            (key, payload[key])
+            for key in ("today", "tomorrow")
+            if isinstance(payload.get(key), dict)
+        ]
+        if not windows:
             LOGGER.debug(
-                "BAN %s: skipping Happy Hour history record, no 'tomorrow' window",
+                "BAN %s: skipping Happy Hour history record, no scheduled window",
                 ban,
-            )
-            return
-        start = tomorrow.get("startTime")
-        end = tomorrow.get("endTime")
-        if not isinstance(start, str) or not isinstance(end, str):
-            LOGGER.debug(
-                "BAN %s: skipping Happy Hour history record, "
-                "start/end not strings (start=%r end=%r)",
-                ban,
-                start,
-                end,
             )
             return
         runtime = getattr(self.config_entry, "runtime_data", None)
@@ -511,20 +515,33 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ban,
             )
             return
-        changed = store.upsert(start=start, end=end)
-        if changed:
-            LOGGER.debug(
-                "BAN %s: persisted Happy Hour window to history (start=%s end=%s)",
-                ban,
-                start,
-                end,
-            )
-        else:
-            LOGGER.debug(
-                "BAN %s: Happy Hour window already in history (start=%s)",
-                ban,
-                start,
-            )
+        for key, window in windows:
+            start = window.get("startTime")
+            end = window.get("endTime")
+            if not isinstance(start, str) or not isinstance(end, str):
+                LOGGER.debug(
+                    "BAN %s: skipping Happy Hour %s window, "
+                    "start/end not strings (start=%r end=%r)",
+                    ban,
+                    key,
+                    start,
+                    end,
+                )
+                continue
+            changed = store.upsert(start=start, end=end)
+            if changed:
+                LOGGER.debug(
+                    "BAN %s: persisted Happy Hour window to history (start=%s end=%s)",
+                    ban,
+                    start,
+                    end,
+                )
+            else:
+                LOGGER.debug(
+                    "BAN %s: Happy Hour window already in history (start=%s)",
+                    ban,
+                    start,
+                )
 
     async def _async_try_backfill_subentry(
         self,

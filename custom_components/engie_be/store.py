@@ -133,11 +133,12 @@ class EngieBeHappyHoursStore:
     Wrapper around ``Store`` for persisted Happy Hour window history.
 
     Entries are keyed by ``start`` (the ISO-formatted window start with
-    explicit timezone offset, as supplied by ENGIE). The API returns at
-    most one upcoming window per call under ``tomorrow``, so dedup by
+    explicit timezone offset, as supplied by ENGIE). The API publishes a
+    window under a ``tomorrow`` key and re-publishes the same window under
+    a ``today`` key once midnight passes; both are recorded, so dedup by
     ``start`` is enough to make repeated upserts idempotent across the
-    many refreshes that happen between the moment ENGIE announces a
-    window and the moment it expires.
+    many refreshes (and both keys) that happen between the moment ENGIE
+    announces a window and the moment it expires.
 
     The store can only ever contain windows the integration observed
     while running. Windows that happened before the user installed the

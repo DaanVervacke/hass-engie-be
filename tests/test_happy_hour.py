@@ -12,7 +12,10 @@ import pytest
 
 from custom_components.engie_be._happy_hour import (
     happy_hour_events,
+    happy_hour_window,
+    happy_hour_windows,
     is_enrolled_from_flags,
+    is_happy_hour_active,
 )
 from custom_components.engie_be.const import HAPPY_HOURS_SERVICE_ENABLED_KEY
 
@@ -220,3 +223,142 @@ def test_happy_hour_events_skips_invalid_store_entries() -> None:
     events = happy_hour_events(coord)
     assert len(events) == 1
     assert events[0].start == datetime.fromisoformat("2026-05-23T12:00:00+02:00")
+
+
+# ---------------------------------------------------------------------------
+# Window parsing across the ``today`` / ``tomorrow`` keys
+# ---------------------------------------------------------------------------
+
+# A window re-published under the ``today`` key once midnight passes.
+_TODAY_KEY_PAYLOAD = {
+    "today": {
+        "startTime": "2026-06-07T11:00:00+02:00",
+        "endTime": "2026-06-07T17:00:00+02:00",
+    },
+}
+# A window announced the day before under the ``tomorrow`` key.
+_TOMORROW_KEY_PAYLOAD = {
+    "tomorrow": {
+        "startTime": "2026-06-08T12:00:00+02:00",
+        "endTime": "2026-06-08T15:00:00+02:00",
+    },
+}
+# Both keys present carrying two distinct windows.
+_BOTH_KEYS_PAYLOAD = {
+    "today": {
+        "startTime": "2026-06-07T11:00:00+02:00",
+        "endTime": "2026-06-07T17:00:00+02:00",
+    },
+    "tomorrow": {
+        "startTime": "2026-06-08T12:00:00+02:00",
+        "endTime": "2026-06-08T15:00:00+02:00",
+    },
+}
+
+
+def test_happy_hour_windows_parses_today_key() -> None:
+    """A window under the ``today`` key is parsed (post-midnight regression)."""
+    windows = happy_hour_windows(_coord(_TODAY_KEY_PAYLOAD))
+    assert windows == [
+        (
+            datetime.fromisoformat("2026-06-07T11:00:00+02:00"),
+            datetime.fromisoformat("2026-06-07T17:00:00+02:00"),
+        ),
+    ]
+
+
+def test_happy_hour_windows_parses_tomorrow_key() -> None:
+    """A window under the ``tomorrow`` key is parsed (evening announcement)."""
+    windows = happy_hour_windows(_coord(_TOMORROW_KEY_PAYLOAD))
+    assert windows == [
+        (
+            datetime.fromisoformat("2026-06-08T12:00:00+02:00"),
+            datetime.fromisoformat("2026-06-08T15:00:00+02:00"),
+        ),
+    ]
+
+
+def test_happy_hour_windows_parses_both_keys_sorted() -> None:
+    """Both keys are parsed and returned earliest-start first."""
+    windows = happy_hour_windows(_coord(_BOTH_KEYS_PAYLOAD))
+    starts = [start.isoformat() for start, _end in windows]
+    assert starts == [
+        "2026-06-07T11:00:00+02:00",
+        "2026-06-08T12:00:00+02:00",
+    ]
+
+
+def test_happy_hour_windows_empty_payload_returns_empty() -> None:
+    """An explicit no-event payload (``{}``) yields no windows."""
+    assert happy_hour_windows(_coord({})) == []
+
+
+def test_happy_hour_windows_no_data_returns_empty() -> None:
+    """Absent coordinator data yields no windows."""
+    assert happy_hour_windows(_coord(None)) == []
+
+
+def test_happy_hour_windows_skips_tz_naive_sub_payload() -> None:
+    """A tz-naive sub-payload is skipped while a valid sibling is kept."""
+    payload = {
+        "today": {
+            "startTime": "2026-06-07T11:00:00",
+            "endTime": "2026-06-07T17:00:00",
+        },
+        "tomorrow": {
+            "startTime": "2026-06-08T12:00:00+02:00",
+            "endTime": "2026-06-08T15:00:00+02:00",
+        },
+    }
+    windows = happy_hour_windows(_coord(payload))
+    assert windows == [
+        (
+            datetime.fromisoformat("2026-06-08T12:00:00+02:00"),
+            datetime.fromisoformat("2026-06-08T15:00:00+02:00"),
+        ),
+    ]
+
+
+def test_happy_hour_window_returns_today_key_window() -> None:
+    """The single-window helper surfaces a ``today`` key window."""
+    window = happy_hour_window(_coord(_TODAY_KEY_PAYLOAD))
+    assert window == (
+        datetime.fromisoformat("2026-06-07T11:00:00+02:00"),
+        datetime.fromisoformat("2026-06-07T17:00:00+02:00"),
+    )
+
+
+def test_happy_hour_window_returns_earliest_of_both_keys() -> None:
+    """With both keys present the earliest-start window is returned."""
+    window = happy_hour_window(_coord(_BOTH_KEYS_PAYLOAD))
+    assert window is not None
+    assert window[0] == datetime.fromisoformat("2026-06-07T11:00:00+02:00")
+
+
+def test_happy_hour_window_none_when_no_event() -> None:
+    """An explicit no-event payload yields ``None``."""
+    assert happy_hour_window(_coord({})) is None
+
+
+def test_is_happy_hour_active_inside_today_window() -> None:
+    """``now`` inside a ``today`` key window reports active."""
+    now = datetime.fromisoformat("2026-06-07T12:00:00+02:00")
+    assert is_happy_hour_active(_coord(_TODAY_KEY_PAYLOAD), now) is True
+
+
+def test_is_happy_hour_active_before_window() -> None:
+    """``now`` before the window start reports inactive."""
+    now = datetime.fromisoformat("2026-06-07T09:00:00+02:00")
+    assert is_happy_hour_active(_coord(_TODAY_KEY_PAYLOAD), now) is False
+
+
+def test_is_happy_hour_active_inside_second_window() -> None:
+    """``now`` inside the later of two windows reports active."""
+    now = datetime.fromisoformat("2026-06-08T13:00:00+02:00")
+    assert is_happy_hour_active(_coord(_BOTH_KEYS_PAYLOAD), now) is True
+
+
+def test_is_happy_hour_active_false_when_no_event() -> None:
+    """No scheduled event reports inactive regardless of ``now``."""
+    now = datetime.fromisoformat("2026-06-07T12:00:00+02:00")
+    assert is_happy_hour_active(_coord({}), now) is False
