@@ -7,6 +7,28 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- Raised the minimum supported Home Assistant version to `2026.6.0`,
+  dropping support for earlier versions.
+
+### Chore
+
+- Audited the integration against Home Assistant 2026.6 and bumped the
+  development and test pins to match (Home Assistant `2026.6.1`,
+  `pytest-homeassistant-custom-component` `0.13.337`, ruff `0.14.14`).
+  No runtime behaviour changes: the integration already avoids every
+  API deprecated up to this release, so no code changes were required.
+
+### Tests
+
+- The three Happy Hour scheduler tests that deliberately leave a timer
+  armed for a far-future window now cancel that timer before they
+  finish. The newer test harness
+  (`pytest-homeassistant-custom-component` `0.13.337`) fails any test
+  that leaves a timer running, so these are cleaned up explicitly; this
+  is a test-only change with no effect on the shipped integration.
+
 ## [0.10.0b4] - 2026-06-07
 
 > [!CAUTION]

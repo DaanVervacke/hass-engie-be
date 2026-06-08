@@ -225,6 +225,11 @@ async def test_scheduler_arms_at_start_when_now_before_window(
         await hass.async_block_till_done()
         assert sensor.is_on is True
         assert sensor._unsub_boundary is not None
+    # The re-armed end-boundary timer targets 2099; cancel it so it does
+    # not linger on the event loop past teardown (verify_cleanup fails on
+    # lingering timers as of pytest-homeassistant-custom-component 0.13.337).
+    sensor._call_on_remove_callbacks()
+    assert sensor._unsub_boundary is None
 
 
 async def test_scheduler_arms_for_today_key_window(
@@ -252,6 +257,10 @@ async def test_scheduler_arms_for_today_key_window(
         await hass.async_block_till_done()
         assert sensor.is_on is True
         assert sensor._unsub_boundary is not None
+    # Cancel the re-armed end-boundary timer (targets 2099) to keep the
+    # event loop clean for verify_cleanup at teardown.
+    sensor._call_on_remove_callbacks()
+    assert sensor._unsub_boundary is None
 
 
 async def test_scheduler_arms_at_end_when_now_inside_window(
@@ -333,6 +342,11 @@ async def test_coordinator_update_reschedules_to_new_window(
         assert new_unsub is not None
         # Re-arming must replace the unsub handle, not stack a second one.
         assert new_unsub is not old_unsub
+    # The freshly armed timer targets 2099; cancel it so it does not linger
+    # on the event loop past teardown (verify_cleanup fails on lingering
+    # timers as of pytest-homeassistant-custom-component 0.13.337).
+    sensor._call_on_remove_callbacks()
+    assert sensor._unsub_boundary is None
 
 
 async def test_remove_cancels_pending_timer(
