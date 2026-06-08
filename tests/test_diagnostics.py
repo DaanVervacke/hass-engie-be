@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
@@ -24,13 +24,20 @@ from custom_components.engie_be.const import (
     DOMAIN,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
-from custom_components.engie_be.data import EngieBeData, EngieBeSubentryData
+from custom_components.engie_be.data import (
+    EngieBeData,
+    EngieBeSubentryData,
+    EpexPayload,
+    EpexSlot,
+)
 from custom_components.engie_be.diagnostics import (
     EAN_HASH_LENGTH,
     TITLE_HASH_LENGTH,
     TO_REDACT,
     _hash_ean,
     _redacted_title,
+    _summarise_coordinator_data,
+    _summarise_epex,
     async_get_config_entry_diagnostics,
 )
 
@@ -382,3 +389,135 @@ async def test_diagnostics_does_not_leak_raw_eans_from_contracts(
     diag = await async_get_config_entry_diagnostics(hass, entry)
     serialised = json.dumps(diag)
     assert "541448820000000001_ID1" not in serialised
+
+
+# ---------------------------------------------------------------------------
+# Private summariser branches
+#
+# These exercise the small helper functions directly so the rarer
+# branches (non-dict coordinator data, peaks metadata, a populated
+# EPEX payload) are covered without standing up a full coordinator.
+# ---------------------------------------------------------------------------
+
+
+def test_summarise_coordinator_data_non_dict_returns_raw_type() -> None:
+    """Non-dict coordinator data degrades to a type tag instead of raising."""
+    assert _summarise_coordinator_data(None) == {"raw_type": "NoneType"}
+    assert _summarise_coordinator_data([1, 2, 3]) == {"raw_type": "list"}
+
+
+def test_summarise_coordinator_data_includes_peaks_metadata() -> None:
+    """A present peaks wrapper with int year/month yields a ``YYYY-MM`` label."""
+    summary = _summarise_coordinator_data(
+        {
+            "items": [{"ean": "541448820000000001_ID1"}],
+            "peaks": {
+                "data": {"peak": 3.5},
+                "year": 2026,
+                "month": 6,
+                "is_fallback": True,
+            },
+        },
+    )
+
+    assert summary["item_count"] == 1
+    assert summary["ean_hashes"] == [_hash_ean("541448820000000001_ID1")]
+    assert summary["peaks_present"] is True
+    assert summary["peaks_month"] == "2026-06"
+    assert summary["peaks_is_fallback"] is True
+
+
+def test_summarise_coordinator_data_peaks_present_without_valid_month() -> None:
+    """A present peaks wrapper lacking int year/month reports a None month."""
+    summary = _summarise_coordinator_data(
+        {
+            "peaks": {"data": {"peak": 1.0}},
+        },
+    )
+
+    assert summary["peaks_present"] is True
+    assert summary["peaks_month"] is None
+    assert summary["peaks_is_fallback"] is False
+
+
+def test_summarise_epex_with_slots_returns_full_summary() -> None:
+    """A populated EpexPayload is summarised with first/last slot boundaries."""
+    start = datetime(2026, 6, 8, 0, 0, tzinfo=UTC)
+    slot_a = EpexSlot(
+        start=start,
+        end=start + timedelta(minutes=15),
+        value_eur_per_kwh=0.05,
+        duration_minutes=15,
+    )
+    slot_b = EpexSlot(
+        start=start + timedelta(minutes=15),
+        end=start + timedelta(minutes=30),
+        value_eur_per_kwh=0.06,
+        duration_minutes=15,
+    )
+    publication = datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
+    payload = EpexPayload(
+        slots=(slot_a, slot_b),
+        publication_time=publication,
+        market_date="2026-06-08",
+    )
+
+    summary = _summarise_epex(payload)
+
+    assert summary == {
+        "slot_count": 2,
+        "slot_duration_minutes": 15,
+        "first_slot_start": slot_a.start.isoformat(),
+        "last_slot_end": slot_b.end.isoformat(),
+        "publication_time": publication.isoformat(),
+        "market_date": "2026-06-08",
+    }
+
+
+async def test_diagnostics_skips_non_business_agreement_subentries(
+    hass: HomeAssistant,
+) -> None:
+    """Subentries whose type is not a business agreement are excluded entirely."""
+    entry: MockConfigEntry = MockConfigEntry(
+        domain=DOMAIN,
+        version=5,
+        title="user@example.com",
+        data={
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "hunter2",
+            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
+            CONF_ACCESS_TOKEN: "eyJfake.access.token",
+            CONF_REFRESH_TOKEN: "v1.fake_refresh_token",
+        },
+        options={"update_interval": 60},
+        unique_id="user_example_com",
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+                title=_TEST_SUBENTRY_TITLE,
+                unique_id="002200000999",
+                data={CONF_BUSINESS_AGREEMENT_NUMBER: "002200000999"},
+            ),
+            ConfigSubentryData(
+                subentry_type="some_other_type",
+                title="Foreign Subentry",
+                unique_id="foreign-1",
+                data={"foo": "bar"},
+            ),
+        ],
+    )
+    entry.add_to_hass(hass)
+    entry.runtime_data = None  # type: ignore[assignment]
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+
+    foreign_ids = [
+        sid
+        for sid, sub in entry.subentries.items()
+        if sub.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT
+    ]
+    assert foreign_ids, "fixture must include a foreign subentry"
+    for sid in foreign_ids:
+        assert sid not in diag["subentries"]
+    # The single business-agreement subentry is still summarised.
+    assert len(diag["subentries"]) == 1

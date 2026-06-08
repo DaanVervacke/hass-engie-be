@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
+import socket
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
+import aiohttp
 import pytest
 
 from custom_components.engie_be.api import (
@@ -188,4 +191,47 @@ async def test_async_get_epex_prices_raises_communication_error_on_other_4xx_5xx
     client = _build_client(_build_response(status, "boom"))
 
     with pytest.raises(EngieBeApiClientCommunicationError):
+        await client.async_get_epex_prices(_FROM, _TO)
+
+
+def _build_client_raising(exc: BaseException) -> EngieBeApiClient:
+    """Build a client whose session.request raises ``exc`` when awaited."""
+    session = MagicMock()
+    session.request = AsyncMock(side_effect=exc)
+    return EngieBeApiClient(
+        session=session,
+        client_id="test-client",
+        access_token="test-access-token",  # noqa: S106
+    )
+
+
+async def test_async_get_epex_prices_maps_timeout_to_communication_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A request timeout is mapped to the generic communication error."""
+    client = _build_client_raising(TimeoutError())
+
+    # DEBUG-on exercises the debug ``_log_error`` branch inside the handler.
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"),
+        pytest.raises(EngieBeApiClientCommunicationError),
+    ):
+        await client.async_get_epex_prices(_FROM, _TO)
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [aiohttp.ClientError(), aiohttp.ClientConnectionError(), socket.gaierror()],
+)
+async def test_async_get_epex_prices_maps_client_errors_to_communication_error(
+    exc: BaseException,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Transport-layer errors are mapped to the generic comms error."""
+    client = _build_client_raising(exc)
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"),
+        pytest.raises(EngieBeApiClientCommunicationError),
+    ):
         await client.async_get_epex_prices(_FROM, _TO)

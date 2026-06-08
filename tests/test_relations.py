@@ -16,6 +16,7 @@ from pathlib import Path
 from custom_components.engie_be._relations import (
     extract_business_agreements,
     find_agreement_for_ban,
+    subentry_title,
 )
 from custom_components.engie_be.const import (
     CONF_ACCOUNT_HOLDER_NAME,
@@ -231,3 +232,42 @@ def test_find_agreement_for_ban_handles_empty_payload() -> None:
     """Empty payload yields ``None`` cleanly."""
     assert find_agreement_for_ban({}, "002200000001") is None
     assert find_agreement_for_ban({"items": []}, "002200000001") is None
+
+
+# ---------------------------------------------------------------------------
+# subentry_title: address -> holder -> BAN fallback chain
+# ---------------------------------------------------------------------------
+#
+# The picker / device title prefers a human-readable address, falls back
+# to the account-holder name, and finally to the BAN so a subentry always
+# renders something the user can recognise.
+
+
+def test_subentry_title_prefers_consumption_address() -> None:
+    """When an address is present it wins over holder and BAN."""
+    account = {
+        CONF_CONSUMPTION_ADDRESS: "FIRSTSTRAAT 1, 1000 BRUSSELS",
+        CONF_ACCOUNT_HOLDER_NAME: "Jane Doe",
+        CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+    }
+    assert subentry_title(account) == "FIRSTSTRAAT 1, 1000 BRUSSELS"
+
+
+def test_subentry_title_falls_back_to_holder_when_address_blank() -> None:
+    """A blank/absent address falls back to the account-holder name."""
+    account = {
+        CONF_CONSUMPTION_ADDRESS: "",
+        CONF_ACCOUNT_HOLDER_NAME: "Jane Doe",
+        CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+    }
+    assert subentry_title(account) == "Jane Doe"
+
+
+def test_subentry_title_falls_back_to_ban_when_address_and_holder_blank() -> None:
+    """Address and holder both blank fall through to the BAN."""
+    account = {
+        CONF_CONSUMPTION_ADDRESS: None,
+        CONF_ACCOUNT_HOLDER_NAME: "",
+        CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+    }
+    assert subentry_title(account) == "002200000001"

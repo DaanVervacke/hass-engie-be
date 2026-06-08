@@ -32,6 +32,7 @@ from custom_components.engie_be.api import (
     _REDACT_HEADER_KEYS,
     _REDACTED,
     EngieBeApiClient,
+    EngieBeApiClientAuthenticationError,
     EngieBeApiClientCommunicationError,
     EpexNotPublishedError,
     _redact_body,
@@ -117,6 +118,29 @@ class TestRedactMapping:
             _PARTIAL_MASK_BODY_KEYS,
         )
         assert out == {"ean": f"{_REDACTED}0001", "other": "x"}
+
+    def test_partial_mask_mapping_value_recurses(self) -> None:
+        """A partial-mask key holding a Mapping recurses with both key sets."""
+        # ``ean`` is a partial-mask key; when its value is itself a dict
+        # the partial branch must recurse so nested credentials are still
+        # fully masked (api.py redaction line: partial-key -> Mapping).
+        out = _redact_mapping(
+            {"ean": {"refresh_token": "v0.x", "ok": True}},
+            _REDACT_BODY_KEYS,
+            _PARTIAL_MASK_BODY_KEYS,
+        )
+        assert out == {"ean": {"refresh_token": _REDACTED, "ok": True}}
+
+    def test_partial_mask_non_coercible_value_fully_redacted(self) -> None:
+        """A partial-mask key holding a non-str/num/Mapping/list is fully masked."""
+        # ``None`` cannot be partial-masked (no tail to keep), so the
+        # else-branch collapses it to ``***`` rather than leaking the type.
+        out = _redact_mapping(
+            {"ean": None, "keep": "x"},
+            _REDACT_BODY_KEYS,
+            _PARTIAL_MASK_BODY_KEYS,
+        )
+        assert out == {"ean": _REDACTED, "keep": "x"}
 
     def test_partial_mask_case_insensitive(self) -> None:
         """PII key matching is case-insensitive (matches camelCase API keys)."""
@@ -276,6 +300,24 @@ class TestRedactBody:
         """Malformed JSON returns the raw string rather than raising."""
         out = _redact_body("not really json {{{", "application/json")
         assert out == "not really json {{{"
+
+    def test_non_str_non_bytes_body_uses_repr(self) -> None:
+        """A non-str/bytes/dict/list body (e.g. int) falls back to ``repr``."""
+        # Defensive branch: callers normally pass str/bytes/dict, but an
+        # int must not raise -- it is rendered via ``repr`` verbatim.
+        assert _redact_body(12345, None) == "12345"
+
+    def test_json_list_body_redacted_elementwise(self) -> None:
+        """A JSON-string body parsing to a list redacts each mapping item."""
+        body = json.dumps([{"refresh_token": "v0.x"}, {"ok": True}])
+        out = _redact_body(body, "application/json")
+        assert json.loads(out) == [{"refresh_token": _REDACTED}, {"ok": True}]
+
+    def test_json_scalar_body_passes_through(self) -> None:
+        """A JSON-string body parsing to a scalar returns the raw body."""
+        # ``json.loads`` yields an int; neither Mapping nor list, so the
+        # original body string is returned unchanged.
+        assert _redact_body("42", "application/json") == "42"
 
     def test_relations_response_pii_partially_masked(self) -> None:
         """ENGIE relations payload: PII keys are partial-masked end-to-end."""
@@ -690,3 +732,92 @@ async def test_authorization_header_redacted_in_logs(
     # The header key is preserved (so logs remain greppable) but value masked.
     assert "authorization" in blob.lower()
     assert _REDACTED in blob
+
+
+# ---------------------------------------------------------------------------
+# Direct _api_wrapper branches not reachable via the public helpers:
+# auth-error debug log, text-body return, include_headers, timeout.
+# ---------------------------------------------------------------------------
+
+
+async def test_api_wrapper_auth_error_logs_failure_and_raises(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A 401 with DEBUG on logs a ✗ line and raises the auth error."""
+    response = _make_response(
+        status=401, text_body="Unauthorized", content_type="text/plain"
+    )
+    session = _make_session(response)
+    client = EngieBeApiClient(session=session, client_id="c", access_token="t")  # noqa: S106
+
+    with (
+        caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
+        pytest.raises(EngieBeApiClientAuthenticationError),
+    ):
+        await client._api_wrapper(
+            session=session,
+            method="GET",
+            url="https://api.example/x",
+        )
+
+    error_lines = [m for m in _arrows_for(caplog.records) if m.startswith("✗")]
+    assert error_lines, "expected a ✗ debug line on 401"
+    assert "status=401" in error_lines[0]
+
+
+async def test_api_wrapper_returns_text_body_when_not_json(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """With ``json_response=False`` the raw response text is returned."""
+    response = _make_response(status=200, text_body="pong", content_type="text/plain")
+    session = _make_session(response)
+    client = EngieBeApiClient(session=session, client_id="c", access_token="t")  # noqa: S106
+
+    with caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME):
+        result = await client._api_wrapper(
+            session=session,
+            method="GET",
+            url="https://api.example/x",
+        )
+
+    assert result == "pong"
+
+
+async def test_api_wrapper_include_headers_returns_tuple() -> None:
+    """``include_headers=True`` returns a ``(body, headers)`` tuple."""
+    response = _make_response(status=200, text_body="pong", content_type="text/plain")
+    session = _make_session(response)
+    client = EngieBeApiClient(session=session, client_id="c", access_token="t")  # noqa: S106
+
+    body, headers = await client._api_wrapper(
+        session=session,
+        method="GET",
+        url="https://api.example/x",
+        include_headers=True,
+    )
+
+    assert body == "pong"
+    assert headers["Content-Type"] == "text/plain"
+
+
+async def test_api_wrapper_timeout_logs_failure_and_raises(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A ``TimeoutError`` from the session logs a ✗ line and is wrapped."""
+    session = MagicMock()
+    session.request = AsyncMock(side_effect=TimeoutError())
+    client = EngieBeApiClient(session=session, client_id="c", access_token="t")  # noqa: S106
+
+    with (
+        caplog.at_level(logging.DEBUG, logger=_LOGGER_NAME),
+        pytest.raises(EngieBeApiClientCommunicationError),
+    ):
+        await client._api_wrapper(
+            session=session,
+            method="GET",
+            url="https://api.example/x",
+        )
+
+    error_lines = [m for m in _arrows_for(caplog.records) if m.startswith("✗")]
+    assert error_lines, "expected a ✗ debug line on timeout"
+    assert "timeout" in error_lines[0]

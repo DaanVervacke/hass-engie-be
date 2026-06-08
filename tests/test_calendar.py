@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from homeassistant.components.calendar import CalendarEvent
+from homeassistant.util import dt as dt_util
 
-from custom_components.engie_be.calendar import EngieBeCalendar, happy_hour_events
+from custom_components.engie_be.calendar import (
+    EngieBeCalendar,
+    async_setup_entry,
+    happy_hour_events,
+)
 from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
+
+if TYPE_CHECKING:
+    import pytest
 
 _PEAKS_FIXTURE = Path(__file__).parent / "fixtures" / "peaks_2026_04.json"
 
@@ -384,3 +394,76 @@ def test_event_providers_includes_happy_hour_when_enrolled() -> None:
     calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
 
     assert happy_hour_events in calendar._event_providers
+
+
+# ---------------------------------------------------------------------------
+# event property time-window selection
+# ---------------------------------------------------------------------------
+
+
+def test_event_property_returns_active_window() -> None:
+    """An in-progress window is selected as the active event (L167)."""
+    now = dt_util.utcnow()
+    start = (now - timedelta(hours=1)).isoformat()
+    end = (now + timedelta(hours=1)).isoformat()
+    coordinator = _make_coordinator(
+        {"happy_hour": {"data": {"tomorrow": {"startTime": start, "endTime": end}}}},
+    )
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
+    event = calendar.event
+    assert event is not None
+    assert event.summary == "Happy Hour"
+    assert event.start == datetime.fromisoformat(start)
+
+
+def test_event_property_returns_next_upcoming_window() -> None:
+    """With no active event, the soonest upcoming window is selected (L170)."""
+    now = dt_util.utcnow()
+    start = (now + timedelta(hours=2)).isoformat()
+    end = (now + timedelta(hours=3)).isoformat()
+    coordinator = _make_coordinator(
+        {"happy_hour": {"data": {"tomorrow": {"startTime": start, "endTime": end}}}},
+    )
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
+    event = calendar.event
+    assert event is not None
+    assert event.summary == "Happy Hour"
+    assert event.start == datetime.fromisoformat(start)
+
+
+# ---------------------------------------------------------------------------
+# async_setup_entry subentry routing
+# ---------------------------------------------------------------------------
+
+
+async def test_async_setup_entry_skips_non_business_agreement_subentry() -> None:
+    """Subentries that are not business agreements are skipped (L66-67)."""
+    subentry = MagicMock()
+    subentry.subentry_id = "sub_other"
+    subentry.subentry_type = "some_other_type"
+    entry = MagicMock()
+    entry.subentries = {"sub_other": subentry}
+    async_add_entities = MagicMock()
+
+    await async_setup_entry(MagicMock(), entry, async_add_entities)
+
+    async_add_entities.assert_not_called()
+
+
+async def test_async_setup_entry_warns_when_subentry_runtime_missing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A BAN subentry without runtime data logs a warning and is skipped (L70-75)."""
+    subentry = _make_subentry(subentry_id="sub_ban")
+    entry = MagicMock()
+    entry.subentries = {"sub_ban": subentry}
+    entry.runtime_data.subentry_data = {}
+    async_add_entities = MagicMock()
+
+    with caplog.at_level(logging.WARNING, logger="custom_components.engie_be"):
+        await async_setup_entry(MagicMock(), entry, async_add_entities)
+
+    async_add_entities.assert_not_called()
+    assert "No runtime data for subentry sub_ban" in caplog.text

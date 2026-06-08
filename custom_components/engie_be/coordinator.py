@@ -759,11 +759,29 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
             update_interval=timedelta(minutes=update_minutes),
         )
         self._last_update_success_time: datetime | None = None
+        self._unavailable_logged = False
 
     @property
     def last_update_success_time(self) -> datetime | None:
         """Return the UTC timestamp of the last successful EPEX fetch."""
         return self._last_update_success_time
+
+    def _note_unavailable(self, message: str, exception: Exception) -> None:
+        """
+        Log an EPEX fetch/parse failure at most once per outage.
+
+        The EPEX coordinator intentionally keeps serving the last-known
+        payload instead of raising :class:`UpdateFailed`, so it cannot rely
+        on the coordinator's built-in once-per-outage logging. This mirrors
+        the manual ``_unavailable_logged`` pattern from the quality-scale
+        ``log-when-unavailable`` rule: warn on the transition into the
+        failure state, then stay quiet (debug) for as long as it persists.
+        """
+        if self._unavailable_logged:
+            LOGGER.debug(message, exception)
+        else:
+            LOGGER.warning(message, exception)
+            self._unavailable_logged = True
 
     async def _async_update_data(self) -> EpexPayload | None:
         """
@@ -801,7 +819,7 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
             )
             return previous
         except EngieBeApiClientError as exception:
-            LOGGER.warning(
+            self._note_unavailable(
                 "Failed to fetch EPEX prices, keeping last-known payload: %s",
                 exception,
             )
@@ -810,12 +828,15 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
         try:
             parsed = _parse_epex_response(raw)
         except (KeyError, TypeError, ValueError) as exception:
-            LOGGER.warning(
+            self._note_unavailable(
                 "Failed to parse EPEX response, keeping last-known payload: %s",
                 exception,
             )
             return previous
         self._last_update_success_time = dt_util.utcnow()
+        if self._unavailable_logged:
+            LOGGER.info("EPEX prices fetch recovered; resuming fresh updates")
+            self._unavailable_logged = False
         return parsed
 
 

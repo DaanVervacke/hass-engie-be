@@ -2,6 +2,7 @@
 
 [![HACS Custom][hacsbadge]][hacs]
 [![GitHub Release][releasebadge]][release]
+[![Quality Scale][qualitybadge]][quality]
 [![License][licensebadge]](LICENSE)
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
@@ -393,4 +394,6 @@ since the last release live under the **[Unreleased]** section.
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg
 [release]: https://github.com/DaanVervacke/hass-engie-be/releases
 [releasebadge]: https://img.shields.io/github/v/release/DaanVervacke/hass-engie-be
+[quality]: https://www.home-assistant.io/docs/quality_scale/
+[qualitybadge]: https://img.shields.io/badge/quality_scale-silver-silver.svg
 [licensebadge]: https://img.shields.io/github/license/DaanVervacke/hass-engie-be

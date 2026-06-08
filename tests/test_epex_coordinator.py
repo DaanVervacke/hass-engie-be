@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -364,3 +365,128 @@ async def test_last_successful_fetch_metadata_via_coordinator_state(
 
     assert coordinator.last_update_success is True
     assert isinstance(coordinator.data, EpexPayload)
+
+
+# ---------------------------------------------------------------------------
+# log-when-unavailable: warn once per outage, info once on recovery
+# ---------------------------------------------------------------------------
+
+
+async def test_comms_outage_logs_warning_once_then_debug(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    A sustained comms outage must warn exactly once, then fall to debug.
+
+    The EPEX coordinator keeps serving the last-known payload instead of
+    raising ``UpdateFailed``, so it owns the ``log-when-unavailable``
+    contract manually: one WARNING on the transition into the outage,
+    DEBUG for every subsequent failed poll while it persists.
+    """
+    entry = _build_entry(hass)
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(
+        side_effect=EngieBeApiClientCommunicationError("502"),
+    )
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexCoordinator(hass=hass, config_entry=entry)
+
+    msg = "Failed to fetch EPEX prices"
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"),
+        patch(
+            "custom_components.engie_be.coordinator.dt_util.now",
+            return_value=_NOW_BRUSSELS,
+        ),
+    ):
+        for _ in range(3):
+            await coordinator._async_update_data()
+
+    fetch_records = [r for r in caplog.records if msg in r.getMessage()]
+    warnings = [r for r in fetch_records if r.levelno == logging.WARNING]
+    debugs = [r for r in fetch_records if r.levelno == logging.DEBUG]
+    assert len(warnings) == 1
+    assert len(debugs) == 2
+    assert coordinator._unavailable_logged is True
+
+
+async def test_recovery_logs_info_once_and_rearms(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """
+    Recovery emits one INFO and re-arms the warning for the next outage.
+
+    Sequence: fail -> succeed -> fail. We expect a WARNING on the first
+    failure, an INFO on recovery, and a *second* WARNING on the next
+    failure (proving the flag reset on recovery).
+    """
+    entry = _build_entry(hass)
+    epex_raw = json.loads(_EPEX_48H_FIXTURE.read_text(encoding="utf-8"))
+    err = EngieBeApiClientCommunicationError("502")
+
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(side_effect=[err, epex_raw, err])
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexCoordinator(hass=hass, config_entry=entry)
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"),
+        patch(
+            "custom_components.engie_be.coordinator.dt_util.now",
+            return_value=_NOW_BRUSSELS,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.dt_util.utcnow",
+            return_value=_NOW_UTC,
+        ),
+    ):
+        await coordinator._async_update_data()  # fail -> warn
+        assert coordinator._unavailable_logged is True
+        await coordinator._async_update_data()  # success -> recovered
+        assert coordinator._unavailable_logged is False
+        await coordinator._async_update_data()  # fail -> warn again
+
+    warnings = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING
+        and "Failed to fetch EPEX prices" in r.getMessage()
+    ]
+    recovered = [r for r in caplog.records if "recovered" in r.getMessage()]
+    assert len(warnings) == 2
+    assert len(recovered) == 1
+    assert recovered[0].levelno == logging.INFO
+
+
+async def test_parse_failure_logs_warning_once(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A sustained parse failure also warns once, then drops to debug."""
+    entry = _build_entry(hass)
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(return_value="not a dict")
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexCoordinator(hass=hass, config_entry=entry)
+
+    msg = "Failed to parse EPEX response"
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"),
+        patch(
+            "custom_components.engie_be.coordinator.dt_util.now",
+            return_value=_NOW_BRUSSELS,
+        ),
+    ):
+        await coordinator._async_update_data()
+        await coordinator._async_update_data()
+
+    parse_records = [r for r in caplog.records if msg in r.getMessage()]
+    warnings = [r for r in parse_records if r.levelno == logging.WARNING]
+    debugs = [r for r in parse_records if r.levelno == logging.DEBUG]
+    assert len(warnings) == 1
+    assert len(debugs) == 1

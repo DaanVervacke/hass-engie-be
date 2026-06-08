@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
@@ -24,6 +25,10 @@ from custom_components.engie_be.api import (
     EngieBeApiClientCommunicationError,
     EngieBeApiClientError,
     EngieBeApiClientMfaError,
+)
+from custom_components.engie_be.config_flow import (
+    EngieBeFlowHandler,
+    _collect_configured_identifiers,
 )
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
@@ -1121,3 +1126,86 @@ async def test_options_flow_rejects_out_of_range(
             await hass.config_entries.options.async_configure(
                 result["flow_id"], {CONF_UPDATE_INTERVAL: bad}
             )
+
+
+# ---------------------------------------------------------------------------
+# Defensive branches: post-MFA relations fetch failures and internal guards
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        EngieBeApiClientAuthenticationError("auth"),
+        EngieBeApiClientCommunicationError("connection"),
+        EngieBeApiClientError("unknown"),
+    ],
+)
+async def test_user_flow_relations_fetch_error_creates_entry_without_subentries(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+    exception: EngieBeApiClientError,
+) -> None:
+    """
+    A failed post-MFA relations fetch falls back to a subentry-less entry.
+
+    Exercises ``_async_fetch_initial_relations`` error handling (each of the
+    auth / communication / generic branches) plus the ``select_accounts``
+    fallback that creates the parent entry with no subentries.
+    """
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(side_effect=exception),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result["title"] == _EXPECTED_TITLE
+    assert result["data"][CONF_ACCESS_TOKEN] == _TOKENS[0]
+    assert result["result"].subentries == {}
+
+
+async def test_complete_mfa_without_active_flow_raises() -> None:
+    """``_complete_mfa`` rejects completion when no auth flow is active."""
+    handler = EngieBeFlowHandler()
+    # ``_client`` and ``_auth_flow_state`` default to None on a fresh handler.
+    with pytest.raises(EngieBeApiClientError):
+        await handler._complete_mfa(
+            mfa_code="123456",
+            mfa_method=MFA_METHOD_SMS,
+        )
+
+
+def test_collect_configured_identifiers_skips_non_business_agreement() -> None:
+    """Only business-agreement subentries contribute configured identifiers."""
+    business = SimpleNamespace(
+        subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+        unique_id="BAN-1",
+        data={CONF_BUSINESS_AGREEMENT_NUMBER: "BAN-1"},
+    )
+    other = SimpleNamespace(
+        subentry_type="some_other_type",
+        unique_id="OTHER",
+        data={CONF_BUSINESS_AGREEMENT_NUMBER: "OTHER"},
+    )
+    entry = SimpleNamespace(subentries={"a": business, "b": other})
+
+    assert _collect_configured_identifiers(entry) == {"BAN-1"}

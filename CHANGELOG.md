@@ -9,11 +9,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- Promoted the integration to the Home Assistant **Silver** quality
+  scale. All Silver-tier rules are met: config-entry unloading,
+  documented installation and configuration parameters, entity
+  unavailability handling, an integration owner, log-when-unavailable
+  behaviour, `PARALLEL_UPDATES` on every platform, a re-authentication
+  flow, and above-95% test coverage. The integration page in Home
+  Assistant now shows the Silver badge.
 - Raised the minimum supported Home Assistant version to `2026.6.0`,
   dropping support for earlier versions.
 
 ### Chore
 
+- Raised the CI coverage gate from 85% to 95% (`--cov-fail-under=95`),
+  matching the Silver-tier `test-coverage` requirement.
 - Audited the integration against Home Assistant 2026.6 and bumped the
   development and test pins to match (Home Assistant `2026.6.1`,
   `pytest-homeassistant-custom-component` `0.13.337`, ruff `0.14.14`).
@@ -22,6 +31,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Tests
 
+- Raised test coverage of the API client (`api.py`) from 78% to 99%,
+  adding unit tests for request/response logging redaction (mappings,
+  bodies, lists, and non-coercible values) and the low-level
+  `_api_wrapper` paths (authentication errors, non-JSON text bodies,
+  header-returning calls, and timeouts). Every module is now at or
+  above 95% coverage, with a project total of 99%.
 - The three Happy Hour scheduler tests that deliberately leave a timer
   armed for a far-future window now cancel that timer before they
   finish. The newer test harness

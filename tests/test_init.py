@@ -8,14 +8,23 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.config_entries import ConfigSubentry, ConfigSubentryData
+import pytest
+from homeassistant.config_entries import (
+    ConfigEntryState,
+    ConfigSubentry,
+    ConfigSubentryData,
+)
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be import (
+    _async_populate_dynamic_flags,
+    _async_populate_service_points,
     _persist_tokens,
     async_migrate_entry,
     async_reload_entry,
+    async_setup_entry,
 )
 from custom_components.engie_be.api import (
     EngieBeApiClientAuthenticationError,
@@ -38,7 +47,6 @@ from custom_components.engie_be.data import EngieBeData
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    import pytest
     from homeassistant.core import HomeAssistant
 
 
@@ -196,6 +204,27 @@ async def test_setup_entry_raises_config_entry_auth_failed_on_initial_refresh(
         if flow["handler"] == DOMAIN and flow["context"].get("source") == "reauth"
     ]
     assert len(reauth_flows) == 1
+
+
+async def test_setup_entry_raises_config_entry_not_ready_on_initial_refresh(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """An API error during initial token refresh must defer setup for retry."""
+    entry = _build_entry(hass)
+    client = _make_client(
+        refresh_side_effect=EngieBeApiClientError("upstream down"),
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is False
+    assert entry.state is ConfigEntryState.SETUP_RETRY
 
 
 async def test_periodic_refresh_callback_starts_reauth_on_auth_error(
@@ -929,3 +958,229 @@ async def test_setup_entry_dynamic_override_falls_back_on_non_dict_payload(
     assert sub_data.is_dynamic_override is None
     # Cache must not be populated with garbage.
     assert sub_data.energy_contracts_payload is None
+
+
+# ---------------------------------------------------------------------------
+# Periodic refresh callback — success path
+# ---------------------------------------------------------------------------
+
+
+async def test_periodic_refresh_callback_persists_tokens_on_success(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A successful scheduled refresh persists the rotated pair and re-marks authed."""
+    entry = _build_entry(hass)
+    client = _make_client()
+
+    captured: list[Callable[[object], Any]] = []
+
+    def _capture_callback(
+        _hass: HomeAssistant,
+        callback: Callable[[object], Any],
+        _interval: object,
+    ) -> Callable[[], None]:
+        captured.append(callback)
+        return MagicMock()
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.async_track_time_interval",
+            side_effect=_capture_callback,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    refresh_callback = captured[0]
+
+    # Flip the authed flag off and re-arm the client to rotate to a fresh
+    # token pair, then drive the callback: it must persist the new pair,
+    # flip ``authenticated`` back on and log the success at debug level.
+    entry.runtime_data.authenticated = False
+    client.async_refresh_token = AsyncMock(
+        return_value=("rotated-access-2", "rotated-refresh-2"),
+    )
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"):
+        await refresh_callback(None)
+        await hass.async_block_till_done()
+
+    assert entry.data[CONF_ACCESS_TOKEN] == "rotated-access-2"
+    assert entry.data[CONF_REFRESH_TOKEN] == "rotated-refresh-2"
+    assert entry.runtime_data.authenticated is True
+    assert "Token refreshed successfully" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# First-refresh gather — exception prioritisation (auth > not-ready > first)
+# ---------------------------------------------------------------------------
+
+
+async def test_first_refresh_gather_prioritises_auth_failure(
+    hass: HomeAssistant,
+) -> None:
+    """ConfigEntryAuthFailed wins even when a not-ready error also surfaced."""
+    entry = _build_entry(hass)
+    client = _make_client(refresh_return=("stored-access", "stored-refresh"))
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(side_effect=ConfigEntryNotReady("upstream down")),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(side_effect=ConfigEntryAuthFailed("expired")),
+        ),
+        pytest.raises(ConfigEntryAuthFailed, match="expired"),
+    ):
+        await async_setup_entry(hass, entry)
+
+    await hass.async_block_till_done()
+
+
+async def test_first_refresh_gather_prioritises_not_ready(
+    hass: HomeAssistant,
+) -> None:
+    """ConfigEntryNotReady wins over an unexpected error when no auth failure."""
+    entry = _build_entry(hass)
+    client = _make_client(refresh_return=("stored-access", "stored-refresh"))
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(side_effect=ConfigEntryNotReady("upstream down")),
+        ),
+        pytest.raises(ConfigEntryNotReady, match="upstream down"),
+    ):
+        await async_setup_entry(hass, entry)
+
+    await hass.async_block_till_done()
+
+
+async def test_first_refresh_gather_reraises_first_unexpected_error(
+    hass: HomeAssistant,
+) -> None:
+    """With only unexpected errors, the first gather result propagates verbatim."""
+    entry = _build_entry(hass)
+    client = _make_client(refresh_return=("stored-access", "stored-refresh"))
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(side_effect=ValueError("second")),
+        ),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await async_setup_entry(hass, entry)
+
+    await hass.async_block_till_done()
+
+
+# ---------------------------------------------------------------------------
+# Setup populate helpers — error propagation & skips
+# ---------------------------------------------------------------------------
+
+
+async def test_populate_service_points_reraises_non_api_error() -> None:
+    """A non-API error from a service-point lookup must propagate, not be swallowed."""
+    client = MagicMock()
+    client.async_get_service_point = AsyncMock(side_effect=ValueError("boom"))
+
+    sub_data = MagicMock()
+    sub_data.coordinator.data = {"items": [{"ean": "541448820000000001"}]}
+
+    entry = MagicMock()
+    entry.runtime_data.subentry_data = {"subentry-1": sub_data}
+
+    with pytest.raises(ValueError, match="boom"):
+        await _async_populate_service_points(client, entry)
+
+
+async def test_populate_dynamic_flags_skips_when_no_business_agreement(
+    hass: HomeAssistant,
+) -> None:
+    """An empty BAN yields no targets, so the contracts endpoint is never hit."""
+    entry = _build_entry(hass, business_agreement_number="")
+    client = _make_client()
+
+    await _async_populate_dynamic_flags(client, entry)
+
+    client.async_get_energy_contracts.assert_not_awaited()
+
+
+async def test_populate_dynamic_flags_skips_subentry_without_runtime_data(
+    hass: HomeAssistant,
+) -> None:
+    """A subentry missing from runtime_data is skipped without writing state."""
+    entry = _build_entry(hass)
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        epex_coordinator=MagicMock(),
+    )
+    client = _make_client()
+
+    await _async_populate_dynamic_flags(client, entry)
+
+    client.async_get_energy_contracts.assert_awaited_once_with("002200000001")
+
+
+async def test_populate_dynamic_flags_reraises_non_api_error(
+    hass: HomeAssistant,
+) -> None:
+    """A non-API error from the contracts lookup must propagate, not be swallowed."""
+    entry = _build_entry(hass)
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        epex_coordinator=MagicMock(),
+    )
+    sid = _only_subentry_id(entry)
+    entry.runtime_data.subentry_data[sid] = MagicMock()
+
+    client = _make_client()
+    client.async_get_energy_contracts = AsyncMock(side_effect=ValueError("boom"))
+
+    with pytest.raises(ValueError, match="boom"):
+        await _async_populate_dynamic_flags(client, entry)
