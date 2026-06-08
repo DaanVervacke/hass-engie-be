@@ -7,6 +7,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0b5] - 2026-06-08
+
+> [!CAUTION]
+> **Upgrade from v0.9.0, v0.10.0b1, v0.10.0b2, v0.10.0b3, or v0.10.0b4
+> only.** If you are still on v0.8.x or any earlier version, install
+> v0.9.0 first (which requires a clean reinstall, see its release
+> notes) and only then move to this release. Skipping v0.9.0 leaves
+> your config entry on a schema this release no longer migrates, and
+> the integration will refuse to load.
+
 ### Changed
 
 - Promoted the integration to the Home Assistant **Silver** quality
@@ -636,7 +646,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b4...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b5...HEAD
+[0.10.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b4...v0.10.0b5
 [0.10.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b3...v0.10.0b4
 [0.10.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b2...v0.10.0b3
 [0.10.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b1...v0.10.0b2
