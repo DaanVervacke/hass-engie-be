@@ -223,6 +223,7 @@ shows whether the integration is currently authenticated with the ENGIE API.
 > [ENGIE user management page](https://www.engie.be/nl/energiedesk/usermanagement/manage-access/)
 > and grant it access to your customer number.
 
+- Home Assistant **2026.6.0** or newer
 - A dedicated [ENGIE Belgium](https://www.engie.be/) account for this
   integration (see required callout above)
 - Access to SMS or email for two-factor authentication during setup

@@ -16,6 +16,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > notes) and only then move to this release. Skipping v0.9.0 leaves
 > your config entry on a schema this release no longer migrates, and
 > the integration will refuse to load.
+>
+> **This release requires Home Assistant 2026.6.0 or newer.** Older
+> Home Assistant versions are no longer supported, and HACS will not
+> offer this update on them.
 
 ### Changed
 
