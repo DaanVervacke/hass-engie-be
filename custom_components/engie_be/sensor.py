@@ -200,7 +200,7 @@ async def async_setup_entry(
     Set up the sensor platform.
 
     Builds entities once per :class:`ConfigSubentry` of type
-    ``customer_account``. Energy-price and peak sensors come from the
+    ``business_agreement``. Energy-price and peak sensors come from the
     per-subentry coordinator; EPEX sensors come from the entry-level
     EPEX coordinator and are gated on the per-subentry ``is_dynamic``
     flag so users on a fixed tariff never see them.

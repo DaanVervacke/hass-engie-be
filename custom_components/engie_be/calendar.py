@@ -1,10 +1,10 @@
 """
 Calendar platform for the ENGIE Belgium integration.
 
-One calendar entity is created per customer-account ConfigSubentry,
+One calendar entity is created per business-agreement ConfigSubentry,
 attached to that subentry's device. Today this exposes the monthly
-capacity-tariff (captar) peak window for every account and the
-upcoming Happy Hour window for accounts that are enrolled in the
+capacity-tariff (captar) peak window for every agreement and the
+upcoming Happy Hour window for agreements that are enrolled in the
 ENGIE Happy Hours service. New event types can be added without
 spawning a new calendar entity by registering an additional
 ``EventProvider`` below.

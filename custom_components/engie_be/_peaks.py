@@ -63,7 +63,7 @@ def captar_peak_events(
     """
     Return calendar events for every known captar peak window.
 
-    Combines persisted historical peaks (from the per-entry peak store)
+    Combines persisted historical peaks (from the per-subentry peak store)
     with the current month's peak window from the live coordinator
     payload. Entries are deduplicated by ``(year, month)`` so the live
     payload does not produce a duplicate event when the store already
