@@ -7,6 +7,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0b6] - 2026-06-10
+
+> [!CAUTION]
+> **Upgrade from v0.9.0, v0.10.0b1, v0.10.0b2, v0.10.0b3, v0.10.0b4,
+> or v0.10.0b5 only.** If you are still on v0.8.x or any earlier
+> version, install v0.9.0 first (which requires a clean reinstall, see
+> its release notes) and only then move to this release. Skipping
+> v0.9.0 leaves your config entry on a schema this release no longer
+> migrates, and the integration will refuse to load.
+>
+> **This release requires Home Assistant 2026.6.0 or newer.** Older
+> Home Assistant versions are no longer supported, and HACS will not
+> offer this update on them.
+
 ### Fixed
 
 - The authentication binary sensor now updates immediately when the scheduled
@@ -661,7 +675,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b5...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b6...HEAD
+[0.10.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b5...v0.10.0b6
 [0.10.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b4...v0.10.0b5
 [0.10.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b3...v0.10.0b4
 [0.10.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b2...v0.10.0b3
