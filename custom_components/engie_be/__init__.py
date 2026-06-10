@@ -253,16 +253,57 @@ async def async_reload_entry(
     Token rotation also fires this listener (it writes to ``entry.data``)
     but neither options nor the business-agreement subentry id set change
     on token rotation, so the no-op short-circuit holds.
+
+    A multi-pick subentry add writes N subentries via N separate
+    ``async_add_subentry`` calls, each scheduling this listener. The
+    subentry picker sets ``runtime_data.pending_subentry_target`` to the
+    final expected set of business-agreement numbers (BANs) so intermediate
+    listener runs (whose current BAN set does not yet cover the target)
+    suppress their reload; the run that first observes the full target
+    clears the gate and reloads once.
     """
-    options_changed = dict(entry.options) != entry.runtime_data.last_options
+    runtime = entry.runtime_data
+    options_changed = dict(entry.options) != runtime.last_options
     current_subentry_ids = {
         sub.subentry_id
         for sub in entry.subentries.values()
         if sub.subentry_type == SUBENTRY_TYPE_BUSINESS_AGREEMENT
     }
-    subentries_changed = current_subentry_ids != entry.runtime_data.last_subentry_ids
+    subentries_changed = current_subentry_ids != runtime.last_subentry_ids
+
+    target = runtime.pending_subentry_target
+    if target is not None and not options_changed:
+        # A multi-add is in progress. Suppress until the full target BAN set
+        # is present, then reload exactly once. ``>=`` (superset) rather than
+        # strict equality so an unrelated concurrent removal cannot wedge the
+        # gate open forever; reaching or passing the target clears it.
+        if _business_agreement_numbers(entry) >= target:
+            runtime.pending_subentry_target = None
+            await hass.config_entries.async_reload(entry.entry_id)
+        return
+
     if options_changed or subentries_changed:
         await hass.config_entries.async_reload(entry.entry_id)
+
+
+def _business_agreement_numbers(entry: EngieBeConfigEntry) -> set[str]:
+    """
+    Return the set of BANs currently attached as business-agreement subentries.
+
+    A subentry's BAN is its ``unique_id`` (set by the picker), falling back
+    to the stored ``CONF_BUSINESS_AGREEMENT_NUMBER`` for robustness. Used by
+    the ``pending_subentry_target`` reload gate, which keys on BANs rather
+    than subentry ids because the first pick's ``subentry_id`` is generated
+    by the framework finish path and is not predictable up front.
+    """
+    bans: set[str] = set()
+    for sub in entry.subentries.values():
+        if sub.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
+            continue
+        ban = sub.unique_id or (sub.data or {}).get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            bans.add(ban)
+    return bans
 
 
 def _persist_tokens(

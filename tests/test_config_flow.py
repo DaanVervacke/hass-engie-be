@@ -1,4 +1,4 @@
-"""Smoke tests for the ENGIE Belgium config flow (v3 ConfigSubentries)."""
+"""Smoke tests for the ENGIE Belgium config flow (v5 ConfigSubentries)."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.engie_be import async_reload_entry
 from custom_components.engie_be.api import (
     AuthFlowState,
     EngieBeApiClientAuthenticationError,
@@ -49,6 +50,7 @@ from custom_components.engie_be.const import (
     MIN_UPDATE_INTERVAL_MINUTES,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
+from custom_components.engie_be.data import EngieBeData
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -657,6 +659,115 @@ async def test_subentry_picker_creates_first_and_appends_extras(
     assert len(entry.subentries) == 2
     business_agreements = {sub.unique_id for sub in entry.subentries.values()}
     assert business_agreements == {"002200000001", "002200000002"}
+
+
+async def test_subentry_picker_multi_pick_collapses_to_single_reload(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Multi-pick add must trigger exactly one config-entry reload.
+
+    The picker writes each selected business agreement with a separate
+    ``async_add_subentry`` call (plus the framework finish-path add for the
+    first pick), each of which schedules the integration's update listener.
+    The ``pending_subentry_target`` gate must suppress the intermediate
+    reloads so the listener reloads once, when the full selected set lands.
+    """
+    entry = _build_parent_entry(hass)
+    entry.runtime_data = EngieBeData(
+        client=AsyncMock(),
+        epex_coordinator=AsyncMock(),
+        last_subentry_ids=set(),
+    )
+    # Register the real reload listener, exactly as async_setup_entry does.
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    relations = _load_relations_fixture()
+
+    reload_calls: list[str] = []
+
+    async def _fake_reload(entry_id: str) -> None:
+        reload_calls.append(entry_id)
+        # Mirror a real reload: a fresh runtime_data whose snapshot equals
+        # the current subentry-id set (and no pending target).
+        entry.runtime_data = EngieBeData(
+            client=AsyncMock(),
+            epex_coordinator=AsyncMock(),
+            last_subentry_ids={
+                sub.subentry_id
+                for sub in entry.subentries.values()
+                if sub.subentry_type == SUBENTRY_TYPE_BUSINESS_AGREEMENT
+            },
+        )
+        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_reload",
+            side_effect=_fake_reload,
+        ),
+    ):
+        result = await _init_subentry_flow(hass, entry)
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_SELECTED_ACCOUNTS: ["002200000001", "002200000002"]},
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert len(entry.subentries) == 2
+    # Exactly one reload despite two separate subentry writes.
+    assert reload_calls == [entry.entry_id]
+    # The gate is cleared after the reload fires.
+    assert entry.runtime_data.pending_subentry_target is None
+
+
+async def test_subentry_picker_single_pick_reloads_once(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A single-pick add still triggers exactly one reload through the gate."""
+    entry = _build_parent_entry(hass)
+    entry.runtime_data = EngieBeData(
+        client=AsyncMock(),
+        epex_coordinator=AsyncMock(),
+        last_subentry_ids=set(),
+    )
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    relations = _load_relations_fixture()
+
+    reload_calls: list[str] = []
+
+    async def _fake_reload(entry_id: str) -> None:
+        reload_calls.append(entry_id)
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_reload",
+            side_effect=_fake_reload,
+        ),
+    ):
+        result = await _init_subentry_flow(hass, entry)
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_SELECTED_ACCOUNTS: ["002200000001"]},
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert len(entry.subentries) == 1
+    assert reload_calls == [entry.entry_id]
+    assert entry.runtime_data.pending_subentry_target is None
 
 
 async def test_subentry_picker_skips_already_configured(

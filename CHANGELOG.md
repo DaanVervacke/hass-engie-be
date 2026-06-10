@@ -13,6 +13,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   token refresh marks the ENGIE session authenticated or unauthenticated. It no
   longer waits for an unrelated coordinator update before showing a refresh
   failure or recovery.
+- Adding multiple business agreements in one picker run now triggers exactly
+  one config-entry reload instead of one per selected agreement. Each
+  agreement is still written as its own subentry, but the intermediate
+  reloads are suppressed until the full selection is in place.
 
 ## [0.10.0b5] - 2026-06-08
 
