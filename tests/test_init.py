@@ -40,6 +40,7 @@ from custom_components.engie_be.const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_CLIENT_ID,
     DOMAIN,
+    SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from custom_components.engie_be.data import EngieBeData
@@ -285,11 +286,18 @@ async def test_periodic_refresh_callback_starts_reauth_on_auth_error(
     client.async_refresh_token = AsyncMock(
         side_effect=EngieBeApiClientAuthenticationError("revoked"),
     )
-    with patch.object(entry, "async_start_reauth") as start_reauth:
+    with (
+        patch.object(entry, "async_start_reauth") as start_reauth,
+        patch("custom_components.engie_be.async_dispatcher_send") as dispatcher_send,
+    ):
         await refresh_callback(None)
 
     assert entry.runtime_data.authenticated is False
     start_reauth.assert_called_once_with(hass)
+    dispatcher_send.assert_called_once_with(
+        hass,
+        SIGNAL_AUTHENTICATION_STATE_CHANGED.format(entry_id=entry.entry_id),
+    )
 
 
 async def test_periodic_refresh_callback_logs_exception_detail_on_error(
@@ -353,7 +361,10 @@ async def test_periodic_refresh_callback_logs_exception_detail_on_error(
         ),
     )
     caplog.clear()
-    with caplog.at_level(logging.WARNING, logger="custom_components.engie_be"):
+    with (
+        caplog.at_level(logging.WARNING, logger="custom_components.engie_be"),
+        patch("custom_components.engie_be.async_dispatcher_send") as dispatcher_send,
+    ):
         await refresh_callback(None)
 
     matching = [
@@ -370,6 +381,10 @@ async def test_periodic_refresh_callback_logs_exception_detail_on_error(
     assert "ClientConnectorError" in message, message
     assert "will retry" in message, message
     assert entry.runtime_data.authenticated is False
+    dispatcher_send.assert_called_once_with(
+        hass,
+        SIGNAL_AUTHENTICATION_STATE_CHANGED.format(entry_id=entry.entry_id),
+    )
 
 
 def test_persist_tokens_writes_only_token_fields(
@@ -1017,7 +1032,10 @@ async def test_periodic_refresh_callback_persists_tokens_on_success(
         return_value=("rotated-access-2", "rotated-refresh-2"),
     )
     caplog.clear()
-    with caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"):
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"),
+        patch("custom_components.engie_be.async_dispatcher_send") as dispatcher_send,
+    ):
         await refresh_callback(None)
         await hass.async_block_till_done()
 
@@ -1025,6 +1043,10 @@ async def test_periodic_refresh_callback_persists_tokens_on_success(
     assert entry.data[CONF_REFRESH_TOKEN] == "rotated-refresh-2"
     assert entry.runtime_data.authenticated is True
     assert "Token refreshed successfully" in caplog.text
+    dispatcher_send.assert_called_once_with(
+        hass,
+        SIGNAL_AUTHENTICATION_STATE_CHANGED.format(entry_id=entry.entry_id),
+    )
 
 
 # ---------------------------------------------------------------------------

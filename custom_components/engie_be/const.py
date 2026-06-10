@@ -68,6 +68,11 @@ USER_AGENT_NATIVE = "Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.2512
 # Token refresh interval in seconds (access token valid ~2 min, refresh every 1 min)
 TOKEN_REFRESH_INTERVAL_SECONDS = 60
 
+# Dispatcher signal format for login-scoped authentication state changes.
+SIGNAL_AUTHENTICATION_STATE_CHANGED = (
+    f"{DOMAIN}_authentication_state_changed_{{entry_id}}"
+)
+
 # Price update interval (configurable via options flow)
 CONF_UPDATE_INTERVAL = "update_interval"
 DEFAULT_UPDATE_INTERVAL_MINUTES = 60

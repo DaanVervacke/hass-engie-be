@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from homeassistant.const import Platform
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 
 from ._contracts import is_account_dynamic
@@ -24,6 +25,7 @@ from .const import (
     CONF_REFRESH_TOKEN,
     DEFAULT_CLIENT_ID,
     LOGGER,
+    SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
     TOKEN_REFRESH_INTERVAL_SECONDS,
 )
@@ -108,7 +110,7 @@ async def async_setup_entry(
         raise ConfigEntryNotReady(msg) from err
 
     _persist_tokens(hass, entry, new_access, new_refresh)
-    entry.runtime_data.authenticated = True
+    _set_authenticated(hass, entry, authenticated=True)
 
     # Recurring token refresh (one timer per parent entry, not per
     # subentry: tokens are login-scoped, not account-scoped).
@@ -117,14 +119,14 @@ async def async_setup_entry(
         try:
             new_access, new_refresh = await client.async_refresh_token()
         except EngieBeApiClientAuthenticationError:
-            entry.runtime_data.authenticated = False
+            _set_authenticated(hass, entry, authenticated=False)
             LOGGER.warning(
                 "Scheduled token refresh rejected by ENGIE; starting reauth flow"
             )
             entry.async_start_reauth(hass)
             return
         except EngieBeApiClientError as err:
-            entry.runtime_data.authenticated = False
+            _set_authenticated(hass, entry, authenticated=False)
             # The API client embeds HTTP status / underlying exception class
             # into the message (see api.py: "HTTP {status}: {body_preview}",
             # "Timeout communicating ... ({TimeoutError})", etc.), so logging
@@ -138,7 +140,7 @@ async def async_setup_entry(
             return
 
         _persist_tokens(hass, entry, new_access, new_refresh)
-        entry.runtime_data.authenticated = True
+        _set_authenticated(hass, entry, authenticated=True)
         LOGGER.debug("Token refreshed successfully")
 
     # Build per-subentry coordinators, peak stores and service-points
@@ -287,6 +289,22 @@ def _persist_tokens(
     updated_data[CONF_ACCESS_TOKEN] = access_token
     updated_data[CONF_REFRESH_TOKEN] = refresh_token
     hass.config_entries.async_update_entry(entry, data=updated_data)
+
+
+def _set_authenticated(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+    *,
+    authenticated: bool,
+) -> None:
+    """Update login auth state and notify the auth binary sensor on changes."""
+    if entry.runtime_data.authenticated == authenticated:
+        return
+    entry.runtime_data.authenticated = authenticated
+    async_dispatcher_send(
+        hass,
+        SIGNAL_AUTHENTICATION_STATE_CHANGED.format(entry_id=entry.entry_id),
+    )
 
 
 async def _async_init_peaks_store(

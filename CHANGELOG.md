@@ -7,6 +7,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- The authentication binary sensor now updates immediately when the scheduled
+  token refresh marks the ENGIE session authenticated or unauthenticated. It no
+  longer waits for an unrelated coordinator update before showing a refresh
+  failure or recovery.
+
 ## [0.10.0b5] - 2026-06-08
 
 > [!CAUTION]

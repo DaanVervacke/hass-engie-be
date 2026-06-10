@@ -10,6 +10,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.const import EntityCategory
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.util import dt as dt_util
 
 from ._epex import next_epex_slot_boundary
@@ -18,6 +19,7 @@ from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     LOGGER,
+    SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from .data import EpexPayload
@@ -64,12 +66,12 @@ EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
 
 # Happy Hour active indicator.
 #
-# Created per business agreement. The happy-hour endpoint is account
-# scoped and not gated on dynamic tariff, so this entity is always
-# created. It is always available: ``on`` while the current moment
-# falls inside a scheduled window, ``off`` otherwise (including when
-# no event is scheduled). The companion timestamp sensors expose the
-# "scheduled vs not scheduled" distinction.
+# Created per Happy Hour-enrolled business agreement. The happy-hour
+# endpoint is account scoped and not gated on dynamic tariff. The entity
+# is available when created: ``on`` while the current moment falls inside
+# a scheduled window, ``off`` otherwise (including when no event is
+# scheduled). The companion timestamp sensors expose the "scheduled vs
+# not scheduled" distinction.
 HAPPY_HOUR_ACTIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="happy_hour_active",
     translation_key="happy_hour_active",
@@ -183,6 +185,19 @@ class EngieBeAuthSensor(EngieBeAuthEntity, BinarySensorEntity):
         """Initialise the authentication binary sensor."""
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_authentication"
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to login-scoped auth-state changes."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_AUTHENTICATION_STATE_CHANGED.format(
+                    entry_id=self._entry.entry_id,
+                ),
+                self.async_write_ha_state,
+            )
+        )
 
     @property
     def available(self) -> bool:

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 from homeassistant.const import EntityCategory
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from custom_components.engie_be.binary_sensor import (
     EPEX_NEGATIVE_SENSOR_DESCRIPTION,
@@ -17,9 +19,17 @@ from custom_components.engie_be.binary_sensor import (
 )
 from custom_components.engie_be.const import (
     EPEX_TZ,
+    SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
 from custom_components.engie_be.data import EpexPayload, EpexSlot
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from homeassistant.core import HomeAssistant
+
+    AddSensor = Callable[[HomeAssistant, object], Awaitable[None]]
 
 _BRUSSELS = ZoneInfo(EPEX_TZ)
 
@@ -288,6 +298,46 @@ def _make_entry(
     entry.runtime_data.subentry_data = sub_runtime
     entry.runtime_data.authenticated = True
     return entry
+
+
+async def test_auth_sensor_updates_on_auth_dispatch_signal(
+    hass: HomeAssistant,
+    add_sensor: AddSensor,
+) -> None:
+    """Auth sensor must write fresh state when token refresh changes auth status."""
+    coordinator = _make_epex_coordinator(None)
+    entry = _make_entry(
+        coordinator,
+        subentries={},
+        sub_runtime={},
+    )
+    sensor = EngieBeAuthSensor(coordinator=coordinator, entry=entry)
+    sensor.async_write_ha_state = MagicMock()
+
+    await add_sensor(hass, sensor)
+    entry.runtime_data.authenticated = False
+    async_dispatcher_send(
+        hass,
+        SIGNAL_AUTHENTICATION_STATE_CHANGED.format(entry_id=entry.entry_id),
+    )
+
+    sensor.async_write_ha_state.assert_called_once_with()
+    assert sensor.is_on is False
+
+
+def test_auth_sensor_reads_initial_runtime_auth_state_without_signal() -> None:
+    """Auth sensor initial state comes from runtime_data, not a dispatcher event."""
+    coordinator = _make_epex_coordinator(None)
+    entry = _make_entry(
+        coordinator,
+        subentries={},
+        sub_runtime={},
+    )
+
+    sensor = EngieBeAuthSensor(coordinator=coordinator, entry=entry)
+
+    assert entry.runtime_data.authenticated is True
+    assert sensor.is_on is True
 
 
 async def test_setup_entry_omits_negative_sensor_for_non_dynamic_account() -> None:
