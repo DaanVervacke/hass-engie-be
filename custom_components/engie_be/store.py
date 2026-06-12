@@ -1,9 +1,9 @@
 """
-Persistent storage of historical captar peak windows and Happy Hour windows.
+Persistent storage of historical captar peak windows and Happy Hours windows.
 
 ENGIE's peaks endpoint only returns the *current* month's
 ``peakOfTheMonth``; once a new month rolls over, the previous month's
-peak is no longer available from the API. The Happy Hour endpoint only
+peak is no longer available from the API. The Happy Hours endpoint only
 ever returns ``tomorrow``'s scheduled window (or ``{}``); windows that
 have already happened are not retrievable. Both stores persist every
 window we observe so the calendar entity can keep surfacing the full
@@ -130,7 +130,7 @@ def _is_valid_peak(peak: Any) -> bool:
 
 class EngieBeHappyHoursStore:
     """
-    Wrapper around ``Store`` for persisted Happy Hour window history.
+    Wrapper around ``Store`` for persisted Happy Hours window history.
 
     Entries are keyed by ``start`` (the ISO-formatted window start with
     explicit timezone offset, as supplied by ENGIE). The API publishes a
@@ -143,7 +143,7 @@ class EngieBeHappyHoursStore:
     The store can only ever contain windows the integration observed
     while running. Windows that happened before the user installed the
     integration, or before this store landed, are permanently lost
-    because ENGIE does not expose Happy Hour history.
+    because ENGIE does not expose Happy Hours history.
     """
 
     def __init__(self, hass: HomeAssistant, subentry_id: str) -> None:
@@ -158,7 +158,7 @@ class EngieBeHappyHoursStore:
         self._loaded: bool = False
 
     async def async_load(self) -> None:
-        """Load persisted Happy Hour windows into memory."""
+        """Load persisted Happy Hours windows into memory."""
         data = await self._store.async_load()
         if isinstance(data, dict):
             raw = data.get("windows")
@@ -166,7 +166,7 @@ class EngieBeHappyHoursStore:
                 self._windows = [w for w in raw if _is_valid_happy_hour(w)]
         self._loaded = True
         LOGGER.debug(
-            "Subentry %s: loaded %d historical Happy Hour windows from store",
+            "Subentry %s: loaded %d historical Happy Hours windows from store",
             self._subentry_id,
             len(self._windows),
         )

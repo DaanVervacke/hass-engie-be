@@ -1,7 +1,7 @@
 """
-Shared helpers for Happy Hour event data.
+Shared helpers for Happy Hours event data.
 
-The Happy Hour endpoint (``/business-agreements/{BAN}/happy-hour-event``)
+The Happy Hours endpoint (``/business-agreements/{BAN}/happy-hour-event``)
 returns ``{}`` (no event scheduled) or a payload carrying the upcoming
 window under a ``tomorrow`` key (announced the day before) and/or a
 ``today`` key (the *same* window, re-published once midnight passes).
@@ -26,13 +26,13 @@ from .const import HAPPY_HOURS_SERVICE_ENABLED_KEY, LOGGER
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
 
-_HAPPY_HOUR_EVENT_SUMMARY = "Happy Hour"
+_HAPPY_HOUR_EVENT_SUMMARY = "Happy Hours"
 _HAPPY_HOUR_EVENT_DESCRIPTION = "Free energy window"
 
 
 def is_enrolled_from_flags(flags: dict[str, Any] | None) -> bool:
     """
-    Return True iff the feature-flags response reports Happy Hour enrolled.
+    Return True iff the feature-flags response reports Happy Hours enrolled.
 
     The feature-flags endpoint returns a mapping keyed by flag name; each
     value is itself a dict with a ``value`` boolean (and usually a
@@ -55,7 +55,7 @@ def is_enrolled_from_flags(flags: dict[str, Any] | None) -> bool:
 
 def happy_hour_flag_reason(flags: dict[str, Any] | None) -> str | None:
     """
-    Return ENGIE's ``reason`` string for the Happy Hour service flag, or ``None``.
+    Return ENGIE's ``reason`` string for the Happy Hours service flag, or ``None``.
 
     Useful for debug logging so beta users can see *why* enrolment
     flipped (e.g. ``HAPPY_HOUR_ACTIVE`` vs ``HAPPY_HOUR_INACTIVE``)
@@ -175,17 +175,17 @@ def happy_hour_events(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> list[CalendarEvent]:
     """
-    Return calendar events for every known Happy Hour window.
+    Return calendar events for every known Happy Hours window.
 
     Combines persisted historical windows (from the per-subentry
-    Happy Hour history store) with the live window(s) from the current
+    Happy Hours history store) with the live window(s) from the current
     coordinator payload (``today`` and/or ``tomorrow``). Entries are
     deduplicated by ``start`` so the live payload does not produce a
     duplicate event when the store has already recorded it during an
     earlier refresh, nor when the same window appears under both keys.
 
     The integration can only ever surface windows it has observed
-    while running because ENGIE does not expose Happy Hour history.
+    while running because ENGIE does not expose Happy Hours history.
     Newly-installed integrations build the archive up from the moment
     they first see an enrolled account.
     """

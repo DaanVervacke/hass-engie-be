@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 EventProvider = Callable[["EngieBeDataUpdateCoordinator"], list[CalendarEvent]]
 
 # Providers that are always active for every customer-account calendar.
-# Account-conditional providers (e.g. Happy Hour for enrolled BANs only)
+# Account-conditional providers (e.g. Happy Hours for enrolled BANs only)
 # are appended in ``EngieBeCalendar.__init__`` based on subentry runtime
 # data rather than hard-coded here.
 EVENT_PROVIDERS: list[EventProvider] = [
@@ -120,7 +120,7 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
             f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_calendar"
         )
         # Build the per-instance provider list. Baseline providers
-        # (captar) apply to every account; Happy Hour events are only
+        # (captar) apply to every account; Happy Hours events are only
         # surfaced for accounts that are enrolled in the ENGIE Happy
         # Hours service. The parent entry is reloaded automatically
         # when enrolment flips so this list always reflects the current

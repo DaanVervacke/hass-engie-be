@@ -202,7 +202,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # window, so the event payload alone cannot distinguish the two.
         # Soft-fail on errors: an un-readable flag is treated as "no
         # signal change" so a transient outage never silently drops or
-        # creates Happy Hour entities.
+        # creates Happy Hours entities.
         previous_enrolled = self._read_cached_enrollment()
         new_enrolled = await self._async_fetch_enrollment(
             client,
@@ -210,7 +210,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             previous_enrolled=previous_enrolled,
         )
 
-        # Only poll the Happy Hour event endpoint for enrolled BANs.
+        # Only poll the Happy Hours event endpoint for enrolled BANs.
         # When un-enrolled, drop any stale wrapper so the entities (if
         # they exist from a previous enrolled run that has not been
         # reloaded yet) immediately report no scheduled window.
@@ -245,7 +245,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return data
 
     def _read_cached_enrollment(self) -> bool | None:
-        """Return the previously-observed Happy Hour enrolment, or ``None``."""
+        """Return the previously-observed Happy Hours enrolment, or ``None``."""
         runtime = getattr(self.config_entry, "runtime_data", None)
         if runtime is None:
             return None
@@ -280,7 +280,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except EngieBeApiClientError as exception:
             LOGGER.warning(
                 "Failed to fetch feature flags for BAN %s, "
-                "keeping last-known Happy Hour enrolment (%s): %s",
+                "keeping last-known Happy Hours enrolment (%s): %s",
                 mask_identifier(business_agreement_number),
                 previous_enrolled,
                 exception,
@@ -290,7 +290,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         enrolled = is_enrolled_from_flags(flags)
         reason = happy_hour_flag_reason(flags)
         LOGGER.debug(
-            "BAN %s: Happy Hour enrolment from feature flags is %s (reason=%s)",
+            "BAN %s: Happy Hours enrolment from feature flags is %s (reason=%s)",
             mask_identifier(business_agreement_number),
             enrolled,
             reason,
@@ -329,7 +329,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if previous_enrolled is None:
             LOGGER.debug(
-                "BAN %s: initial Happy Hour enrolment observed as %s; "
+                "BAN %s: initial Happy Hours enrolment observed as %s; "
                 "platforms will register accordingly",
                 mask_identifier(self.business_agreement_number),
                 new_enrolled,
@@ -342,7 +342,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         runtime.reload_pending = True
         LOGGER.info(
-            "Happy Hour enrolment changed for BAN %s (%s -> %s); "
+            "Happy Hours enrolment changed for BAN %s (%s -> %s); "
             "reloading config entry to reconcile entities",
             mask_identifier(self.business_agreement_number),
             previous_enrolled,
@@ -407,7 +407,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if scheduled:
                 for key, window in scheduled.items():
                     LOGGER.debug(
-                        "BAN %s: Happy Hour payload reports window for %s "
+                        "BAN %s: Happy Hours payload reports window for %s "
                         "(start=%s end=%s)",
                         ban_masked,
                         key,
@@ -416,12 +416,12 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
             else:
                 LOGGER.debug(
-                    "BAN %s: Happy Hour payload empty (no window scheduled)",
+                    "BAN %s: Happy Hours payload empty (no window scheduled)",
                     ban_masked,
                 )
         else:
             LOGGER.debug(
-                "BAN %s: Happy Hour payload was not a dict; storing None",
+                "BAN %s: Happy Hours payload was not a dict; storing None",
                 ban_masked,
             )
         return wrapper
@@ -468,7 +468,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _record_happy_hour_history(self, happy_hour_wrapper: dict[str, Any]) -> None:
         """
-        Persist every scheduled Happy Hour window if one is announced.
+        Persist every scheduled Happy Hours window if one is announced.
 
         ENGIE publishes the upcoming window under a ``tomorrow`` key the
         day before and re-publishes the same window under a ``today`` key
@@ -483,7 +483,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         payload = happy_hour_wrapper.get("data")
         if not isinstance(payload, dict):
             LOGGER.debug(
-                "BAN %s: skipping Happy Hour history record, payload is not a dict",
+                "BAN %s: skipping Happy Hours history record, payload is not a dict",
                 ban,
             )
             return
@@ -494,7 +494,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ]
         if not windows:
             LOGGER.debug(
-                "BAN %s: skipping Happy Hour history record, no scheduled window",
+                "BAN %s: skipping Happy Hours history record, no scheduled window",
                 ban,
             )
             return
@@ -511,7 +511,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         if store is None:
             LOGGER.debug(
-                "BAN %s: skipping Happy Hour history record, store not available",
+                "BAN %s: skipping Happy Hours history record, store not available",
                 ban,
             )
             return

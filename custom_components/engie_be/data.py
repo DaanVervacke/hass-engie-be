@@ -74,10 +74,10 @@ class EngieBeSubentryData:
     is ``None`` until the first successful refresh, ``True`` once the
     customer signs the agreement in the Smart App, and ``False`` when
     the flag is absent or false. The coordinator schedules a config
-    entry reload whenever this flips so Happy Hour entities appear or
+    entry reload whenever this flips so Happy Hours entities appear or
     disappear without manual intervention.
 
-    ``happy_hours_store`` persists every Happy Hour window the
+    ``happy_hours_store`` persists every Happy Hours window the
     coordinator observes (the API only ever returns the next upcoming
     window under ``tomorrow``, so historical windows would otherwise
     disappear the moment they expire). Stays ``None`` for un-enrolled
@@ -107,7 +107,7 @@ class EngieBeData:
     ``ConfigSubentry.subentry_id``.
 
     ``reload_pending`` is a one-shot debounce flag set by the coordinator
-    when a Happy Hour enrolment flip is detected. It guarantees that a
+    when a Happy Hours enrolment flip is detected. It guarantees that a
     refresh tick which observes simultaneous flips on multiple subentries
     schedules at most one ``async_reload`` call per parent entry.
 

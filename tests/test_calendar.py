@@ -284,7 +284,7 @@ async def test_async_get_events_handles_missing_subentry_runtime() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Happy Hour event provider
+# Happy Hours event provider
 # ---------------------------------------------------------------------------
 
 _HAPPY_HOUR_SCHEDULED = {
@@ -304,7 +304,7 @@ def test_event_property_surfaces_happy_hour_when_no_peak() -> None:
     calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     event = calendar.event
     assert isinstance(event, CalendarEvent)
-    assert event.summary == "Happy Hour"
+    assert event.summary == "Happy Hours"
     assert event.start == datetime.fromisoformat("2026-05-23T12:00:00+02:00")
     assert event.end == datetime.fromisoformat("2026-05-23T15:00:00+02:00")
     assert event.description == "Free energy window"
@@ -323,7 +323,7 @@ async def test_async_get_events_returns_happy_hour_when_overlapping() -> None:
         end_date=datetime.fromisoformat("2026-05-23T23:59:59+02:00"),
     )
     assert len(events) == 1
-    assert events[0].summary == "Happy Hour"
+    assert events[0].summary == "Happy Hours"
 
 
 async def test_async_get_events_skips_happy_hour_outside_window() -> None:
@@ -357,7 +357,7 @@ async def test_async_get_events_combines_peak_and_happy_hour() -> None:
         end_date=datetime.fromisoformat("2026-05-31T23:59:59+02:00"),
     )
     summaries = sorted(event.summary for event in events)
-    assert summaries == ["Captar monthly peak", "Happy Hour"]
+    assert summaries == ["Captar monthly peak", "Happy Hours"]
 
 
 def test_event_property_returns_none_when_happy_hour_empty() -> None:
@@ -370,7 +370,7 @@ def test_event_property_returns_none_when_happy_hour_empty() -> None:
 
 def test_event_providers_omits_happy_hour_when_not_enrolled() -> None:
     """
-    Un-enrolled calendar must not register the Happy Hour event provider.
+    Un-enrolled calendar must not register the Happy Hours event provider.
 
     When ``happy_hour_enrolled=False`` the per-instance event-provider
     list must NOT include :func:`happy_hour_events`. The baseline
@@ -413,7 +413,7 @@ def test_event_property_returns_active_window() -> None:
     calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     event = calendar.event
     assert event is not None
-    assert event.summary == "Happy Hour"
+    assert event.summary == "Happy Hours"
     assert event.start == datetime.fromisoformat(start)
 
 
@@ -429,7 +429,7 @@ def test_event_property_returns_next_upcoming_window() -> None:
     calendar = EngieBeCalendar(coordinator, subentry, happy_hour_enrolled=True)
     event = calendar.event
     assert event is not None
-    assert event.summary == "Happy Hour"
+    assert event.summary == "Happy Hours"
     assert event.start == datetime.fromisoformat(start)
 
 

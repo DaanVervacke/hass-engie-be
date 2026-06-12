@@ -1,4 +1,4 @@
-"""Tests for the Happy Hour active binary sensor."""
+"""Tests for the Happy Hours active binary sensor."""
 
 from __future__ import annotations
 
@@ -84,16 +84,16 @@ def _patched_now(when: datetime):  # noqa: ANN202
 def test_description_metadata() -> None:
     """Translation key and key are stable; no device class is required."""
     desc = HAPPY_HOUR_ACTIVE_SENSOR_DESCRIPTION
-    assert desc.key == "happy_hour_active"
-    assert desc.translation_key == "happy_hour_active"
+    assert desc.key == "happy_hours_active"
+    assert desc.translation_key == "happy_hours_active"
 
 
 def test_unique_id_is_subentry_scoped() -> None:
-    """Unique IDs follow ``{entry_id}_{subentry_id}_happy_hour_active``."""
+    """Unique IDs follow ``{entry_id}_{subentry_id}_happy_hours_active``."""
     coordinator = _make_coordinator(_wrap(_SCHEDULED))
     subentry = _make_subentry(subentry_id="sub_xyz")
     sensor = EngieBeHappyHourActiveSensor(coordinator, subentry)
-    assert sensor.unique_id == "test_entry_id_sub_xyz_happy_hour_active"
+    assert sensor.unique_id == "test_entry_id_sub_xyz_happy_hours_active"
 
 
 def test_entity_id_uses_ban_when_present() -> None:
@@ -103,7 +103,7 @@ def test_entity_id_uses_ban_when_present() -> None:
     subentry.data = {"business_agreement_number": "002208796420"}
     sensor = EngieBeHappyHourActiveSensor(coordinator, subentry)
     assert sensor.entity_id == (
-        "binary_sensor.engie_belgium_002208796420_happy_hour_active"
+        "binary_sensor.engie_belgium_002208796420_happy_hours_active"
     )
 
 

@@ -138,7 +138,7 @@ def test_happy_hour_events_returns_live_window_when_store_missing() -> None:
     )
     events = happy_hour_events(coord)
     assert len(events) == 1
-    assert events[0].summary == "Happy Hour"
+    assert events[0].summary == "Happy Hours"
     assert events[0].description == "Free energy window"
     assert events[0].start == datetime.fromisoformat("2026-05-23T12:00:00+02:00")
 

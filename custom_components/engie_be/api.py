@@ -956,7 +956,7 @@ class EngieBeApiClient:
         """
         Fetch the per-BAN feature flags reported by the ENGIE Smart App.
 
-        The endpoint is the authoritative signal for Happy Hour
+        The endpoint is the authoritative signal for Happy Hours
         enrolment: the ``/happy-hour-event`` endpoint returns ``{}`` both
         when the customer is not enrolled and when they are enrolled but
         no window is scheduled yet, so the event payload alone cannot

@@ -1,7 +1,7 @@
 """
-Tests for the Happy Hour gating in ``sensor.async_setup_entry``.
+Tests for the Happy Hours gating in ``sensor.async_setup_entry``.
 
-The platform setup must skip Happy Hour timestamp sensors when the
+The platform setup must skip Happy Hours timestamp sensors when the
 per-subentry ``is_happy_hour_enrolled`` flag is False, regardless of
 what the coordinator may already have cached in ``data["happy_hour"]``.
 The flag is the single source of truth: enrolment is detected via the
@@ -39,8 +39,8 @@ def _make_sub_data(*, is_happy_hour_enrolled: bool) -> MagicMock:
 
     ``coordinator.data`` is a minimal ``{"items": []}`` so the energy
     sensor builder returns nothing and the test isolates the Happy
-    Hour gate.  ``is_dynamic`` is False so the EPEX sensors are also
-    skipped and the asserted entity counts reflect Happy Hour only.
+    Hours gate.  ``is_dynamic`` is False so the EPEX sensors are also
+    skipped and the asserted entity counts reflect Happy Hours only.
     """
     sub_data = MagicMock()
     sub_data.coordinator = MagicMock()
@@ -69,7 +69,7 @@ def _make_entry(
 
 
 async def test_setup_entry_omits_happy_hour_sensors_when_not_enrolled() -> None:
-    """Un-enrolled subentry must not get any Happy Hour timestamp sensors."""
+    """Un-enrolled subentry must not get any Happy Hours timestamp sensors."""
     subentry = _make_subentry(subentry_id="sub_no_hh")
     entry = _make_entry(
         subentries={"sub_no_hh": subentry},
@@ -87,7 +87,7 @@ async def test_setup_entry_omits_happy_hour_sensors_when_not_enrolled() -> None:
 
 
 async def test_setup_entry_adds_happy_hour_sensors_when_enrolled() -> None:
-    """Enrolled subentry gets both Happy Hour start and end sensors."""
+    """Enrolled subentry gets both Happy Hours start and end sensors."""
     subentry = _make_subentry(subentry_id="sub_hh")
     entry = _make_entry(
         subentries={"sub_hh": subentry},
@@ -130,6 +130,6 @@ async def test_setup_entry_mixed_enrolment_gates_per_subentry() -> None:
     assert len(hh) == 2
     unique_ids = {e.unique_id for e in hh}
     assert unique_ids == {
-        "test_entry_id_sub_yes_happy_hour_next_start",
-        "test_entry_id_sub_yes_happy_hour_next_end",
+        "test_entry_id_sub_yes_happy_hours_next_start",
+        "test_entry_id_sub_yes_happy_hours_next_end",
     }

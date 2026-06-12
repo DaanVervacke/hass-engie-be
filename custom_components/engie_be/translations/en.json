@@ -253,11 +253,11 @@
             "captar_monthly_peak_end": {
                 "name": "Captar monthly peak end"
             },
-            "happy_hour_next_start": {
-                "name": "Happy Hour next start"
+            "happy_hours_next_start": {
+                "name": "Happy Hours next start"
             },
-            "happy_hour_next_end": {
-                "name": "Happy Hour next end"
+            "happy_hours_next_end": {
+                "name": "Happy Hours next end"
             },
             "epex_current": {
                 "name": "EPEX current price"
@@ -279,8 +279,8 @@
             "epex_negative": {
                 "name": "EPEX price is negative"
             },
-            "happy_hour_active": {
-                "name": "Happy Hour is active"
+            "happy_hours_active": {
+                "name": "Happy Hours is active"
             }
         }
     }

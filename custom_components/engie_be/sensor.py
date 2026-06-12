@@ -243,7 +243,7 @@ async def async_setup_entry(
             for desc, ean, value_key, slot_code in sensor_defs
         ]
         entities.extend(_build_peak_sensors(coordinator, subentry))
-        # Only surface Happy Hour timestamp sensors when this BAN is
+        # Only surface Happy Hours timestamp sensors when this BAN is
         # enrolled in the Happy Hours service. Enrolment is detected
         # from the feature-flags endpoint during the coordinator's
         # first refresh; the parent entry is reloaded automatically
@@ -252,7 +252,7 @@ async def async_setup_entry(
             happy_hour_sensors = _build_happy_hour_sensors(coordinator, subentry)
             LOGGER.debug(
                 "Subentry %s (BAN %s): enrolled in Happy Hours, "
-                "registering %d Happy Hour timestamp sensors",
+                "registering %d Happy Hours timestamp sensors",
                 subentry.subentry_id,
                 mask_identifier(coordinator.business_agreement_number),
                 len(happy_hour_sensors),
@@ -261,7 +261,7 @@ async def async_setup_entry(
         else:
             LOGGER.debug(
                 "Subentry %s (BAN %s): not enrolled in Happy Hours, "
-                "skipping Happy Hour timestamp sensors",
+                "skipping Happy Hours timestamp sensors",
                 subentry.subentry_id,
                 mask_identifier(coordinator.business_agreement_number),
             )
@@ -453,18 +453,18 @@ class EngieBeMonthlyPeakTimestampSensor(_EngieBePeakSensorBase):
 
 
 # ---------------------------------------------------------------------------
-# Happy Hour sensors
+# Happy Hours sensors
 # ---------------------------------------------------------------------------
 
 _HAPPY_HOUR_NEXT_START = SensorEntityDescription(
-    key="happy_hour_next_start",
-    translation_key="happy_hour_next_start",
+    key="happy_hours_next_start",
+    translation_key="happy_hours_next_start",
     icon="mdi:weather-sunset-up",
     device_class=SensorDeviceClass.TIMESTAMP,
 )
 _HAPPY_HOUR_NEXT_END = SensorEntityDescription(
-    key="happy_hour_next_end",
-    translation_key="happy_hour_next_end",
+    key="happy_hours_next_end",
+    translation_key="happy_hours_next_end",
     icon="mdi:weather-sunset-down",
     device_class=SensorDeviceClass.TIMESTAMP,
 )

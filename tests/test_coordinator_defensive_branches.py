@@ -715,7 +715,7 @@ async def test_update_data_passes_previous_happy_hour_wrapper_when_present(
     hass: HomeAssistant,
 ) -> None:
     """
-    Preserve the previous Happy Hour wrapper on a transient fetch error.
+    Preserve the previous Happy Hours wrapper on a transient fetch error.
 
     On a refresh where ``self.data["happy_hour"]`` is already a dict,
     that wrapper must be passed as ``previous_wrapper`` so a transient API

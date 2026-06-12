@@ -64,17 +64,17 @@ EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     icon="mdi:cash-minus",
 )
 
-# Happy Hour active indicator.
+# Happy Hours active indicator.
 #
-# Created per Happy Hour-enrolled business agreement. The happy-hour
+# Created per Happy Hours-enrolled business agreement. The happy-hour
 # endpoint is account scoped and not gated on dynamic tariff. The entity
 # is available when created: ``on`` while the current moment falls inside
 # a scheduled window, ``off`` otherwise (including when no event is
 # scheduled). The companion timestamp sensors expose the "scheduled vs
 # not scheduled" distinction.
 HAPPY_HOUR_ACTIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
-    key="happy_hour_active",
-    translation_key="happy_hour_active",
+    key="happy_hours_active",
+    translation_key="happy_hours_active",
     icon="mdi:sun-clock",
 )
 
@@ -131,7 +131,7 @@ async def async_setup_entry(
             continue
 
         subentry_entities: list[BinarySensorEntity] = []
-        # Only surface the Happy Hour active binary sensor when this
+        # Only surface the Happy Hours active binary sensor when this
         # BAN is enrolled in the Happy Hours service. Enrolment is
         # detected from the feature-flags endpoint during the
         # coordinator's first refresh; the parent entry is reloaded
@@ -140,7 +140,7 @@ async def async_setup_entry(
         if sub_data.is_happy_hour_enrolled:
             LOGGER.debug(
                 "Subentry %s (BAN %s): enrolled in Happy Hours, "
-                "registering happy_hour_active binary sensor",
+                "registering happy_hours_active binary sensor",
                 subentry.subentry_id,
                 mask_identifier(sub_data.coordinator.business_agreement_number),
             )
@@ -152,7 +152,7 @@ async def async_setup_entry(
         else:
             LOGGER.debug(
                 "Subentry %s (BAN %s): not enrolled in Happy Hours, "
-                "skipping happy_hour_active binary sensor",
+                "skipping happy_hours_active binary sensor",
                 subentry.subentry_id,
                 mask_identifier(sub_data.coordinator.business_agreement_number),
             )
@@ -340,7 +340,7 @@ class EngieBeHappyHourActiveSensor(
     The sensor is always available once the coordinator has data;
     ``off`` covers both "no event scheduled" and "scheduled but not
     active right now". Automations that need the distinction can
-    consult the ``happy_hour_next_start`` / ``happy_hour_next_end``
+    consult the ``happy_hours_next_start`` / ``happy_hours_next_end``
     timestamp sensors (which are ``unknown`` when no window is
     scheduled).
 
@@ -361,11 +361,11 @@ class EngieBeHappyHourActiveSensor(
         super().__init__(coordinator, subentry)
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}"
-            f"_{subentry.subentry_id}_happy_hour_active"
+            f"_{subentry.subentry_id}_happy_hours_active"
         )
         ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
         if ban:
-            self.entity_id = f"binary_sensor.engie_belgium_{ban}_happy_hour_active"
+            self.entity_id = f"binary_sensor.engie_belgium_{ban}_happy_hours_active"
 
     @property
     def is_on(self) -> bool:

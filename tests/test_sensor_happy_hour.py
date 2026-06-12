@@ -1,4 +1,4 @@
-"""Tests for the Happy Hour timestamp sensors."""
+"""Tests for the Happy Hours timestamp sensors."""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ def test_build_creates_two_timestamp_sensors() -> None:
     sensors = _build_happy_hour_sensors(coordinator, subentry)
 
     keys = {s.entity_description.key for s in sensors}
-    assert keys == {"happy_hour_next_start", "happy_hour_next_end"}
+    assert keys == {"happy_hours_next_start", "happy_hours_next_end"}
     # Subentry-scoped unique IDs follow the standard convention.
     for sensor in sensors:
         assert sensor.unique_id == (
@@ -96,7 +96,7 @@ def test_start_sensor_returns_window_start() -> None:
     subentry = _make_subentry()
     sensors = _build_happy_hour_sensors(coordinator, subentry)
     start_sensor = next(
-        s for s in sensors if s.entity_description.key == "happy_hour_next_start"
+        s for s in sensors if s.entity_description.key == "happy_hours_next_start"
     )
     value = start_sensor.native_value
     assert isinstance(value, datetime)
@@ -109,7 +109,7 @@ def test_end_sensor_returns_window_end() -> None:
     subentry = _make_subentry()
     sensors = _build_happy_hour_sensors(coordinator, subentry)
     end_sensor = next(
-        s for s in sensors if s.entity_description.key == "happy_hour_next_end"
+        s for s in sensors if s.entity_description.key == "happy_hours_next_end"
     )
     value = end_sensor.native_value
     assert isinstance(value, datetime)
@@ -122,10 +122,10 @@ def test_native_value_uses_today_key_after_midnight() -> None:
     subentry = _make_subentry()
     sensors = _build_happy_hour_sensors(coordinator, subentry)
     values = {s.entity_description.key: s.native_value for s in sensors}
-    assert values["happy_hour_next_start"] == datetime.fromisoformat(
+    assert values["happy_hours_next_start"] == datetime.fromisoformat(
         "2026-06-07T11:00:00+02:00"
     )
-    assert values["happy_hour_next_end"] == datetime.fromisoformat(
+    assert values["happy_hours_next_end"] == datetime.fromisoformat(
         "2026-06-07T17:00:00+02:00"
     )
 
@@ -174,10 +174,10 @@ def test_entity_id_uses_ban_when_present() -> None:
         next(
             s
             for s in _build_happy_hour_sensors(coordinator, subentry)
-            if s.entity_description.key == "happy_hour_next_start"
+            if s.entity_description.key == "happy_hours_next_start"
         ).entity_description,
         field="start",
     )
     assert sensor.entity_id == (
-        "sensor.engie_belgium_002208796420_happy_hour_next_start"
+        "sensor.engie_belgium_002208796420_happy_hours_next_start"
     )

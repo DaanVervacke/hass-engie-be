@@ -234,7 +234,7 @@ async def test_summary_when_empty(
 async def test_happy_hours_load_starts_empty_when_no_persisted_data(
     fake_store_load: MagicMock,
 ) -> None:
-    """A fresh Happy Hour store with no persisted data exposes empty windows."""
+    """A fresh Happy Hours store with no persisted data exposes empty windows."""
     fake_store_load.async_load.return_value = None
     store = EngieBeHappyHoursStore(MagicMock(), subentry_id="abc")
     await store.async_load()

@@ -362,7 +362,7 @@ async def _async_init_happy_hours_store(
     hass: HomeAssistant,
     subentry_id: str,
 ) -> EngieBeHappyHoursStore:
-    """Build and load the persistent Happy Hour history store for one subentry."""
+    """Build and load the persistent Happy Hours history store for one subentry."""
     store = EngieBeHappyHoursStore(hass, subentry_id)
     await store.async_load()
     return store

@@ -272,7 +272,7 @@ def _make_sub_data(
 
     ``is_happy_hour_enrolled`` defaults to True to preserve the
     pre-gating baseline for existing tests; pass False to exercise the
-    Happy Hour skip path on the binary_sensor platform setup.
+    Happy Hours skip path on the binary_sensor platform setup.
     """
     sub_data = MagicMock()
     sub_data.coordinator = MagicMock()
@@ -362,7 +362,7 @@ async def test_setup_entry_omits_negative_sensor_for_non_dynamic_account() -> No
 
     await async_setup_entry(MagicMock(), entry, _add)
 
-    # Auth sensor (per-entry) + Happy Hour sensor (per-subentry); no
+    # Auth sensor (per-entry) + Happy Hours sensor (per-subentry); no
     # EPEX negative entity because the account is not dynamic.
     assert len(added) == 2
     assert any(isinstance(e, EngieBeAuthSensor) for e in added)
@@ -455,10 +455,10 @@ async def test_setup_entry_only_adds_negative_sensor_for_dynamic_subentries() ->
 
 async def test_setup_entry_omits_happy_hour_for_un_enrolled_subentry() -> None:
     """
-    Un-enrolled subentry must NOT get the Happy Hour active sensor.
+    Un-enrolled subentry must NOT get the Happy Hours active sensor.
 
     A subentry with ``is_happy_hour_enrolled=False`` is on a tariff
-    without the ENGIE Happy Hours service, so no Happy Hour entities
+    without the ENGIE Happy Hours service, so no Happy Hours entities
     should be surfaced.
     """
     epex_coordinator = _make_epex_coordinator(None)
@@ -486,7 +486,7 @@ async def test_setup_entry_omits_happy_hour_for_un_enrolled_subentry() -> None:
 
 
 async def test_setup_entry_adds_happy_hour_for_enrolled_subentry() -> None:
-    """An enrolled subentry gets the Happy Hour active binary sensor."""
+    """An enrolled subentry gets the Happy Hours active binary sensor."""
     epex_coordinator = _make_epex_coordinator(None)
     subentry = _make_subentry(subentry_id="sub_hh")
     entry = _make_entry(
@@ -504,7 +504,7 @@ async def test_setup_entry_adds_happy_hour_for_enrolled_subentry() -> None:
 
     await async_setup_entry(MagicMock(), entry, _add)
 
-    # Auth (per-entry) + Happy Hour (per-subentry) = 2 entities.
+    # Auth (per-entry) + Happy Hours (per-subentry) = 2 entities.
     assert len(added) == 2
     assert any(isinstance(e, EngieBeHappyHourActiveSensor) for e in added)
 
@@ -513,10 +513,10 @@ async def test_setup_entry_mixed_enrolment_only_adds_happy_hour_where_enrolled()
     None
 ):
     """
-    Mixed enrolment: only the enrolled subentry gets the Happy Hour sensor.
+    Mixed enrolment: only the enrolled subentry gets the Happy Hours sensor.
 
     Two subentries with different enrolment status are wired up; only
-    the enrolled one gets a Happy Hour active sensor, and both still
+    the enrolled one gets a Happy Hours active sensor, and both still
     skip EPEX because they are on the fixed tariff.
     """
     epex_coordinator = _make_epex_coordinator(None)
@@ -540,4 +540,4 @@ async def test_setup_entry_mixed_enrolment_only_adds_happy_hour_where_enrolled()
 
     hh_entities = [e for e in added if isinstance(e, EngieBeHappyHourActiveSensor)]
     assert len(hh_entities) == 1
-    assert hh_entities[0].unique_id == "test_entry_id_sub_yes_happy_hour_active"
+    assert hh_entities[0].unique_id == "test_entry_id_sub_yes_happy_hours_active"

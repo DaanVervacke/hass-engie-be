@@ -1,9 +1,9 @@
 """
-Tests for coordinator-driven Happy Hour enrolment detection.
+Tests for coordinator-driven Happy Hours enrolment detection.
 
 Covers the feature-flags probe, the per-subentry enrolment cache, the
 debounced reload-on-flip behaviour, and the soft-fail / auth-failure
-edges. The Happy Hour event endpoint must only be polled when the BAN
+edges. The Happy Hours event endpoint must only be polled when the BAN
 is enrolled, and a stale ``data["happy_hour"]`` wrapper must be
 dropped when enrolment flips off.
 """
@@ -176,7 +176,7 @@ def _make_client(
 async def test_un_enrolled_ban_skips_happy_hour_event_fetch(
     hass: HomeAssistant,
 ) -> None:
-    """A False enrolment must skip the Happy Hour event endpoint entirely."""
+    """A False enrolment must skip the Happy Hours event endpoint entirely."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
     client = _make_client(flags=_load(_FLAGS_NOT_ENROLLED))
@@ -194,7 +194,7 @@ async def test_un_enrolled_ban_skips_happy_hour_event_fetch(
 
 
 async def test_enrolled_ban_polls_happy_hour_event(hass: HomeAssistant) -> None:
-    """A True enrolment must poll the Happy Hour event endpoint."""
+    """A True enrolment must poll the Happy Hours event endpoint."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
     client = _make_client(
@@ -372,7 +372,7 @@ async def test_feature_flags_generic_error_soft_fails_to_cached(
         entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled
         is True
     )
-    # Happy Hour endpoint MUST still be polled because the cached value
+    # Happy Hours endpoint MUST still be polled because the cached value
     # remains True.
     client.async_get_happy_hour_event.assert_awaited_once()
 
@@ -451,7 +451,7 @@ async def test_enrolled_refresh_upserts_happy_hour_into_store(
 async def test_enrolled_refresh_with_empty_payload_does_not_upsert(
     hass: HomeAssistant,
 ) -> None:
-    """An empty ``{}`` Happy Hour payload never reaches the store."""
+    """An empty ``{}`` Happy Hours payload never reaches the store."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
     client = _make_client(

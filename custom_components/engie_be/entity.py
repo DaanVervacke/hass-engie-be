@@ -27,7 +27,7 @@ class _BoundaryScheduleMixin:
     """
     Mixin that re-evaluates entity state at the next "boundary" instant.
 
-    Many ENGIE entities (Happy Hour active, EPEX-negative, EPEX
+    Many ENGIE entities (Happy Hours active, EPEX-negative, EPEX
     current-price, EPEX next-hour) derive their state from a time
     window plus the current instant. Without help, they only refresh
     when their coordinator does, which can be up to a full refresh
