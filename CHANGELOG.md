@@ -7,6 +7,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0b8] - 2026-06-13
+
+### Added
+
+- **Debug logging for the time-boundary scheduler.** The shared
+  `_BoundaryScheduleMixin` behind the Happy Hours, EPEX-negative, and
+  EPEX price entities now emits DEBUG lines when it arms a boundary
+  timer, when that timer fires, and when no future boundary exists.
+  Previously the on-the-second state flip at a window boundary wrote
+  nothing to the integration log, so a shared debug bundle could not
+  prove a flip happened without cross-referencing Home Assistant's
+  state history. Business-agreement numbers are masked in the log
+  output (e.g. `happy_hours_active[***6420]`).
+
 ## [0.10.0b7] - 2026-06-12
 
 > [!CAUTION]
@@ -705,7 +719,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b7...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b8...HEAD
+[0.10.0b8]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b7...v0.10.0b8
 [0.10.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b6...v0.10.0b7
 [0.10.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b5...v0.10.0b6
 [0.10.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b4...v0.10.0b5

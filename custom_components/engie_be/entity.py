@@ -11,7 +11,8 @@ from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import ATTRIBUTION, DOMAIN
+from .api import mask_identifier
+from .const import ATTRIBUTION, DOMAIN, LOGGER
 from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
 
 if TYPE_CHECKING:
@@ -50,6 +51,31 @@ class _BoundaryScheduleMixin:
     """
 
     _unsub_boundary: Callable[[], None] | None = None
+
+    def _boundary_log_name(self) -> str:
+        """
+        Return a log-safe, descriptive identifier for this entity.
+
+        Combines the entity-description ``key`` (BAN-free and stable,
+        e.g. ``happy_hours_active``) with the business-agreement number
+        (BAN) masked to its last four digits. Boundary entities carry
+        the BAN in their ``entity_id`` slug (e.g.
+        ``binary_sensor.engie_belgium_<BAN>_happy_hours_active``), so it
+        is masked before it reaches the log to keep shared debug bundles
+        free of account numbers. Produces values like
+        ``happy_hours_active[***6420]``; degrades to the description key
+        alone, then the class name, when those parts are unavailable
+        (e.g. before ``entity_id`` is assigned early in ``__init__``).
+        """
+        description = getattr(self, "entity_description", None)
+        base = getattr(description, "key", None) or type(self).__name__
+        entity_id: str | None = getattr(self, "entity_id", None)
+        if entity_id and "engie_belgium_" in entity_id:
+            tail = entity_id.split("engie_belgium_", 1)[1]
+            ban = tail.split("_", 1)[0]
+            if ban:
+                return f"{base}[{mask_identifier(ban)}]"
+        return base
 
     def _next_boundary(self) -> datetime | None:
         """
@@ -104,11 +130,21 @@ class _BoundaryScheduleMixin:
         """
         target = self._next_boundary()
         if target is None or target <= dt_util.utcnow():
+            LOGGER.debug(
+                "%s: no future boundary to arm (next_boundary=%s)",
+                self._boundary_log_name(),
+                target.isoformat() if target is not None else None,
+            )
             return
         self._unsub_boundary = async_track_point_in_utc_time(
             self.hass,  # type: ignore[attr-defined]
             self._boundary_fired,
             target,
+        )
+        LOGGER.debug(
+            "%s: armed boundary timer for %s",
+            self._boundary_log_name(),
+            target.isoformat(),
         )
 
     @callback
@@ -123,8 +159,33 @@ class _BoundaryScheduleMixin:
         the timer that has just fired.
         """
         self._unsub_boundary = None
+        LOGGER.debug(
+            "%s: boundary fired at %s",
+            self._boundary_log_name(),
+            dt_util.utcnow().isoformat(),
+        )
         self._schedule_next_boundary()
         self.async_write_ha_state()  # type: ignore[attr-defined]
+        LOGGER.debug(
+            "%s: wrote new value %r after boundary",
+            self._boundary_log_name(),
+            self._boundary_state_for_log(),
+        )
+
+    def _boundary_state_for_log(self) -> object:
+        """
+        Return a cheap, log-safe snapshot of this entity's current value.
+
+        Reads ``is_on`` for binary sensors and ``native_value`` for
+        sensors. Deliberately avoids the HA ``state`` property, which on
+        ``SensorEntity`` resolves the unit-of-measurement translation key
+        and raises ``ValueError`` until the entity is fully added to a
+        platform -- a state we do not want a debug log to depend on.
+        Returns ``None`` when neither attribute is present.
+        """
+        if hasattr(self, "is_on"):
+            return self.is_on  # type: ignore[attr-defined]
+        return getattr(self, "native_value", None)
 
 
 class _EngieBeBaseEntity:
