@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfEnergy, UnitOfPower
+from homeassistant.const import CURRENCY_EURO, UnitOfEnergy, UnitOfPower
 from homeassistant.util import dt as dt_util
 
 from ._epex import next_epex_slot_boundary
@@ -258,6 +258,9 @@ async def async_setup_entry(
                 len(happy_hour_sensors),
             )
             entities.extend(happy_hour_sensors)
+            entities.extend(
+                _build_happy_hour_month_report_sensors(coordinator, subentry)
+            )
         else:
             LOGGER.debug(
                 "Subentry %s (BAN %s): not enrolled in Happy Hours, "
@@ -524,6 +527,178 @@ class EngieBeHappyHourTimestampSensor(EngieBeEntity, SensorEntity):
             return None
         start, end = window
         return start if self._field == "start" else end
+
+
+# ---------------------------------------------------------------------------
+# Happy Hours month-report sensors
+# ---------------------------------------------------------------------------
+
+_HAPPY_HOUR_MONTH_CONSUMPTION = SensorEntityDescription(
+    key="happy_hours_month_consumption",
+    translation_key="happy_hours_month_consumption",
+    icon="mdi:lightning-bolt",
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.TOTAL,
+    suggested_display_precision=3,
+)
+_HAPPY_HOUR_MONTH_ELIGIBLE_HOURS = SensorEntityDescription(
+    key="happy_hours_month_eligible_hours",
+    translation_key="happy_hours_month_eligible_hours",
+    icon="mdi:clock-check",
+    # Count of discrete Happy Hours windows — no standard unit applies.
+    native_unit_of_measurement=None,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    suggested_display_precision=0,
+)
+_HAPPY_HOUR_MONTH_REWARD = SensorEntityDescription(
+    key="happy_hours_month_reward",
+    translation_key="happy_hours_month_reward",
+    icon="mdi:cash-plus",
+    native_unit_of_measurement=CURRENCY_EURO,
+    device_class=SensorDeviceClass.MONETARY,
+    state_class=SensorStateClass.TOTAL,
+    suggested_display_precision=2,
+)
+
+
+def _month_report_wrapper(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any] | None:
+    """Return the raw happy_hour_month_report wrapper dict, or None."""
+    if not isinstance(coordinator.data, dict):
+        return None
+    wrapper = coordinator.data.get("happy_hour_month_report")
+    return wrapper if isinstance(wrapper, dict) else None
+
+
+def _month_report_payload(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any] | None:
+    """Unwrap the happy_hour_month_report coordinator key, or return None."""
+    wrapper = _month_report_wrapper(coordinator)
+    if wrapper is None:
+        return None
+    payload = wrapper.get("data")
+    return payload if isinstance(payload, dict) else None
+
+
+def _build_happy_hour_month_report_sensors(
+    coordinator: EngieBeDataUpdateCoordinator,
+    subentry: ConfigSubentry,
+) -> list[SensorEntity]:
+    """Build the three Happy Hours month-report sensors for one subentry."""
+    return [
+        EngieBeHappyHourMonthSensor(
+            coordinator,
+            subentry,
+            _HAPPY_HOUR_MONTH_CONSUMPTION,
+            path=("month", "happyHour", "consumptionKWh"),
+        ),
+        EngieBeHappyHourMonthSensor(
+            coordinator,
+            subentry,
+            _HAPPY_HOUR_MONTH_ELIGIBLE_HOURS,
+            path=("month", "happyHour", "numberOfEligibleHappyHours"),
+        ),
+        EngieBeHappyHourMonthRewardSensor(
+            coordinator,
+            subentry,
+        ),
+    ]
+
+
+class EngieBeHappyHourMonthSensor(EngieBeEntity, SensorEntity):
+    """A single field from the Happy Hours month report."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        entity_description: SensorEntityDescription,
+        path: tuple[str, ...],
+    ) -> None:
+        """Initialise the sensor, recording the dotted path into the payload."""
+        super().__init__(coordinator, subentry)
+        self.entity_description = entity_description
+        self._path = path
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_{entity_description.key}"
+        )
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = f"sensor.engie_belgium_{ban}_{entity_description.key}"
+
+    def _resolve_path(self, data: dict[str, Any], path: tuple[str, ...]) -> Any:
+        """Walk *path* through nested dicts, returning the leaf or None."""
+        node: Any = data
+        for key in path:
+            if not isinstance(node, dict):
+                return None
+            node = node.get(key)
+        return node
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the numeric value at the configured path."""
+        payload = _month_report_payload(self.coordinator)
+        if payload is None:
+            return None
+        raw = self._resolve_path(payload, self._path)
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose report month metadata and last-fetched timestamp."""
+        attrs: dict[str, Any] = {}
+        if self.coordinator.last_successful_fetch:
+            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
+        wrapper = _month_report_wrapper(self.coordinator)
+        if wrapper is not None:
+            year = wrapper.get("year")
+            month = wrapper.get("month")
+            if isinstance(year, int) and isinstance(month, int):
+                attrs["report_month"] = f"{year:04d}-{month:02d}"
+            is_fallback = wrapper.get("is_fallback")
+            if is_fallback is not None:
+                attrs["report_is_fallback"] = bool(is_fallback)
+        return attrs
+
+
+class EngieBeHappyHourMonthRewardSensor(EngieBeHappyHourMonthSensor):
+    """Reward sensor that also exposes the ``isCalculationOngoing`` flag."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
+        """Initialise with the fixed reward description and path."""
+        super().__init__(
+            coordinator,
+            subentry,
+            _HAPPY_HOUR_MONTH_REWARD,
+            path=("month", "happyHour", "rewardEuros"),
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Extend base attributes with the calculation-in-progress flag."""
+        attrs = super().extra_state_attributes
+        payload = _month_report_payload(self.coordinator)
+        if payload is not None:
+            flag = self._resolve_path(
+                payload, ("month", "happyHour", "isCalculationOngoing")
+            )
+            if flag is not None:
+                attrs["is_calculation_ongoing"] = bool(flag)
+        return attrs
 
 
 class EngieBeEnergySensor(EngieBeEntity, SensorEntity):

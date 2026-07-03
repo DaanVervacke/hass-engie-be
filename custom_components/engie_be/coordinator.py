@@ -129,7 +129,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data = self.data
         return bool(isinstance(data, dict) and data.get(KEY_IS_DYNAMIC))
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    async def _async_update_data(self) -> dict[str, Any]:  # noqa: PLR0912
         """Fetch energy prices and capacity-tariff peaks for this account."""
         client = self.config_entry.runtime_data.client
         business_agreement_number = self.business_agreement_number
@@ -176,7 +176,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # the first day or two of a new month before ENGIE has recorded a
         # 15-minute interval), we fall back to the previous month so users
         # still see a meaningful value.
-        today = dt_util.now()
+        today = dt_util.now(_BRUSSELS_TZ)
         previous_peaks_wrapper: dict[str, Any] | None = None
         if isinstance(self.data, dict):
             existing = self.data.get("peaks")
@@ -229,6 +229,28 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if happy_hour_wrapper is not None:
                 data["happy_hour"] = happy_hour_wrapper
                 self._record_happy_hour_history(happy_hour_wrapper)
+
+        # Fetch the Happy Hours month report for enrolled BANs so the
+        # current-month summary sensors (consumption, eligible hours,
+        # reward) have fresh data on every coordinator refresh.
+        # Soft-fail: a transient API error keeps the last-known wrapper so
+        # existing sensors stay populated. Only fetched when enrolled.
+        if new_enrolled:
+            previous_month_report_wrapper: dict[str, Any] | None = None
+            if isinstance(self.data, dict):
+                existing_mr = self.data.get("happy_hour_month_report")
+                if isinstance(existing_mr, dict):
+                    previous_month_report_wrapper = existing_mr
+
+            month_report_wrapper = await self._async_fetch_month_report(
+                client,
+                business_agreement_number,
+                today.year,
+                today.month,
+                previous_month_report_wrapper,
+            )
+            if month_report_wrapper is not None:
+                data["happy_hour_month_report"] = month_report_wrapper
 
         # Push the enrolment outcome onto subentry runtime data and
         # schedule a config-entry reload when the state flips. The first
@@ -425,6 +447,133 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ban_masked,
             )
         return wrapper
+
+    async def _async_fetch_month_report(
+        self,
+        client: EngieBeApiClient,
+        business_agreement_number: str,
+        year: int,
+        month: int,
+        previous_wrapper: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """
+        Fetch the Happy Hours month report for this business agreement.
+
+        Returns a wrapper ``{"data": <payload-or-None>, "year": year,
+        "month": month, "is_fallback": bool}``.
+
+        On a successful fetch, if the current month carries a ``happyHour``
+        dict the wrapper is built from that (``is_fallback=False``).  If
+        the current month's ``happyHour`` is absent (common in the first
+        day or two of a new month before ENGIE has accrued any eligible
+        hours), the ``history`` array in the same response is scanned for
+        the most-recent entry that *does* carry a ``happyHour`` dict.  When
+        found, that entry's data is wrapped with ``is_fallback=True`` and
+        ``year``/``month`` taken from the history entry's ``yearMonth``
+        field, so sensors show the previous month's numbers instead of going
+        unknown.
+
+        Note: ``data`` is the full API response on the success path but the
+        minimal shape ``{"month": {"happyHour": ...}}`` on the fallback
+        path. Both forms support sensor lookups walking
+        ``("month", "happyHour", ...)``; readers must not depend on other
+        top-level fields being present in fallback mode.
+
+        Auth failures escalate to reauth; all other failures keep the
+        last-known wrapper so sensors don't blank on a transient outage.
+        """
+        try:
+            payload = await client.async_get_month_report(
+                business_agreement_number,
+                year,
+                month,
+            )
+        except EngieBeApiClientAuthenticationError as exception:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+            ) from exception
+        except EngieBeApiClientError as exception:
+            LOGGER.warning(
+                "Failed to fetch Happy Hours month report for BAN %s, "
+                "keeping last-known value: %s",
+                mask_identifier(business_agreement_number),
+                exception,
+            )
+            if previous_wrapper is None:
+                return None
+            # Preserve the stored data as-is but mark it as stale.
+            # Keep the ORIGINAL year/month so users can see which period
+            # the numbers belong to rather than the current month header.
+            return {
+                **previous_wrapper,
+                "is_fallback": True,
+            }
+
+        ban_masked = mask_identifier(business_agreement_number)
+
+        if not isinstance(payload, dict):
+            LOGGER.debug(
+                "BAN %s: fetched Happy Hours month report for %d-%02d "
+                "(non-dict response; data=None)",
+                ban_masked,
+                year,
+                month,
+            )
+            return {
+                "data": None,
+                "year": year,
+                "month": month,
+                "is_fallback": False,
+            }
+
+        month_block = payload.get("month")
+        current_happy_hour = (
+            month_block.get("happyHour") if isinstance(month_block, dict) else None
+        )
+
+        if isinstance(current_happy_hour, dict):
+            LOGGER.debug(
+                "BAN %s: fetched Happy Hours month report for %d-%02d",
+                ban_masked,
+                year,
+                month,
+            )
+            return {
+                "data": payload,
+                "year": year,
+                "month": month,
+                "is_fallback": False,
+            }
+
+        # Current month has no happyHour data yet (typical early in a new
+        # month).  Scan history for the most-recent entry with a happyHour
+        # block and use it as a fallback so users still see meaningful values.
+        history = payload.get("history")
+        fallback_wrapper = _find_history_fallback(history, ban_masked)
+        if fallback_wrapper is not None:
+            LOGGER.debug(
+                "BAN %s: current month %d-%02d has no Happy Hours data yet; "
+                "using historical fallback %d-%02d",
+                ban_masked,
+                year,
+                month,
+                fallback_wrapper["year"],
+                fallback_wrapper["month"],
+            )
+            return fallback_wrapper
+
+        # No history with happyHour data either — first-ever month or
+        # empty history.  Return None so the key stays absent from
+        # coordinator.data and sensors report unknown.
+        LOGGER.debug(
+            "BAN %s: no Happy Hours data in current month %d-%02d "
+            "or history; returning no wrapper",
+            ban_masked,
+            year,
+            month,
+        )
+        return None
 
     def _record_peak_history(self, peaks_wrapper: dict[str, Any]) -> None:
         """Persist the current month's peak window if it is not a fallback."""
@@ -724,6 +873,75 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "month": month,
             "is_fallback": False,
         }
+
+
+def _find_history_fallback(
+    history: Any,
+    ban_masked: str,
+) -> dict[str, Any] | None:
+    """
+    Scan a month-report ``history`` array for the most-recent happyHour entry.
+
+    Returns a ready-to-store wrapper
+    ``{"data": ..., "year": int, "month": int, "is_fallback": True}``
+    where ``data`` is shaped like a minimal month-report response
+    (``{"month": {"happyHour": ...}}``) so sensor paths that walk
+    ``("month", "happyHour", ...)`` still resolve correctly.
+
+    Returns ``None`` when *history* is not a list, is empty, or contains no
+    entry with a valid ``yearMonth`` string and a dict ``happyHour`` block.
+
+    Entries are compared by their ``yearMonth`` string (``"YYYY-MM"`` format)
+    using ordinary lexicographic ordering, which is correct for ISO year-month
+    strings.  The entry with the lexicographically greatest *parseable*
+    ``yearMonth`` that carries a ``happyHour`` dict is selected.  Entries
+    with malformed ``yearMonth`` strings are skipped with a debug log.
+    """
+    if not isinstance(history, list):
+        return None
+
+    best_year_month: str | None = None
+    best_year: int | None = None
+    best_month: int | None = None
+    best_happy_hour: dict[str, Any] | None = None
+
+    for entry in history:
+        if not isinstance(entry, dict):
+            continue
+        year_month_raw = entry.get("yearMonth")
+        if not isinstance(year_month_raw, str):
+            continue
+        happy_hour = entry.get("happyHour")
+        if not isinstance(happy_hour, dict):
+            continue
+        # Parse yearMonth here so unparseable entries are dropped in-loop
+        # rather than discovered only after selection.
+        try:
+            fb_year_str, fb_month_str = year_month_raw.split("-", 1)
+            fb_year = int(fb_year_str)
+            fb_month = int(fb_month_str)
+        except (ValueError, AttributeError):
+            LOGGER.debug(
+                "BAN %s: skipping history entry with unparseable yearMonth %r",
+                ban_masked,
+                year_month_raw,
+            )
+            continue
+        if best_year_month is None or year_month_raw > best_year_month:
+            best_year_month = year_month_raw
+            best_year = fb_year
+            best_month = fb_month
+            best_happy_hour = happy_hour
+
+    if best_year is None or best_month is None or best_happy_hour is None:
+        return None
+
+    return {
+        "data": {"month": {"happyHour": best_happy_hour}},
+        "year": best_year,
+        "month": best_month,
+        "is_fallback": True,
+    }
 
 
 class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):

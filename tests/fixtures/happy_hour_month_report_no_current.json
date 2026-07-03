@@ -1,0 +1,33 @@
+{
+    "month": {},
+    "history": [
+        {
+            "yearMonth": "2026-05",
+            "happyHour": {
+                "consumptionKWh": 8.0,
+                "numberOfEligibleHappyHours": 2,
+                "rewardEuros": 3.0,
+                "isCalculationOngoing": false,
+                "comparisonToPreviousMonth": {
+                    "consumptionKWhPercentageChange": 5.0,
+                    "numberOfEligibleHappyHoursPercentageChange": 0.0,
+                    "rewardEurosPercentageChange": 2.0
+                }
+            }
+        },
+        {
+            "yearMonth": "2026-06",
+            "happyHour": {
+                "consumptionKWh": 15.5,
+                "numberOfEligibleHappyHours": 4,
+                "rewardEuros": 6.0,
+                "isCalculationOngoing": false,
+                "comparisonToPreviousMonth": {
+                    "consumptionKWhPercentageChange": 15.0,
+                    "numberOfEligibleHappyHoursPercentageChange": 0.0,
+                    "rewardEurosPercentageChange": 8.0
+                }
+            }
+        }
+    ]
+}

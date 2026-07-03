@@ -41,6 +41,7 @@ from custom_components.engie_be.const import (
 )
 from custom_components.engie_be.coordinator import (
     EngieBeDataUpdateCoordinator,
+    _find_history_fallback,
     _parse_epex_response,
 )
 from custom_components.engie_be.data import EngieBeData, EngieBeSubentryData
@@ -741,8 +742,90 @@ async def test_update_data_passes_previous_happy_hour_wrapper_when_present(
     client.async_get_happy_hour_event = AsyncMock(
         side_effect=EngieBeApiClientError("transient"),
     )
+    client.async_get_month_report = AsyncMock(return_value={})
     entry.runtime_data.client = client
 
     result = await coordinator._async_update_data()
 
     assert result["happy_hour"] is seeded_wrapper
+
+
+# ---------------------------------------------------------------------------
+# _find_history_fallback unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_find_history_fallback_returns_none_for_non_list() -> None:
+    """Non-list history (None, dict, str) yields None."""
+    assert _find_history_fallback(None, "BAN-XXX") is None
+    assert _find_history_fallback({"yearMonth": "2026-06"}, "BAN-XXX") is None
+    assert _find_history_fallback("2026-06", "BAN-XXX") is None
+
+
+def test_find_history_fallback_returns_none_for_empty_list() -> None:
+    """Empty history list yields None."""
+    assert _find_history_fallback([], "BAN-XXX") is None
+
+
+def test_find_history_fallback_returns_none_when_no_happy_hour_dict() -> None:
+    """History entries without a dict happyHour are skipped; None returned."""
+    history = [
+        {"yearMonth": "2026-05"},
+        {"yearMonth": "2026-06", "happyHour": None},
+        {"yearMonth": "2026-07", "happyHour": "bad"},
+        {"notYearMonth": "ignored"},
+        "not-a-dict",
+    ]
+    assert _find_history_fallback(history, "BAN-XXX") is None
+
+
+def test_find_history_fallback_picks_most_recent_entry() -> None:
+    """The entry with the lexicographically greatest yearMonth is chosen."""
+    history = [
+        {
+            "yearMonth": "2026-05",
+            "happyHour": {"rewardEuros": 1.0},
+        },
+        {
+            "yearMonth": "2026-06",
+            "happyHour": {"rewardEuros": 6.0},
+        },
+        {
+            "yearMonth": "2026-04",
+            "happyHour": {"rewardEuros": 0.5},
+        },
+    ]
+    result = _find_history_fallback(history, "BAN-XXX")
+    assert result is not None
+    assert result["year"] == 2026
+    assert result["month"] == 6
+    assert result["is_fallback"] is True
+    assert result["data"]["month"]["happyHour"]["rewardEuros"] == 6.0
+
+
+def test_find_history_fallback_wraps_data_under_month_key() -> None:
+    """Returned data has shape {"month": {"happyHour": ...}} for sensor paths."""
+    history = [{"yearMonth": "2026-03", "happyHour": {"consumptionKWh": 7.7}}]
+    result = _find_history_fallback(history, "BAN-XXX")
+    assert result is not None
+    assert list(result["data"].keys()) == ["month"]
+    assert result["data"]["month"]["happyHour"]["consumptionKWh"] == 7.7
+
+
+def test_find_history_fallback_skips_malformed_year_month() -> None:
+    """An entry with an unparseable yearMonth string is skipped gracefully."""
+    history = [
+        {"yearMonth": "not-a-date", "happyHour": {"rewardEuros": 5.0}},
+        {"yearMonth": "2026-06", "happyHour": {"rewardEuros": 6.0}},
+    ]
+    result = _find_history_fallback(history, "BAN-XXX")
+    assert result is not None
+    assert result["year"] == 2026
+    assert result["month"] == 6
+
+
+def test_find_history_fallback_returns_none_for_only_malformed_year_month() -> None:
+    """When only malformed yearMonth entries exist with happyHour, return None."""
+    history = [{"yearMonth": "bad", "happyHour": {"rewardEuros": 5.0}}]
+    result = _find_history_fallback(history, "BAN-XXX")
+    assert result is None

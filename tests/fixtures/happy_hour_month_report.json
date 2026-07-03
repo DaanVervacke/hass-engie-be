@@ -1,0 +1,16 @@
+{
+    "month": {
+        "happyHour": {
+            "consumptionKWh": 12.345,
+            "numberOfEligibleHappyHours": 3,
+            "rewardEuros": 4.56,
+            "isCalculationOngoing": false,
+            "comparisonToPreviousMonth": {
+                "consumptionKWhPercentageChange": 10.0,
+                "numberOfEligibleHappyHoursPercentageChange": 0.0,
+                "rewardEurosPercentageChange": 5.0
+            }
+        }
+    },
+    "history": []
+}

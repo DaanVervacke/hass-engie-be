@@ -265,6 +265,15 @@
             "happy_hours_next_end": {
                 "name": "Happy Hours next end"
             },
+            "happy_hours_month_consumption": {
+                "name": "Happy Hours monthly consumption"
+            },
+            "happy_hours_month_eligible_hours": {
+                "name": "Happy Hours eligible hours this month"
+            },
+            "happy_hours_month_reward": {
+                "name": "Happy Hours monthly reward"
+            },
             "epex_current": {
                 "name": "EPEX current price"
             },

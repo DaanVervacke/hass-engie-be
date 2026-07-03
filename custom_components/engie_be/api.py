@@ -949,6 +949,44 @@ class EngieBeApiClient:
             json_response=True,
         )
 
+    async def async_get_month_report(
+        self,
+        business_agreement_number: str,
+        year: int,
+        month: int,
+    ) -> dict[str, Any]:
+        """
+        Fetch the Happy Hours month report for a business agreement.
+
+        ``business_agreement_number`` is the 12-digit BAN. The endpoint
+        returns a ``month`` block with a ``happyHour`` sub-object carrying
+        the current-month Happy Hours summary (consumption, number of
+        eligible hours, reward, and comparison metrics).
+
+        Only meaningful for BANs enrolled in the Happy Hours service; the
+        endpoint may return empty or zero values for un-enrolled BANs.
+
+        Returns the parsed JSON response.
+        """
+        ban = business_agreement_number.replace(" ", "")
+        url = (
+            f"{HAPPY_HOUR_BASE_URL}/business-agreements/"
+            f"{ban}/month-report/{year:04d}-{month:02d}"
+        )
+        headers = {
+            "User-Agent": USER_AGENT_NATIVE,
+            "Accept": "application/json, application/problem+json",
+            "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
+        }
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            json_response=True,
+        )
+
     async def async_get_feature_flags(
         self,
         business_agreement_number: str,

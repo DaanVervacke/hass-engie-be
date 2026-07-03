@@ -165,6 +165,7 @@ def _make_client(
         client.async_get_happy_hour_event = AsyncMock(
             return_value=happy_hour_payload if happy_hour_payload is not None else {},
         )
+    client.async_get_month_report = AsyncMock(return_value={})
     return client
 
 

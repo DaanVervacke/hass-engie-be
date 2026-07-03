@@ -182,9 +182,16 @@ in the Happy Hours program.
 | Happy Hours is active | `binary_sensor.engie_belgium_happy_hours_active` |
 | Happy Hours next start | `sensor.engie_belgium_happy_hours_next_start` |
 | Happy Hours next end | `sensor.engie_belgium_happy_hours_next_end` |
+| Happy Hours monthly consumption | `sensor.engie_belgium_happy_hours_month_consumption` |
+| Happy Hours eligible hours this month | `sensor.engie_belgium_happy_hours_month_eligible_hours` |
+| Happy Hours monthly reward | `sensor.engie_belgium_happy_hours_month_reward` |
 
 The binary sensor is `on` while the current moment falls inside a scheduled
-window, and `off` otherwise. It is always available, and the `off` state
+window, and `off` otherwise. The three monthly-summary sensors show your
+consumption (kWh), the number of eligible Happy Hours windows, and the monetary
+reward (EUR) for the current calendar month. The reward sensor also exposes an
+`is_calculation_ongoing` attribute that ENGIE sets to `true` while it is still
+computing the final value. It is always available, and the `off` state
 covers both "no window scheduled" and "scheduled but not active right now".
 If you need to tell those two cases apart, look at the timestamp sensors
 instead. They report `unknown` when nothing is scheduled.
