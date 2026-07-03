@@ -690,8 +690,9 @@ async def test_subentry_picker_multi_pick_collapses_to_single_reload(
 
     async def _fake_reload(entry_id: str) -> None:
         reload_calls.append(entry_id)
-        # Mirror a real reload: a fresh runtime_data whose snapshot equals
-        # the current subentry-id set (and no pending target).
+        # Mirror a real reload: snapshot must match live entry.options and
+        # the current subentry-id set so the next listener fire sees no
+        # change and does not trigger another reload (infinite loop).
         entry.runtime_data = EngieBeData(
             client=AsyncMock(),
             epex_coordinator=AsyncMock(),

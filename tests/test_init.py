@@ -844,8 +844,16 @@ async def test_update_listener_registered_before_coordinator_auth_failure(
         "async_reload",
         new=AsyncMock(return_value=True),
     ) as mock_reload:
-        # Persist inside the patch so the listener dispatch sees the mock.
-        _persist_tokens(hass, entry, "new-reauth-access", "new-reauth-refresh")
+        # Use async_update_entry (HA's real dispatch path) so the test
+        # exercises the listener wire-up, not just the reload logic.
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_ACCESS_TOKEN: "new-reauth-access",
+                CONF_REFRESH_TOKEN: "new-reauth-refresh",
+            },
+        )
         await hass.async_block_till_done()
 
     mock_reload.assert_awaited_once_with(entry.entry_id)
