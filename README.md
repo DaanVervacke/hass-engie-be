@@ -174,7 +174,7 @@ state-based automations without a template.
 
 ENGIE Belgium occasionally schedules "Happy Hours" windows during which the
 energy consumed at your address is free. These are announced the day
-before via the ENGIE app and are exposed here for every account enrolled
+before and are exposed here for every account enrolled
 in the Happy Hours program.
 
 | Entity | Entity ID |
@@ -197,12 +197,12 @@ you installed the integration cannot be retrieved because ENGIE does not
 expose Happy Hours history.
 
 Happy Hours is an opt-in program from ENGIE. You need to enrol each address
-separately through the ENGIE Smart App under "Je diensten". See
+separately through the ENGIE Smart App under "Je producten". See
 [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/) for
 eligibility and the latest details.
 
-The integration checks your enrolment status on every refresh, which runs
-about every 20 minutes. The three Happy Hours entities and the calendar
+The integration checks your enrolment status on every refresh (by default every
+60 minutes, and configurable). The three Happy Hours entities and the calendar
 events appear shortly after you enrol an address and disappear shortly
 after you opt out. You do not need to remove and re-add the integration
 when your enrolment changes.
