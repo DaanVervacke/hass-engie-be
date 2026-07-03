@@ -835,18 +835,18 @@ async def test_update_listener_registered_before_coordinator_auth_failure(
     # async_update_and_abort does (writes new tokens) and assert the
     # reload path fires.
     client_mock = MagicMock()
-    # Live client holds old token — mismatch triggers reload.
+    # Live client holds old token - mismatch triggers reload.
     client_mock.refresh_token = "old-refresh"  # noqa: S105
     entry.runtime_data.client = client_mock
-
-    _persist_tokens(hass, entry, "new-reauth-access", "new-reauth-refresh")
 
     with patch.object(
         hass.config_entries,
         "async_reload",
         new=AsyncMock(return_value=True),
     ) as mock_reload:
-        await async_reload_entry(hass, entry)
+        # Persist inside the patch so the listener dispatch sees the mock.
+        _persist_tokens(hass, entry, "new-reauth-access", "new-reauth-refresh")
+        await hass.async_block_till_done()
 
     mock_reload.assert_awaited_once_with(entry.entry_id)
 
