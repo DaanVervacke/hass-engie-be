@@ -124,6 +124,20 @@ async def test_redacts_credentials_on_entry_data(hass: HomeAssistant) -> None:
         assert entry_data[key] == REDACTED_MARKER
 
 
+async def test_redacts_id_token_if_persisted(hass: HomeAssistant) -> None:
+    """A persisted OAuth id_token on entry.data is redacted from diagnostics."""
+    entry = _build_entry(hass)
+    hass.config_entries.async_update_entry(
+        entry,
+        data={**entry.data, "id_token": "eyJfake.id.token"},
+    )
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diag["entry"]["data"]["id_token"] == REDACTED_MARKER
+    assert "eyJfake.id.token" not in json.dumps(diag)
+
+
 async def test_redacts_pii_on_subentry_data(hass: HomeAssistant) -> None:
     """Subentry PII fields (customer/agreement/premises/holder/address) are redacted."""
     entry = _build_entry(hass)

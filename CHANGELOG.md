@@ -7,6 +7,101 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.10.0b9] - 2026-07-03
+
+### Added
+
+- Pre-v5 config entries now surface a translated Repairs issue in Settings →
+  Repairs when they can no longer be migrated, replacing the previous generic
+  setup-error banner with an actionable card.
+- `quality_scale.yaml` now declares Gold and Platinum rule status alongside the
+  existing Bronze and Silver rows, reflecting `diagnostics` and `repair-issues`
+  as done and tracking the remaining gaps as `todo`/`exempt`.
+
+### Changed
+
+- Duplicate-login detection moved earlier in the config flow: configuring an
+  ENGIE login that is already set up now aborts at the credentials step
+  before any MFA code is requested, instead of after the user has typed it.
+
+### Fixed
+
+- Diagnostics now redacts `id_token` alongside access and refresh tokens,
+  defensively guarding against any future code path that persists the OAuth
+  id token on the config entry.
+
+## [0.10.0] - 2026-06-13
+
+This release adds support for **Happy Hours**. ENGIE's free-energy windows now
+show up right inside Home Assistant. On top of that, your time-based sensors now
+flip the moment a window or price slot changes instead of lagging behind,
+signing in is more reliable, and the integration has earned Home Assistant's
+**Silver** quality badge.
+
+> [!CAUTION]
+> **Coming from v0.9.0?** Just update. There's nothing to remove or re-add, and
+> your accounts and settings carry over. You do need **Home Assistant 2026.6.0
+> or newer**. HACS won't offer the update on older versions.
+>
+> **Still on v0.8.x or older?** You can't jump straight here. Install **v0.9.0
+> first** (that one needs a clean remove-and-re-add, see its release notes),
+> then update to this release.
+
+### What's new
+
+- **Happy Hours support.** ENGIE occasionally schedules "Happy Hours" windows
+  where the electricity you use at home is free. Happy Hours is an opt-in ENGIE
+  program, so these entities only show up for addresses you've enrolled (see
+  [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/)). The
+  integration detects enrolment on its own, so they appear and disappear
+  without you touching anything. For each enrolled address you get:
+  - **Happy Hours is active**, a binary sensor that's `on` for the whole
+    window. Perfect for automations like charging the car or running the
+    dishwasher while energy is free.
+  - **Happy Hours next start** and **Happy Hours next end**, sensors that tell
+    you when the next window begins and ends.
+  - A **"Happy Hours" event** on each account's calendar, next to the monthly
+    capacity-tariff peak. Past windows are kept so the calendar shows a full
+    history, though windows from before you installed the integration can't be
+    recovered.
+
+- **Sensors now react on the second.** The Happy Hours sensor, the
+  **EPEX price is negative** sensor, and the **EPEX current price** and
+  **EPEX next hour price** sensors used to only refresh on the next background
+  poll, so they could be up to an hour behind the real change. They now flip the
+  instant a window opens or closes, or the instant the hourly market price rolls
+  over, so price-driven automations fire right on time without needing an
+  aggressive refresh interval.
+
+- **Home Assistant Silver quality scale.** The integration now meets all of
+  Home Assistant's Silver-tier requirements. As part of this,
+  the minimum supported Home Assistant version is now
+  **2026.6.0**.
+
+### Improvements & fixes
+
+- **Signing in is more reliable.** Some accounts could not finish setup or
+  re-authentication and got an "Invalid username or password." error even when
+  everything was correct. ENGIE's login can return one of two different shapes
+  after your verification code is accepted, and only one was handled before.
+  Both work now. You'll also see a clearer message if sign-in does fail after
+  the code step, instead of it being wrongly blamed on your password.
+- **The Authentication sensor updates right away.** It now reflects the result
+  of the background token refresh immediately, so a sign-in hiccup (or recovery)
+  shows up at once instead of waiting for an unrelated update.
+- **Adding several accounts at once is tidier.** Picking multiple business
+  agreements in one go now reloads the integration just once instead of once
+  per account. Each agreement still becomes its own device.
+- **Steadier setup and re-authentication.** A brief ENGIE outage during setup no
+  longer cascades into an unexpected re-login prompt, and re-authenticating no
+  longer reloads the integration twice in a row.
+
+### What you need to do after updating
+
+Coming from v0.9.0, nothing. Your accounts, settings, and history carry over,
+and Happy Hours entities appear on their own for enrolled addresses. (Make sure
+Home Assistant is on 2026.6.0 or newer first, as noted above.)
+
 ## [0.10.0b8] - 2026-06-13
 
 ### Added
@@ -380,6 +475,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [0.8.3] - 2026-05-18
 
 ### Fixed
+
 - **DEBUG logging redaction:** the Auth0 login form body printed the
   user's email (`username` field) and the opaque flow `state` token
   verbatim because neither key was in the body redaction sets. Both
@@ -388,6 +484,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   paths ([#80]).
 
 ### Changed
+
 - **Structured DEBUG-level request/response logging** in the ENGIE
   Belgium API client. Each HTTP call is bracketed with paired `→` /
   `←` (or `✗` on failure) log lines tagged with an 8-character
@@ -400,6 +497,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   only emitted when the integration logger is at DEBUG ([#80]).
 
 ### Internal
+
 - Extracted `_log_request` / `_log_response` / `_log_error` helpers
   in `api.py` so the `_api_wrapper` and EPEX inline paths share a
   single source of truth for the `→ / ← / ✗` log format. Documented
@@ -419,6 +517,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [0.8.2] - 2026-05-07
 
 ### Added
+
 - **New `EPEX next hour price` sensor** for dynamic-tariff
   electricity accounts. Shows the wholesale electricity price one
   hour from now, so you can run appliances when the upcoming hour
@@ -427,6 +526,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [0.8.1] - 2026-05-06
 
 ### Changed
+
 - **Authentication sensor moved to diagnostics.** The
   **Authentication** binary sensor is now categorised as a diagnostic
   entity, so it no longer appears on default dashboards (Overview,
@@ -442,6 +542,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 > **Reconfigure** to sign in again.
 
 ### Added
+
 - **Multiple ENGIE customer accounts under one login.** If your ENGIE
   login owns more than one customer account (for example a home and a
   rental property), you can now add all of them with a single setup.
@@ -460,6 +561,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   prices appear once ENGIE publishes them.
 
 ### Changed
+
 - **Calendar now leads with the brand name.** Your calendar shows up
   in the calendar panel as **ENGIE Belgium &lt;address&gt;** instead of
   just the address.
@@ -470,12 +572,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   will need updating.
 
 ### Migration
+
 - Existing installs upgrade automatically on first load. You will be
   asked to re-authenticate once after upgrading.
 
 ## [0.7.1] - 2026-05-03
 
 ### Added
+
 - New aggregated calendar entity `calendar.engie_belgium` that surfaces
   ENGIE-related events in one place. The first event type is the monthly
   capacity-tariff peak window ("Captar monthly peak"), with peak power
@@ -494,12 +598,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   persisted store ([#61]).
 
 ### Changed
+
 - Internal refactor: payload-shape helpers for the captar peaks payload
   moved from `sensor.py` into a new shared `_peaks` module that also
   hosts the captar event provider used by the new calendar platform
   ([#61]).
 
 ### Chore
+
 - All entity platforms (`binary_sensor`, `calendar`, `sensor`) now
   declare `PARALLEL_UPDATES = 0` to make the coordinator-centralised
   update model explicit, per Home Assistant integration quality scale
@@ -508,6 +614,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [0.7.0] - 2026-05-02
 
 ### Added
+
 - Four new capacity-tariff (captar) sensors that expose the current
   month's peak power and energy plus the start and end timestamps of
   that monthly peak window. Data comes from the ENGIE
@@ -522,6 +629,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   of the displayed value is explicit ([#58]).
 
 ### Docs
+
 - README updated to describe the captar feature outside the per-PR
   section: intro, features list, sensors intro, configuration
   walkthrough, and how-it-works now mention the second endpoint and
@@ -533,6 +641,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [0.6.1] - 2026-05-01
 
 ### Docs
+
 - Require a dedicated ENGIE account for this integration. The README,
   the setup form, the re-authentication dialog, and the bug-report
   template now state this as a hard requirement rather than a
@@ -544,6 +653,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [0.6.0] - 2026-04-30
 
 ### Changed
+
 - Bumped minimum Home Assistant version to 2026.3.0 in hacs.json. The
   integration's brand icon now ships with the integration itself via the
   Brands Proxy API (HA 2026.3+), so HACS shows the logo without needing
@@ -554,12 +664,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   the new minimum Home Assistant version ([#53]).
 
 ### Docs
+
 - README now leads with one-click "Open in HACS" and "Add Integration"
   badges, with the manual steps kept as a fallback ([#52]).
 
 ## [0.5.0] - 2026-04-29
 
 ### Added
+
 - Diagnostics platform with credential redaction so users can share
   sanitized data when reporting bugs ([#37]).
 - Silent re-authentication flow that triggers a UI reauth instead of
@@ -567,6 +679,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Pull request template to standardize PR descriptions ([#47]).
 
 ### Changed
+
 - Declared Bronze quality scale and met all 18 Bronze rules ([#42], [#43]).
 - Hardened logging: removed redundant debug toggle, scrubbed sensitive
   values from log output ([#40]).
@@ -577,15 +690,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   customers no longer pay sum-of-latencies on every reload ([#49]).
 
 ### Fixed
+
 - Em-dashes removed from README in favor of natural punctuation ([#46]).
 
 ### Docs
+
 - Disclosed AI assistance used during development ([#44]).
 - Added a CHANGELOG and linked it from the README ([#48]).
 - Bug-report template now points at the README's troubleshooting steps
   for enabling debug logs ([#50]).
 
 ### Tests
+
 - Initial test scaffolding and CI wiring ([#35]).
 - Coordinator and `__init__` unit coverage with `pytest-cov`
   reporting ([#38]).
@@ -595,73 +711,88 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [0.4.2] - 2026-03-23
 
 ### Fixed
+
 - Properly refresh energy prices and sensors; allow refresh interval
   to be set in minutes ([#30]).
 
 ## [0.4.1] - 2026-03-23
 
 ### Changed
+
 - Improved authorization code extraction during login ([#27]).
 - Clearer login instructions ([#28]).
 
 ## [0.4.0] - 2026-03-13
 
 ### Added
+
 - Option to enable debug logging during initial setup ([#22]).
 
 ### Changed
+
 - Clarified 2FA requirements and authentication issues in the
   README ([#20]).
 - Improved customer number field string ([#23]).
 
 ### Fixed
+
 - Reverted gas prices back to EUR/kWh ([#21]).
 
 ## [0.3.1] - 2026-03-10
 
 ### Docs
+
 - README updated to cover tri-rate (super off-peak) support ([#18]).
 
 ## [0.3.0] - 2026-03-10
 
 ### Added
+
 - Tri-rate (super off-peak) tariff support ([#17]).
 
 ### Fixed
+
 - Customer numbers with whitespace no longer cause API 400 errors ([#16]).
 
 ## [0.2.3] - 2026-03-03
 
 ### Fixed
+
 - Use EUR per m³ for gas pricing ([#14]).
 
 ## [0.2.2] - 2026-03-02
 
 ### Added
+
 - Energy type now derived automatically from the service-points
   endpoint ([#12]).
 
 ## [0.2.1] - 2026-03-02
 
 ### Docs
+
 - README updated to reflect recent changes ([#11]).
 
 ## [0.2.0] - 2026-03-02
 
 ### Added
+
 - Day and night tariff support ([#8]).
 
 ## [0.1.3] - 2026-03-02
 
 ### Changed
+
 - Version bump only ([#7]).
 
 ## [0.1.2] - 2026-03-02
 
 ### Added
+
 - Improved customer number input field ([#5]).
 
 ### Fixed
+
 - Stopped reloading the config entry on every token rotation ([#4]).
 
 ## [0.1.1] - 2026-03-02
@@ -671,6 +802,7 @@ No user-visible changes.
 ## [0.1.0] - 2026-02-28
 
 ### Added
+
 - Initial release: ENGIE Belgium custom integration with electricity
   and gas sensors, OAuth login, and email-based 2FA ([#1]).
 - HACS publication metadata ([#2]).
@@ -719,7 +851,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b8...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0
 [0.10.0b8]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b7...v0.10.0b8
 [0.10.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b6...v0.10.0b7
 [0.10.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b5...v0.10.0b6

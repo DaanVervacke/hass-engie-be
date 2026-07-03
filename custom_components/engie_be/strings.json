@@ -119,6 +119,12 @@
             "message": "An unknown error occurred while talking to the ENGIE Belgium API."
         }
     },
+    "issues": {
+        "pre_v5_entry": {
+            "title": "ENGIE Belgium: re-add required",
+            "description": "Your ENGIE Belgium integration was set up on an older schema (v{version}) that can no longer be migrated automatically. Remove this entry from Settings → Devices & Services and add the integration again to continue."
+        }
+    },
     "options": {
         "step": {
             "init": {

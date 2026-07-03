@@ -104,6 +104,12 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             self._user_input = user_input
 
+            # Abort BEFORE the MFA round-trip if this login is already
+            # configured. The MFA-time check in `_handle_mfa_step` stays as
+            # defense-in-depth but should never be reached for duplicates now.
+            await self.async_set_unique_id(slugify(user_input[CONF_USERNAME]))
+            self._abort_if_unique_id_configured()
+
             try:
                 self._client = EngieBeApiClient(
                     session=async_get_clientsession(self.hass),

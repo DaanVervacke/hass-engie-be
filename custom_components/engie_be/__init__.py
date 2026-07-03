@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
@@ -24,6 +25,7 @@ from .const import (
     CONF_CLIENT_ID,
     CONF_REFRESH_TOKEN,
     DEFAULT_CLIENT_ID,
+    DOMAIN,
     LOGGER,
     SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
@@ -48,7 +50,7 @@ PLATFORMS: list[Platform] = [
 
 
 async def async_migrate_entry(
-    hass: HomeAssistant,  # noqa: ARG001
+    hass: HomeAssistant,
     entry: EngieBeConfigEntry,
 ) -> bool:
     """
@@ -60,8 +62,9 @@ async def async_migrate_entry(
     must remove the integration from Home Assistant and re-add it
     through the UI; that re-add walks the current config flow and
     produces a fresh v5 entry. Returning ``False`` here causes HA to
-    flag the entry as ``setup_error`` and surface a Repairs notice,
-    which is the intended UX for this change.
+    flag the entry as ``setup_error``; alongside that, we raise a
+    translated, non-fixable Repairs issue so the user sees an
+    actionable card in Settings -> Repairs.
     """
     LOGGER.error(
         "Cannot migrate ENGIE Belgium config entry from version %s. "
@@ -69,6 +72,15 @@ async def async_migrate_entry(
         "Settings -> Devices & Services and add it again. See the v0.9.0 "
         "changelog for details.",
         entry.version,
+    )
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"pre_v5_entry_{entry.entry_id}",
+        is_fixable=False,
+        severity=ir.IssueSeverity.ERROR,
+        translation_key="pre_v5_entry",
+        translation_placeholders={"version": str(entry.version)},
     )
     return False
 

@@ -362,18 +362,19 @@ async def test_user_flow_duplicate_aborts(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
-    """Configuring the same username twice aborts with already_configured."""
+    """Configuring the same username twice aborts at the user step before MFA."""
     _build_parent_entry(hass)
 
-    with (
-        patch(
-            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
-            AsyncMock(return_value=_fake_flow_state()),
+    # The abort must happen before any ENGIE auth traffic is initiated.
+    # Mock async_start_authentication so the test fails loudly if reached.
+    start_auth = AsyncMock(
+        side_effect=AssertionError(
+            "async_start_authentication must not be called for a duplicate login",
         ),
-        patch(
-            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
-            AsyncMock(return_value=_TOKENS),
-        ),
+    )
+    with patch(
+        "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+        start_auth,
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -381,12 +382,10 @@ async def test_user_flow_duplicate_aborts(
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], _USER_INPUT
         )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"code": "123456"}
-        )
 
     assert result["type"] is data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+    start_auth.assert_not_called()
 
 
 async def test_user_flow_connection_error_recovers(
