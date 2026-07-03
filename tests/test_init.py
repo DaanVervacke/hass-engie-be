@@ -112,12 +112,26 @@ def _make_client(  # noqa: PLR0913 - kwargs-only test helper, one knob per endpo
     peaks_return: dict[str, Any] | None = None,
     energy_contracts_return: dict[str, Any] | None = None,
 ) -> MagicMock:
-    """Build a MagicMock EngieBeApiClient with the given async return values."""
+    """
+    Build a MagicMock EngieBeApiClient with the given async return values.
+
+    The mock mirrors the real ``EngieBeApiClient`` contract: a successful
+    ``async_refresh_token`` call updates ``client.refresh_token`` in-memory
+    before returning.  This is essential for the token-mismatch check in
+    ``async_reload_entry`` — without it, ``_persist_tokens`` writing the new
+    token to ``entry.data`` would always look like an external reauth write
+    and trigger a spurious reload during setup.
+    """
     client = MagicMock()
     if refresh_side_effect is not None:
         client.async_refresh_token = AsyncMock(side_effect=refresh_side_effect)
     else:
-        client.async_refresh_token = AsyncMock(return_value=refresh_return)
+        # Mirror the real client: update client.refresh_token before returning.
+        async def _refresh_and_update() -> tuple[str, str]:
+            client.refresh_token = refresh_return[1]
+            return refresh_return
+
+        client.async_refresh_token = AsyncMock(side_effect=_refresh_and_update)
     client.async_get_prices = AsyncMock(return_value=prices_return or {"items": []})
     client.async_get_service_point = AsyncMock(
         return_value=service_point_return or {"division": "ELECTRICITY"},
@@ -507,8 +521,13 @@ async def test_token_only_data_update_does_not_trigger_reload(
     """Rotating tokens (entry.data) must NOT rebuild the coordinator."""
     entry = _build_entry(hass)
     sentinel_epex_coordinator = MagicMock()
+    client = MagicMock()
+    # Simulates the rotation path: the live client already holds the same
+    # refresh token that _persist_tokens just wrote to entry.data, so the
+    # tokens_externally_updated check must not trigger a reload.
+    client.refresh_token = entry.data[CONF_REFRESH_TOKEN]
     entry.runtime_data = EngieBeData(
-        client=MagicMock(),
+        client=client,
         epex_coordinator=sentinel_epex_coordinator,
         last_options=dict(entry.options),
         last_subentry_ids={
@@ -524,7 +543,8 @@ async def test_token_only_data_update_does_not_trigger_reload(
         new=AsyncMock(return_value=True),
     ) as mock_reload:
         # Simulate the update listener firing after _persist_tokens rotated
-        # the tokens. Options dict is unchanged, so reload must be skipped.
+        # the tokens. Options dict and client token are unchanged relative to
+        # entry.data, so reload must be skipped.
         await async_reload_entry(hass, entry)
 
     mock_reload.assert_not_awaited()
@@ -638,19 +658,26 @@ async def test_token_rotation_does_not_reload_when_subentries_unchanged(
 
     Tokens are written via ``async_update_entry(data=...)`` which fires
     every update listener, but neither options nor the customer-account
-    subentry id set changes, so the no-op short-circuit must hold.
+    subentry id set changes, and the live client already holds the newly
+    rotated token (it updates in-memory before _persist_tokens runs),
+    so the no-op short-circuit must hold.
     """
     entry = _build_entry(hass)
     initial_ids = {sub.subentry_id for sub in entry.subentries.values()}
+    client = MagicMock()
     entry.runtime_data = EngieBeData(
-        client=MagicMock(),
+        client=client,
         epex_coordinator=MagicMock(),
         last_options=dict(entry.options),
         last_subentry_ids=initial_ids,
     )
 
-    # Simulate a token rotation: only entry.data changes.
+    # Simulate a token rotation: _persist_tokens writes the new pair to
+    # entry.data, and the live client already carries the same refresh token
+    # in memory (because async_refresh_token updates self.refresh_token
+    # before the caller invokes _persist_tokens).
     _persist_tokens(hass, entry, "rotated-access", "rotated-refresh")
+    client.refresh_token = "rotated-refresh"  # noqa: S105
 
     with patch.object(
         hass.config_entries,
@@ -660,6 +687,227 @@ async def test_token_rotation_does_not_reload_when_subentries_unchanged(
         await async_reload_entry(hass, entry)
 
     mock_reload.assert_not_awaited()
+
+
+async def test_reauth_token_mismatch_triggers_reload(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Reauth writes new tokens to entry.data without touching the live client.
+
+    When the listener fires after a reauth the stored refresh token in
+    entry.data differs from the live client's in-memory refresh_token.
+    That mismatch must cause a reload so the new credentials are picked up
+    without requiring a full HA restart.
+    """
+    entry = _build_entry(hass)
+    initial_ids = {sub.subentry_id for sub in entry.subentries.values()}
+    client = MagicMock()
+    # Live client still holds the old (now-invalidated) refresh token.
+    client.refresh_token = "old-refresh"  # noqa: S105
+    entry.runtime_data = EngieBeData(
+        client=client,
+        epex_coordinator=MagicMock(),
+        last_options=dict(entry.options),
+        last_subentry_ids=initial_ids,
+    )
+
+    # Simulate what async_update_and_abort does in the reauth flow: it
+    # writes the new token pair directly to entry.data without calling
+    # client.async_refresh_token, so the live client's refresh_token is
+    # still the old value.
+    _persist_tokens(hass, entry, "new-reauth-access", "new-reauth-refresh")
+
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(return_value=True),
+    ) as mock_reload:
+        await async_reload_entry(hass, entry)
+
+    mock_reload.assert_awaited_once_with(entry.entry_id)
+
+
+async def test_update_listener_registered_before_auth_failure(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Regression: update listener registered before initial token refresh raises.
+
+    When stored tokens are rejected on startup the initial ``async_refresh_token``
+    call raises ``EngieBeApiClientAuthenticationError``, which ``async_setup_entry``
+    re-raises as ``ConfigEntryAuthFailed``.  HA then opens a reauth flow.  The
+    reauth flow calls ``async_update_and_abort``, which writes the new token pair
+    to ``entry.data`` and fires every update listener.  ``async_reload_entry``
+    must be among those listeners, or the entry stays stuck in the failed state
+    until a manual reload.
+
+    This test verifies that ``entry.add_update_listener`` is invoked before the
+    failing ``await`` by patching ``async_refresh_token`` to raise and asserting
+    that ``add_update_listener`` was already called at that point.
+    """
+    entry = _build_entry(hass)
+    client = _make_client(
+        refresh_side_effect=EngieBeApiClientAuthenticationError("expired"),
+    )
+
+    add_listener_called_before_raise: list[bool] = []
+
+    original_refresh = client.async_refresh_token
+
+    async def _raise_and_record() -> tuple[str, str]:
+        # By the time async_refresh_token is awaited the listener must be
+        # registered already.
+        add_listener_called_before_raise.append(
+            mock_add_listener.called,
+        )
+        return await original_refresh()
+
+    client.async_refresh_token = _raise_and_record
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch.object(
+            entry,
+            "add_update_listener",
+            wraps=entry.add_update_listener,
+        ) as mock_add_listener,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is False
+    # The listener must have been registered before the auth raise.
+    assert add_listener_called_before_raise == [True], (
+        "add_update_listener was not called before async_refresh_token raised"
+    )
+    # HA must have opened a reauth flow.
+    reauth_flows = [
+        flow
+        for flow in hass.config_entries.flow.async_progress()
+        if flow["handler"] == DOMAIN and flow["context"].get("source") == "reauth"
+    ]
+    assert len(reauth_flows) == 1
+
+
+async def test_update_listener_registered_before_coordinator_auth_failure(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Regression: update listener registered before coordinator first-refresh raises.
+
+    The gather in ``async_setup_entry`` can also surface a
+    ``ConfigEntryAuthFailed`` from a per-subentry coordinator's
+    ``async_config_entry_first_refresh``.  The listener must already be
+    registered at that point too.
+    """
+    entry = _build_entry(hass)
+    client = _make_client()
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(side_effect=ConfigEntryAuthFailed("session expired")),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is False
+    # The entry must have an update listener registered (HA tracks these
+    # on the entry object; the public API exposes them via
+    # ``entry._listeners``).  We verify indirectly: simulate what
+    # async_update_and_abort does (writes new tokens) and assert the
+    # reload path fires.
+    client_mock = MagicMock()
+    # Live client holds old token — mismatch triggers reload.
+    client_mock.refresh_token = "old-refresh"  # noqa: S105
+    entry.runtime_data.client = client_mock
+
+    _persist_tokens(hass, entry, "new-reauth-access", "new-reauth-refresh")
+
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(return_value=True),
+    ) as mock_reload:
+        await async_reload_entry(hass, entry)
+
+    mock_reload.assert_awaited_once_with(entry.entry_id)
+
+
+async def test_update_listener_survives_failed_setup_and_fires_on_reauth(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Regression: listener registered in setup must survive setup failure.
+
+    HA invokes every ``async_on_unload`` callback when ``async_setup_entry``
+    raises (``config_entries.py`` ``_async_process_on_unload`` in the
+    setup-failure finally-branch).  If the update listener is registered via
+    ``async_on_unload``, it is silently unregistered on the auth-failure path,
+    so the subsequent ``async_update_and_abort`` in the reauth flow fires no
+    listener and no reload happens — the user has to reload manually.
+
+    This test exercises HA's real dispatch: after setup fails with
+    ``ConfigEntryAuthFailed``, simulate the reauth write by calling
+    ``hass.config_entries.async_update_entry`` (which iterates
+    ``entry.update_listeners``) and assert the listener still fires.
+    """
+    entry = _build_entry(hass)
+    client = _make_client(
+        refresh_side_effect=EngieBeApiClientAuthenticationError("expired"),
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is False
+    assert async_reload_entry in entry.update_listeners, (
+        "update listener was unregistered by _async_process_on_unload after "
+        "setup failure; reauth completion would fire no listener"
+    )
+
+    # Simulate reauth: live client still holds the old refresh token, but
+    # entry.data is about to be rewritten with new tokens. The listener
+    # must fire and see the mismatch.
+    entry.runtime_data.client.refresh_token = "old-refresh"  # noqa: S105
+    with patch.object(
+        hass.config_entries,
+        "async_reload",
+        new=AsyncMock(return_value=True),
+    ) as mock_reload:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_ACCESS_TOKEN: "new-reauth-access",
+                CONF_REFRESH_TOKEN: "new-reauth-refresh",
+            },
+        )
+        await hass.async_block_till_done()
+
+    mock_reload.assert_awaited_once_with(entry.entry_id)
 
 
 async def test_unrelated_subentry_type_does_not_trigger_reload(
@@ -674,8 +922,12 @@ async def test_unrelated_subentry_type_does_not_trigger_reload(
     """
     entry = _build_entry(hass)
     initial_ids = {sub.subentry_id for sub in entry.subentries.values()}
+    client = MagicMock()
+    # Match the client's in-memory token to entry.data so the reauth check
+    # does not fire; this test targets the subentry-type filtering only.
+    client.refresh_token = entry.data[CONF_REFRESH_TOKEN]
     entry.runtime_data = EngieBeData(
-        client=MagicMock(),
+        client=client,
         epex_coordinator=MagicMock(),
         last_options=dict(entry.options),
         last_subentry_ids=initial_ids,

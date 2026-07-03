@@ -85,7 +85,7 @@ async def async_migrate_entry(
     return False
 
 
-async def async_setup_entry(
+async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts readability
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,
 ) -> bool:
@@ -109,6 +109,22 @@ async def async_setup_entry(
             if sub.subentry_type == SUBENTRY_TYPE_BUSINESS_AGREEMENT
         },
     )
+
+    # Register the update listener BEFORE any step that can raise
+    # ``ConfigEntryAuthFailed`` AND without wrapping in ``async_on_unload``.
+    # When ``async_setup_entry`` raises, HA invokes every ``async_on_unload``
+    # callback (see ``config_entries.py`` ``_async_process_on_unload`` in the
+    # setup-failure finally-branch), which would immediately unregister the
+    # listener — so reauth completion (via ``async_update_and_abort``) would
+    # fire no listener and no reload would happen. Registering directly on
+    # ``entry.update_listeners`` survives the failed setup. The list is
+    # created once at entry construction and never reset, so a membership
+    # check keeps this idempotent across setup retries.
+    # ponytail: relying on the public ``update_listeners`` field is
+    # intentional; the returned unlisten callable is discarded because the
+    # listener must outlive individual setup attempts.
+    if async_reload_entry not in entry.update_listeners:
+        entry.add_update_listener(async_reload_entry)
 
     # Initial token refresh so per-subentry coordinators have a valid
     # access token to make their first authenticated request with.
@@ -223,20 +239,18 @@ async def async_setup_entry(
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-
     # Recurring token refresh registered AFTER every step that can raise
     # ``ConfigEntryNotReady`` (initial token refresh at the top of this
     # function, plus per-subentry ``async_config_entry_first_refresh``
     # which wraps ``UpdateFailed`` from ``coordinator.py:_async_update_data``
-    # into ``ConfigEntryNotReady``). Registering earlier would leak the
-    # timer on a half-set-up entry: HA tears down ``async_on_unload``
-    # callbacks on retry, but only for the entry that successfully reached
-    # this point. If a later setup step raises, the timer keeps firing,
-    # rotating refresh tokens that never get persisted (because the
-    # ``_persist_tokens`` write inside the callback targets the same
+    # into ``ConfigEntryNotReady``). Registering the timer earlier would leak
+    # it on a half-set-up entry: if a later setup step raises, the timer
+    # keeps firing, rotating refresh tokens that never get persisted (because
+    # the ``_persist_tokens`` write inside the callback targets the same
     # half-set-up entry), and the next real setup attempt fails reauth.
     # See ``.opencode/audit-v0.10.0b1-prerelease.md`` Blocker B1a.
+    # Note: the update listener (registered above, before the first await)
+    # is intentionally placed earlier; it is safe on a half-set-up entry.
     cancel_refresh = async_track_time_interval(
         hass,
         _refresh_token_callback,
@@ -260,11 +274,20 @@ async def async_reload_entry(
     entry: EngieBeConfigEntry,
 ) -> None:
     """
-    Reload on options change or business-agreement subentry add/remove.
+    Reload on options change, business-agreement subentry add/remove, or reauth.
 
-    Token rotation also fires this listener (it writes to ``entry.data``)
-    but neither options nor the business-agreement subentry id set change
-    on token rotation, so the no-op short-circuit holds.
+    Token rotation also fires this listener (it writes to ``entry.data``
+    via ``_persist_tokens``). During rotation the live client updates its
+    in-memory ``refresh_token`` *before* ``_persist_tokens`` is called, so
+    ``entry.data[CONF_REFRESH_TOKEN]`` and ``runtime.client.refresh_token``
+    are equal when the listener runs — no reload.
+
+    Reauthentication writes new tokens to ``entry.data`` externally (via
+    ``async_update_and_abort`` in the config flow) without touching the
+    live client object. When the listener fires after a reauth, the stored
+    refresh token differs from the live client's in-memory token. That
+    mismatch is the signal that an external write occurred and a reload is
+    needed to wire the new credentials into the running client.
 
     A multi-pick subentry add writes N subentries via N separate
     ``async_add_subentry`` calls, each scheduling this listener. The
@@ -282,6 +305,9 @@ async def async_reload_entry(
         if sub.subentry_type == SUBENTRY_TYPE_BUSINESS_AGREEMENT
     }
     subentries_changed = current_subentry_ids != runtime.last_subentry_ids
+    tokens_externally_updated = (
+        entry.data.get(CONF_REFRESH_TOKEN) != runtime.client.refresh_token
+    )
 
     target = runtime.pending_subentry_target
     if target is not None and not options_changed:
@@ -294,7 +320,7 @@ async def async_reload_entry(
             await hass.config_entries.async_reload(entry.entry_id)
         return
 
-    if options_changed or subentries_changed:
+    if options_changed or subentries_changed or tokens_externally_updated:
         await hass.config_entries.async_reload(entry.entry_id)
 
 
