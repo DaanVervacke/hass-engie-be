@@ -677,10 +677,13 @@ async def test_subentry_picker_multi_pick_collapses_to_single_reload(
     entry.runtime_data = EngieBeData(
         client=AsyncMock(),
         epex_coordinator=AsyncMock(),
+        last_options=dict(entry.options),
         last_subentry_ids=set(),
     )
-    # Register the real reload listener, exactly as async_setup_entry does.
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    # Register directly on update_listeners (not via async_on_unload) so it
+    # survives any simulated reload, matching the real async_setup_entry.
+    if async_reload_entry not in entry.update_listeners:
+        entry.add_update_listener(async_reload_entry)
     relations = _load_relations_fixture()
 
     reload_calls: list[str] = []
@@ -692,13 +695,13 @@ async def test_subentry_picker_multi_pick_collapses_to_single_reload(
         entry.runtime_data = EngieBeData(
             client=AsyncMock(),
             epex_coordinator=AsyncMock(),
+            last_options=dict(entry.options),
             last_subentry_ids={
                 sub.subentry_id
                 for sub in entry.subentries.values()
                 if sub.subentry_type == SUBENTRY_TYPE_BUSINESS_AGREEMENT
             },
         )
-        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     with (
         patch(
@@ -735,9 +738,11 @@ async def test_subentry_picker_single_pick_reloads_once(
     entry.runtime_data = EngieBeData(
         client=AsyncMock(),
         epex_coordinator=AsyncMock(),
+        last_options=dict(entry.options),
         last_subentry_ids=set(),
     )
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    if async_reload_entry not in entry.update_listeners:
+        entry.add_update_listener(async_reload_entry)
     relations = _load_relations_fixture()
 
     reload_calls: list[str] = []
