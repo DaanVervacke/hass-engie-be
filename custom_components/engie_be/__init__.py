@@ -115,7 +115,7 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
     # When ``async_setup_entry`` raises, HA invokes every ``async_on_unload``
     # callback (see ``config_entries.py`` ``_async_process_on_unload`` in the
     # setup-failure finally-branch), which would immediately unregister the
-    # listener — so reauth completion (via ``async_update_and_abort``) would
+    # listener, so reauth completion (via ``async_update_and_abort``) would
     # fire no listener and no reload would happen. Registering directly on
     # ``entry.update_listeners`` survives the failed setup. The list is
     # created once at entry construction and never reset, so a membership

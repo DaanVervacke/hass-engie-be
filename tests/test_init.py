@@ -863,7 +863,7 @@ async def test_update_listener_survives_failed_setup_and_fires_on_reauth(
     setup-failure finally-branch).  If the update listener is registered via
     ``async_on_unload``, it is silently unregistered on the auth-failure path,
     so the subsequent ``async_update_and_abort`` in the reauth flow fires no
-    listener and no reload happens — the user has to reload manually.
+    listener and no reload happens, so the user has to reload manually.
 
     This test exercises HA's real dispatch: after setup fails with
     ``ConfigEntryAuthFailed``, simulate the reauth write by calling

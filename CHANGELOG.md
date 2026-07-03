@@ -5,7 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.1] - 2026-07-03
+
+### Added
+
+- **Three new Happy Hours monthly-summary sensors** for each business agreement enrolled in ENGIE's Happy Hours program. These give you a running total of how the program is going for you this month:
+  - **Happy Hours monthly consumption** (`sensor.engie_belgium_*_happy_hours_month_consumption`): how much energy you used during Happy Hours windows this month, in kWh.
+  - **Happy Hours eligible hours this month** (`sensor.engie_belgium_*_happy_hours_month_eligible_hours`): how many Happy Hours windows counted toward this month's total.
+  - **Happy Hours monthly reward** (`sensor.engie_belgium_*_happy_hours_month_reward`): the value of the free energy you used during Happy Hours windows this month, in EUR. In other words, what that energy would have cost you at your regular rate. It exposes an `is_calculation_ongoing` attribute that is `true` while ENGIE is still finalising the number.
+- Right at the start of a new billing month ENGIE sometimes has not yet published this month's totals. In that case the three sensors above now show the most recent completed month instead of `unknown`, with a `report_is_fallback` attribute set to `true` and a `report_month` attribute telling you which month is being displayed.
+
+### Fixed
+
+- **Reauthentication reloads the integration automatically.** If Home Assistant restarted and your stored ENGIE tokens were no longer valid, you would see the "Reconfigure" prompt, sign in again, and then nothing happened. The integration stayed stuck in the "authentication required" state until you manually reloaded it or restarted Home Assistant a second time. Completing the reauthentication flow now wires the new tokens into the running integration on its own, so sensors come back live as soon as you finish signing in.
+
+### Changed
+
+- **Refreshed ENGIE brand assets** (icon and logo, including dark-mode variants) to match ENGIE's current visual style.
 
 ## [0.10.0b9] - 2026-07-03
 
@@ -863,7 +879,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0
 [0.10.0b9]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b8...v0.10.0b9
 [0.10.0b8]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b7...v0.10.0b8
