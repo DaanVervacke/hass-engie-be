@@ -30,7 +30,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   defensively guarding against any future code path that persists the OAuth
   id token on the config entry.
 
-## [0.10.0] - 2026-06-13
+## [0.10.0] - 2026-07-03
 
 This release adds support for **Happy Hours**. ENGIE's free-energy windows now
 show up right inside Home Assistant. On top of that, your time-based sensors now
@@ -95,6 +95,18 @@ signing in is more reliable, and the integration has earned Home Assistant's
 - **Steadier setup and re-authentication.** A brief ENGIE outage during setup no
   longer cascades into an unexpected re-login prompt, and re-authenticating no
   longer reloads the integration twice in a row.
+- **Clearer message when an account is already set up.** If you try to
+  configure the same ENGIE login twice, the setup wizard now stops at the
+  sign-in step with an "already configured" message, instead of asking for
+  your 2FA code first and only then telling you it is a duplicate.
+- **Actionable Repairs card for very old installs.** If you skipped v0.9.0
+  and are upgrading from v0.8.x or earlier, Home Assistant now surfaces an
+  actionable card under **Settings** > **Repairs** telling you exactly what
+  to do, instead of showing a generic setup-error banner.
+- **Diagnostics downloads are safer to share.** The OAuth `id_token` is now
+  redacted from diagnostics alongside the access and refresh tokens, so you
+  can attach diagnostics to bug reports without worrying about leaking a
+  session identifier.
 
 ### What you need to do after updating
 
@@ -853,6 +865,7 @@ No user-visible changes.
 
 [Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0...HEAD
 [0.10.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0
+[0.10.0b9]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b8...v0.10.0b9
 [0.10.0b8]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b7...v0.10.0b8
 [0.10.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b6...v0.10.0b7
 [0.10.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b5...v0.10.0b6
