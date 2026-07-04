@@ -312,6 +312,74 @@ async def test_periodic_refresh_callback_starts_reauth_on_auth_error(
     )
 
 
+async def test_periodic_refresh_callback_cancels_timer_on_auth_error(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    The 60s refresh callback must cancel its own timer on an auth error.
+
+    Without cancellation the timer keeps firing every 60s, hitting 403 on
+    each tick and spamming reauth calls until the user completes the flow.
+    After an auth failure the cancel callable stored on
+    ``runtime_data.cancel_token_refresh`` must be called exactly once and
+    the field must be cleared to ``None`` so no stale reference lingers.
+    """
+    entry = _build_entry(hass)
+    client = _make_client()
+
+    captured: list[Callable[[object], Any]] = []
+    cancel_mock = MagicMock()
+
+    def _capture_callback(
+        _hass: HomeAssistant,
+        callback: Callable[[object], Any],
+        _interval: object,
+    ) -> MagicMock:
+        captured.append(callback)
+        return cancel_mock
+
+    with (
+        patch(
+            "custom_components.engie_be.EngieBeApiClient",
+            return_value=client,
+        ),
+        patch(
+            "custom_components.engie_be.async_track_time_interval",
+            side_effect=_capture_callback,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert len(captured) == 1, "Expected exactly one time-interval callback"
+    refresh_callback = captured[0]
+
+    # The cancel callable must be stored on runtime_data after setup.
+    assert entry.runtime_data.cancel_token_refresh is cancel_mock
+
+    # Re-arm the client to reject the next refresh with an auth error.
+    client.async_refresh_token = AsyncMock(
+        side_effect=EngieBeApiClientAuthenticationError("revoked"),
+    )
+    with patch.object(entry, "async_start_reauth"):
+        await refresh_callback(None)
+
+    # Timer must have been cancelled and the field cleared.
+    cancel_mock.assert_called_once()
+    assert entry.runtime_data.cancel_token_refresh is None
+
+
 async def test_periodic_refresh_callback_logs_exception_detail_on_error(
     hass: HomeAssistant,
     caplog: pytest.LogCaptureFixture,

@@ -151,6 +151,16 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
             LOGGER.warning(
                 "Scheduled token refresh rejected by ENGIE; starting reauth flow"
             )
+            # Cancel the timer before starting reauth so it does not keep
+            # firing 403s every 60s until the user completes the reauth
+            # flow and the entry reloads. The on_unload path remains armed
+            # as belt-and-braces; calling the cancel callable twice is safe
+            # because async_track_time_interval returns an idempotent remove
+            # listener closure.
+            runtime = entry.runtime_data
+            if runtime.cancel_token_refresh is not None:
+                runtime.cancel_token_refresh()
+                runtime.cancel_token_refresh = None
             entry.async_start_reauth(hass)
             return
         except EngieBeApiClientError as err:
@@ -256,6 +266,7 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
         _refresh_token_callback,
         timedelta(seconds=TOKEN_REFRESH_INTERVAL_SECONDS),
     )
+    entry.runtime_data.cancel_token_refresh = cancel_refresh
     entry.async_on_unload(cancel_refresh)
 
     return True

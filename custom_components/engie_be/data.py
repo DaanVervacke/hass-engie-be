@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import datetime
 
     from homeassistant.config_entries import ConfigEntry
@@ -134,3 +135,4 @@ class EngieBeData:
     last_subentry_ids: set[str] = field(default_factory=set)
     reload_pending: bool = field(default=False)
     pending_subentry_target: set[str] | None = field(default=None)
+    cancel_token_refresh: Callable[[], None] | None = field(default=None)
