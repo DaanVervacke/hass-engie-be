@@ -12,6 +12,6 @@
   "loggers": [
     "custom_components.engie_be"
   ],
-  "quality_scale": "silver",
-  "version": "0.10.1"
+  "quality_scale": "gold",
+  "version": "0.11.0"
 }

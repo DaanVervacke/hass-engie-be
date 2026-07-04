@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-07-04
+
+### Added
+
+- **Reconfiguration flow**: you can now change your preferred two-factor authentication method (SMS or email) from **Settings > Devices & Services > ENGIE Belgium > Configure** without going through a full re-authentication. Your session and stored tokens are preserved.
+- **Icon translations**: entity icons are now served from `icons.json` rather than being hard-coded in Python entity descriptions, satisfying the Gold `icon-translations` quality-scale rule.
+- **Automation and dashboard examples** added to `README.md` (Happy Hours, negative EPEX price, tomorrow's price notification).
+- **Known limitations** section added to `README.md`.
+- **`async_remove_config_entry_device`**: stale devices (devices whose corresponding subentry has been deleted) can now be cleaned up from the device registry UI without removing the entire integration entry.
+
+### Fixed
+
+- **Token-refresh timer log spam after a timeout**: when ENGIE processed a `POST /oauth/token` request but the client timed out before reading the response, the stored refresh token became stale. Subsequent 60-second timer ticks hit HTTP 403, each calling `entry.async_start_reauth`, producing repeated "Scheduled token refresh rejected" warnings until the user completed the reauth flow. The timer is now cancelled immediately on the first authentication error before starting the reauth flow, so only one reauth attempt is made.
+
+### Changed
+
+- **Removed the OAuth Client ID field from setup and reconfiguration.** It served no practical purpose to users and is now hardcoded internally. Existing installs are unaffected.
+- **Some sensors are now disabled by default** to reduce dashboard clutter. They are still available and can be enabled per-entity in Settings > Devices & Services:
+  - All `_excl_vat` price sensors (the pre-VAT variants of every price sensor). Most users only need the VAT-inclusive value.
+  - Captar monthly peak energy, peak start, and peak end. The peak power (kW) sensor stays enabled as it is the value that drives your capacity tariff.
+  - EPEX lowest price today and highest price today.
+
+### Chore
+
+- Bumped `quality_scale` in `manifest.json` from `silver` to `gold`.
+- Updated `quality_scale.yaml` to mark all newly-satisfied Gold rules as `done`.
+- Debug log for token rotation now also records `refresh_token_expires_in` from the OAuth response, to help diagnose "reauth needed every 24 hours" style reports.
+
 ## [0.10.1] - 2026-07-03
 
 ### Added
@@ -879,7 +907,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0
 [0.10.0b9]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b8...v0.10.0b9
