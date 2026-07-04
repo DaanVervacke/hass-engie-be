@@ -38,6 +38,7 @@ from .store import EngieBeHappyHoursStore, EngieBePeaksStore
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.device_registry import DeviceEntry
 
     from .data import EngieBeConfigEntry
 
@@ -266,6 +267,40 @@ async def async_unload_entry(
 ) -> bool:
     """Handle removal of an entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,  # noqa: ARG001
+    entry: EngieBeConfigEntry,
+    device_entry: DeviceEntry,
+) -> bool:
+    """
+    Allow removal of stale devices from the device registry.
+
+    Each device in this integration is either the login device (one per
+    parent :class:`ConfigEntry`) or a customer-account device (one per
+    ``ConfigSubentry``).  When a subentry is deleted the device is
+    normally cleaned up automatically by HA (all entities carry
+    ``config_subentry_id``, so HA removes the device once it has no
+    entities).  This function handles the edge case where a device
+    lingers with no corresponding live subentry, for example after a
+    failed teardown or a manual store edit.
+
+    A device is removable when no currently-active business-agreement
+    subentry's ``subentry_id`` matches any of the device's identifiers.
+    The login device (``login_{entry_id}``) has no matching subentry and
+    is therefore also considered removable if the user requests it; HA
+    will recreate it on the next successful setup.
+    """
+    active_subentry_ids: set[str] = {
+        sub.subentry_id
+        for sub in entry.subentries.values()
+        if sub.subentry_type == SUBENTRY_TYPE_BUSINESS_AGREEMENT
+    }
+    return not any(
+        (DOMAIN, subentry_id) in device_entry.identifiers
+        for subentry_id in active_subentry_ids
+    )
 
 
 async def async_reload_entry(

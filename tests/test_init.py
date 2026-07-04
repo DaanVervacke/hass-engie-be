@@ -24,6 +24,7 @@ from custom_components.engie_be import (
     _persist_tokens,
     async_migrate_entry,
     async_reload_entry,
+    async_remove_config_entry_device,
     async_setup_entry,
 )
 from custom_components.engie_be.api import (
@@ -1463,3 +1464,53 @@ async def test_populate_dynamic_flags_reraises_non_api_error(
 
     with pytest.raises(ValueError, match="boom"):
         await _async_populate_dynamic_flags(client, entry)
+
+
+# ---------------------------------------------------------------------------
+# async_remove_config_entry_device — stale-devices rule
+# ---------------------------------------------------------------------------
+
+
+async def test_remove_stale_device_allowed(
+    hass: HomeAssistant,
+) -> None:
+    """A device whose identifier does not match any active subentry can be removed."""
+    entry = _build_entry(hass)
+    # Build a fake device that has an identifier from a *different* subentry
+    # (i.e. one that is no longer present in entry.subentries).
+    device_entry = MagicMock()
+    device_entry.identifiers = {(DOMAIN, "stale-subentry-id-9999")}
+
+    result = await async_remove_config_entry_device(hass, entry, device_entry)
+
+    assert result is True
+
+
+async def test_remove_active_device_not_allowed(
+    hass: HomeAssistant,
+) -> None:
+    """A device whose identifier matches an active subentry cannot be removed."""
+    entry = _build_entry(hass)
+    # Retrieve the real subentry_id created by _build_entry.
+    active_subentry_id = _only_subentry_id(entry)
+
+    device_entry = MagicMock()
+    device_entry.identifiers = {(DOMAIN, active_subentry_id)}
+
+    result = await async_remove_config_entry_device(hass, entry, device_entry)
+
+    assert result is False
+
+
+async def test_remove_login_device_allowed(
+    hass: HomeAssistant,
+) -> None:
+    """The login device (no matching subentry identifier) can be removed."""
+    entry = _build_entry(hass)
+    # The login device uses f"login_{entry.entry_id}" — no subentry matches it.
+    device_entry = MagicMock()
+    device_entry.identifiers = {(DOMAIN, f"login_{entry.entry_id}")}
+
+    result = await async_remove_config_entry_device(hass, entry, device_entry)
+
+    assert result is True
