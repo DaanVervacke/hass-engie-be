@@ -726,10 +726,12 @@ class EngieBeApiClient:
 
             if debug_on:
                 LOGGER.debug(
-                    "Token refresh: rotated refresh_token %s → %s, expires_in=%s",
+                    "Token refresh: rotated refresh_token %s -> %s, "
+                    "access_expires_in=%s refresh_expires_in=%s",
                     old_refresh_tail,
                     _redact_text(self.refresh_token),
                     result.get("expires_in"),
+                    result.get("refresh_token_expires_in"),
                 )
 
             return self.access_token, self.refresh_token
