@@ -16,11 +16,9 @@ from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_HOLDER_NAME,
     CONF_BUSINESS_AGREEMENT_NUMBER,
-    CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
-    DEFAULT_CLIENT_ID,
     DOMAIN,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
@@ -59,7 +57,6 @@ def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
         data={
             CONF_USERNAME: "user@example.com",
             CONF_PASSWORD: "hunter2",
-            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
             CONF_ACCESS_TOKEN: "eyJfake.access.token",
             CONF_REFRESH_TOKEN: "v1.fake_refresh_token",
         },
@@ -167,8 +164,6 @@ async def test_to_redact_covers_every_credential_and_pii_key(
     for sub in entry.subentries.values():
         sensitive_keys.update(sub.data.keys())
 
-    # CONF_CLIENT_ID is benign (a constant identifier) but already in TO_REDACT;
-    # every other key on entry.data / subentry.data must also be redacted.
     missing = sensitive_keys - TO_REDACT
     assert missing == set(), f"TO_REDACT is missing: {missing!r}"
 
@@ -268,7 +263,6 @@ def _build_entry_without_runtime(hass: HomeAssistant) -> MockConfigEntry:
         data={
             CONF_USERNAME: "user@example.com",
             CONF_PASSWORD: "hunter2",
-            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
             CONF_ACCESS_TOKEN: "stored-access",
             CONF_REFRESH_TOKEN: "stored-refresh",
         },
@@ -499,7 +493,6 @@ async def test_diagnostics_skips_non_business_agreement_subentries(
         data={
             CONF_USERNAME: "user@example.com",
             CONF_PASSWORD: "hunter2",
-            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
             CONF_ACCESS_TOKEN: "eyJfake.access.token",
             CONF_REFRESH_TOKEN: "v1.fake_refresh_token",
         },

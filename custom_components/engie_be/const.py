@@ -39,7 +39,6 @@ OAUTH_AUDIENCE = "customer"
 
 # Config entry keys (beyond homeassistant.const CONF_USERNAME / CONF_PASSWORD)
 CONF_MFA_METHOD = "mfa_method"
-CONF_CLIENT_ID = "client_id"
 CONF_ACCESS_TOKEN = "access_token"  # noqa: S105
 CONF_REFRESH_TOKEN = "refresh_token"  # noqa: S105
 

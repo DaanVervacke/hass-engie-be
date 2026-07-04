@@ -6,13 +6,11 @@
                 "data": {
                     "username": "Email address",
                     "password": "Password",
-                    "client_id": "Client ID",
                     "mfa_method": "Two-factor authentication method"
                 },
                 "data_description": {
                     "username": "Your ENGIE Belgium account email address.",
                     "password": "Your ENGIE Belgium account password.",
-                    "client_id": "OAuth client ID. Only change this if you know what you are doing.",
                     "mfa_method": "Choose how you want to receive your verification code."
                 }
             },
@@ -63,6 +61,16 @@
                 "data_description": {
                     "selected_accounts": "Select one or more business agreements to configure."
                 }
+            },
+            "reconfigure": {
+                "title": "Reconfigure ENGIE Belgium",
+                "description": "Update the preferred two-factor authentication method for {username}. Your stored credentials and tokens are not changed. Use **Re-authenticate** instead if your session has expired.",
+                "data": {
+                    "mfa_method": "Two-factor authentication method"
+                },
+                "data_description": {
+                    "mfa_method": "The verification method to use the next time you are prompted for re-authentication."
+                }
             }
         },
         "error": {
@@ -75,7 +83,8 @@
         },
         "abort": {
             "already_configured": "This account is already configured.",
-            "reauth_successful": "Re-authentication was successful."
+            "reauth_successful": "Re-authentication was successful.",
+            "reconfigure_successful": "Settings updated successfully."
         }
     },
     "config_subentries": {

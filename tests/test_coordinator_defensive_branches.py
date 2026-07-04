@@ -31,11 +31,9 @@ from custom_components.engie_be.api import (
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
-    CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
-    DEFAULT_CLIENT_ID,
     DOMAIN,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
@@ -76,7 +74,6 @@ def _build_entry(
         data={
             CONF_USERNAME: "user@example.com",
             CONF_PASSWORD: "hunter2",
-            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
             CONF_ACCESS_TOKEN: "stored-access",
             CONF_REFRESH_TOKEN: "stored-refresh",
         },

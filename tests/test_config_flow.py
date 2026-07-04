@@ -35,14 +35,12 @@ from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_HOLDER_NAME,
     CONF_BUSINESS_AGREEMENT_NUMBER,
-    CONF_CLIENT_ID,
     CONF_CONSUMPTION_ADDRESS,
     CONF_MFA_METHOD,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     CONF_SELECTED_ACCOUNTS,
     CONF_UPDATE_INTERVAL,
-    DEFAULT_CLIENT_ID,
     DOMAIN,
     MAX_UPDATE_INTERVAL_MINUTES,
     MFA_METHOD_EMAIL,
@@ -62,7 +60,6 @@ if TYPE_CHECKING:
 _USER_INPUT = {
     CONF_USERNAME: "user@example.com",
     CONF_PASSWORD: "hunter2",
-    CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
     CONF_MFA_METHOD: MFA_METHOD_SMS,
 }
 
@@ -104,7 +101,6 @@ def _build_parent_entry(
         data={
             CONF_USERNAME: _USER_INPUT[CONF_USERNAME],
             CONF_PASSWORD: _USER_INPUT[CONF_PASSWORD],
-            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
             CONF_ACCESS_TOKEN: "old-access",
             CONF_REFRESH_TOKEN: "old-refresh",
         },
@@ -1325,3 +1321,55 @@ def test_collect_configured_identifiers_skips_non_business_agreement() -> None:
     entry = SimpleNamespace(subentries={"a": business, "b": other})
 
     assert _collect_configured_identifiers(entry) == {"BAN-1"}
+
+
+# ---------------------------------------------------------------------------
+# Reconfigure flow
+# ---------------------------------------------------------------------------
+
+
+async def test_reconfigure_flow_updates_mfa_method(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Reconfigure flow updates mfa_method without touching tokens or credentials."""
+    entry = _build_parent_entry(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] is data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_MFA_METHOD: MFA_METHOD_EMAIL},
+    )
+
+    assert result["type"] is data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_MFA_METHOD] == MFA_METHOD_EMAIL
+    # Tokens and credentials must remain untouched.
+    assert entry.data[CONF_ACCESS_TOKEN] == "old-access"
+    assert entry.data[CONF_REFRESH_TOKEN] == "old-refresh"
+    assert entry.data[CONF_USERNAME] == _USER_INPUT[CONF_USERNAME]
+    assert entry.data[CONF_PASSWORD] == _USER_INPUT[CONF_PASSWORD]
+
+
+async def test_reconfigure_flow_defaults_to_current_mfa_method(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Reconfigure form completes successfully when submitted without changes."""
+    entry = _build_parent_entry(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] is data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_MFA_METHOD: MFA_METHOD_SMS},
+    )
+
+    assert result["type"] is data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data.get(CONF_MFA_METHOD) == MFA_METHOD_SMS

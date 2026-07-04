@@ -22,7 +22,6 @@ from .api import (
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
-    CONF_CLIENT_ID,
     CONF_REFRESH_TOKEN,
     DEFAULT_CLIENT_ID,
     DOMAIN,
@@ -92,7 +91,7 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
     """Set up this integration using UI."""
     client = EngieBeApiClient(
         session=async_get_clientsession(hass),
-        client_id=entry.data.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+        client_id=DEFAULT_CLIENT_ID,
         access_token=entry.data.get(CONF_ACCESS_TOKEN),
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
     )

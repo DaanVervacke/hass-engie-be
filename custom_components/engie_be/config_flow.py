@@ -34,7 +34,6 @@ from .api import (
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
-    CONF_CLIENT_ID,
     CONF_MFA_METHOD,
     CONF_REFRESH_TOKEN,
     CONF_SELECTED_ACCOUNTS,
@@ -113,7 +112,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 self._client = EngieBeApiClient(
                     session=async_get_clientsession(self.hass),
-                    client_id=user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+                    client_id=DEFAULT_CLIENT_ID,
                 )
                 self._auth_flow_state = await self._client.async_start_authentication(
                     username=user_input[CONF_USERNAME],
@@ -153,16 +152,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_PASSWORD): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.PASSWORD,
-                        ),
-                    ),
-                    vol.Required(
-                        CONF_CLIENT_ID,
-                        default=(user_input or {}).get(
-                            CONF_CLIENT_ID, DEFAULT_CLIENT_ID
-                        ),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(
-                            type=selector.TextSelectorType.TEXT,
                         ),
                     ),
                     vol.Required(
@@ -392,7 +381,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             data={
                 CONF_USERNAME: username,
                 CONF_PASSWORD: self._user_input[CONF_PASSWORD],
-                CONF_CLIENT_ID: self._user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
                 CONF_ACCESS_TOKEN: self._access_token,
                 CONF_REFRESH_TOKEN: self._refresh_token,
             },
@@ -403,7 +391,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Fetch customer-account relations using the just-issued tokens."""
         client = EngieBeApiClient(
             session=async_get_clientsession(self.hass),
-            client_id=self._user_input.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+            client_id=DEFAULT_CLIENT_ID,
             access_token=self._access_token,
             refresh_token=self._refresh_token,
         )
@@ -442,6 +430,64 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
+    # Reconfigure flow
+    # ------------------------------------------------------------------
+
+    async def async_step_reconfigure(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Allow the user to change the preferred MFA method.
+
+        This flow does not re-validate credentials against the ENGIE API;
+        it simply updates the stored ``mfa_method`` so the reauth flow
+        pre-populates the method selector with the user's last choice
+        instead of always defaulting to SMS.
+        """
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            return self.async_update_and_abort(
+                entry,
+                data_updates={
+                    CONF_MFA_METHOD: user_input.get(CONF_MFA_METHOD, MFA_METHOD_SMS),
+                },
+                reason="reconfigure_successful",
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            description_placeholders={
+                "username": entry.data.get(CONF_USERNAME, ""),
+            },
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_MFA_METHOD,
+                        default=entry.data.get(CONF_MFA_METHOD, MFA_METHOD_SMS),
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(
+                                    value=MFA_METHOD_SMS,
+                                    label="SMS",
+                                ),
+                                selector.SelectOptionDict(
+                                    value=MFA_METHOD_EMAIL,
+                                    label="Email",
+                                ),
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        ),
+                    ),
+                },
+            ),
+            errors=errors,
+        )
+
+    # ------------------------------------------------------------------
     # Reauth flow
     # ------------------------------------------------------------------
 
@@ -467,7 +513,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 self._client = EngieBeApiClient(
                     session=async_get_clientsession(self.hass),
-                    client_id=entry.data.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+                    client_id=DEFAULT_CLIENT_ID,
                 )
                 self._auth_flow_state = await self._client.async_start_authentication(
                     username=entry.data[CONF_USERNAME],
@@ -707,7 +753,7 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         """
         client = EngieBeApiClient(
             session=async_get_clientsession(self.hass),
-            client_id=entry.data.get(CONF_CLIENT_ID, DEFAULT_CLIENT_ID),
+            client_id=DEFAULT_CLIENT_ID,
             access_token=entry.data.get(CONF_ACCESS_TOKEN),
             refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
         )

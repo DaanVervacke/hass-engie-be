@@ -20,9 +20,7 @@ from custom_components.engie_be.api import (
 )
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
-    CONF_CLIENT_ID,
     CONF_REFRESH_TOKEN,
-    DEFAULT_CLIENT_ID,
     DOMAIN,
     EPEX_TZ,
 )
@@ -54,7 +52,6 @@ def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
         data={
             CONF_USERNAME: "user@example.com",
             CONF_PASSWORD: "hunter2",
-            CONF_CLIENT_ID: DEFAULT_CLIENT_ID,
             CONF_ACCESS_TOKEN: "stored-access",
             CONF_REFRESH_TOKEN: "stored-refresh",
         },
