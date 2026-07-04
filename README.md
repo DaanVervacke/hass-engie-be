@@ -7,8 +7,9 @@
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
 [ENGIE Belgium](https://www.engie.be/). Retrieves your personal energy price
-data and monthly capacity-tariff peaks from the ENGIE Belgium API and exposes
-them as sensors.
+data, monthly capacity-tariff peaks, Happy Hours free-energy windows, and
+EPEX day-ahead wholesale prices from the ENGIE Belgium API and exposes them
+as sensors, binary sensors, and calendar events.
 
 > ## Upgrading from v0.8.x or earlier? Read this first.
 >
@@ -342,6 +343,70 @@ To complete re-authentication:
 Your stored email and password are reused. No sensors are
 removed and no history is lost.
 
+## Automation examples
+
+### Run the dishwasher during Happy Hours
+
+```yaml
+automation:
+  alias: "Start dishwasher on Happy Hours"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.engie_belgium_002200001234_happy_hours_active
+      to: "on"
+  action:
+    - service: switch.turn_on
+      target:
+        entity_id: switch.dishwasher
+```
+
+### Charge an EV when EPEX price is negative
+
+```yaml
+automation:
+  alias: "Charge car when electricity price is negative"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.engie_belgium_002200001234_epex_price_is_negative
+      to: "on"
+  action:
+    - service: switch.turn_on
+      target:
+        entity_id: switch.ev_charger
+  mode: single
+```
+
+### Notify when tomorrow's EPEX prices are available
+
+```yaml
+automation:
+  alias: "EPEX tomorrow prices published"
+  trigger:
+    - platform: template
+      value_template: >
+        {{ state_attr('sensor.engie_belgium_002200001234_epex_current_price', 'tomorrow') | length > 0 }}
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "Tomorrow's electricity prices available"
+        message: >
+          Cheapest slot tomorrow:
+          {{ state_attr('sensor.engie_belgium_002200001234_epex_current_price', 'tomorrow')
+             | sort(attribute='value') | first | to_json }}
+```
+
+> Replace `002200001234` with your actual business-agreement number (visible in
+> **Developer tools** > **States** after the integration is set up).
+
+## Known limitations
+
+- **No historical price retrieval.** ENGIE does not expose historical energy prices through the API. The integration can only report the currently active price period. Historical sensor data is what Home Assistant's own recorder stores.
+- **Happy Hours history starts when the integration is installed.** ENGIE does not provide a historical list of past Happy Hours windows. The integration records each window it observes locally, so windows that ran before the integration was set up cannot be recovered.
+- **EPEX prices available from ~13:15 Brussels time.** ENGIE publishes the next day's EPEX day-ahead prices after the daily auction closes. Before that time, only today's prices are available and tomorrow's sensors will show `unknown`.
+- **Dedicated account required.** The same ENGIE credentials cannot be shared with engie.be or the ENGIE Smart App without triggering frequent re-authentication prompts. This is an ENGIE platform constraint, not a Home Assistant limitation. See [Prerequisites](#prerequisites).
+- **Two-factor authentication required.** The integration requires MFA to be enabled on the ENGIE account. Accounts without MFA (e.g. older sub-accounts) are not supported.
+- **Read-only.** The integration only reads data from the ENGIE API and never modifies your account, contracts, or settings.
+
 ## Removing the integration
 
 1. Go to **Settings** > **Devices & Services**.
@@ -405,5 +470,5 @@ since the last release live under the **[Unreleased]** section.
 [release]: https://github.com/DaanVervacke/hass-engie-be/releases
 [releasebadge]: https://img.shields.io/github/v/release/DaanVervacke/hass-engie-be
 [quality]: https://www.home-assistant.io/docs/quality_scale/
-[qualitybadge]: https://img.shields.io/badge/quality_scale-silver-silver.svg
+[qualitybadge]: https://img.shields.io/badge/quality_scale-gold-gold.svg
 [licensebadge]: https://img.shields.io/github/license/DaanVervacke/hass-engie-be
