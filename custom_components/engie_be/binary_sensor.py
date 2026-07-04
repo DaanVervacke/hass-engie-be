@@ -48,7 +48,6 @@ AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     translation_key="authentication",
     device_class=BinarySensorDeviceClass.CONNECTIVITY,
     entity_category=EntityCategory.DIAGNOSTIC,
-    icon="mdi:shield-check",
 )
 
 # EPEX "negative price right now" indicator.
@@ -61,7 +60,6 @@ AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
 EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="epex_negative",
     translation_key="epex_negative",
-    icon="mdi:cash-minus",
 )
 
 # Happy Hours active indicator.
@@ -75,7 +73,6 @@ EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
 HAPPY_HOUR_ACTIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="happy_hours_active",
     translation_key="happy_hours_active",
-    icon="mdi:sun-clock",
 )
 
 

@@ -137,10 +137,7 @@ def _build_sensor_descriptions(
 
         unit = "EUR/kWh"
 
-        for direction, icon in (
-            ("offtake", "mdi:cash-minus"),
-            ("injection", "mdi:cash-plus"),
-        ):
+        for direction in ("offtake", "injection"):
             direction_list: list[dict[str, Any]] = configs.get(direction, [])
             if not direction_list:
                 continue
@@ -161,7 +158,6 @@ def _build_sensor_descriptions(
                         SensorEntityDescription(
                             key=base_key,
                             translation_key=base_trans,
-                            icon=icon,
                             native_unit_of_measurement=unit,
                             state_class=SensorStateClass.MEASUREMENT,
                             suggested_display_precision=6,
@@ -171,16 +167,17 @@ def _build_sensor_descriptions(
                         slot_code,
                     )
                 )
-                # Price excluding VAT
+                # Price excluding VAT — disabled by default; available for
+                # users who need the pre-VAT value for accounting purposes.
                 sensors.append(
                     (
                         SensorEntityDescription(
                             key=f"{base_key}_excl_vat",
                             translation_key=f"{base_trans}_excl_vat",
-                            icon=icon,
                             native_unit_of_measurement=unit,
                             state_class=SensorStateClass.MEASUREMENT,
                             suggested_display_precision=6,
+                            entity_registry_enabled_default=False,
                         ),
                         ean,
                         f"{direction}.priceValueExclVAT",
@@ -281,7 +278,6 @@ async def async_setup_entry(
 _CAPTAR_MONTHLY_PEAK_POWER = SensorEntityDescription(
     key="captar_monthly_peak_power",
     translation_key="captar_monthly_peak_power",
-    icon="mdi:flash",
     native_unit_of_measurement=UnitOfPower.KILO_WATT,
     device_class=SensorDeviceClass.POWER,
     state_class=SensorStateClass.MEASUREMENT,
@@ -290,7 +286,6 @@ _CAPTAR_MONTHLY_PEAK_POWER = SensorEntityDescription(
 _CAPTAR_MONTHLY_PEAK_ENERGY = SensorEntityDescription(
     key="captar_monthly_peak_energy",
     translation_key="captar_monthly_peak_energy",
-    icon="mdi:lightning-bolt",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
     # No state_class: this is a snapshot of one 15-min peak window's energy,
@@ -298,18 +293,25 @@ _CAPTAR_MONTHLY_PEAK_ENERGY = SensorEntityDescription(
     # MEASUREMENT at runtime; TOTAL would require last_reset semantics that
     # don't fit a sliding monthly peak.
     suggested_display_precision=3,
+    # Disabled by default: this is a raw measurement that most users don't
+    # need; the peak power (kW) is the value used for the capacity tariff
+    # calculation and is always enabled.
+    entity_registry_enabled_default=False,
 )
 _CAPTAR_MONTHLY_PEAK_START = SensorEntityDescription(
     key="captar_monthly_peak_start",
     translation_key="captar_monthly_peak_start",
-    icon="mdi:clock-start",
     device_class=SensorDeviceClass.TIMESTAMP,
+    # Disabled by default: timestamp detail is less commonly needed than
+    # the peak power value; users can enable if they want the raw timestamps.
+    entity_registry_enabled_default=False,
 )
 _CAPTAR_MONTHLY_PEAK_END = SensorEntityDescription(
     key="captar_monthly_peak_end",
     translation_key="captar_monthly_peak_end",
-    icon="mdi:clock-end",
     device_class=SensorDeviceClass.TIMESTAMP,
+    # Disabled by default: see captar_monthly_peak_start.
+    entity_registry_enabled_default=False,
 )
 
 
@@ -462,13 +464,11 @@ class EngieBeMonthlyPeakTimestampSensor(_EngieBePeakSensorBase):
 _HAPPY_HOUR_NEXT_START = SensorEntityDescription(
     key="happy_hours_next_start",
     translation_key="happy_hours_next_start",
-    icon="mdi:weather-sunset-up",
     device_class=SensorDeviceClass.TIMESTAMP,
 )
 _HAPPY_HOUR_NEXT_END = SensorEntityDescription(
     key="happy_hours_next_end",
     translation_key="happy_hours_next_end",
-    icon="mdi:weather-sunset-down",
     device_class=SensorDeviceClass.TIMESTAMP,
 )
 
@@ -818,7 +818,6 @@ _BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
 _EPEX_CURRENT = SensorEntityDescription(
     key="epex_current",
     translation_key="epex_current",
-    icon="mdi:cash-clock",
     native_unit_of_measurement=_EPEX_UNIT,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=_EPEX_PRECISION,
@@ -826,23 +825,25 @@ _EPEX_CURRENT = SensorEntityDescription(
 _EPEX_LOW_TODAY = SensorEntityDescription(
     key="epex_low_today",
     translation_key="epex_low_today",
-    icon="mdi:cash-minus",
     native_unit_of_measurement=_EPEX_UNIT,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=_EPEX_PRECISION,
+    # Disabled by default: the daily extrema are supplementary to the
+    # current-price sensor; users can enable as needed.
+    entity_registry_enabled_default=False,
 )
 _EPEX_HIGH_TODAY = SensorEntityDescription(
     key="epex_high_today",
     translation_key="epex_high_today",
-    icon="mdi:cash-plus",
     native_unit_of_measurement=_EPEX_UNIT,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=_EPEX_PRECISION,
+    # Disabled by default: see epex_low_today.
+    entity_registry_enabled_default=False,
 )
 _EPEX_NEXT_HOUR = SensorEntityDescription(
     key="epex_next_hour",
     translation_key="epex_next_hour",
-    icon="mdi:cash-fast",
     native_unit_of_measurement=_EPEX_UNIT,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=_EPEX_PRECISION,

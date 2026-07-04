@@ -13,6 +13,11 @@ from homeassistant.components.sensor import SensorEntityDescription
 
 from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.sensor import (
+    _CAPTAR_MONTHLY_PEAK_END,
+    _CAPTAR_MONTHLY_PEAK_ENERGY,
+    _CAPTAR_MONTHLY_PEAK_START,
+    _EPEX_HIGH_TODAY,
+    _EPEX_LOW_TODAY,
     EngieBeEnergySensor,
     _build_sensor_descriptions,
     _detect_energy_type,
@@ -247,3 +252,44 @@ def test_energy_sensor_unique_id_includes_subentry_segment() -> None:
     )
 
     assert sensor.unique_id == "test_entry_id_sub_xyz_541448820000000001_offtake"
+
+
+# ---------------------------------------------------------------------------
+# entity-disabled-by-default: verify disabled-by-default flags on descriptions
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sample_prices() -> dict[str, Any]:
+    """Return the prices_sample fixture for description-generation tests."""
+    return _load_fixture("prices_sample.json")
+
+
+def test_excl_vat_sensors_disabled_by_default(
+    sample_prices: dict[str, Any],
+) -> None:
+    """Price-excl-VAT sensors must be disabled by default."""
+    descs = _build_sensor_descriptions(sample_prices, {})
+    for desc, _ean, value_key, _slot in descs:
+        is_excl_vat = value_key.endswith("ExclVAT")
+        if is_excl_vat:
+            assert desc.entity_registry_enabled_default is False, (
+                f"{desc.key}: excl_vat sensor must be disabled by default"
+            )
+        else:
+            assert desc.entity_registry_enabled_default is not False, (
+                f"{desc.key}: incl_vat sensor must be enabled by default"
+            )
+
+
+def test_captar_peak_energy_and_timestamps_disabled_by_default() -> None:
+    """Captar peak energy and timestamp sensors must be disabled by default."""
+    assert _CAPTAR_MONTHLY_PEAK_ENERGY.entity_registry_enabled_default is False
+    assert _CAPTAR_MONTHLY_PEAK_START.entity_registry_enabled_default is False
+    assert _CAPTAR_MONTHLY_PEAK_END.entity_registry_enabled_default is False
+
+
+def test_epex_extrema_sensors_disabled_by_default() -> None:
+    """EPEX high/low sensors must be disabled by default."""
+    assert _EPEX_LOW_TODAY.entity_registry_enabled_default is False
+    assert _EPEX_HIGH_TODAY.entity_registry_enabled_default is False

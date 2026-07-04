@@ -102,7 +102,6 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
     # <address>"). Aligning with the standard convention fixes that and
     # also lets the calendar count toward the ``has-entity-name`` quality
     # scale rule.
-    _attr_icon = "mdi:calendar"
     _attr_translation_key = "engie_belgium"
 
     def __init__(

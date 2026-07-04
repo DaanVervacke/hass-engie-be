@@ -1,0 +1,154 @@
+{
+    "entity": {
+        "calendar": {
+            "engie_belgium": {
+                "default": "mdi:calendar"
+            }
+        },
+        "sensor": {
+            "gas_offtake": {
+                "default": "mdi:cash-minus"
+            },
+            "gas_offtake_excl_vat": {
+                "default": "mdi:cash-minus"
+            },
+            "electricity_offtake": {
+                "default": "mdi:cash-minus"
+            },
+            "electricity_offtake_excl_vat": {
+                "default": "mdi:cash-minus"
+            },
+            "electricity_offtake_peak": {
+                "default": "mdi:cash-minus"
+            },
+            "electricity_offtake_peak_excl_vat": {
+                "default": "mdi:cash-minus"
+            },
+            "electricity_offtake_offpeak": {
+                "default": "mdi:cash-minus"
+            },
+            "electricity_offtake_offpeak_excl_vat": {
+                "default": "mdi:cash-minus"
+            },
+            "electricity_offtake_superoffpeak": {
+                "default": "mdi:cash-minus"
+            },
+            "electricity_offtake_superoffpeak_excl_vat": {
+                "default": "mdi:cash-minus"
+            },
+            "electricity_injection": {
+                "default": "mdi:cash-plus"
+            },
+            "electricity_injection_excl_vat": {
+                "default": "mdi:cash-plus"
+            },
+            "electricity_injection_peak": {
+                "default": "mdi:cash-plus"
+            },
+            "electricity_injection_peak_excl_vat": {
+                "default": "mdi:cash-plus"
+            },
+            "electricity_injection_offpeak": {
+                "default": "mdi:cash-plus"
+            },
+            "electricity_injection_offpeak_excl_vat": {
+                "default": "mdi:cash-plus"
+            },
+            "electricity_injection_superoffpeak": {
+                "default": "mdi:cash-plus"
+            },
+            "electricity_injection_superoffpeak_excl_vat": {
+                "default": "mdi:cash-plus"
+            },
+            "energy_offtake": {
+                "default": "mdi:cash-minus"
+            },
+            "energy_offtake_excl_vat": {
+                "default": "mdi:cash-minus"
+            },
+            "energy_offtake_peak": {
+                "default": "mdi:cash-minus"
+            },
+            "energy_offtake_peak_excl_vat": {
+                "default": "mdi:cash-minus"
+            },
+            "energy_offtake_offpeak": {
+                "default": "mdi:cash-minus"
+            },
+            "energy_offtake_offpeak_excl_vat": {
+                "default": "mdi:cash-minus"
+            },
+            "energy_offtake_superoffpeak": {
+                "default": "mdi:cash-minus"
+            },
+            "energy_offtake_superoffpeak_excl_vat": {
+                "default": "mdi:cash-minus"
+            },
+            "energy_injection": {
+                "default": "mdi:cash-plus"
+            },
+            "energy_injection_excl_vat": {
+                "default": "mdi:cash-plus"
+            },
+            "energy_injection_peak": {
+                "default": "mdi:cash-plus"
+            },
+            "energy_injection_peak_excl_vat": {
+                "default": "mdi:cash-plus"
+            },
+            "energy_injection_offpeak": {
+                "default": "mdi:cash-plus"
+            },
+            "energy_injection_offpeak_excl_vat": {
+                "default": "mdi:cash-plus"
+            },
+            "energy_injection_superoffpeak": {
+                "default": "mdi:cash-plus"
+            },
+            "energy_injection_superoffpeak_excl_vat": {
+                "default": "mdi:cash-plus"
+            },
+            "captar_monthly_peak_power": {
+                "default": "mdi:flash"
+            },
+            "captar_monthly_peak_energy": {
+                "default": "mdi:lightning-bolt"
+            },
+            "captar_monthly_peak_start": {
+                "default": "mdi:clock-start"
+            },
+            "captar_monthly_peak_end": {
+                "default": "mdi:clock-end"
+            },
+            "happy_hours_next_start": {
+                "default": "mdi:weather-sunset-up"
+            },
+            "happy_hours_next_end": {
+                "default": "mdi:weather-sunset-down"
+            },
+            "epex_current": {
+                "default": "mdi:cash-clock"
+            },
+            "epex_low_today": {
+                "default": "mdi:cash-minus"
+            },
+            "epex_high_today": {
+                "default": "mdi:cash-plus"
+            },
+            "epex_next_hour": {
+                "default": "mdi:cash-fast"
+            }
+        },
+        "binary_sensor": {
+            "authentication": {
+                "default": "mdi:shield-check"
+            },
+            "epex_negative": {
+                "default": "mdi:cash-minus"
+            },
+            "happy_hours_active": {
+                "default": "mdi:sun-clock"
+            }
+        }
+    }
+}
