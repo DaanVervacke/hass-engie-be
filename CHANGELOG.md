@@ -27,6 +27,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- **Raised the minimum supported Home Assistant version to `2026.7.1`**, dropping support for earlier versions. HACS will not offer this update on older Home Assistant installs.
 - **Removed the OAuth Client ID field from setup and reconfiguration.** It served no practical purpose to users and is now hardcoded internally. Existing installs are unaffected.
 - **Some sensors are now disabled by default** to reduce dashboard clutter. They are still available and can be enabled per-entity in Settings > Devices & Services:
   - All `_excl_vat` price sensors (the pre-VAT variants of every price sensor). Most users only need the VAT-inclusive value.
