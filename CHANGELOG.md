@@ -30,8 +30,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - **Removed the OAuth Client ID field from setup and reconfiguration.** It served no practical purpose to users and is now hardcoded internally. Existing installs are unaffected.
 - **Some sensors are now disabled by default** to reduce dashboard clutter. They are still available and can be enabled per-entity in Settings > Devices & Services:
   - All `_excl_vat` price sensors (the pre-VAT variants of every price sensor). Most users only need the VAT-inclusive value.
-  - Captar monthly peak energy, peak start, and peak end. The peak power (kW) sensor stays enabled as it is the value that drives your capacity tariff.
-  - EPEX lowest price today and highest price today.
+  - Captar monthly peak energy. The peak power (kW) sensor stays enabled as it is the value that drives your capacity tariff.
+  - Captar monthly peak start and peak end (timestamps). These are also categorised as diagnostic entities to make clear they are contextual detail about the peak power value.
 
 ### Chore
 
