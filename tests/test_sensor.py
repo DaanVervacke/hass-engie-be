@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.components.sensor import SensorEntityDescription
+from homeassistant.const import EntityCategory
 
 from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.sensor import (
@@ -289,7 +290,13 @@ def test_captar_peak_energy_and_timestamps_disabled_by_default() -> None:
     assert _CAPTAR_MONTHLY_PEAK_END.entity_registry_enabled_default is False
 
 
-def test_epex_extrema_sensors_disabled_by_default() -> None:
-    """EPEX high/low sensors must be disabled by default."""
-    assert _EPEX_LOW_TODAY.entity_registry_enabled_default is False
-    assert _EPEX_HIGH_TODAY.entity_registry_enabled_default is False
+def test_captar_peak_timestamps_are_diagnostic() -> None:
+    """Peak start/end timestamps are contextual diagnostic detail."""
+    assert _CAPTAR_MONTHLY_PEAK_START.entity_category is EntityCategory.DIAGNOSTIC
+    assert _CAPTAR_MONTHLY_PEAK_END.entity_category is EntityCategory.DIAGNOSTIC
+
+
+def test_epex_extrema_sensors_enabled_by_default() -> None:
+    """EPEX high/low sensors are primary data for dynamic-tariff users."""
+    assert _EPEX_LOW_TODAY.entity_registry_enabled_default is not False
+    assert _EPEX_HIGH_TODAY.entity_registry_enabled_default is not False

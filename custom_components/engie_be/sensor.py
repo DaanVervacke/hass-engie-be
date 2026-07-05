@@ -12,7 +12,12 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import CURRENCY_EURO, UnitOfEnergy, UnitOfPower
+from homeassistant.const import (
+    CURRENCY_EURO,
+    EntityCategory,
+    UnitOfEnergy,
+    UnitOfPower,
+)
 from homeassistant.util import dt as dt_util
 
 from ._epex import next_epex_slot_boundary
@@ -302,15 +307,18 @@ _CAPTAR_MONTHLY_PEAK_START = SensorEntityDescription(
     key="captar_monthly_peak_start",
     translation_key="captar_monthly_peak_start",
     device_class=SensorDeviceClass.TIMESTAMP,
-    # Disabled by default: timestamp detail is less commonly needed than
-    # the peak power value; users can enable if they want the raw timestamps.
+    # Diagnostic + disabled by default: timestamp detail is contextual
+    # information about the peak power value; users can enable if they
+    # want the raw timestamps.
+    entity_category=EntityCategory.DIAGNOSTIC,
     entity_registry_enabled_default=False,
 )
 _CAPTAR_MONTHLY_PEAK_END = SensorEntityDescription(
     key="captar_monthly_peak_end",
     translation_key="captar_monthly_peak_end",
     device_class=SensorDeviceClass.TIMESTAMP,
-    # Disabled by default: see captar_monthly_peak_start.
+    # See captar_monthly_peak_start.
+    entity_category=EntityCategory.DIAGNOSTIC,
     entity_registry_enabled_default=False,
 )
 
@@ -828,9 +836,6 @@ _EPEX_LOW_TODAY = SensorEntityDescription(
     native_unit_of_measurement=_EPEX_UNIT,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=_EPEX_PRECISION,
-    # Disabled by default: the daily extrema are supplementary to the
-    # current-price sensor; users can enable as needed.
-    entity_registry_enabled_default=False,
 )
 _EPEX_HIGH_TODAY = SensorEntityDescription(
     key="epex_high_today",
@@ -838,8 +843,6 @@ _EPEX_HIGH_TODAY = SensorEntityDescription(
     native_unit_of_measurement=_EPEX_UNIT,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=_EPEX_PRECISION,
-    # Disabled by default: see epex_low_today.
-    entity_registry_enabled_default=False,
 )
 _EPEX_NEXT_HOUR = SensorEntityDescription(
     key="epex_next_hour",
