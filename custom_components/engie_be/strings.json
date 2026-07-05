@@ -84,7 +84,7 @@
         "abort": {
             "already_configured": "This account is already configured.",
             "reauth_successful": "Re-authentication was successful.",
-            "reconfigure_successful": "Settings updated successfully."
+            "reconfigure_successful": "Preferred two-factor authentication method updated. Your next re-authentication will use this method."
         }
     },
     "config_subentries": {
