@@ -5,12 +5,6 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Chore
-
-- Switched Happy Hours enrolment probe from the group-feature-flags endpoint to the targeted boolean-feature-flags endpoint, reducing per-refresh payload size.
-
 ## [0.11.0] - 2026-07-04
 
 ### Added
@@ -20,6 +14,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - **Automation and dashboard examples** added to `README.md` (Happy Hours, negative EPEX price, tomorrow's price notification).
 - **Known limitations** section added to `README.md`.
 - **`async_remove_config_entry_device`**: stale devices (devices whose corresponding subentry has been deleted) can now be cleaned up from the device registry UI without removing the entire integration entry.
+- **Pre-setup debug logging instructions** in the README Troubleshooting section, so you can capture logs when the failure happens before a config entry exists (setup wizard or MFA errors).
+- **Tests and Home-Assistant-version badges** in the README header. The Home-Assistant badge is dynamic and always reflects the current `hacs.json` floor.
 
 ### Fixed
 
@@ -33,12 +29,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   - All `_excl_vat` price sensors (the pre-VAT variants of every price sensor). Most users only need the VAT-inclusive value.
   - Captar monthly peak energy. The peak power (kW) sensor stays enabled as it is the value that drives your capacity tariff.
   - Captar monthly peak start and peak end (timestamps). These are also categorised as diagnostic entities to make clear they are contextual detail about the peak power value.
+- **Reconfigure success message** now says explicitly which setting was saved and when it takes effect, instead of the generic "Settings updated successfully."
+- **Removed the outdated v0.8.x upgrade notice** from the top of the README; anyone installing today no longer needs to see it.
 
 ### Chore
 
 - Bumped `quality_scale` in `manifest.json` from `silver` to `gold`.
 - Updated `quality_scale.yaml` to mark all newly-satisfied Gold rules as `done`.
 - Debug log for token rotation now also records `refresh_token_expires_in` from the OAuth response, to help diagnose "reauth needed every 24 hours" style reports.
+- Switched the Happy Hours enrolment probe from the group-feature-flags endpoint to the targeted boolean-feature-flags endpoint, reducing per-refresh payload size.
 
 ## [0.10.1] - 2026-07-03
 
@@ -914,7 +913,6 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.11.0...HEAD
 [0.11.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0
