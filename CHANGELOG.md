@@ -15,7 +15,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
-- **Reconfiguration flow**: you can now change your preferred two-factor authentication method (SMS or email) from **Settings > Devices & Services > ENGIE Belgium > Configure** without going through a full re-authentication. Your session and stored tokens are preserved.
+- **Reconfiguration flow**: you can now change your preferred two-factor authentication method (SMS or email) from **Settings > Devices & Services > ENGIE Belgium > Reconfigure** without going through a full re-authentication. Your session and stored tokens are preserved.
 - **Icon translations**: entity icons are now served from `icons.json` rather than being hard-coded in Python entity descriptions, satisfying the Gold `icon-translations` quality-scale rule.
 - **Automation and dashboard examples** added to `README.md` (Happy Hours, negative EPEX price, tomorrow's price notification).
 - **Known limitations** section added to `README.md`.
