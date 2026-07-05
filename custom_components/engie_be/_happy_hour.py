@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.calendar import CalendarEvent
 
-from .const import HAPPY_HOURS_SERVICE_ENABLED_KEY, LOGGER
+from .const import LOGGER
 
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
@@ -30,40 +30,31 @@ _HAPPY_HOUR_EVENT_SUMMARY = "Happy Hours"
 _HAPPY_HOUR_EVENT_DESCRIPTION = "Free energy window"
 
 
-def is_enrolled_from_flags(flags: dict[str, Any] | None) -> bool:
+def is_enrolled_from_flag(flag: dict[str, Any] | None) -> bool:
     """
-    Return True iff the feature-flags response reports Happy Hours enrolled.
+    Return True iff the boolean-feature-flag response reports Happy Hours enrolled.
 
-    The feature-flags endpoint returns a mapping keyed by flag name; each
-    value is itself a dict with a ``value`` boolean (and usually a
-    ``reason`` string). The integration treats only the
-    ``happy-hours-service-enabled`` flag as the enrolment signal because
-    its sibling ``happy-hours-shown`` governs Smart App UI visibility
-    rather than the service state itself.
+    The boolean-feature-flags endpoint returns a flat dict for the named
+    flag with a top-level ``value`` boolean (and usually a ``reason``
+    string). Callers pass the raw API response dict without pre-validation.
 
     Defensive against every observed and plausible non-enrolled shape
-    (``None``, non-dict, missing key, missing ``value``, falsy ``value``)
-    so callers can pass the raw API response without pre-validation.
+    (``None``, non-dict, missing ``value``, falsy ``value``) so a transient
+    or unexpected response never incorrectly signals enrolment.
     """
-    if not isinstance(flags, dict):
-        return False
-    flag = flags.get(HAPPY_HOURS_SERVICE_ENABLED_KEY)
     if not isinstance(flag, dict):
         return False
     return bool(flag.get("value"))
 
 
-def happy_hour_flag_reason(flags: dict[str, Any] | None) -> str | None:
+def happy_hour_flag_reason(flag: dict[str, Any] | None) -> str | None:
     """
-    Return ENGIE's ``reason`` string for the Happy Hours service flag, or ``None``.
+    Return ENGIE's ``reason`` string from the Happy Hours flag response, or ``None``.
 
     Useful for debug logging so beta users can see *why* enrolment
     flipped (e.g. ``HAPPY_HOUR_ACTIVE`` vs ``HAPPY_HOUR_INACTIVE``)
-    without having to read the raw feature-flags JSON.
+    without having to read the raw API JSON.
     """
-    if not isinstance(flags, dict):
-        return None
-    flag = flags.get(HAPPY_HOURS_SERVICE_ENABLED_KEY)
     if not isinstance(flag, dict):
         return None
     reason = flag.get("reason")

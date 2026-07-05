@@ -25,10 +25,11 @@ from .const import (
     ACCOUNTS_BASE_URL,
     API_BASE_URL,
     AUTH_BASE_URL,
+    BOOLEAN_FEATURE_FLAG_BASE_URL,
     BUSINESS_AGREEMENTS_BASE_URL,
     EPEX_BASE_URL,
-    FEATURE_FLAGS_BASE_URL,
     HAPPY_HOUR_BASE_URL,
+    HAPPY_HOURS_SERVICE_ENABLED_KEY,
     LOGGER,
     MFA_METHOD_SMS,
     OAUTH_AUDIENCE,
@@ -989,27 +990,31 @@ class EngieBeApiClient:
             json_response=True,
         )
 
-    async def async_get_feature_flags(
+    async def async_get_happy_hours_service_enabled_flag(
         self,
         business_agreement_number: str,
     ) -> dict[str, Any]:
         """
-        Fetch the per-BAN feature flags reported by the ENGIE Smart App.
+        Fetch the ``happy-hours-service-enabled`` boolean feature flag for a BAN.
 
-        The endpoint is the authoritative signal for Happy Hours
-        enrolment: the ``/happy-hour-event`` endpoint returns ``{}`` both
-        when the customer is not enrolled and when they are enrolled but
-        no window is scheduled yet, so the event payload alone cannot
-        distinguish the two states. The feature-flags response carries
-        a ``happy-hours-service-enabled`` block whose ``value`` flips
-        to ``true`` once the agreement has been signed.
+        Uses the targeted boolean-feature-flags endpoint, which returns a
+        single flat object ``{"value": bool, "reason": str, ...}`` for the
+        named flag rather than the group envelope keyed by flag name.
+
+        The endpoint is the authoritative signal for Happy Hours enrolment:
+        the ``/happy-hour-event`` endpoint returns ``{}`` both when the
+        customer is not enrolled and when they are enrolled but no window is
+        scheduled yet, so the event payload alone cannot distinguish the two
+        states. The ``value`` field flips to ``true`` once the customer has
+        signed the Happy Hours agreement.
 
         The ``customerAccountNumber`` field that the Smart App sends in
         ``additionalContext`` is accepted but not required; omitting it
         keeps the integration aligned with the v5 subentry schema which
         deliberately drops the CAN.
 
-        Returns the parsed JSON response as a dict keyed by flag name.
+        Returns the parsed JSON response as a flat dict (top-level ``value``
+        and ``reason`` keys).
         """
         headers = {
             "User-Agent": USER_AGENT_NATIVE,
@@ -1019,7 +1024,7 @@ class EngieBeApiClient:
             "x-trace-id": str(uuid.uuid4()),
         }
         body = {
-            "name": "ENGIE_APP",
+            "name": HAPPY_HOURS_SERVICE_ENABLED_KEY,
             "additionalContext": {
                 "contractAccountId": business_agreement_number.replace(" ", ""),
                 "platform": "android",
@@ -1030,7 +1035,7 @@ class EngieBeApiClient:
         return await self._api_wrapper(
             session=self._session,
             method="POST",
-            url=FEATURE_FLAGS_BASE_URL,
+            url=BOOLEAN_FEATURE_FLAG_BASE_URL,
             headers=headers,
             json_body=body,
             json_response=True,

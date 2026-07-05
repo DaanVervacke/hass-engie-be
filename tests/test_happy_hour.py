@@ -14,10 +14,9 @@ from custom_components.engie_be._happy_hour import (
     happy_hour_events,
     happy_hour_window,
     happy_hour_windows,
-    is_enrolled_from_flags,
+    is_enrolled_from_flag,
     is_happy_hour_active,
 )
-from custom_components.engie_be.const import HAPPY_HOURS_SERVICE_ENABLED_KEY
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -29,60 +28,45 @@ def _load(name: str) -> dict[str, Any]:
 
 def test_enrolled_fixture_reports_true() -> None:
     """The sanitized enrolled fixture flips the helper to True."""
-    assert is_enrolled_from_flags(_load("feature_flags_enrolled.json")) is True
+    assert is_enrolled_from_flag(_load("feature_flags_enrolled.json")) is True
 
 
 def test_not_enrolled_fixture_reports_false() -> None:
     """The sanitized not-enrolled fixture keeps the helper at False."""
-    assert is_enrolled_from_flags(_load("feature_flags_not_enrolled.json")) is False
+    assert is_enrolled_from_flag(_load("feature_flags_not_enrolled.json")) is False
 
 
 @pytest.mark.parametrize(
-    "flags",
+    "flag",
     [
         None,
         "not a dict",
         123,
         [],
         {},
-        {"happy-hours-shown": {"value": True}},
-        {HAPPY_HOURS_SERVICE_ENABLED_KEY: None},
-        {HAPPY_HOURS_SERVICE_ENABLED_KEY: "true"},
-        {HAPPY_HOURS_SERVICE_ENABLED_KEY: {}},
-        {HAPPY_HOURS_SERVICE_ENABLED_KEY: {"reason": "TARGETING_MATCH"}},
-        {HAPPY_HOURS_SERVICE_ENABLED_KEY: {"value": False}},
-        {HAPPY_HOURS_SERVICE_ENABLED_KEY: {"value": None}},
-        {HAPPY_HOURS_SERVICE_ENABLED_KEY: {"value": 0}},
-        {HAPPY_HOURS_SERVICE_ENABLED_KEY: {"value": ""}},
+        {"reason": "TARGETING_MATCH"},
+        {"value": False},
+        {"value": None},
+        {"value": 0},
+        {"value": ""},
     ],
 )
-def test_non_enrolled_shapes_return_false(flags: object) -> None:
+def test_non_enrolled_shapes_return_false(flag: object) -> None:
     """Every observed and plausible non-enrolled shape must return False."""
-    assert is_enrolled_from_flags(flags) is False  # type: ignore[arg-type]
+    assert is_enrolled_from_flag(flag) is False  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
-    "flags",
+    "flag",
     [
-        {HAPPY_HOURS_SERVICE_ENABLED_KEY: {"value": True}},
-        {
-            HAPPY_HOURS_SERVICE_ENABLED_KEY: {
-                "value": True,
-                "reason": "TARGETING_MATCH",
-            },
-            "happy-hours-shown": {"value": False},
-        },
+        {"value": True},
+        {"value": True, "reason": "TARGETING_MATCH"},
+        {"value": True, "reason": "HAPPY_HOUR_ACTIVE", "additionalContext": {}},
     ],
 )
-def test_enrolled_shapes_return_true(flags: dict[str, Any]) -> None:
-    """Enrolled means service-enabled.value is truthy, regardless of siblings."""
-    assert is_enrolled_from_flags(flags) is True
-
-
-def test_ignores_sibling_happy_hours_shown_flag() -> None:
-    """``happy-hours-shown`` must not influence enrolment."""
-    flags = {"happy-hours-shown": {"value": True}}
-    assert is_enrolled_from_flags(flags) is False
+def test_enrolled_shapes_return_true(flag: dict[str, Any]) -> None:
+    """Enrolled means the top-level value is truthy."""
+    assert is_enrolled_from_flag(flag) is True
 
 
 # ---------------------------------------------------------------------------

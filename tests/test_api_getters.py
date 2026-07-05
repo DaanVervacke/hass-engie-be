@@ -11,8 +11,9 @@ from custom_components.engie_be.api import (
     EngieBeApiClientError,
 )
 from custom_components.engie_be.const import (
-    FEATURE_FLAGS_BASE_URL,
+    BOOLEAN_FEATURE_FLAG_BASE_URL,
     HAPPY_HOUR_BASE_URL,
+    HAPPY_HOURS_SERVICE_ENABLED_KEY,
     PREMISES_BASE_URL,
     USER_AGENT_BROWSER,
     USER_AGENT_NATIVE,
@@ -123,26 +124,26 @@ async def test_async_get_happy_hour_event_strips_whitespace_in_ban() -> None:
 
 
 # ---------------------------------------------------------------------------
-# async_get_feature_flags
+# async_get_happy_hours_service_enabled_flag
 # ---------------------------------------------------------------------------
 
 
-async def test_async_get_feature_flags_builds_request() -> None:
-    """The feature-flags getter POSTs the smart-app context envelope."""
+async def test_async_get_happy_hours_service_enabled_flag_builds_request() -> None:
+    """The flag getter POSTs the flag name and context to the boolean endpoint."""
     client = _build_client()
-    payload = {"happy-hours-service-enabled": {"value": True}}
+    payload = {"value": True, "reason": "HAPPY_HOUR_ACTIVE"}
 
     with patch.object(
         client,
         "_api_wrapper",
         AsyncMock(return_value=payload),
     ) as mocked:
-        result = await client.async_get_feature_flags(_BAN)
+        result = await client.async_get_happy_hours_service_enabled_flag(_BAN)
 
     assert result == payload
     call_kwargs = mocked.await_args.kwargs
     assert call_kwargs["method"] == "POST"
-    assert call_kwargs["url"] == FEATURE_FLAGS_BASE_URL
+    assert call_kwargs["url"] == BOOLEAN_FEATURE_FLAG_BASE_URL
     assert call_kwargs["json_response"] is True
     headers = call_kwargs["headers"]
     assert headers["User-Agent"] == USER_AGENT_NATIVE
@@ -150,11 +151,11 @@ async def test_async_get_feature_flags_builds_request() -> None:
     assert headers["authorization"] == "Bearer test-access-token"
     assert "x-trace-id" in headers
     body = call_kwargs["json_body"]
-    assert body["name"] == "ENGIE_APP"
+    assert body["name"] == HAPPY_HOURS_SERVICE_ENABLED_KEY
     assert body["additionalContext"]["contractAccountId"] == _BAN
 
 
-async def test_async_get_feature_flags_strips_whitespace_in_ban() -> None:
+async def test_happy_hours_flag_strips_ban_whitespace() -> None:
     """BAN whitespace is normalised in the additionalContext payload."""
     client = _build_client()
 
@@ -163,7 +164,7 @@ async def test_async_get_feature_flags_strips_whitespace_in_ban() -> None:
         "_api_wrapper",
         AsyncMock(return_value={}),
     ) as mocked:
-        await client.async_get_feature_flags("0022 0000 0001")
+        await client.async_get_happy_hours_service_enabled_flag("0022 0000 0001")
 
     body = mocked.await_args.kwargs["json_body"]
     assert body["additionalContext"]["contractAccountId"] == _BAN

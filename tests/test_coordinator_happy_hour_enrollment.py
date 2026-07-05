@@ -144,7 +144,7 @@ def _make_client(
     Build a mock API client primed for the coordinator refresh path.
 
     Prices/peaks are stubbed with the canonical fixtures so the refresh
-    completes; only ``async_get_feature_flags`` and
+    completes; only ``async_get_happy_hours_service_enabled_flag`` and
     ``async_get_happy_hour_event`` carry per-test semantics.
     """
     client = MagicMock()
@@ -152,9 +152,11 @@ def _make_client(
     client.async_get_monthly_peaks = AsyncMock(return_value=_load(_PEAKS_FIXTURE))
 
     if isinstance(flags, Exception):
-        client.async_get_feature_flags = AsyncMock(side_effect=flags)
+        client.async_get_happy_hours_service_enabled_flag = AsyncMock(side_effect=flags)
     else:
-        client.async_get_feature_flags = AsyncMock(return_value=flags)
+        client.async_get_happy_hours_service_enabled_flag = AsyncMock(
+            return_value=flags
+        )
 
     if isinstance(happy_hour_payload, Exception):
         client.async_get_happy_hour_event = AsyncMock(side_effect=happy_hour_payload)

@@ -733,8 +733,8 @@ async def test_update_data_passes_previous_happy_hour_wrapper_when_present(
     client.async_get_monthly_peaks = AsyncMock(
         return_value={"peakOfTheMonth": None, "dailyPeaks": []},
     )
-    client.async_get_feature_flags = AsyncMock(
-        return_value={"happy-hours-service-enabled": {"value": True}},
+    client.async_get_happy_hours_service_enabled_flag = AsyncMock(
+        return_value={"value": True, "reason": "HAPPY_HOUR_ACTIVE"},
     )
     client.async_get_happy_hour_event = AsyncMock(
         side_effect=EngieBeApiClientError("transient"),

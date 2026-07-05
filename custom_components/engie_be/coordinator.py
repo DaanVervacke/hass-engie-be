@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
-from ._happy_hour import happy_hour_flag_reason, is_enrolled_from_flags
+from ._happy_hour import happy_hour_flag_reason, is_enrolled_from_flag
 from ._relations import (
     RELATIONS_BACKFILLABLE_KEYS,
     find_agreement_for_ban,
@@ -293,7 +293,9 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         outage never silently flips entities in or out.
         """
         try:
-            flags = await client.async_get_feature_flags(business_agreement_number)
+            flags = await client.async_get_happy_hours_service_enabled_flag(
+                business_agreement_number
+            )
         except EngieBeApiClientAuthenticationError as exception:
             raise ConfigEntryAuthFailed(
                 translation_domain=DOMAIN,
@@ -309,7 +311,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return bool(previous_enrolled)
 
-        enrolled = is_enrolled_from_flags(flags)
+        enrolled = is_enrolled_from_flag(flags)
         reason = happy_hour_flag_reason(flags)
         LOGGER.debug(
             "BAN %s: Happy Hours enrolment from feature flags is %s (reason=%s)",

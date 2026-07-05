@@ -106,7 +106,7 @@ def _make_client(
         return_value={"peakOfTheMonth": None, "dailyPeaks": []},
     )
     client.async_get_happy_hour_event = AsyncMock(return_value={})
-    client.async_get_feature_flags = AsyncMock(return_value={})
+    client.async_get_happy_hours_service_enabled_flag = AsyncMock(return_value={})
     if relations_side_effect is not None:
         client.async_get_customer_account_relations = AsyncMock(
             side_effect=relations_side_effect,

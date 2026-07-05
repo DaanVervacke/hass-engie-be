@@ -108,7 +108,7 @@ async def test_async_update_data_returns_payload_on_success(
     client.async_get_prices = AsyncMock(return_value=payload)
     client.async_get_monthly_peaks = AsyncMock(return_value=peaks_payload)
     client.async_get_happy_hour_event = AsyncMock(return_value={})
-    client.async_get_feature_flags = AsyncMock(return_value={})
+    client.async_get_happy_hours_service_enabled_flag = AsyncMock(return_value={})
     _attach_runtime(entry, client)
 
     coordinator = EngieBeDataUpdateCoordinator(

@@ -1,10 +1,4 @@
 {
-    "happy-hours-service-enabled": {
-        "value": true,
-        "reason": "TARGETING_MATCH"
-    },
-    "happy-hours-shown": {
-        "value": true,
-        "reason": "TARGETING_MATCH"
-    }
+    "value": true,
+    "reason": "TARGETING_MATCH"
 }
