@@ -30,7 +30,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   - Captar monthly peak energy. The peak power (kW) sensor stays enabled as it is the value that drives your capacity tariff.
   - Captar monthly peak start and peak end (timestamps). These are also categorised as diagnostic entities to make clear they are contextual detail about the peak power value.
 - **Reconfigure success message** now says explicitly which setting was saved and when it takes effect, instead of the generic "Settings updated successfully."
-- **Removed the outdated v0.8.x upgrade notice** from the top of the README; anyone installing today no longer needs to see it.
+- **Removed the outdated v0.8.x upgrade notice** from the top of the README. Anyone installing today no longer needs to see it.
 
 ### Chore
 
