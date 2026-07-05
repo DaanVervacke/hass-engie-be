@@ -11,31 +11,6 @@ data, monthly capacity-tariff peaks, Happy Hours free-energy windows, and
 EPEX day-ahead wholesale prices from the ENGIE Belgium API and exposes them
 as sensors, binary sensors, and calendar events.
 
-> ## Upgrading from v0.8.x or earlier? Read this first.
->
-> **v0.9.0 requires a one-time remove-and-re-add, including
-> logging in to ENGIE again with 2FA.** There is no automatic
-> upgrade from any earlier version.
->
-> After you install v0.9.0 through HACS and restart Home Assistant:
->
-> 1. Open **Settings** > **Devices & services**, find the
->    **ENGIE Belgium** card, and click **Delete**.
-> 2. Click **+ Add integration**, search for **ENGIE Belgium**,
->    and log in with the same ENGIE account you used before. You
->    will need to enter the 2FA code that ENGIE sends to you.
-> 3. At the end of the setup wizard, pick the business
->    agreements you want Home Assistant to track.
->
-> **Heads-up on entity names.** v0.9.0 numbers each device by its
-> **business-agreement number** instead of the customer-account
-> number. Any dashboards, automations, or scripts that mention the
-> old `sensor.engie_belgium_<old-id>_*` entities need to be updated
-> to the new names after re-adding the integration. Long-term
-> statistics from v0.8.x will not carry over into the new entities.
->
-> Full details: see the v0.9.0 entry in [CHANGELOG.md](CHANGELOG.md).
-
 ## Features
 
 - Authenticates with your ENGIE Belgium account using two-factor authentication
@@ -425,6 +400,21 @@ issue:
    the three-dot menu on the ENGIE Belgium entry, and select **Enable debug
    logging**. Reproduce the issue, then choose **Disable debug logging** from
    the same menu, and Home Assistant will offer to download the captured log.
+
+   If the issue happens *before* you can add the integration (for example
+   sign-in or MFA problems in the setup wizard), the three-dot menu is not
+   available yet. Enable logging up front by adding the block below to
+   `configuration.yaml` and restarting Home Assistant:
+
+   ```yaml
+   logger:
+     default: info
+     logs:
+       custom_components.engie_be: debug
+   ```
+
+   Reproduce the failing setup step, then check **Settings** > **System** >
+   **Logs** for the `custom_components.engie_be` entries.
 
 2. **Download diagnostics.** From the same three-dot menu, choose **Download
    diagnostics**. The resulting JSON redacts your password, tokens, and EAN
