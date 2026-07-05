@@ -2,6 +2,9 @@
 
 [![HACS Custom][hacsbadge]][hacs]
 [![GitHub Release][releasebadge]][release]
+[![Downloads][downloadsbadge]][release]
+[![Tests][testsbadge]][tests]
+[![Home Assistant][habadge]][ha]
 [![Quality Scale][qualitybadge]][quality]
 [![License][licensebadge]](LICENSE)
 
@@ -459,6 +462,11 @@ since the last release live under the **[Unreleased]** section.
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg
 [release]: https://github.com/DaanVervacke/hass-engie-be/releases
 [releasebadge]: https://img.shields.io/github/v/release/DaanVervacke/hass-engie-be
+[downloadsbadge]: https://img.shields.io/github/downloads/DaanVervacke/hass-engie-be/total?label=downloads
+[tests]: https://github.com/DaanVervacke/hass-engie-be/actions/workflows/test.yml
+[testsbadge]: https://img.shields.io/github/actions/workflow/status/DaanVervacke/hass-engie-be/test.yml?label=tests
+[ha]: https://www.home-assistant.io/
+[habadge]: https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/DaanVervacke/hass-engie-be/main/hacs.json&query=$.homeassistant&label=Home%20Assistant&prefix=%3E%3D&color=41BDF5&logo=home-assistant&logoColor=white
 [quality]: https://www.home-assistant.io/docs/quality_scale/
 [qualitybadge]: https://img.shields.io/badge/quality_scale-gold-gold.svg
 [licensebadge]: https://img.shields.io/github/license/DaanVervacke/hass-engie-be
