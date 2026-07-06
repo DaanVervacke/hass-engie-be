@@ -149,6 +149,14 @@
             "happy_hours_active": {
                 "default": "mdi:sun-clock"
             }
+        },
+        "button": {
+            "import_electricity_history": {
+                "default": "mdi:transmission-tower-import"
+            },
+            "import_gas_history": {
+                "default": "mdi:meter-gas"
+            }
         }
     }
 }

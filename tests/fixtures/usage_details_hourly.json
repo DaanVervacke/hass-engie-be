@@ -1,0 +1,74 @@
+{
+  "items": [
+    {
+      "start": "2026-07-03T00:00:00+02:00",
+      "end": "2026-07-03T01:00:00+02:00",
+      "partialData": false,
+      "energy": {
+        "electricity": {
+          "injection": {"kWhSum": 0.005},
+          "netto": -0.004,
+          "offtake": {"kWhSum": 0.001}
+        },
+        "gas": {"kWh": 0}
+      },
+      "simulatedEnergy": {}
+    },
+    {
+      "start": "2026-07-03T01:00:00+02:00",
+      "end": "2026-07-03T02:00:00+02:00",
+      "partialData": false,
+      "energy": {
+        "electricity": {
+          "injection": {"kWhSum": 0.005},
+          "netto": -0.004,
+          "offtake": {"kWhSum": 0.001}
+        },
+        "gas": {"kWh": 0}
+      },
+      "simulatedEnergy": {}
+    },
+    {
+      "start": "2026-07-03T07:00:00+02:00",
+      "end": "2026-07-03T08:00:00+02:00",
+      "partialData": false,
+      "energy": {
+        "electricity": {
+          "injection": {"kWhSum": 0.023},
+          "netto": -0.022,
+          "offtake": {"kWhSum": 0.001}
+        },
+        "gas": {"kWh": 1.776}
+      },
+      "simulatedEnergy": {}
+    },
+    {
+      "start": "2026-07-03T13:00:00+02:00",
+      "end": "2026-07-03T14:00:00+02:00",
+      "partialData": false,
+      "energy": {
+        "electricity": {
+          "injection": {"kWhSum": 2.953},
+          "netto": -2.953,
+          "offtake": {"kWhSum": 0}
+        },
+        "gas": {"kWh": 0}
+      },
+      "simulatedEnergy": {}
+    }
+  ],
+  "total": {
+    "start": "2026-07-03T00:00:00+02:00",
+    "end": "2026-07-04T00:00:00+02:00",
+    "partialData": false,
+    "energy": {
+      "electricity": {
+        "injection": {"kWhSum": 2.986},
+        "netto": -2.983,
+        "offtake": {"kWhSum": 0.003}
+      },
+      "gas": {"kWh": 1.776}
+    },
+    "simulatedEnergy": {}
+  }
+}

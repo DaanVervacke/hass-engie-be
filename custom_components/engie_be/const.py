@@ -16,6 +16,12 @@ PREMISES_BASE_URL = "https://www.engie.be/api/engie/be/ms/premises/customer/v1"
 PEAKS_BASE_URL = "https://api.engie.be/engie/ms/b2c-energy-insights/v1"
 ACCOUNTS_BASE_URL = "https://api.engie.be/engie/ms/accounts/customer/v1"
 HAPPY_HOUR_BASE_URL = "https://api.engie.be/engie/ms/energy-insights/customer/v1"
+# v2 of the same energy-insights service exposes the ``usage-details``
+# endpoint used to backfill historical hourly consumption / injection /
+# gas into Home Assistant's long-term statistics.
+ENERGY_INSIGHTS_V2_BASE_URL = (
+    "https://api.engie.be/engie/ms/energy-insights/customer/v2"
+)
 BOOLEAN_FEATURE_FLAG_BASE_URL = "https://api.engie.be/engie/ms/feature-flags/customer/v1/boolean-feature-flags/_query"
 BUSINESS_AGREEMENTS_BASE_URL = (
     "https://www.engie.be/api/engie/be/ms/business-agreements/customer/v1"
@@ -103,3 +109,37 @@ KEY_IS_DYNAMIC = "is_dynamic"
 # successor product) can be added in one place without touching the
 # detection predicate.
 DYNAMIC_ENERGY_PRODUCTS: frozenset[str] = frozenset({"DYNAMIC"})
+
+# Historical usage import (per-BAN ``button.press`` action)
+# Fallback window applied only when the energy-contracts endpoint fails
+# or returns no usable start date on a first-ever import. In the normal
+# path the orchestrator walks back to the earliest active-contract
+# ``legalContractStartDate`` returned by ENGIE.
+HISTORY_BACKFILL_YEARS = 3
+# Days per HTTP request when walking the backfill window. 7d keeps each
+# response bounded to ~168 hourly items - small enough that ENGIE's
+# ``usage-details`` endpoint responds well within the 30s per-request
+# timeout, and small enough that a mid-import failure loses at most one
+# week of unpersisted rows.
+HISTORY_CHUNK_DAYS = 7
+
+# Service name for the ``import_history`` service (kept alongside the
+# ``import_history`` button entity: same underlying orchestrator, but the
+# service also exposes ``start_date`` / ``end_date`` for explicit
+# windows).
+SERVICE_IMPORT_HISTORY = "import_history"
+# Companion service that clears the three per-BAN external statistic
+# streams so the next import walks all the way back to the business
+# agreement's start date again. Meant for post-hoc corrections when
+# ENGIE republishes historical data.
+SERVICE_CLEAR_IMPORT_HISTORY = "clear_import_history"
+ATTR_START_DATE = "start_date"
+ATTR_END_DATE = "end_date"
+ATTR_FUEL = "fuel"
+# User-facing fuel identifiers accepted by the import / clear services.
+# Kept separate from the internal ``STREAM_*`` keys in ``_statistics.py``
+# so the service surface stays "electricity / gas" (what users think in)
+# while the orchestrator keeps its per-direction split.
+FUEL_ELECTRICITY = "electricity"
+FUEL_GAS = "gas"
+FUEL_OPTIONS: tuple[str, ...] = (FUEL_ELECTRICITY, FUEL_GAS)

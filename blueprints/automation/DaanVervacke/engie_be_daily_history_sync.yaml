@@ -1,0 +1,65 @@
+blueprint:
+  name: ENGIE Belgium - Daily historical data sync
+  description: >
+    Runs the ENGIE Belgium `import_history` action on a schedule so hourly
+    consumption / injection / gas from ENGIE's cloud lands in Home Assistant's
+    long-term statistics automatically. Meant for households without a P1
+    meter (or without a real-time meter integration) so the Energy Dashboard
+    still fills in from ENGIE-side historical data.
+
+
+    Each run only fetches the delta since the last recorded hour, so daily
+    runs are cheap. If a run fails partway, the next run resumes from the
+    last successful chunk - no gaps, no double-counting.
+
+
+    Set this up once per business agreement device.
+  domain: automation
+  source_url: https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml
+  input:
+    engie_device:
+      name: ENGIE business agreement
+      description: The device representing the ENGIE business agreement to sync.
+      selector:
+        device:
+          filter:
+            - integration: engie_be
+    sync_time:
+      name: Time of day to sync
+      description: >
+        When to run the sync each day. Prefer early morning (03:00 - 06:00
+        local time) so ENGIE has finalised the previous day's hourly data
+        by the time we fetch it.
+      default: "04:00:00"
+      selector:
+        time:
+    fuel:
+      name: Energy type
+      description: >
+        Which energy type to sync. Leave both selected to sync everything
+        the account provides.
+      default:
+        - electricity
+        - gas
+      selector:
+        select:
+          multiple: true
+          options:
+            - value: electricity
+              label: Electricity (consumption + injection)
+            - value: gas
+              label: Gas
+
+mode: single
+max_exceeded: silent
+
+trigger:
+  - platform: time
+    at: !input sync_time
+
+action:
+  - service: engie_be.import_history
+    target:
+      device_id: !input engie_device
+    data:
+      fuel: !input fuel

@@ -14,7 +14,7 @@ import uuid
 from base64 import urlsafe_b64encode
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from http import HTTPStatus
 from typing import Any, NoReturn
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -27,6 +27,7 @@ from .const import (
     AUTH_BASE_URL,
     BOOLEAN_FEATURE_FLAG_BASE_URL,
     BUSINESS_AGREEMENTS_BASE_URL,
+    ENERGY_INSIGHTS_V2_BASE_URL,
     EPEX_BASE_URL,
     HAPPY_HOUR_BASE_URL,
     HAPPY_HOURS_SERVICE_ENABLED_KEY,
@@ -987,6 +988,53 @@ class EngieBeApiClient:
             method="GET",
             url=url,
             headers=headers,
+            json_response=True,
+        )
+
+    async def async_get_usage_details(
+        self,
+        business_agreement_number: str,
+        start_date: date,
+        end_date: date,
+        granularity: str = "HOURLY",
+        *,
+        include_simulation: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Fetch historical usage details for a business agreement.
+
+        Returns the parsed JSON response. Per-hour rows live under
+        ``items[]`` with ``start`` / ``end`` ISO timestamps, per-stream
+        ``energy.electricity.{offtake,injection}.kWhSum`` and
+        ``energy.gas.kWh``, plus a ``partialData`` boolean that flags
+        the current in-progress hour. A ``total`` block aggregates the
+        whole requested window. ``start_date`` is inclusive and
+        ``end_date`` is exclusive (civil-day boundaries).
+
+        ``include_simulation`` defaults to ``False`` so ENGIE never
+        returns projected numbers into the response; the caller writes
+        the results into permanent long-term statistics where projected
+        values would be misleading.
+        """
+        ban = business_agreement_number.replace(" ", "")
+        url = f"{ENERGY_INSIGHTS_V2_BASE_URL}/business-agreements/{ban}/usage-details"
+        headers = {
+            "User-Agent": USER_AGENT_NATIVE,
+            "Accept": "application/json, application/problem+json",
+            "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
+        }
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            params={
+                "startDate": start_date.isoformat(),
+                "endDate": end_date.isoformat(),
+                "granularity": granularity,
+                "includeSimulation": "true" if include_simulation else "false",
+            },
             json_response=True,
         )
 

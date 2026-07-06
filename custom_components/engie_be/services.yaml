@@ -1,0 +1,39 @@
+import_history:
+  target:
+    device:
+      integration: engie_be
+  fields:
+    fuel:
+      required: false
+      selector:
+        select:
+          multiple: true
+          translation_key: fuel
+          options:
+            - "electricity"
+            - "gas"
+    start_date:
+      required: false
+      example: "2024-01-01"
+      selector:
+        date:
+    end_date:
+      required: false
+      example: "2024-06-30"
+      selector:
+        date:
+
+clear_import_history:
+  target:
+    device:
+      integration: engie_be
+  fields:
+    fuel:
+      required: false
+      selector:
+        select:
+          multiple: true
+          translation_key: fuel
+          options:
+            - "electricity"
+            - "gas"

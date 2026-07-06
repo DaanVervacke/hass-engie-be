@@ -126,12 +126,62 @@
         },
         "unknown_error": {
             "message": "An unknown error occurred while talking to the ENGIE Belgium API."
+        },
+        "import_history_failed": {
+            "message": "Historical usage import failed: {error}"
+        },
+        "service_no_target_device": {
+            "message": "Select at least one ENGIE Belgium business-agreement device as the target."
+        },
+        "service_no_valid_target": {
+            "message": "None of the selected devices belong to a live ENGIE Belgium business agreement. Pick a business-agreement device from Settings > Devices & services."
+        },
+        "service_entry_reloading": {
+            "message": "The ENGIE Belgium integration is reloading (entry {entry_id}). Try again in a few seconds."
         }
     },
     "issues": {
         "pre_v5_entry": {
             "title": "ENGIE Belgium: re-add required",
             "description": "Your ENGIE Belgium integration was set up on an older schema (v{version}) that can no longer be migrated automatically. Remove this entry from Settings → Devices & Services and add the integration again to continue."
+        }
+    },
+    "services": {
+        "import_history": {
+            "name": "Import historical usage",
+            "description": "Fetch historical hourly usage from ENGIE and write it into Home Assistant's long-term statistics for the selected business-agreement devices. Leave 'Energy type' empty to import both electricity and gas, or pick one to import only that. Leave both dates empty to auto-backfill: first run walks back to the business agreement's start date, subsequent runs only fetch the delta since the last recorded hour. Provide dates to import a specific window - existing hours inside that window are overwritten in place.",
+            "fields": {
+                "fuel": {
+                    "name": "Energy type",
+                    "description": "Which energy type to import. Leave empty to import both."
+                },
+                "start_date": {
+                    "name": "Start date",
+                    "description": "First day to import (inclusive). Leave empty to auto-select."
+                },
+                "end_date": {
+                    "name": "End date",
+                    "description": "Last day to import (exclusive). Leave empty to auto-select through today."
+                }
+            }
+        },
+        "clear_import_history": {
+            "name": "Clear historical usage statistics",
+            "description": "Delete imported historical usage statistics for the selected business-agreement devices. Leave 'Energy type' empty to clear everything, or pick one to clear only that. The next 'Import historical usage' call for the same device and energy type will backfill all history again from the business agreement's start date. Use this after ENGIE republishes historical data or if imported values are stale.",
+            "fields": {
+                "fuel": {
+                    "name": "Energy type",
+                    "description": "Which energy type to clear. Leave empty to clear both."
+                }
+            }
+        }
+    },
+    "selector": {
+        "fuel": {
+            "options": {
+                "electricity": "Electricity (consumption + injection)",
+                "gas": "Gas"
+            }
         }
     },
     "options": {
@@ -305,6 +355,14 @@
             },
             "happy_hours_active": {
                 "name": "Happy Hours is active"
+            }
+        },
+        "button": {
+            "import_electricity_history": {
+                "name": "Import historical electricity data"
+            },
+            "import_gas_history": {
+                "name": "Import historical gas data"
             }
         }
     }

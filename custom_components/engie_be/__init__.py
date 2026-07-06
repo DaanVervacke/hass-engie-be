@@ -6,26 +6,44 @@ import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from homeassistant.const import Platform
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+import voluptuous as vol
+from homeassistant.const import ATTR_DEVICE_ID, Platform
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    ServiceValidationError,
+)
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 
 from ._contracts import is_account_dynamic
+from ._statistics import (
+    async_clear_usage_history,
+    async_import_usage_history,
+    streams_for_fuels,
+)
 from .api import (
     EngieBeApiClient,
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
 )
 from .const import (
+    ATTR_END_DATE,
+    ATTR_FUEL,
+    ATTR_START_DATE,
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_REFRESH_TOKEN,
     DEFAULT_CLIENT_ID,
     DOMAIN,
+    FUEL_OPTIONS,
     LOGGER,
+    SERVICE_CLEAR_IMPORT_HISTORY,
+    SERVICE_IMPORT_HISTORY,
     SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
     TOKEN_REFRESH_INTERVAL_SECONDS,
@@ -44,6 +62,7 @@ if TYPE_CHECKING:
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
     Platform.CALENDAR,
     Platform.SENSOR,
 ]
@@ -249,6 +268,8 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    _async_register_services(hass)
+
     # Recurring token refresh registered AFTER every step that can raise
     # ``ConfigEntryNotReady`` (initial token refresh at the top of this
     # function, plus per-subentry ``async_config_entry_first_refresh``
@@ -387,6 +408,159 @@ def _business_agreement_numbers(entry: EngieBeConfigEntry) -> set[str]:
         if ban:
             bans.add(ban)
     return bans
+
+
+_FUEL_LIST = vol.All(cv.ensure_list, [vol.In(FUEL_OPTIONS)])
+
+_IMPORT_HISTORY_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_FUEL): _FUEL_LIST,
+        vol.Optional(ATTR_START_DATE): cv.date,
+        vol.Optional(ATTR_END_DATE): cv.date,
+    },
+)
+
+_CLEAR_IMPORT_HISTORY_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_FUEL): _FUEL_LIST,
+    },
+)
+
+
+def _resolve_targets(
+    hass: HomeAssistant,
+    device_ids: list[str],
+    service_name: str,
+) -> list[tuple[EngieBeConfigEntry, ConfigSubentry]]:
+    """
+    Resolve service ``device_id`` targets to (entry, subentry) pairs.
+
+    Skips (with a warning) any device that is not a business-agreement
+    device or whose owning entry is not currently loaded. Setup order
+    guarantees that any entry returned here has ``runtime_data.client``
+    populated: ``_async_register_services`` runs only after
+    ``async_setup_entry`` has forwarded platforms, which itself runs
+    after the parent ``EngieBeData`` (holding the client) is assigned to
+    ``entry.runtime_data``. Callers can dereference the client without a
+    further None check.
+    """
+    device_reg = dr.async_get(hass)
+    resolved: list[tuple[EngieBeConfigEntry, ConfigSubentry]] = []
+    for device_id in device_ids:
+        device = device_reg.async_get(device_id)
+        if device is None:
+            LOGGER.warning("Unknown device %s for %s", device_id, service_name)
+            continue
+        subentry_id: str | None = None
+        for domain, ident in device.identifiers:
+            if domain != DOMAIN or ident.startswith("login_"):
+                continue
+            subentry_id = ident
+            break
+        if subentry_id is None:
+            LOGGER.warning(
+                "Device %s is not a business-agreement device; skipping",
+                device_id,
+            )
+            continue
+        found = False
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            subentry = entry.subentries.get(subentry_id)
+            if subentry is None:
+                continue
+            # Guard against the narrow reload window where ``runtime_data``
+            # can be transiently unset between the old teardown and the new
+            # setup. Callers dereference ``.client`` right after, so a stale
+            # entry would AttributeError. Raise a translated
+            # ``ServiceValidationError`` so the user sees an actionable
+            # message and can retry once the reload settles.
+            runtime = getattr(entry, "runtime_data", None)
+            if runtime is None or getattr(runtime, "client", None) is None:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="service_entry_reloading",
+                    translation_placeholders={"entry_id": entry.entry_id},
+                )
+            resolved.append((entry, subentry))
+            found = True
+            break
+        if not found:
+            LOGGER.warning(
+                "No live config entry owns subentry %s; skipping", subentry_id
+            )
+    if device_ids and not resolved:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="service_no_valid_target",
+        )
+    return resolved
+
+
+def _async_register_services(hass: HomeAssistant) -> None:
+    """
+    Register domain-level services once per HA startup.
+
+    Services outlive individual config entries: multiple entries share
+    the same registration and the handler routes to the entry that owns
+    the targeted device. Guarded so a second entry setup does not raise
+    ``ServiceRegistrationError``.
+    """
+    if hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY):
+        return
+
+    async def _handle_import_history(call: object) -> None:
+        # ``call`` is ``ServiceCall``; typed loosely to keep the import
+        # surface small for this file.
+        device_ids: list[str] = call.data.get(ATTR_DEVICE_ID) or []  # type: ignore[attr-defined]
+        if not device_ids:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="service_no_target_device",
+            )
+        streams = streams_for_fuels(call.data.get(ATTR_FUEL))  # type: ignore[attr-defined]
+        start_date = call.data.get(ATTR_START_DATE)  # type: ignore[attr-defined]
+        end_date = call.data.get(ATTR_END_DATE)  # type: ignore[attr-defined]
+        for entry, subentry in _resolve_targets(
+            hass, device_ids, "engie_be.import_history"
+        ):
+            await async_import_usage_history(
+                hass,
+                entry.runtime_data.client,
+                subentry,
+                start_date=start_date,
+                end_date=end_date,
+                streams=streams,
+            )
+
+    async def _handle_clear_import_history(call: object) -> None:
+        device_ids: list[str] = call.data.get(ATTR_DEVICE_ID) or []  # type: ignore[attr-defined]
+        if not device_ids:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="service_no_target_device",
+            )
+        streams = streams_for_fuels(call.data.get(ATTR_FUEL))  # type: ignore[attr-defined]
+        for _entry, subentry in _resolve_targets(
+            hass, device_ids, "engie_be.clear_import_history"
+        ):
+            ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+            if ban:
+                await async_clear_usage_history(hass, ban, streams=streams)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_IMPORT_HISTORY,
+        _handle_import_history,
+        schema=_IMPORT_HISTORY_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLEAR_IMPORT_HISTORY,
+        _handle_clear_import_history,
+        schema=_CLEAR_IMPORT_HISTORY_SCHEMA,
+    )
 
 
 def _persist_tokens(

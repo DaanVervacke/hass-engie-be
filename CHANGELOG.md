@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b1] - 2026-07-06
+
+### Added
+
+- **Import historical usage into the Energy Dashboard.** Each business agreement now exposes two buttons: **Import historical electricity data** (consumption + injection) and **Import historical gas data** (Settings > Devices & Services > ENGIE Belgium > *the account*). Pressing a button fetches hourly usage from ENGIE's `usage-details` endpoint - back to the business agreement's start date on the first press - and writes it into Home Assistant's long-term statistics under per-BAN external statistic IDs (`engie_be:{BAN}_consumption`, `_injection`, `_gas`). Subsequent presses only fetch the delta since the last recorded hour, so repeat runs are cheap and safe. The values become selectable directly in the Energy Dashboard's electricity and gas source pickers. Users without solar or without gas can simply ignore or hide the button they don't need.
+- **`engie_be.import_history` service** exposes the same import with optional `fuel` (electricity / gas / both), `start_date`, and `end_date` fields (Developer Tools > Actions > *ENGIE Belgium: Import historical usage*, or from an automation). Target one or more business-agreement devices; omit all fields for auto mode (both fuels, incremental delta); pick a fuel to limit the import to one; provide dates to re-import a specific window, overwriting existing hourly rows in place.
+- **`engie_be.clear_import_history` service** deletes imported statistic streams for the targeted business-agreement device. Optional energy-type field to clear only electricity or only gas. The next `Import historical usage` call for the same device and energy type backfills everything again from the business agreement's start date. Useful when ENGIE republishes historical data after the fact.
+- **Blueprint: daily historical data sync** (`blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`) - import once from the README, pick a device + time + fuel, and Home Assistant keeps the Energy Dashboard filled from ENGIE's cloud even without a real-time meter integration.
+- **Visual feedback on button presses.** Pressing either import button now creates a persistent notification (bell icon top-right) that updates in place from "Importing..." to a success or failure summary, so long imports no longer look like a silent hang.
+
+### Changed
+
+- **Historical import default start date is now the earliest active-contract start date** rather than a fixed three-year lookback. The ENGIE `energy-contracts` endpoint returns `legalContractStartDate` per active contract, and the orchestrator walks the earliest matching contract's start date so users no longer see minutes of empty pre-contract chunks on first import. Falls back to the previous three-year default when the contracts endpoint is unavailable.
+- **Import completion is now logged at the orchestrator level** (`Imported N hourly statistic rows for BAN ***XXXX (window ..)`), so calls made via the service or a blueprint automation also surface a summary in the log, not just button presses.
+- **Historical import button** now raises a translated Home Assistant error (visible as a UI toast) when the ENGIE API fails, instead of surfacing a bare stack trace in the log.
+
 ## [0.11.0] - 2026-07-04
 
 ### Added
@@ -913,6 +929,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.11.0...v0.12.0b1
 [0.11.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0
