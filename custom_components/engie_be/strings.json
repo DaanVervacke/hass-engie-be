@@ -180,7 +180,7 @@
         "fuel": {
             "options": {
                 "electricity": "Electricity (consumption + injection)",
-                "gas": "Gas"
+                "gas": "Gas (consumption)"
             }
         }
     },
