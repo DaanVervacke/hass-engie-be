@@ -138,6 +138,7 @@ ATTR_FUEL = "fuel"
 # Kept separate from the internal ``STREAM_*`` keys in ``_statistics.py``
 # so the service surface stays "electricity / gas" (what users think in)
 # while the orchestrator keeps its per-direction split.
-FUEL_ELECTRICITY = "electricity"
+FUEL_CONSUMPTION = "consumption"
+FUEL_INJECTION = "injection"
 FUEL_GAS = "gas"
-FUEL_OPTIONS: tuple[str, ...] = (FUEL_ELECTRICITY, FUEL_GAS)
+FUEL_OPTIONS: tuple[str, ...] = (FUEL_CONSUMPTION, FUEL_INJECTION, FUEL_GAS)

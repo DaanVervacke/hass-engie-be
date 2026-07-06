@@ -24,19 +24,22 @@ blueprint:
     fuel:
       name: Energy type
       description: >
-        Which energy type to sync. Leave both selected to sync everything
-        the account provides.
+        Which energy type to sync. Leave all selected to sync everything the
+        account provides.
       default:
-        - electricity
+        - consumption
+        - injection
         - gas
       selector:
         select:
           multiple: true
           options:
-            - value: electricity
-              label: Electricity (consumption + injection)
+            - value: consumption
+              label: Electricity consumption
+            - value: injection
+              label: Electricity injection
             - value: gas
-              label: Gas
+              label: Gas (consumption)
 
 mode: single
 max_exceeded: silent

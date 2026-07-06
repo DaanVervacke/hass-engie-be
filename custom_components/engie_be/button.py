@@ -38,16 +38,22 @@ if TYPE_CHECKING:
     from .data import EngieBeConfigEntry
 
 
-# One button per energy type per BAN. Users can press only the one they care
-# about; users without a solar meter or without gas can ignore or hide
-# the other. Both flow through the same orchestrator with a different
-# ``streams`` filter.
-_ELECTRICITY_STREAMS: frozenset[str] = frozenset({STREAM_CONSUMPTION, STREAM_INJECTION})
+# One button per energy stream per BAN. Users can press only the one(s) they
+# care about; users without solar or without gas can ignore or hide the others.
+# All three flow through the same orchestrator with a different ``streams``
+# filter.
+_CONSUMPTION_STREAMS: frozenset[str] = frozenset({STREAM_CONSUMPTION})
+_INJECTION_STREAMS: frozenset[str] = frozenset({STREAM_INJECTION})
 _GAS_STREAMS: frozenset[str] = frozenset({STREAM_GAS})
 
-_ELECTRICITY_DESCRIPTION = ButtonEntityDescription(
-    key="import_electricity_history",
-    translation_key="import_electricity_history",
+_CONSUMPTION_DESCRIPTION = ButtonEntityDescription(
+    key="import_consumption_history",
+    translation_key="import_consumption_history",
+    entity_category=EntityCategory.CONFIG,
+)
+_INJECTION_DESCRIPTION = ButtonEntityDescription(
+    key="import_injection_history",
+    translation_key="import_injection_history",
     entity_category=EntityCategory.CONFIG,
 )
 _GAS_DESCRIPTION = ButtonEntityDescription(
@@ -79,8 +85,15 @@ async def async_setup_entry(
                     coordinator=sub_data.coordinator,
                     subentry=subentry,
                     entry=entry,
-                    description=_ELECTRICITY_DESCRIPTION,
-                    streams=_ELECTRICITY_STREAMS,
+                    description=_CONSUMPTION_DESCRIPTION,
+                    streams=_CONSUMPTION_STREAMS,
+                ),
+                EngieBeImportHistoryButton(
+                    coordinator=sub_data.coordinator,
+                    subentry=subentry,
+                    entry=entry,
+                    description=_INJECTION_DESCRIPTION,
+                    streams=_INJECTION_STREAMS,
                 ),
                 EngieBeImportHistoryButton(
                     coordinator=sub_data.coordinator,
@@ -96,13 +109,13 @@ async def async_setup_entry(
 
 class EngieBeImportHistoryButton(EngieBeEntity, ButtonEntity):
     """
-    Trigger a per-BAN, per-energy-type historical usage import into HA statistics.
+    Trigger a per-BAN, per-stream historical usage import into HA statistics.
 
-    Two instances live per BAN: one for electricity (consumption +
-    injection) and one for gas. Each walks back to the business
-    agreement's start date on first press, then only fetches the delta
-    since the last recorded statistic on subsequent presses. Idempotent
-    by (statistic_id, start), so multiple presses do not double-count.
+    Three instances live per BAN: consumption, injection, and gas. Each
+    walks back to the business agreement's start date on first press,
+    then only fetches the delta since the last recorded statistic on
+    subsequent presses. Idempotent by (statistic_id, start), so multiple
+    presses do not double-count.
     """
 
     def __init__(

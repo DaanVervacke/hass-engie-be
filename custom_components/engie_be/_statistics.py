@@ -33,8 +33,9 @@ from .api import EngieBeApiClientError
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     DOMAIN,
-    FUEL_ELECTRICITY,
+    FUEL_CONSUMPTION,
     FUEL_GAS,
+    FUEL_INJECTION,
     HISTORY_BACKFILL_YEARS,
     HISTORY_CHUNK_DAYS,
     LOGGER,
@@ -53,10 +54,10 @@ STREAM_INJECTION = "injection"
 STREAM_GAS = "gas"
 _STREAMS: tuple[str, ...] = (STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS)
 
-# User-facing fuel selectors expand to one or more internal streams.
-# Electricity covers both directions; gas is a single stream.
+# User-facing fuel selectors map 1:1 to internal streams.
 _FUEL_TO_STREAMS: dict[str, frozenset[str]] = {
-    FUEL_ELECTRICITY: frozenset({STREAM_CONSUMPTION, STREAM_INJECTION}),
+    FUEL_CONSUMPTION: frozenset({STREAM_CONSUMPTION}),
+    FUEL_INJECTION: frozenset({STREAM_INJECTION}),
     FUEL_GAS: frozenset({STREAM_GAS}),
 }
 

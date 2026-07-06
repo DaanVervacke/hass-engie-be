@@ -13,7 +13,8 @@ import_history:
           multiple: true
           translation_key: fuel
           options:
-            - "electricity"
+            - "consumption"
+            - "injection"
             - "gas"
     start_date:
       required: false
@@ -41,5 +42,6 @@ clear_import_history:
           multiple: true
           translation_key: fuel
           options:
-            - "electricity"
+            - "consumption"
+            - "injection"
             - "gas"

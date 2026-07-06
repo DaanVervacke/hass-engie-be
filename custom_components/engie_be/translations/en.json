@@ -149,11 +149,11 @@
     "services": {
         "import_history": {
             "name": "Import historical usage",
-            "description": "Fetch historical hourly usage from ENGIE and write it into Home Assistant's long-term statistics for the selected business-agreement devices. Leave 'Energy type' empty to import both electricity and gas, or pick one to import only that. Leave both dates empty to auto-backfill: first run walks back to the business agreement's start date, subsequent runs only fetch the delta since the last recorded hour. Provide dates to import a specific window - existing hours inside that window are overwritten in place.",
+            "description": "Fetch historical hourly usage from ENGIE and write it into Home Assistant's long-term statistics for the selected business-agreement devices. Leave 'Energy type' empty to import all energy types, or pick one or more to limit the import. Leave both dates empty to auto-backfill: first run walks back to the business agreement's start date, subsequent runs only fetch the delta since the last recorded hour. Provide dates to import a specific window - existing hours inside that window are overwritten in place.",
             "fields": {
                 "fuel": {
                     "name": "Energy type",
-                    "description": "Which energy type to import. Leave empty to import both."
+                    "description": "Which energy type(s) to import. Leave empty to import all."
                 },
                 "start_date": {
                     "name": "Start date",
@@ -167,11 +167,11 @@
         },
         "clear_import_history": {
             "name": "Clear historical usage statistics",
-            "description": "Delete imported historical usage statistics for the selected business-agreement devices. Leave 'Energy type' empty to clear everything, or pick one to clear only that. The next 'Import historical usage' call for the same device and energy type will backfill all history again from the business agreement's start date. Use this after ENGIE republishes historical data or if imported values are stale.",
+            "description": "Delete imported historical usage statistics for the selected business-agreement devices. Leave 'Energy type' empty to clear everything, or pick one or more to clear only those. The next 'Import historical usage' call for the same device and energy type will backfill all history again from the business agreement's start date. Use this after ENGIE republishes historical data or if imported values are stale.",
             "fields": {
                 "fuel": {
                     "name": "Energy type",
-                    "description": "Which energy type to clear. Leave empty to clear both."
+                    "description": "Which energy type(s) to clear. Leave empty to clear all."
                 }
             }
         }
@@ -179,7 +179,8 @@
     "selector": {
         "fuel": {
             "options": {
-                "electricity": "Electricity (consumption + injection)",
+                "consumption": "Electricity consumption",
+                "injection": "Electricity injection",
                 "gas": "Gas (consumption)"
             }
         }
@@ -358,11 +359,14 @@
             }
         },
         "button": {
-            "import_electricity_history": {
-                "name": "Import historical electricity data"
+            "import_consumption_history": {
+                "name": "Import historical electricity consumption"
+            },
+            "import_injection_history": {
+                "name": "Import historical electricity injection"
             },
             "import_gas_history": {
-                "name": "Import historical gas data"
+                "name": "Import historical gas consumption"
             }
         }
     }

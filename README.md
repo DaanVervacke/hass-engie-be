@@ -317,10 +317,11 @@ Two ways to trigger an import:
 
 ### One-click (auto backfill)
 
-Each business-agreement device exposes two buttons:
+Each business-agreement device exposes three buttons:
 
-- **Import historical electricity data** (consumption + injection)
-- **Import historical gas data**
+- **Import historical electricity consumption**
+- **Import historical electricity injection**
+- **Import historical gas consumption**
 
 Open **Settings** > **Devices & Services** > **ENGIE Belgium** > the account
 you want, then press the button. The first press walks back to the business
@@ -341,7 +342,7 @@ routes.
 2. Click the business-agreement device you want to import for.
 3. Click **Perform action** in the device page.
 4. Pick action **ENGIE Belgium: Import historical usage data**.
-5. Set **Energy type** (leave empty for both electricity and gas), **Start
+5. Set **Energy type** (leave empty for all, or pick one or more), **Start
    date**, and **End date**. All fields are optional and the same auto mode
    applies to any field you leave blank.
 6. Click **Perform action** to run.
@@ -385,7 +386,7 @@ agreement's start date, subsequent runs are tiny. Repeat the import (steps
 To wipe imported statistics for a device (for example before a full re-import
 after an ENGIE data correction), use the action **ENGIE Belgium: Clear
 historical usage statistics** in the same **Developer Tools** > **Actions**
-screen. Optional **Energy type** field clears only electricity or only gas.
+screen. Optional **Energy type** field clears only the selected stream(s).
 
 The three per-BAN statistic IDs are:
 

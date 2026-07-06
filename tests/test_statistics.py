@@ -24,10 +24,12 @@ from custom_components.engie_be._statistics import (
 )
 from custom_components.engie_be.api import EngieBeApiClientCommunicationError
 from custom_components.engie_be.button import (
-    _ELECTRICITY_DESCRIPTION,
-    _ELECTRICITY_STREAMS,
+    _CONSUMPTION_DESCRIPTION,
+    _CONSUMPTION_STREAMS,
     _GAS_DESCRIPTION,
     _GAS_STREAMS,
+    _INJECTION_DESCRIPTION,
+    _INJECTION_STREAMS,
     EngieBeImportHistoryButton,
 )
 
@@ -326,10 +328,12 @@ def test_streams_for_fuels_maps_user_selectors() -> None:
     assert streams_for_fuels([]) == frozenset(
         {STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS}
     )
-    assert streams_for_fuels(["electricity"]) == frozenset(
-        {STREAM_CONSUMPTION, STREAM_INJECTION}
-    )
+    assert streams_for_fuels(["consumption"]) == frozenset({STREAM_CONSUMPTION})
+    assert streams_for_fuels(["injection"]) == frozenset({STREAM_INJECTION})
     assert streams_for_fuels(["gas"]) == frozenset({STREAM_GAS})
+    assert streams_for_fuels(["consumption", "gas"]) == frozenset(
+        {STREAM_CONSUMPTION, STREAM_GAS}
+    )
     # Unknown fuel silently degrades to "all" so old service payloads
     # never explode after a future selector rename.
     assert streams_for_fuels(["district_heating"]) == frozenset(
@@ -535,8 +539,8 @@ async def test_clear_usage_history_streams_filter(hass) -> None:  # noqa: ANN001
     assert task.statistic_ids == cleared
 
 
-async def test_electricity_button_delegates_with_electricity_streams(hass) -> None:  # noqa: ANN001
-    """The electricity button passes only the electricity streams filter."""
+async def test_consumption_button_delegates_with_consumption_stream(hass) -> None:  # noqa: ANN001
+    """The consumption button passes only the consumption stream filter."""
     entry = MagicMock()
     entry.entry_id = "e1"
     entry.runtime_data.client = MagicMock()
@@ -549,8 +553,8 @@ async def test_electricity_button_delegates_with_electricity_streams(hass) -> No
         coordinator,
         subentry,
         entry,
-        description=_ELECTRICITY_DESCRIPTION,
-        streams=_ELECTRICITY_STREAMS,
+        description=_CONSUMPTION_DESCRIPTION,
+        streams=_CONSUMPTION_STREAMS,
     )
     button.hass = hass
 
@@ -564,12 +568,49 @@ async def test_electricity_button_delegates_with_electricity_streams(hass) -> No
         hass,
         entry.runtime_data.client,
         subentry,
-        streams=_ELECTRICITY_STREAMS,
+        streams=_CONSUMPTION_STREAMS,
     )
-    assert button.unique_id == "e1_s1_import_electricity_history"
+    assert button.unique_id == "e1_s1_import_consumption_history"
     assert (
         button.entity_id
-        == "button.engie_belgium_000000000000_import_electricity_history"
+        == "button.engie_belgium_000000000000_import_consumption_history"
+    )
+
+
+async def test_injection_button_delegates_with_injection_stream(hass) -> None:  # noqa: ANN001
+    """The injection button passes only the injection stream filter."""
+    entry = MagicMock()
+    entry.entry_id = "e1"
+    entry.runtime_data.client = MagicMock()
+    coordinator = MagicMock()
+    subentry = _mock_subentry()
+    subentry.subentry_id = "s1"
+    subentry.title = "ENGIE 000000000000"
+
+    button = EngieBeImportHistoryButton(
+        coordinator,
+        subentry,
+        entry,
+        description=_INJECTION_DESCRIPTION,
+        streams=_INJECTION_STREAMS,
+    )
+    button.hass = hass
+
+    with patch(
+        "custom_components.engie_be.button.async_import_usage_history",
+        AsyncMock(return_value=7),
+    ) as mocked:
+        await button.async_press()
+
+    mocked.assert_awaited_once_with(
+        hass,
+        entry.runtime_data.client,
+        subentry,
+        streams=_INJECTION_STREAMS,
+    )
+    assert button.unique_id == "e1_s1_import_injection_history"
+    assert (
+        button.entity_id == "button.engie_belgium_000000000000_import_injection_history"
     )
 
 
@@ -616,8 +657,8 @@ async def test_button_press_wraps_api_error_as_hass_error(hass) -> None:  # noqa
         coordinator,
         subentry,
         entry,
-        description=_ELECTRICITY_DESCRIPTION,
-        streams=_ELECTRICITY_STREAMS,
+        description=_CONSUMPTION_DESCRIPTION,
+        streams=_CONSUMPTION_STREAMS,
     )
     button.hass = hass
 
