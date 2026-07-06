@@ -1,7 +1,6 @@
 import_history:
   target:
-    device:
-      integration: engie_be
+    device: {}
   fields:
     fuel:
       required: false
@@ -25,8 +24,7 @@ import_history:
 
 clear_import_history:
   target:
-    device:
-      integration: engie_be
+    device: {}
   fields:
     fuel:
       required: false
