@@ -379,6 +379,16 @@ The three per-BAN statistic IDs are:
 - `engie_be:{BAN}_injection` (kWh, return to grid)
 - `engie_be:{BAN}_gas` (kWh, gas offtake reported as energy-equivalent by ENGIE)
 
+#### Importing cost streams (EUR)
+
+Set **Include costs** to `true` on the import action (or the blueprint input) to also import per-hour cost statistics alongside the kWh streams. No extra API calls are made - the cost data comes from the same `usage-details` payload. Three additional statistic IDs are written, one per energy type:
+
+- `engie_be:{BAN}_consumption_cost` (EUR, electricity grid offtake cost)
+- `engie_be:{BAN}_injection_cost` (EUR, electricity return-to-grid cost)
+- `engie_be:{BAN}_gas_cost` (EUR, gas offtake cost)
+
+Cost streams are off by default. Use **Clear historical usage statistics** with **Include costs** set to `true` to remove them before a re-import if needed.
+
 ### Combining with a live P1 / DSMR meter
 
 If you install a P1 meter later on and want the Energy Dashboard timeline to

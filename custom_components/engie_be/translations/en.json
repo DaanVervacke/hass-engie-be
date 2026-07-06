@@ -149,8 +149,16 @@
     "services": {
         "import_history": {
             "name": "Import historical usage",
-            "description": "Fetch historical hourly usage from ENGIE and write it into Home Assistant's long-term statistics for the selected business-agreement devices. Leave 'Energy type' empty to import all energy types, or pick one or more to limit the import. Leave both dates empty to auto-backfill: first run walks back to the business agreement's start date, subsequent runs only fetch the delta since the last recorded hour. Provide dates to import a specific window - existing hours inside that window are overwritten in place.",
+            "description": "Fetch historical hourly usage from ENGIE and write it into Home Assistant's long-term statistics for the selected business-agreement devices. Leave 'Energy type' empty to import all energy types, or pick one or more to limit the import. Set 'Include costs' to also import per-hour cost (EUR) for each selected energy type. Leave both dates empty to auto-backfill: first run walks back to the business agreement's start date, subsequent runs only fetch the delta since the last recorded hour. Provide dates to import a specific window - existing hours inside that window are overwritten in place.",
             "fields": {
+                "energy_type": {
+                    "name": "Energy type",
+                    "description": "Which energy type(s) to import. Leave empty to import all."
+                },
+                "include_costs": {
+                    "name": "Include costs",
+                    "description": "Also import per-hour cost (EUR) for each selected energy type. Off by default."
+                },
                 "start_date": {
                     "name": "Start date",
                     "description": "First day to import (inclusive). Leave empty to auto-select."
@@ -158,20 +166,20 @@
                 "end_date": {
                     "name": "End date",
                     "description": "Last day to import (exclusive). Leave empty to auto-select through today."
-                },
-                "energy_type": {
-                    "name": "Energy type",
-                    "description": "Which energy type(s) to import. Leave empty to import all."
                 }
             }
         },
         "clear_import_history": {
             "name": "Clear historical usage statistics",
-            "description": "Delete imported historical usage statistics for the selected business-agreement devices. Leave 'Energy type' empty to clear everything, or pick one or more to clear only those. The next 'Import historical usage' call for the same device and energy type will backfill all history again from the business agreement's start date. Use this after ENGIE republishes historical data or if imported values are stale.",
+            "description": "Delete imported historical usage statistics for the selected business-agreement devices. Leave 'Energy type' empty to clear everything, or pick one or more to clear only those. Set 'Include costs' to also clear the matching cost streams. The next 'Import historical usage' call for the same device and energy type will backfill all history again from the business agreement's start date. Use this after ENGIE republishes historical data or if imported values are stale.",
             "fields": {
                 "energy_type": {
                     "name": "Energy type",
                     "description": "Which energy type(s) to clear. Leave empty to clear all."
+                },
+                "include_costs": {
+                    "name": "Include costs",
+                    "description": "Also clear per-hour cost (EUR) streams for each selected energy type. Off by default."
                 }
             }
         }

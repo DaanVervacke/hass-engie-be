@@ -133,6 +133,7 @@ SERVICE_CLEAR_IMPORT_HISTORY = "clear_import_history"
 ATTR_START_DATE = "start_date"
 ATTR_END_DATE = "end_date"
 ATTR_ENERGY_TYPE = "energy_type"
+ATTR_INCLUDE_COSTS = "include_costs"
 # User-facing energy-type identifiers accepted by the import / clear
 # services. Kept separate from the internal ``STREAM_*`` keys in
 # ``_statistics.py`` so the service surface uses UI-friendly names while

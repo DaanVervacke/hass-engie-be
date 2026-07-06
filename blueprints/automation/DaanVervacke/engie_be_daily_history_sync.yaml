@@ -41,6 +41,14 @@ blueprint:
               label: Electricity injection
             - value: gas
               label: Gas consumption
+    include_costs:
+      name: Include costs
+      description: >
+        Also import per-hour cost (EUR) alongside the kWh streams. Off by
+        default.
+      default: false
+      selector:
+        boolean:
 
 mode: single
 max_exceeded: silent
@@ -55,3 +63,4 @@ action:
       device_id: !input engie_device
     data:
       energy_type: !input energy_type
+      include_costs: !input include_costs

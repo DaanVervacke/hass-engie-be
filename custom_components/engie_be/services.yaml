@@ -11,6 +11,10 @@ import_history:
             - "consumption"
             - "injection"
             - "gas"
+    include_costs:
+      required: false
+      selector:
+        boolean:
     start_date:
       required: false
       example: "2024-01-01"
@@ -35,3 +39,7 @@ clear_import_history:
             - "consumption"
             - "injection"
             - "gas"
+    include_costs:
+      required: false
+      selector:
+        boolean:

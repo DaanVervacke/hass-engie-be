@@ -12,8 +12,11 @@ from homeassistant.util import dt as dt_util
 
 from custom_components.engie_be._statistics import (
     STREAM_CONSUMPTION,
+    STREAM_CONSUMPTION_COST,
     STREAM_GAS,
+    STREAM_GAS_COST,
     STREAM_INJECTION,
+    STREAM_INJECTION_COST,
     async_clear_usage_history,
     async_import_usage_history,
     earliest_contract_start_date,
@@ -41,13 +44,20 @@ def test_statistic_id_format() -> None:
 
 
 def test_converter_produces_row_per_hour_per_stream() -> None:
-    """Every non-partial input row yields exactly one row per stream."""
+    """Every non-partial input row yields exactly one row per stream (all six)."""
     items = _load_items()
     per_stream = usage_items_to_statistics(
         items, initial_sums={}, last_stats_time_utc=None
     )
 
-    assert set(per_stream) == {STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS}
+    assert set(per_stream) == {
+        STREAM_CONSUMPTION,
+        STREAM_INJECTION,
+        STREAM_GAS,
+        STREAM_CONSUMPTION_COST,
+        STREAM_INJECTION_COST,
+        STREAM_GAS_COST,
+    }
     for stream in per_stream:
         assert len(per_stream[stream]) == len(items)
 
@@ -663,3 +673,104 @@ def test_converter_handles_fall_back_doubled_hour() -> None:
     assert rows[1]["start"] == datetime(2026, 10, 25, 1, 0, tzinfo=UTC)
     assert rows[0]["sum"] == pytest.approx(3.0)
     assert rows[1]["sum"] == pytest.approx(7.0)
+
+
+def test_converter_writes_cost_streams_when_costs_paths_populated() -> None:
+    """Cost streams are populated from costs.* paths when present in an item."""
+    items = [
+        {
+            "start": "2026-07-03T00:00:00+02:00",
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": 0.5},
+                    "injection": {"kWhSum": 1.0},
+                },
+                "gas": {"kWh": 0.2},
+            },
+            "costs": {
+                "electricity": {
+                    "offtake": {"amountSum": 0.13},
+                    "injection": {"amountSum": 0.02},
+                    "netto": 0.11,
+                },
+                "gas": 0.04,
+            },
+        },
+        {
+            "start": "2026-07-03T01:00:00+02:00",
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": 0.3},
+                    "injection": {"kWhSum": 0.5},
+                },
+                "gas": {"kWh": 0.1},
+            },
+            "costs": {
+                "electricity": {
+                    "offtake": {"amountSum": 0.07},
+                    "injection": {"amountSum": 0.01},
+                    "netto": 0.06,
+                },
+                "gas": 0.02,
+            },
+        },
+    ]
+    per_stream = usage_items_to_statistics(
+        items,
+        initial_sums={
+            STREAM_CONSUMPTION_COST: 1.0,
+            STREAM_INJECTION_COST: 0.5,
+            STREAM_GAS_COST: 0.0,
+        },
+        last_stats_time_utc=None,
+    )
+
+    # Cost streams appear in output and running sum starts from initial_sums.
+    assert per_stream[STREAM_CONSUMPTION_COST][-1]["sum"] == pytest.approx(
+        1.0 + 0.13 + 0.07
+    )
+    assert per_stream[STREAM_INJECTION_COST][-1]["sum"] == pytest.approx(
+        0.5 + 0.02 + 0.01
+    )
+    assert per_stream[STREAM_GAS_COST][-1]["sum"] == pytest.approx(0.04 + 0.02)
+    # Verify per-row state values.
+    assert per_stream[STREAM_CONSUMPTION_COST][0]["state"] == pytest.approx(0.13)
+    assert per_stream[STREAM_CONSUMPTION_COST][1]["state"] == pytest.approx(0.07)
+    assert per_stream[STREAM_GAS_COST][0]["state"] == pytest.approx(0.04)
+    # Energy streams are unaffected by the costs block.
+    assert per_stream[STREAM_CONSUMPTION][-1]["sum"] == pytest.approx(0.8)
+
+
+def test_streams_for_energy_types_include_costs_flag() -> None:
+    """include_costs=True appends matching cost streams alongside each energy stream."""
+    result_single = streams_for_energy_types(["consumption"], include_costs=True)
+    assert result_single == frozenset({STREAM_CONSUMPTION, STREAM_CONSUMPTION_COST})
+
+    result_all = streams_for_energy_types(
+        ["consumption", "injection", "gas"], include_costs=True
+    )
+    assert result_all == frozenset(
+        {
+            STREAM_CONSUMPTION,
+            STREAM_INJECTION,
+            STREAM_GAS,
+            STREAM_CONSUMPTION_COST,
+            STREAM_INJECTION_COST,
+            STREAM_GAS_COST,
+        }
+    )
+
+    # None/empty with include_costs=True also returns all six streams.
+    result_none = streams_for_energy_types(None, include_costs=True)
+    assert result_none == frozenset(
+        {
+            STREAM_CONSUMPTION,
+            STREAM_INJECTION,
+            STREAM_GAS,
+            STREAM_CONSUMPTION_COST,
+            STREAM_INJECTION_COST,
+            STREAM_GAS_COST,
+        }
+    )

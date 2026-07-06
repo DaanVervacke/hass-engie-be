@@ -34,6 +34,7 @@ from .api import (
 from .const import (
     ATTR_END_DATE,
     ATTR_ENERGY_TYPE,
+    ATTR_INCLUDE_COSTS,
     ATTR_START_DATE,
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
@@ -417,6 +418,7 @@ _IMPORT_HISTORY_SCHEMA = vol.Schema(
         vol.Optional(ATTR_ENERGY_TYPE): _ENERGY_TYPE_LIST,
         vol.Optional(ATTR_START_DATE): cv.date,
         vol.Optional(ATTR_END_DATE): cv.date,
+        vol.Optional(ATTR_INCLUDE_COSTS, default=False): cv.boolean,
     },
 )
 
@@ -424,6 +426,7 @@ _CLEAR_IMPORT_HISTORY_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(ATTR_ENERGY_TYPE): _ENERGY_TYPE_LIST,
+        vol.Optional(ATTR_INCLUDE_COSTS, default=False): cv.boolean,
     },
 )
 
@@ -518,7 +521,11 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 translation_domain=DOMAIN,
                 translation_key="service_no_target_device",
             )
-        streams = streams_for_energy_types(call.data.get(ATTR_ENERGY_TYPE))  # type: ignore[attr-defined]
+        include_costs: bool = call.data.get(ATTR_INCLUDE_COSTS, False)  # type: ignore[attr-defined]
+        streams = streams_for_energy_types(  # type: ignore[attr-defined]
+            call.data.get(ATTR_ENERGY_TYPE),  # type: ignore[attr-defined]
+            include_costs=include_costs,
+        )
         start_date = call.data.get(ATTR_START_DATE)  # type: ignore[attr-defined]
         end_date = call.data.get(ATTR_END_DATE)  # type: ignore[attr-defined]
         for entry, subentry in _resolve_targets(
@@ -540,7 +547,11 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 translation_domain=DOMAIN,
                 translation_key="service_no_target_device",
             )
-        streams = streams_for_energy_types(call.data.get(ATTR_ENERGY_TYPE))  # type: ignore[attr-defined]
+        include_costs: bool = call.data.get(ATTR_INCLUDE_COSTS, False)  # type: ignore[attr-defined]
+        streams = streams_for_energy_types(  # type: ignore[attr-defined]
+            call.data.get(ATTR_ENERGY_TYPE),  # type: ignore[attr-defined]
+            include_costs=include_costs,
+        )
         for _entry, subentry in _resolve_targets(
             hass, device_ids, "engie_be.clear_import_history"
         ):

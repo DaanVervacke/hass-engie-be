@@ -47,61 +47,124 @@ if TYPE_CHECKING:
 
     from .api import EngieBeApiClient
 
+_UNIT_EUR = "EUR"
+
 # Statistic-stream keys, kept as module constants so the pure converter,
 # the metadata factory and the orchestrator agree on spelling.
 STREAM_CONSUMPTION = "consumption"
 STREAM_INJECTION = "injection"
 STREAM_GAS = "gas"
-_STREAMS: tuple[str, ...] = (STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS)
+STREAM_CONSUMPTION_COST = "consumption_cost"
+STREAM_INJECTION_COST = "injection_cost"
+STREAM_GAS_COST = "gas_cost"
+_STREAMS: tuple[str, ...] = (
+    STREAM_CONSUMPTION,
+    STREAM_INJECTION,
+    STREAM_GAS,
+    STREAM_CONSUMPTION_COST,
+    STREAM_INJECTION_COST,
+    STREAM_GAS_COST,
+)
 
-# User-facing energy-type selectors map 1:1 to internal streams.
+# User-facing energy-type selectors map 1:1 to internal energy streams.
 _ENERGY_TYPE_TO_STREAMS: dict[str, frozenset[str]] = {
     ENERGY_TYPE_CONSUMPTION: frozenset({STREAM_CONSUMPTION}),
     ENERGY_TYPE_INJECTION: frozenset({STREAM_INJECTION}),
     ENERGY_TYPE_GAS: frozenset({STREAM_GAS}),
 }
 
+# Parallel cost streams for each energy stream.
+_ENERGY_STREAM_TO_COST_STREAM: dict[str, str] = {
+    STREAM_CONSUMPTION: STREAM_CONSUMPTION_COST,
+    STREAM_INJECTION: STREAM_INJECTION_COST,
+    STREAM_GAS: STREAM_GAS_COST,
+}
+
+_ENERGY_STREAMS: tuple[str, ...] = (STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS)
+
 
 def streams_for_energy_types(
     energy_types: list[str] | tuple[str, ...] | None,
+    *,
+    include_costs: bool = False,
 ) -> frozenset[str]:
     """
     Return the set of internal streams matching a list of energy-type selectors.
 
-    ``None`` or an empty list expands to all streams (auto mode).
+    ``None`` or an empty list expands to all energy streams (auto mode).
     Unknown values are silently ignored so a future ENGIE-side addition
     (e.g. district heating) does not break older service calls.
+    When ``include_costs`` is true, the matching cost stream is included
+    alongside each resolved energy stream.
     """
     if not energy_types:
-        return frozenset(_STREAMS)
-    result: set[str] = set()
-    for value in energy_types:
-        result |= _ENERGY_TYPE_TO_STREAMS.get(value, frozenset())
-    return frozenset(result) if result else frozenset(_STREAMS)
+        base = frozenset(_ENERGY_STREAMS)
+    else:
+        result: set[str] = set()
+        for value in energy_types:
+            result |= _ENERGY_TYPE_TO_STREAMS.get(value, frozenset())
+        base = frozenset(result) if result else frozenset(_ENERGY_STREAMS)
+
+    if not include_costs:
+        return base
+    extra: set[str] = {
+        _ENERGY_STREAM_TO_COST_STREAM[s]
+        for s in base
+        if s in _ENERGY_STREAM_TO_COST_STREAM
+    }
+    return base | frozenset(extra)
 
 
 @dataclass(frozen=True, slots=True)
 class _StreamSpec:
-    """Where in the ENGIE payload each stream's hourly delta lives."""
+    """Where in the ENGIE payload each stream's hourly value lives."""
 
-    energy_path: tuple[str, ...]
+    # Full path from the item root (not from item["energy"]) to the leaf number.
+    item_path: tuple[str, ...]
     display_name: str
+    unit_of_measurement: str
+    unit_class: str | None
 
 
 _STREAM_SPECS: dict[str, _StreamSpec] = {
     STREAM_CONSUMPTION: _StreamSpec(
-        energy_path=("electricity", "offtake", "kWhSum"),
+        item_path=("energy", "electricity", "offtake", "kWhSum"),
         display_name="electricity consumption",
+        unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        unit_class=EnergyConverter.UNIT_CLASS,
     ),
     STREAM_INJECTION: _StreamSpec(
-        energy_path=("electricity", "injection", "kWhSum"),
+        item_path=("energy", "electricity", "injection", "kWhSum"),
         display_name="electricity injection",
+        unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        unit_class=EnergyConverter.UNIT_CLASS,
     ),
     # ENGIE reports gas in kWh directly (energy-equivalent), so all three
-    # streams share the same unit class and no m3-to-kWh conversion runs.
+    # energy streams share the same unit class and no m3-to-kWh conversion runs.
     STREAM_GAS: _StreamSpec(
-        energy_path=("gas", "kWh"),
+        item_path=("energy", "gas", "kWh"),
         display_name="gas consumption",
+        unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        unit_class=EnergyConverter.UNIT_CLASS,
+    ),
+    STREAM_CONSUMPTION_COST: _StreamSpec(
+        item_path=("costs", "electricity", "offtake", "amountSum"),
+        display_name="electricity consumption cost",
+        unit_of_measurement=_UNIT_EUR,
+        unit_class=None,
+    ),
+    STREAM_INJECTION_COST: _StreamSpec(
+        item_path=("costs", "electricity", "injection", "amountSum"),
+        display_name="electricity injection cost",
+        unit_of_measurement=_UNIT_EUR,
+        unit_class=None,
+    ),
+    # costs.gas is a bare number, not a nested object (unlike costs.electricity).
+    STREAM_GAS_COST: _StreamSpec(
+        item_path=("costs", "gas"),
+        display_name="gas consumption cost",
+        unit_of_measurement=_UNIT_EUR,
+        unit_class=None,
     ),
 }
 
@@ -115,9 +178,14 @@ def statistic_id(business_agreement_number: str, stream: str) -> str:
 def _wanted_divisions(streams: frozenset[str]) -> set[str]:
     """Map internal stream keys to ENGIE contract ``division`` values."""
     divisions: set[str] = set()
-    if STREAM_CONSUMPTION in streams or STREAM_INJECTION in streams:
+    if (
+        STREAM_CONSUMPTION in streams
+        or STREAM_INJECTION in streams
+        or STREAM_CONSUMPTION_COST in streams
+        or STREAM_INJECTION_COST in streams
+    ):
         divisions.add("ELECTRICITY")
-    if STREAM_GAS in streams:
+    if STREAM_GAS in streams or STREAM_GAS_COST in streams:
         divisions.add("GAS")
     return divisions
 
@@ -185,8 +253,8 @@ def _metadata(
         name=f"Historical {spec.display_name} - {device_name}",
         source=DOMAIN,
         statistic_id=statistic_id(business_agreement_number, stream),
-        unit_class=EnergyConverter.UNIT_CLASS,
-        unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        unit_class=spec.unit_class,
+        unit_of_measurement=spec.unit_of_measurement,
     )
 
 
@@ -238,11 +306,8 @@ def usage_items_to_statistics(
         start_utc = dt_util.as_utc(start_local)
         if last_stats_time_utc is not None and start_utc <= last_stats_time_utc:
             continue
-        energy = item.get("energy") or {}
-        if not isinstance(energy, dict):
-            continue
         for stream, spec in _STREAM_SPECS.items():
-            delta = _dig(energy, spec.energy_path)
+            delta = _dig(item, spec.item_path)
             sums[stream] += delta
             result[stream].append(
                 StatisticData(start=start_utc, state=delta, sum=sums[stream])
@@ -313,7 +378,7 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
     business_agreement_number = subentry.data[CONF_BUSINESS_AGREEMENT_NUMBER]
     masked_ban = business_agreement_number[-4:]
     device_name = subentry.title or f"BAN {business_agreement_number}"
-    active_streams = streams if streams else frozenset(_STREAMS)
+    active_streams = streams if streams else frozenset(_ENERGY_STREAMS)
     LOGGER.info(
         "Starting historical usage import for BAN ***%s (streams=%s)",
         masked_ban,
@@ -450,11 +515,12 @@ async def async_clear_usage_history(
     """
     Delete external statistic streams for one BAN.
 
-    ``streams`` defaults to all three streams (consumption, injection,
-    gas). The next import for the same BAN and cleared streams will do
-    a full backfill again. Returns the list of cleared statistic IDs.
+    ``streams`` defaults to the three energy streams (consumption, injection,
+    gas). Pass cost streams explicitly to also clear those. The next import
+    for the same BAN and cleared streams will do a full backfill again.
+    Returns the list of cleared statistic IDs.
     """
-    active_streams = streams if streams else frozenset(_STREAMS)
+    active_streams = streams if streams else frozenset(_ENERGY_STREAMS)
     stat_ids = [
         statistic_id(business_agreement_number, s)
         for s in _STREAMS
