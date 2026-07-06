@@ -330,6 +330,12 @@ the last recorded hour, so running it again is cheap. Fetching is chunked
 (7-day windows) and persists after every chunk, so if a chunk fails partway
 through you can just press again and the import resumes.
 
+**Progress and completion are shown in the Home Assistant sidebar under
+Notifications** (the bell icon in the left navigation). Two entries appear
+per press: one when the import starts and one when it finishes with the
+number of rows written. Home Assistant does not raise a top-corner toast
+for successful imports - watch the sidebar.
+
 ### With a specific date range
 
 If you want to import a fixed window (for example a single month or a
