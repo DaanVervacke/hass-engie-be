@@ -333,7 +333,7 @@ To import a specific window (a single month, or a re-import after ENGIE
 corrects some data):
 
 1. Open **Settings** > **Developer Tools** > **Actions**.
-2. Pick **ENGIE Belgium: Import historical usage data**.
+2. Pick **Import historical usage** under **ENGIE Belgium**.
 3. Select your business-agreement device as the target.
 4. Fill in a start and end date, or leave them empty to import everything.
 5. Click **Perform action**.
@@ -347,7 +347,7 @@ Turn on **Include costs** to also import what each hour cost you in EUR.
 ### Clear an import
 
 To wipe the imported data (e.g. before a full re-import), use
-**ENGIE Belgium: Clear historical usage statistics** from the same
+**Clear historical usage statistics** (under **ENGIE Belgium**) from the same
 **Developer Tools** > **Actions** screen.
 
 ### Combining with a P1 meter
