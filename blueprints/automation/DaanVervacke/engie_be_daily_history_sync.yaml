@@ -1,10 +1,10 @@
 blueprint:
   name: ENGIE Belgium - Daily historical data sync
   description: >
-    Calls the ENGIE Belgium `import_history` action once a day so the
-    Energy Dashboard stays filled from ENGIE data when you don't have
-    a P1 meter. Only fetches new hours since the last run. Set up once
-    per business-agreement device.
+    Runs `engie_be.import_history` once a day. Useful if you don't have
+    a P1 meter and want the Energy Dashboard to keep receiving data from
+    ENGIE. Only fetches new hours since the last run. Set up once per
+    business-agreement device.
   domain: automation
   source_url: https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml
   input:
