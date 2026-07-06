@@ -17,12 +17,12 @@ as sensors, binary sensors, and calendar events.
 
 - Authenticates with your ENGIE Belgium account using two-factor authentication
 - Auto-detects gas and electricity contracts, including dynamic (EPEX-indexed) tariffs
+- Import your hourly usage / historic data from ENGIE into the Energy Dashboard: electricity consumption, injection, gas, and per-hour costs
 - Creates price sensors per energy type, direction (offtake / injection), and tariff rate
 - Tracks the monthly capacity-tariff (captar) peak window for each electricity meter
 - Surfaces ENGIE's Happy Hours free-energy promotions on each account, both as sensors and as calendar events
 - Supports multiple households (business agreements) under a single ENGIE login, including several active addresses under one customer account
 - Configurable update interval
-- Imports your hourly usage history from ENGIE into the Energy Dashboard, so setups without a P1 meter still get full consumption, injection and gas data
 
 ## Sensors
 
