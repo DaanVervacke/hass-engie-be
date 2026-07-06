@@ -172,7 +172,7 @@ def _build_sensor_descriptions(
                         slot_code,
                     )
                 )
-                # Price excluding VAT — disabled by default; available for
+                # Price excluding VAT - disabled by default; available for
                 # users who need the pre-VAT value for accounting purposes.
                 sensors.append(
                     (
@@ -554,7 +554,7 @@ _HAPPY_HOUR_MONTH_ELIGIBLE_HOURS = SensorEntityDescription(
     key="happy_hours_month_eligible_hours",
     translation_key="happy_hours_month_eligible_hours",
     icon="mdi:clock-check",
-    # Count of discrete Happy Hours windows — no standard unit applies.
+    # Count of discrete Happy Hours windows - no standard unit applies.
     native_unit_of_measurement=None,
     state_class=SensorStateClass.TOTAL_INCREASING,
     suggested_display_precision=0,

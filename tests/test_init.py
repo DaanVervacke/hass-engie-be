@@ -116,7 +116,7 @@ def _make_client(  # noqa: PLR0913 - kwargs-only test helper, one knob per endpo
     The mock mirrors the real ``EngieBeApiClient`` contract: a successful
     ``async_refresh_token`` call updates ``client.refresh_token`` in-memory
     before returning.  This is essential for the token-mismatch check in
-    ``async_reload_entry`` — without it, ``_persist_tokens`` writing the new
+    ``async_reload_entry`` - without it, ``_persist_tokens`` writing the new
     token to ``entry.data`` would always look like an external reauth write
     and trigger a spurious reload during setup.
     """
@@ -1302,7 +1302,7 @@ async def test_setup_entry_dynamic_override_falls_back_on_non_dict_payload(
 
 
 # ---------------------------------------------------------------------------
-# Periodic refresh callback — success path
+# Periodic refresh callback - success path
 # ---------------------------------------------------------------------------
 
 
@@ -1376,7 +1376,7 @@ async def test_periodic_refresh_callback_persists_tokens_on_success(
 
 
 # ---------------------------------------------------------------------------
-# First-refresh gather — exception prioritisation (auth > not-ready > first)
+# First-refresh gather - exception prioritisation (auth > not-ready > first)
 # ---------------------------------------------------------------------------
 
 
@@ -1468,7 +1468,7 @@ async def test_first_refresh_gather_reraises_first_unexpected_error(
 
 
 # ---------------------------------------------------------------------------
-# Setup populate helpers — error propagation & skips
+# Setup populate helpers - error propagation & skips
 # ---------------------------------------------------------------------------
 
 
@@ -1535,7 +1535,7 @@ async def test_populate_dynamic_flags_reraises_non_api_error(
 
 
 # ---------------------------------------------------------------------------
-# async_remove_config_entry_device — stale-devices rule
+# async_remove_config_entry_device - stale-devices rule
 # ---------------------------------------------------------------------------
 
 
@@ -1575,7 +1575,7 @@ async def test_remove_login_device_allowed(
 ) -> None:
     """The login device (no matching subentry identifier) can be removed."""
     entry = _build_entry(hass)
-    # The login device uses f"login_{entry.entry_id}" — no subentry matches it.
+    # The login device uses f"login_{entry.entry_id}" - no subentry matches it.
     device_entry = MagicMock()
     device_entry.identifiers = {(DOMAIN, f"login_{entry.entry_id}")}
 

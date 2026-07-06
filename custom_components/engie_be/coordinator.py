@@ -565,7 +565,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return fallback_wrapper
 
-        # No history with happyHour data either — first-ever month or
+        # No history with happyHour data either - first-ever month or
         # empty history.  Return None so the key stays absent from
         # coordinator.data and sensors report unknown.
         LOGGER.debug(

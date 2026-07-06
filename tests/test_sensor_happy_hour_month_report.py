@@ -177,7 +177,7 @@ def test_native_value_is_none_when_path_missing() -> None:
 
 
 def test_native_value_is_none_for_nonnumeric_value() -> None:
-    """Non-numeric leaf values do not raise — they return None."""
+    """Non-numeric leaf values do not raise - they return None."""
     bad = {
         "month": {
             "happyHour": {
