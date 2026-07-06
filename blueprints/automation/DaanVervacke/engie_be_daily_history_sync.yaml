@@ -4,7 +4,8 @@ blueprint:
     Runs `engie_be.import_history` once a day. Useful if you don't have
     a P1 meter and want the Energy Dashboard to keep receiving data from
     ENGIE. Only fetches new hours since the last run. Set up once per
-    business-agreement device.
+    business-agreement device. For a one-off run, click "Run actions" on
+    the automation in Settings > Automations & Scenes.
   domain: automation
   source_url: https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml
   input:
