@@ -346,7 +346,7 @@ async def async_reload_entry(
     via ``_persist_tokens``). During rotation the live client updates its
     in-memory ``refresh_token`` *before* ``_persist_tokens`` is called, so
     ``entry.data[CONF_REFRESH_TOKEN]`` and ``runtime.client.refresh_token``
-    are equal when the listener runs — no reload.
+    are equal when the listener runs, so no reload happens.
 
     Reauthentication writes new tokens to ``entry.data`` externally (via
     ``async_update_and_abort`` in the config flow) without touching the
