@@ -153,6 +153,57 @@ async def test_service_raises_when_all_targets_are_non_ban_devices(
     assert exc_info.value.translation_key == "service_no_valid_target"
 
 
+async def test_service_raises_when_energy_type_is_explicitly_empty(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    energy_type: [] (user unchecked all) raises service_no_energy_type_selected.
+
+    Distinct from omitting the field, which falls back to all streams
+    as a safety net for programmatic callers.
+    """
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    ban_device = dr.async_get(hass).async_get_device(
+        identifiers={(DOMAIN, subentry_id)}
+    )
+    assert ban_device is not None
+
+    with pytest.raises(ServiceValidationError) as exc_info:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": [ban_device.id], "energy_type": []},
+            blocking=True,
+        )
+
+    assert exc_info.value.translation_key == "service_no_energy_type_selected"
+
+
+async def test_clear_service_raises_when_energy_type_is_explicitly_empty(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """clear_import_history with energy_type: [] raises the same validation error."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    ban_device = dr.async_get(hass).async_get_device(
+        identifiers={(DOMAIN, subentry_id)}
+    )
+    assert ban_device is not None
+
+    with pytest.raises(ServiceValidationError) as exc_info:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CLEAR_IMPORT_HISTORY,
+            {"device_id": [ban_device.id], "energy_type": []},
+            blocking=True,
+        )
+
+    assert exc_info.value.translation_key == "service_no_energy_type_selected"
+
+
 async def test_service_raises_when_entry_is_reloading(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
