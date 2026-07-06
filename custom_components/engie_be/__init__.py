@@ -521,9 +521,15 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 translation_domain=DOMAIN,
                 translation_key="service_no_target_device",
             )
+        raw_energy_types = call.data.get(ATTR_ENERGY_TYPE)  # type: ignore[attr-defined]
+        if raw_energy_types is not None and not raw_energy_types:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="service_no_energy_type_selected",
+            )
         include_costs: bool = call.data.get(ATTR_INCLUDE_COSTS, False)  # type: ignore[attr-defined]
-        streams = streams_for_energy_types(  # type: ignore[attr-defined]
-            call.data.get(ATTR_ENERGY_TYPE),  # type: ignore[attr-defined]
+        streams = streams_for_energy_types(
+            raw_energy_types,
             include_costs=include_costs,
         )
         start_date = call.data.get(ATTR_START_DATE)  # type: ignore[attr-defined]
@@ -547,9 +553,15 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 translation_domain=DOMAIN,
                 translation_key="service_no_target_device",
             )
+        raw_energy_types = call.data.get(ATTR_ENERGY_TYPE)  # type: ignore[attr-defined]
+        if raw_energy_types is not None and not raw_energy_types:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="service_no_energy_type_selected",
+            )
         include_costs: bool = call.data.get(ATTR_INCLUDE_COSTS, False)  # type: ignore[attr-defined]
-        streams = streams_for_energy_types(  # type: ignore[attr-defined]
-            call.data.get(ATTR_ENERGY_TYPE),  # type: ignore[attr-defined]
+        streams = streams_for_energy_types(
+            raw_energy_types,
             include_costs=include_costs,
         )
         for _entry, subentry in _resolve_targets(

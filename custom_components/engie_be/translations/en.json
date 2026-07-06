@@ -138,6 +138,9 @@
         },
         "service_entry_reloading": {
             "message": "The ENGIE Belgium integration is reloading (entry {entry_id}). Try again in a few seconds."
+        },
+        "service_no_energy_type_selected": {
+            "message": "Select at least one energy type. Leave the field at its default to import all three."
         }
     },
     "issues": {

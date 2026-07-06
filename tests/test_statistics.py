@@ -522,6 +522,47 @@ async def test_orchestrator_streams_filter_writes_only_selected(hass) -> None:  
     assert metadata.get("statistic_id") == "engie_be:000000000000_gas"
 
 
+async def test_orchestrator_writes_cost_streams_when_include_costs(hass) -> None:  # noqa: ANN001
+    """A single-chunk import with all six streams writes energy + cost IDs."""
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 4),  # one-day window, one chunk
+            streams=streams_for_energy_types(None, include_costs=True),
+        )
+
+    # One chunk * six streams == six writes.
+    assert mocked_add.call_count == 6
+    written_ids = {
+        call.args[1].get("statistic_id") for call in mocked_add.call_args_list
+    }
+    assert written_ids == {
+        "engie_be:000000000000_consumption",
+        "engie_be:000000000000_injection",
+        "engie_be:000000000000_gas",
+        "engie_be:000000000000_consumption_cost",
+        "engie_be:000000000000_injection_cost",
+        "engie_be:000000000000_gas_cost",
+    }
+
+
 async def test_clear_usage_history_streams_filter(hass) -> None:  # noqa: ANN001
     """Clear helper only queues the requested streams."""
     recorder = MagicMock()
