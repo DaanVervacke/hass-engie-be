@@ -313,7 +313,7 @@ fetch what's new.
 ### Set up a daily sync
 
 The easiest way is the included blueprint. It runs the import once a day
-so your dashboard stays up-to-date on its own.
+so your dashboard stays up-to-date.
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FDaanVervacke%2Fhass-engie-be%2Fblob%2Fmain%2Fblueprints%2Fautomation%2FDaanVervacke%2Fengie_be_daily_history_sync.yaml)
 
@@ -323,7 +323,7 @@ Or manually:
 2. Paste: `https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`
 3. **Preview** > **Import blueprint**.
 4. Under **Automations**, click **Create automation** on the imported blueprint.
-5. Pick your business agreement, a time to run (default 04:00), and save.
+5. Pick your business agreement, a time to run, and save.
 
 If you have multiple households, repeat once per business agreement.
 
@@ -334,9 +334,9 @@ corrects some data):
 
 1. Open **Settings** > **Devices & Services** > **ENGIE Belgium**.
 2. Click your business-agreement device.
-3. Click **Perform action** and pick **ENGIE Belgium: Import historical usage data**.
+3. Under the device's actions, pick **ENGIE Belgium: Import historical usage data**.
 4. Fill in a start and end date, or leave them empty to import everything.
-5. Click **Perform action**.
+5. Run the action.
 
 Running the same window again is safe, existing hours are overwritten.
 
