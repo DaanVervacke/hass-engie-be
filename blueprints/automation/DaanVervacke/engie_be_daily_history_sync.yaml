@@ -1,19 +1,10 @@
 blueprint:
   name: ENGIE Belgium - Daily historical data sync
   description: >
-    Runs the ENGIE Belgium `import_history` action on a schedule so hourly
-    consumption / injection / gas from ENGIE's cloud lands in Home Assistant's
-    long-term statistics automatically. Meant for households without a P1
-    meter (or without a real-time meter integration) so the Energy Dashboard
-    still fills in from ENGIE-side historical data.
-
-
-    Each run only fetches the delta since the last recorded hour, so daily
-    runs are cheap. If a run fails partway, the next run resumes from the
-    last successful chunk - no gaps, no double-counting.
-
-
-    Set this up once per business agreement device.
+    Calls the ENGIE Belgium `import_history` action once a day so the
+    Energy Dashboard stays filled from ENGIE data when you don't have
+    a P1 meter. Only fetches new hours since the last run. Set up once
+    per business-agreement device.
   domain: automation
   source_url: https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml
   input:
