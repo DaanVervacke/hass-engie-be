@@ -2,23 +2,24 @@ blueprint:
   name: ENGIE Belgium - Daily historical data sync
   description: >
     Runs `engie_be.import_history` once a day. Useful if you don't have
-    a P1 meter and want the Energy Dashboard to keep receiving data from
-    ENGIE. Only fetches new hours since the last run. Set up once per
-    business-agreement device. For a one-off run, click "Run actions" on
-    the automation in Settings > Automations & Scenes.
+    a P1 meter and want to keep your Energy Dashboard up-to-date with
+    the latest data from ENGIE. Only fetches new data (since the
+    previous run). Set up once per business-agreement device. For a
+    one-off run, click "Run actions" on the automation in Settings >
+    Automations & Scenes.
   domain: automation
   source_url: https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml
   input:
     engie_device:
       name: ENGIE business agreement
-      description: The device representing the ENGIE business agreement to sync.
+      description: The device to sync data from.
       selector:
         device:
           filter:
             - integration: engie_be
     sync_time:
-      name: Time of day to sync
-      description: When to run the sync each day.
+      name: When to sync
+      description: When the automation should fetch the new data.
       default: "04:00:00"
       selector:
         time:
@@ -43,9 +44,7 @@ blueprint:
               label: Gas consumption
     include_costs:
       name: Include costs
-      description: >
-        Also import per-hour cost (EUR) alongside the kWh streams. Off by
-        default.
+      description: Also import the per-hour cost (EUR).
       default: false
       selector:
         boolean:

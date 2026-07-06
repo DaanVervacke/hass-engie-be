@@ -134,13 +134,13 @@
             "message": "Select at least one ENGIE Belgium business-agreement device as the target."
         },
         "service_no_valid_target": {
-            "message": "None of the selected devices belong to a live ENGIE Belgium business agreement. Pick a business-agreement device from Settings > Devices & services."
+            "message": "None of the selected devices belong to an active ENGIE Belgium business agreement."
         },
         "service_entry_reloading": {
             "message": "The ENGIE Belgium integration is reloading (entry {entry_id}). Try again in a few seconds."
         },
         "service_no_energy_type_selected": {
-            "message": "Select at least one energy type. Leave the field at its default to import all three."
+            "message": "Select at least one energy type."
         }
     },
     "issues": {
@@ -152,7 +152,7 @@
     "services": {
         "import_history": {
             "name": "Import historical usage",
-            "description": "Fetch historical hourly usage from ENGIE and write it into Home Assistant's long-term statistics for the selected business-agreement devices. All three energy types are selected by default, uncheck the ones you don't want. Set 'Include costs' to also import per-hour cost (EUR) for each selected energy type. Leave both dates empty to auto-backfill: first run walks back to the business agreement's start date, subsequent runs only fetch the delta since the last recorded hour. Provide dates to import a specific window, existing hours inside that window are overwritten in place.",
+            "description": "Fetch historical hourly usage data from ENGIE and import it into Home Assistant's long-term statistics for the selected business-agreements. All three energy types are selected by default, uncheck the ones you don't want. Set 'Include costs' to also import the per-hour cost (EUR) for each selected energy type. Leave both dates empty to fetch all historical data: the first run goes back to the business agreement's start date, subsequent runs only fetch the delta since the last recorded hour. Provide dates to import a specific window, existing hours inside that window are overwritten in place.",
             "fields": {
                 "energy_type": {
                     "name": "Energy type",
@@ -160,15 +160,15 @@
                 },
                 "include_costs": {
                     "name": "Include costs",
-                    "description": "Also import per-hour cost (EUR) for each selected energy type. Off by default."
+                    "description": "Also import the per-hour cost (EUR)."
                 },
                 "start_date": {
                     "name": "Start date",
-                    "description": "First day to import (inclusive). Leave empty to auto-select."
+                    "description": "Start of the window to import. Leave empty to auto-select."
                 },
                 "end_date": {
                     "name": "End date",
-                    "description": "Last day to import (exclusive). Leave empty to auto-select through today."
+                    "description": "End of the window to import. Leave empty to auto-select through today."
                 }
             }
         },
@@ -182,7 +182,7 @@
                 },
                 "include_costs": {
                     "name": "Include costs",
-                    "description": "Also clear per-hour cost (EUR) streams for each selected energy type. Off by default."
+                    "description": "Also clear the per-hour cost (EUR) streams."
                 }
             }
         }
