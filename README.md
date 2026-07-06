@@ -352,14 +352,11 @@ To wipe the imported data (e.g. before a full re-import), use
 
 ### Combining with a P1 meter
 
-If you install a P1 meter later on, you can keep both sources side by
-side. Under **Settings** > **Dashboards** > **Energy**, add both the
-`Historical electricity consumption - {address}` statistic and your P1
-sensor to the electricity grid source. Repeat for return-to-grid and gas.
-Home Assistant sums them per hour, so as long as they don't overlap in
-time (ENGIE data ends yesterday, P1 data starts today), the graph stays
-continuous. If they do overlap, clear the ENGIE hours for those days with
-the clear action above.
+If you have a P1 meter for real-time data but still want accurate
+historical data from ENGIE, you can use both. In the Energy Dashboard
+settings, you can add multiple grid connections under **Grid
+consumption**, so add the ENGIE statistic next to your P1 sensor. Same
+for return-to-grid and gas.
 
 ## Re-authentication
 
