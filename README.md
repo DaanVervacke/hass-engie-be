@@ -487,7 +487,7 @@ automation:
 
 ## Known limitations
 
-- **Historical usage data lags by ~2 days.** ENGIE's `usage-details` endpoint only returns finalised hourly data. In practice this means today's and yesterday's hours are not yet available when you fetch: the latest fully-published day is typically the day before yesterday. In-progress hours are marked `partialData: true` upstream and are deliberately skipped by the integration so nothing tentative lands in permanent statistics. If you need real-time consumption you need a live meter integration (P1 / DSMR).
+- **Historical usage data lags a few days.** ENGIE's `usage-details` endpoint only returns finalised hourly data, so today's and yesterday's hours are not yet available when you fetch. In-progress hours are marked `partialData: true` upstream and are deliberately skipped by the integration so nothing tentative lands in permanent statistics. If you need real-time consumption you need a live meter integration (P1 / DSMR).
 - **No historical price retrieval.** ENGIE does not expose historical energy prices through the API. The integration can only report the currently active price period. Historical sensor data is what Home Assistant's own recorder stores.
 - **Happy Hours history starts when the integration is installed.** ENGIE does not provide a historical list of past Happy Hours windows. The integration records each window it observes locally, so windows that ran before the integration was set up cannot be recovered.
 - **EPEX prices available from ~13:15 Brussels time.** ENGIE publishes the next day's EPEX day-ahead prices after the daily auction closes. Before that time, only today's prices are available and tomorrow's sensors will show `unknown`.

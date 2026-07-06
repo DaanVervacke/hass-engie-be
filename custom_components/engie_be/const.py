@@ -116,11 +116,9 @@ DYNAMIC_ENERGY_PRODUCTS: frozenset[str] = frozenset({"DYNAMIC"})
 # path the orchestrator walks back to the earliest active-contract
 # ``legalContractStartDate`` returned by ENGIE.
 HISTORY_BACKFILL_YEARS = 3
-# Days per HTTP request when walking the backfill window. 7d keeps each
-# response bounded to ~168 hourly items - small enough that ENGIE's
-# ``usage-details`` endpoint responds well within the 30s per-request
-# timeout, and small enough that a mid-import failure loses at most one
-# week of unpersisted rows.
+# Days per HTTP request when walking the backfill window. 7d bounds
+# each response to 168 hourly items and caps the amount of unpersisted
+# work lost to a mid-import failure at one week of rows.
 HISTORY_CHUNK_DAYS = 7
 
 # Service name for the ``import_history`` service (kept alongside the
