@@ -353,10 +353,9 @@ To wipe the imported data (e.g. before a full re-import), use
 ### Combining with a P1 meter
 
 If you have a P1 meter for real-time data but still want accurate
-historical data from ENGIE, you can use both. In the Energy Dashboard
-settings, you can add multiple grid connections under **Grid
-consumption**, so add the ENGIE statistic next to your P1 sensor. Same
-for return-to-grid and gas.
+historical data from ENGIE, you can use both. The Energy Dashboard lets
+you add multiple grid connections under **Grid consumption** (and the
+same for return-to-grid and gas).
 
 ## Re-authentication
 
