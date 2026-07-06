@@ -346,7 +346,7 @@ Turn on **Include costs** to also import what each hour cost you in EUR.
 
 ### Clear an import
 
-To wipe the imported data (for example before a full re-import), use
+To wipe the imported data (e.g. before a full re-import), use
 **ENGIE Belgium: Clear historical usage statistics** from the same
 **Developer Tools** > **Actions** screen.
 
