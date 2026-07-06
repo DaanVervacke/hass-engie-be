@@ -307,7 +307,7 @@ To remove one, delete its subentry.
 
 Don't have a P1 meter? The integration can pull your hourly electricity
 and gas usage from ENGIE and feed it into the Energy Dashboard. The first
-import goes back to the start of your business agreement, later runs only
+import goes back to the start of your initial business agreement, later runs only
 fetch what's new.
 
 ### Set up a daily sync
