@@ -343,8 +343,6 @@ Running the same window again is safe, existing hours are overwritten.
 ### Include costs
 
 Turn on **Include costs** to also import what each hour cost you in EUR.
-The values come from the same request, so it doesn't add an extra API
-call. They show up in the Energy Dashboard next to the kWh totals.
 
 ### Clear an import
 
