@@ -1,13 +1,13 @@
 {
   "domain": "engie_be",
   "name": "ENGIE Belgium",
+  "after_dependencies": [
+    "recorder"
+  ],
   "codeowners": [
     "@DaanVervacke"
   ],
   "config_flow": true,
-  "after_dependencies": [
-    "recorder"
-  ],
   "documentation": "https://github.com/DaanVervacke/hass-engie-be",
   "integration_type": "service",
   "iot_class": "cloud_polling",

@@ -1,7 +1,11 @@
 import_history:
-  target:
-    device: {}
   fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: engie_be
+          multiple: true
     fuel:
       required: false
       selector:
@@ -23,9 +27,13 @@ import_history:
         date:
 
 clear_import_history:
-  target:
-    device: {}
   fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: engie_be
+          multiple: true
     fuel:
       required: false
       selector:
