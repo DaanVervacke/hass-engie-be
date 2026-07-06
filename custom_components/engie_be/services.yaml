@@ -3,6 +3,10 @@ import_history:
   fields:
     energy_type:
       required: false
+      default:
+        - "consumption"
+        - "injection"
+        - "gas"
       selector:
         select:
           multiple: true
@@ -13,6 +17,7 @@ import_history:
             - "gas"
     include_costs:
       required: false
+      default: false
       selector:
         boolean:
     start_date:
@@ -31,6 +36,10 @@ clear_import_history:
   fields:
     energy_type:
       required: false
+      default:
+        - "consumption"
+        - "injection"
+        - "gas"
       selector:
         select:
           multiple: true
@@ -41,5 +50,6 @@ clear_import_history:
             - "gas"
     include_costs:
       required: false
+      default: false
       selector:
         boolean:
