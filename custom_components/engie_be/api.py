@@ -776,13 +776,16 @@ class EngieBeApiClient:
     async def async_get_energy_contracts(
         self,
         business_agreement_number: str,
+        *,
+        include_inactive: bool = False,
     ) -> dict[str, Any]:
         """
-        Fetch the active energy contracts for a business agreement.
+        Fetch energy contracts for a business agreement.
 
         Returns the parsed JSON response. Each ``items[]`` element
         carries a ``division`` (``"ELECTRICITY"`` / ``"GAS"``), a
-        ``servicePointNumber`` (EAN), and a ``productConfiguration``
+        ``servicePointNumber`` (EAN), a ``status``
+        (``"ACTIVE"`` / ``"INACTIVE"``), and a ``productConfiguration``
         block whose ``energyProduct`` field identifies the tariff
         product (e.g. ``"DYNAMIC"`` for the EPEX-indexed tariff,
         ``"EASY"`` for fixed). The integration uses ``energyProduct``
@@ -790,11 +793,21 @@ class EngieBeApiClient:
         mixed-fuel households (dynamic electricity + fixed gas), where
         the supplier-energy-prices payload alone is ambiguous.
 
-        ``filter=ONLY_ACTIVE_ENERGY_CONTRACTS`` plus
+        ``include_inactive=False`` (default) sends
+        ``filter=ONLY_ACTIVE_ENERGY_CONTRACTS`` and returns only the
+        contracts currently in force, matching the ENGIE smart app's
+        request. ``include_inactive=True`` switches to
+        ``filter=ALL_ENERGY_CONTRACTS`` so historical contracts
+        (renewals, prior suppliers switched away from) are included
+        too. Callers walking the customer's full contract history
+        (for example the historical usage import) need the wider
+        view; callers only interested in what's currently billed
+        should leave the default.
+
         ``includeActions=true`` and ``includeSapData=true`` mirror the
-        request the ENGIE smart-app issues. Without them the response
-        omits the ``productConfiguration`` block this integration relies
-        on.
+        request the ENGIE smart app issues. Without them the response
+        omits the ``productConfiguration`` block this integration
+        relies on.
         """
         url = (
             f"{BUSINESS_AGREEMENTS_BASE_URL}/business-agreements/"
@@ -812,7 +825,11 @@ class EngieBeApiClient:
             url=url,
             headers=headers,
             params={
-                "filter": "ONLY_ACTIVE_ENERGY_CONTRACTS",
+                "filter": (
+                    "ALL_ENERGY_CONTRACTS"
+                    if include_inactive
+                    else "ONLY_ACTIVE_ENERGY_CONTRACTS"
+                ),
                 "includeActions": "true",
                 "includeSapData": "true",
             },

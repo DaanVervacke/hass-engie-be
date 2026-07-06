@@ -127,13 +127,16 @@ def earliest_contract_start_date(
     streams: frozenset[str],
 ) -> date | None:
     """
-    Return the earliest ``legalContractStartDate`` across active contracts.
+    Return the earliest ``legalContractStartDate`` across contracts.
 
-    Only contracts whose ``division`` matches the requested ``streams`` are
-    considered. ``legalContractStartDate`` is preferred; falls back to
-    ``startDate`` if only that is populated. Returns ``None`` when no
-    active matching contract carries a parseable date, so the caller can
-    fall back to a fixed default.
+    Considers every contract whose ``division`` matches the requested
+    ``streams``, active and inactive alike. ENGIE retains hourly usage
+    data across contract renewals and supplier switches, so the
+    earliest known contract start on a BAN is the true lower bound
+    of what we can pull. ``legalContractStartDate`` is preferred;
+    falls back to ``startDate`` if only that is populated. Returns
+    ``None`` when no matching contract carries a parseable date, so
+    the caller can fall back to a fixed default.
     """
     if not isinstance(contracts_payload, dict):
         return None
@@ -147,8 +150,10 @@ def earliest_contract_start_date(
     for item in items:
         if not isinstance(item, dict):
             continue
-        if item.get("status") != "ACTIVE":
-            continue
+        # Include inactive/terminated contracts too: ENGIE keeps hourly
+        # usage data across contract renewals and supplier switches, so
+        # the earliest known contract start on a BAN is a better lower
+        # bound than the currently-active contract's start.
         if item.get("division") not in wanted:
             continue
         raw = item.get("legalContractStartDate") or item.get("startDate")
@@ -284,8 +289,8 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
     Import historical hourly usage for one business agreement.
 
     Auto mode (no ``start_date``/``end_date``): first import walks back to
-    the earliest active-contract ``legalContractStartDate`` returned by
-    the ENGIE energy-contracts endpoint. Falls back to a
+    the earliest ``legalContractStartDate`` across active and inactive
+    contracts returned by the ENGIE energy-contracts endpoint. Falls back to a
     ``HISTORY_BACKFILL_YEARS``-year window only if that endpoint fails or
     returns no usable date. Subsequent runs only fetch the delta since
     the last recorded statistic.
@@ -337,14 +342,15 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
     if start_date is not None:
         window_start_date = start_date
     elif last_stats_time_utc is None:
-        # First import: prefer the earliest active-contract start date so
-        # we don't waste API calls on pre-contract empty windows. Fall back
+        # First import: prefer the earliest contract start date so we
+        # don't waste API calls on pre-contract empty windows. Fall back
         # to a fixed HISTORY_BACKFILL_YEARS-year default only when the
         # contracts endpoint fails or returns nothing usable.
         contract_start: date | None = None
         try:
             contracts_payload = await client.async_get_energy_contracts(
-                business_agreement_number
+                business_agreement_number,
+                include_inactive=True,
             )
         except EngieBeApiClientError as err:
             LOGGER.warning(

@@ -341,8 +341,14 @@ def test_streams_for_energy_types_maps_user_selectors() -> None:
     )
 
 
-def test_earliest_contract_start_date_picks_min_active_electricity() -> None:
-    """Earliest legalContractStartDate wins for electricity streams."""
+def test_earliest_contract_start_date_picks_min_across_all_statuses() -> None:
+    """
+    Earliest legalContractStartDate wins regardless of contract status.
+
+    ENGIE keeps hourly usage data across contract renewals, so an
+    inactive/terminated contract that started earlier defines a valid
+    (earlier) lower bound for the import window.
+    """
     payload = {
         "items": [
             {
@@ -351,28 +357,27 @@ def test_earliest_contract_start_date_picks_min_active_electricity() -> None:
                 "legalContractStartDate": "2025-11-10",
             },
             {
-                "status": "ACTIVE",
+                "status": "INACTIVE",
                 "division": "ELECTRICITY",
                 "legalContractStartDate": "2024-03-01",
             },
-            # Gas contract must be ignored when filtering electricity only.
-            {
-                "status": "ACTIVE",
-                "division": "GAS",
-                "legalContractStartDate": "2021-01-01",
-            },
-            # Inactive contract must be ignored regardless of date.
             {
                 "status": "TERMINATED",
                 "division": "ELECTRICITY",
                 "legalContractStartDate": "2019-01-01",
+            },
+            # Gas contract must still be ignored when filtering electricity only.
+            {
+                "status": "ACTIVE",
+                "division": "GAS",
+                "legalContractStartDate": "2021-01-01",
             },
         ]
     }
     got = earliest_contract_start_date(
         payload, frozenset({STREAM_CONSUMPTION, STREAM_INJECTION})
     )
-    assert got == date(2024, 3, 1)
+    assert got == date(2019, 1, 1)
 
 
 def test_earliest_contract_start_date_falls_back_to_startdate() -> None:
