@@ -22,7 +22,7 @@ as sensors, binary sensors, and calendar events.
 - Surfaces ENGIE's Happy Hours free-energy promotions on each account, both as sensors and as calendar events
 - Supports multiple households (business agreements) under a single ENGIE login, including several active addresses under one customer account
 - Configurable update interval
-- Imports hourly consumption / injection / gas history into the Home Assistant Energy Dashboard via the `engie_be.import_history` service action, walking back to the business agreement's start date on first run
+- Imports your hourly usage history from ENGIE into the Energy Dashboard, so setups without a P1 meter still get full consumption, injection and gas data
 
 ## Sensors
 
@@ -305,109 +305,63 @@ To remove one, delete its subentry.
 
 ## Historical usage import (Energy Dashboard)
 
-The integration can import hourly consumption, injection and gas from ENGIE
-into Home Assistant's long-term statistics, per business agreement. First
-run walks back to the business agreement's start date (or the last three
-years if ENGIE's contracts endpoint is unavailable), subsequent runs only
-fetch the delta since the last recorded hour. Once imported, the values are
-selectable directly in the **Settings** > **Dashboards** > **Energy** source
-pickers under the electricity grid, return-to-grid, and gas sources.
+Don't have a P1 meter? The integration can pull your hourly electricity
+and gas usage from ENGIE and feed it into the Energy Dashboard. The first
+import goes back to the start of your business agreement, later runs only
+fetch what's new.
 
-Two ways to trigger an import:
+### Set up a daily sync
 
-### With a specific date range
-
-If you want to import a fixed window (for example a single month or a
-back-fill after ENGIE republishes historical data), you have two native
-routes.
-
-**Device page (fastest):**
-
-1. Open **Settings** > **Devices & Services** > **ENGIE Belgium**.
-2. Click the business-agreement device you want to import for.
-3. Click **Perform action** in the device page.
-4. Pick action **ENGIE Belgium: Import historical usage data**.
-5. Set **Energy type** (leave empty for all, or pick one or more), **Start
-   date**, and **End date**. All fields are optional and the same auto mode
-   applies to any field you leave blank.
-6. Click **Perform action** to run.
-
-**Developer Tools (equivalent):**
-
-Same action, callable from **Developer Tools** > **Actions** > *ENGIE
-Belgium: Import historical usage data*. You pick the device via the target
-selector instead of it being pre-filled.
-
-The date pickers are native Home Assistant widgets. Explicit windows overwrite
-any existing hourly rows in that range in place, so re-running the same
-window is safe.
-
-### Daily automatic sync (no P1 meter needed)
-
-If your setup doesn't have a P1 / DSMR meter, the Energy Dashboard has no
-real-time source to draw from. The ENGIE cloud data lags behind by up to a
-day, but it lands in the dashboard just fine if you schedule a nightly
-import.
-
-The integration ships a Home Assistant [Blueprint](https://www.home-assistant.io/docs/automation/using_blueprints/)
-that wires this up in three clicks:
+The easiest way is the included blueprint. It runs the import once a day
+so your dashboard stays up-to-date on its own.
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FDaanVervacke%2Fhass-engie-be%2Fblob%2Fmain%2Fblueprints%2Fautomation%2FDaanVervacke%2Fengie_be_daily_history_sync.yaml)
 
 Or manually:
 
 1. **Settings** > **Automations & scenes** > **Blueprints** > **Import blueprint**.
-2. Paste the URL: `https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`
-3. Click **Preview** > **Import blueprint**.
+2. Paste: `https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`
+3. **Preview** > **Import blueprint**.
 4. Under **Automations**, click **Create automation** on the imported blueprint.
-5. Pick the business-agreement device, a sync time (default 04:00), and
-   which energy types to sync. Save.
+5. Pick your business agreement, a time to run (default 04:00), and save.
 
-The automation calls the same `engie_be.import_history` action once per day,
-in auto mode (delta only). First run backfills back to the business
-agreement's start date, subsequent runs are tiny. Repeat the import (steps
-4-5) once per business agreement if you have several households.
+If you have multiple households, repeat once per business agreement.
 
-To wipe imported statistics for a device (for example before a full re-import
-after an ENGIE data correction), use the action **ENGIE Belgium: Clear
-historical usage statistics** in the same **Developer Tools** > **Actions**
-screen. Optional **Energy type** field clears only the selected stream(s).
+### Import a specific date range
 
-The three per-BAN statistic IDs are:
+To import a specific window (a single month, or a re-import after ENGIE
+corrects some data):
 
-- `engie_be:{BAN}_consumption` (kWh, grid offtake)
-- `engie_be:{BAN}_injection` (kWh, return to grid)
-- `engie_be:{BAN}_gas` (kWh, gas offtake reported as energy-equivalent by ENGIE)
+1. Open **Settings** > **Devices & Services** > **ENGIE Belgium**.
+2. Click your business-agreement device.
+3. Click **Perform action** and pick **ENGIE Belgium: Import historical usage data**.
+4. Fill in a start and end date, or leave them empty to import everything.
+5. Click **Perform action**.
 
-#### Importing cost streams (EUR)
+Running the same window again is safe, existing hours are overwritten.
 
-Set **Include costs** to `true` on the import action (or the blueprint input) to also import per-hour cost statistics alongside the kWh streams. No extra API calls are made - the cost data comes from the same `usage-details` payload. Three additional statistic IDs are written, one per energy type:
+### Include costs
 
-- `engie_be:{BAN}_consumption_cost` (EUR, electricity grid offtake cost)
-- `engie_be:{BAN}_injection_cost` (EUR, electricity return-to-grid cost)
-- `engie_be:{BAN}_gas_cost` (EUR, gas offtake cost)
+Turn on **Include costs** to also import what each hour cost you in EUR.
+The values come from the same request, so it doesn't add an extra API
+call. They show up in the Energy Dashboard next to the kWh totals.
 
-Cost streams are off by default. Use **Clear historical usage statistics** with **Include costs** set to `true` to remove them before a re-import if needed.
+### Clear an import
 
-### Combining with a live P1 / DSMR meter
+To wipe the imported data (for example before a full re-import), use
+**ENGIE Belgium: Clear historical usage statistics** on the same device
+page.
 
-If you install a P1 meter later on and want the Energy Dashboard timeline to
-stay continuous, you can add both sources side by side. Under **Settings** >
-**Dashboards** > **Energy** > **Electricity grid**, click **Add consumption**
-twice: once for `Historical electricity consumption - {address}` (this
-integration) and once for the DSMR sensor your P1 integration exposes.
-Repeat for **Return to grid** with the injection statistic and DSMR
-production sensor.
+### Combining with a P1 meter
 
-Home Assistant queries both sources per hour bucket and sums their
-contributions. That works cleanly as long as the two streams don't overlap
-in time - which is the normal case if you install the P1 meter today and
-ENGIE data only covers up to yesterday. If both sources happen to have data
-for the same hour (for example the day you first plug in the P1 meter),
-that hour is counted twice in the graph. To avoid it, either run the ENGIE
-import through the day before the P1 install and never after, or use the
-`ENGIE Belgium: Clear historical usage statistics` action to drop the
-overlapping ENGIE hours once the P1 meter is stable.
+If you install a P1 meter later on, you can keep both sources side by
+side. Under **Settings** > **Dashboards** > **Energy**, add both the
+`Historical electricity consumption - {address}` statistic and your P1
+sensor to the electricity grid source. Repeat for return-to-grid and gas.
+Home Assistant sums them per hour, so as long as they don't overlap in
+time (ENGIE data ends yesterday, P1 data starts today), the graph stays
+continuous. If they do overlap, clear the ENGIE hours for those days with
+the clear action above.
 
 ## Re-authentication
 
@@ -483,7 +437,7 @@ automation:
 
 ## Known limitations
 
-- **Historical usage data lags a few days.** ENGIE's `usage-details` endpoint only returns finalised hourly data, so today's and yesterday's hours are not yet available when you fetch. In-progress hours are marked `partialData: true` upstream and are deliberately skipped by the integration so nothing tentative lands in permanent statistics. If you need real-time consumption you need a live meter integration (P1 / DSMR).
+- **Historical usage data lags a few days.** ENGIE only publishes hourly usage once a day is finalised, so today and yesterday are not available yet. For real-time consumption you need a P1 / DSMR meter.
 - **No historical price retrieval.** ENGIE does not expose historical energy prices through the API. The integration can only report the currently active price period. Historical sensor data is what Home Assistant's own recorder stores.
 - **Happy Hours history starts when the integration is installed.** ENGIE does not provide a historical list of past Happy Hours windows. The integration records each window it observes locally, so windows that ran before the integration was set up cannot be recovered.
 - **EPEX prices available from ~13:15 Brussels time.** ENGIE publishes the next day's EPEX day-ahead prices after the daily auction closes. Before that time, only today's prices are available and tomorrow's sensors will show `unknown`.
