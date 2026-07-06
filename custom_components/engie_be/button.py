@@ -68,9 +68,12 @@ _GAS_DESCRIPTION = ButtonEntityDescription(
 
 # Static map from description.key to the human label used in notification
 # titles. Matches the entity ``name`` strings in ``strings.json`` so users see
-# the same label in the sidebar toast as on the button itself. Cannot use
+# the same label in the sidebar as on the button itself. Cannot use
 # ``self.name`` because it resolves via the platform registry, which is
 # unavailable during unit tests.
+#
+# Keep in sync with ``entity.button.import_*_history.name`` in
+# ``strings.json`` / ``translations/en.json``.
 _BUTTON_LABELS: dict[str, str] = {
     "import_consumption_history": "Import historical electricity consumption",
     "import_injection_history": "Import historical electricity injection",
