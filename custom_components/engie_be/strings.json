@@ -181,7 +181,7 @@
             "options": {
                 "consumption": "Electricity consumption",
                 "injection": "Electricity injection",
-                "gas": "Gas (consumption)"
+                "gas": "Gas consumption"
             }
         }
     },

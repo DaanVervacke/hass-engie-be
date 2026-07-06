@@ -39,7 +39,7 @@ blueprint:
             - value: injection
               label: Electricity injection
             - value: gas
-              label: Gas (consumption)
+              label: Gas consumption
 
 mode: single
 max_exceeded: silent
