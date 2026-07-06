@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.components.persistent_notification import (
     async_create as async_create_notification,
+)
+from homeassistant.components.persistent_notification import (
+    async_dismiss as async_dismiss_notification,
 )
 from homeassistant.const import EntityCategory
 from homeassistant.exceptions import HomeAssistantError
@@ -61,6 +65,17 @@ _GAS_DESCRIPTION = ButtonEntityDescription(
     translation_key="import_gas_history",
     entity_category=EntityCategory.CONFIG,
 )
+
+# Static map from description.key to the human label used in notification
+# titles. Matches the entity ``name`` strings in ``strings.json`` so users see
+# the same label in the sidebar toast as on the button itself. Cannot use
+# ``self.name`` because it resolves via the platform registry, which is
+# unavailable during unit tests.
+_BUTTON_LABELS: dict[str, str] = {
+    "import_consumption_history": "Import historical electricity consumption",
+    "import_injection_history": "Import historical electricity injection",
+    "import_gas_history": "Import historical gas consumption",
+}
 
 
 async def async_setup_entry(
@@ -131,6 +146,7 @@ class EngieBeImportHistoryButton(EngieBeEntity, ButtonEntity):
         self.entity_description = description
         self._entry = entry
         self._streams = streams
+        self._import_lock = asyncio.Lock()
         self._attr_unique_id = (
             f"{entry.entry_id}_{subentry.subentry_id}_{description.key}"
         )
@@ -147,66 +163,80 @@ class EngieBeImportHistoryButton(EngieBeEntity, ButtonEntity):
         """
         Fetch and import historical usage for this subentry's BAN.
 
-        Emits a persistent notification at start and updates it in place
-        on success or failure so the user sees progress in the bell-icon
-        tray. The notification id is stable per (subentry, key) so
-        repeated presses replace instead of stacking.
+        Emits a "started" persistent notification (which HA also renders
+        as a briefly-visible toast in the top corner) and, when the
+        import finishes, dismisses that one and creates a separate
+        "finished" notification so a second toast fires. Two distinct
+        notification_ids make sure both events reach the user; a single
+        update-in-place notification would silently overwrite the first
+        toast without a fresh pop.
+
+        Concurrent presses (rapid double-click) are serialised through
+        an ``asyncio.Lock`` so the running-sum threading in the
+        orchestrator cannot race with itself. HA's button entity also
+        rate-limits, but the lock is cheap defence-in-depth.
 
         API-side failures raise :class:`HomeAssistantError` with a
-        translated message so Home Assistant surfaces a toast on the UI
-        instead of a bare stack trace. Unexpected exceptions still
-        propagate so bugs stay loud.
+        translated message so HA surfaces a toast on the UI instead of a
+        bare stack trace. Unexpected exceptions still propagate so bugs
+        stay loud.
         """
-        client = self._entry.runtime_data.client
-        ban = self._subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
-        masked = mask_identifier(ban)
-        # Not using ``self.name`` here: it resolves translation keys via
-        # the platform registry, which is unavailable in unit-test contexts
-        # where the button isn't attached to a live platform. The
-        # description key is stable and log-friendly.  Sentence case
-        # ("Import electricity history"), not title case, matches HA's
-        # convention for notification titles and entity names.
-        friendly = self.entity_description.key.replace("_", " ").capitalize()
-        notification_id = (
-            f"engie_be_{self._subentry.subentry_id}_{self.entity_description.key}"
-        )
+        async with self._import_lock:
+            client = self._entry.runtime_data.client
+            ban = self._subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+            masked = mask_identifier(ban)
+            key = self.entity_description.key
+            friendly = _BUTTON_LABELS.get(key, key.replace("_", " ").capitalize())
+            title = f"ENGIE Belgium: {friendly}"
+            base = f"engie_be_{self._subentry.subentry_id}_{key}"
+            start_id = f"{base}_start"
+            done_id = f"{base}_done"
 
-        async_create_notification(
-            self.hass,
-            f"Importing historical data for {self._subentry.title}. "
-            "This can take a few minutes, the notification updates when done.",
-            title=f"ENGIE Belgium: {friendly}",
-            notification_id=notification_id,
-        )
-
-        try:
-            count = await async_import_usage_history(
-                self.hass, client, self._subentry, streams=self._streams
-            )
-        except EngieBeApiClientError as err:
-            LOGGER.warning("Historical usage import failed for BAN %s: %s", masked, err)
             async_create_notification(
                 self.hass,
                 (
-                    f"Import failed for {self._subentry.title}: {err}. "
-                    "Press the button again to resume from the last completed hour."
+                    f"Started importing historical data for "
+                    f"{self._subentry.title}. This can take a few minutes."
                 ),
-                title=f"ENGIE Belgium: {friendly} - failed",
-                notification_id=notification_id,
+                title=title,
+                notification_id=start_id,
             )
-            raise HomeAssistantError(
-                translation_domain=DOMAIN,
-                translation_key="import_history_failed",
-                translation_placeholders={"error": str(err)},
-            ) from err
 
-        async_create_notification(
-            self.hass,
-            (
-                f"Imported {count} hourly statistic rows for {self._subentry.title}. "
-                "You can now select the data in the Energy Dashboard "
-                "(Settings > Dashboards > Energy)."
-            ),
-            title=f"ENGIE Belgium: {friendly} - done",
-            notification_id=notification_id,
-        )
+            try:
+                count = await async_import_usage_history(
+                    self.hass, client, self._subentry, streams=self._streams
+                )
+            except EngieBeApiClientError as err:
+                LOGGER.warning(
+                    "Historical usage import failed for BAN %s: %s", masked, err
+                )
+                async_dismiss_notification(self.hass, start_id)
+                async_create_notification(
+                    self.hass,
+                    (
+                        f"Import failed for {self._subentry.title}: {err}. "
+                        "Press the button again to resume from the last "
+                        "completed hour."
+                    ),
+                    title=f"{title} - failed",
+                    notification_id=done_id,
+                )
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="import_history_failed",
+                    translation_placeholders={"error": str(err)},
+                ) from err
+
+            # Dismiss the "started" toast first so the "finished" one fires
+            # as a fresh notification event and pops the toast again.
+            async_dismiss_notification(self.hass, start_id)
+            async_create_notification(
+                self.hass,
+                (
+                    f"Imported {count} hourly statistic rows for "
+                    f"{self._subentry.title}. Select the data in the "
+                    "Energy Dashboard (Settings > Dashboards > Energy)."
+                ),
+                title=f"{title} - done",
+                notification_id=done_id,
+            )
