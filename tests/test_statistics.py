@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 
 from custom_components.engie_be._statistics import (
@@ -23,15 +22,6 @@ from custom_components.engie_be._statistics import (
     usage_items_to_statistics,
 )
 from custom_components.engie_be.api import EngieBeApiClientCommunicationError
-from custom_components.engie_be.button import (
-    _CONSUMPTION_DESCRIPTION,
-    _CONSUMPTION_STREAMS,
-    _GAS_DESCRIPTION,
-    _GAS_STREAMS,
-    _INJECTION_DESCRIPTION,
-    _INJECTION_STREAMS,
-    EngieBeImportHistoryButton,
-)
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "usage_details_hourly.json"
 
@@ -542,142 +532,6 @@ async def test_clear_usage_history_streams_filter(hass) -> None:  # noqa: ANN001
     ]
     task = recorder.queue_task.call_args.args[0]
     assert task.statistic_ids == cleared
-
-
-async def test_consumption_button_delegates_with_consumption_stream(hass) -> None:  # noqa: ANN001
-    """The consumption button passes only the consumption stream filter."""
-    entry = MagicMock()
-    entry.entry_id = "e1"
-    entry.runtime_data.client = MagicMock()
-    coordinator = MagicMock()
-    subentry = _mock_subentry()
-    subentry.subentry_id = "s1"
-    subentry.title = "ENGIE 000000000000"
-
-    button = EngieBeImportHistoryButton(
-        coordinator,
-        subentry,
-        entry,
-        description=_CONSUMPTION_DESCRIPTION,
-        streams=_CONSUMPTION_STREAMS,
-    )
-    button.hass = hass
-
-    with patch(
-        "custom_components.engie_be.button.async_import_usage_history",
-        AsyncMock(return_value=42),
-    ) as mocked:
-        await button.async_press()
-
-    mocked.assert_awaited_once_with(
-        hass,
-        entry.runtime_data.client,
-        subentry,
-        streams=_CONSUMPTION_STREAMS,
-    )
-    assert button.unique_id == "e1_s1_import_consumption_history"
-    assert (
-        button.entity_id
-        == "button.engie_belgium_000000000000_import_consumption_history"
-    )
-
-
-async def test_injection_button_delegates_with_injection_stream(hass) -> None:  # noqa: ANN001
-    """The injection button passes only the injection stream filter."""
-    entry = MagicMock()
-    entry.entry_id = "e1"
-    entry.runtime_data.client = MagicMock()
-    coordinator = MagicMock()
-    subentry = _mock_subentry()
-    subentry.subentry_id = "s1"
-    subentry.title = "ENGIE 000000000000"
-
-    button = EngieBeImportHistoryButton(
-        coordinator,
-        subentry,
-        entry,
-        description=_INJECTION_DESCRIPTION,
-        streams=_INJECTION_STREAMS,
-    )
-    button.hass = hass
-
-    with patch(
-        "custom_components.engie_be.button.async_import_usage_history",
-        AsyncMock(return_value=7),
-    ) as mocked:
-        await button.async_press()
-
-    mocked.assert_awaited_once_with(
-        hass,
-        entry.runtime_data.client,
-        subentry,
-        streams=_INJECTION_STREAMS,
-    )
-    assert button.unique_id == "e1_s1_import_injection_history"
-    assert (
-        button.entity_id == "button.engie_belgium_000000000000_import_injection_history"
-    )
-
-
-async def test_gas_button_delegates_with_gas_streams(hass) -> None:  # noqa: ANN001
-    """The gas button passes only the gas streams filter."""
-    entry = MagicMock()
-    entry.entry_id = "e1"
-    entry.runtime_data.client = MagicMock()
-    coordinator = MagicMock()
-    subentry = _mock_subentry()
-    subentry.subentry_id = "s1"
-    subentry.title = "ENGIE 000000000000"
-
-    button = EngieBeImportHistoryButton(
-        coordinator,
-        subentry,
-        entry,
-        description=_GAS_DESCRIPTION,
-        streams=_GAS_STREAMS,
-    )
-    button.hass = hass
-
-    with patch(
-        "custom_components.engie_be.button.async_import_usage_history",
-        AsyncMock(return_value=7),
-    ) as mocked:
-        await button.async_press()
-
-    assert mocked.await_args.kwargs["streams"] == _GAS_STREAMS
-    assert button.entity_id == "button.engie_belgium_000000000000_import_gas_history"
-
-
-async def test_button_press_wraps_api_error_as_hass_error(hass) -> None:  # noqa: ANN001
-    """API failures surface as translated HomeAssistantError toasts."""
-    entry = MagicMock()
-    entry.entry_id = "e1"
-    entry.runtime_data.client = MagicMock()
-    coordinator = MagicMock()
-    subentry = _mock_subentry()
-    subentry.subentry_id = "s1"
-    subentry.title = "ENGIE 000000000000"
-
-    button = EngieBeImportHistoryButton(
-        coordinator,
-        subentry,
-        entry,
-        description=_CONSUMPTION_DESCRIPTION,
-        streams=_CONSUMPTION_STREAMS,
-    )
-    button.hass = hass
-
-    with (
-        patch(
-            "custom_components.engie_be.button.async_import_usage_history",
-            AsyncMock(side_effect=EngieBeApiClientCommunicationError("boom")),
-        ),
-        pytest.raises(HomeAssistantError) as excinfo,
-    ):
-        await button.async_press()
-
-    assert excinfo.value.translation_key == "import_history_failed"
-    assert excinfo.value.translation_domain == "engie_be"
 
 
 async def test_clear_usage_history_deletes_three_streams(hass) -> None:  # noqa: ANN001

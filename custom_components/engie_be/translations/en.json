@@ -357,17 +357,6 @@
             "happy_hours_active": {
                 "name": "Happy Hours is active"
             }
-        },
-        "button": {
-            "import_consumption_history": {
-                "name": "Import historical electricity consumption"
-            },
-            "import_injection_history": {
-                "name": "Import historical electricity injection"
-            },
-            "import_gas_history": {
-                "name": "Import historical gas consumption"
-            }
         }
     }
 }

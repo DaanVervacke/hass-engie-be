@@ -22,7 +22,7 @@ as sensors, binary sensors, and calendar events.
 - Surfaces ENGIE's Happy Hours free-energy promotions on each account, both as sensors and as calendar events
 - Supports multiple households (business agreements) under a single ENGIE login, including several active addresses under one customer account
 - Configurable update interval
-- Imports hourly consumption / injection / gas history into the Home Assistant Energy Dashboard on demand, walking back to the business agreement's start date on first run
+- Imports hourly consumption / injection / gas history into the Home Assistant Energy Dashboard via the `engie_be.import_history` service action, walking back to the business agreement's start date on first run
 
 ## Sensors
 
@@ -314,27 +314,6 @@ selectable directly in the **Settings** > **Dashboards** > **Energy** source
 pickers under the electricity grid, return-to-grid, and gas sources.
 
 Two ways to trigger an import:
-
-### One-click (auto backfill)
-
-Each business-agreement device exposes three buttons:
-
-- **Import historical electricity consumption**
-- **Import historical electricity injection**
-- **Import historical gas consumption**
-
-Open **Settings** > **Devices & Services** > **ENGIE Belgium** > the account
-you want, then press the button. The first press walks back to the business
-agreement's start date. Every subsequent press only fetches the delta since
-the last recorded hour, so running it again is cheap. Fetching is chunked
-(7-day windows) and persists after every chunk, so if a chunk fails partway
-through you can just press again and the import resumes.
-
-**Progress and completion are shown in the Home Assistant sidebar under
-Notifications** (the bell icon in the left navigation). Two entries appear
-per press: one when the import starts and one when it finishes with the
-number of rows written. Home Assistant does not raise a top-corner toast
-for successful imports - watch the sidebar.
 
 ### With a specific date range
 

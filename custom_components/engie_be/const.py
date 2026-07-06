@@ -110,7 +110,7 @@ KEY_IS_DYNAMIC = "is_dynamic"
 # detection predicate.
 DYNAMIC_ENERGY_PRODUCTS: frozenset[str] = frozenset({"DYNAMIC"})
 
-# Historical usage import (per-BAN ``button.press`` action)
+# Historical usage import
 # Fallback window applied only when the energy-contracts endpoint fails
 # or returns no usable start date on a first-ever import. In the normal
 # path the orchestrator walks back to the earliest active-contract
@@ -121,10 +121,9 @@ HISTORY_BACKFILL_YEARS = 3
 # work lost to a mid-import failure at one week of rows.
 HISTORY_CHUNK_DAYS = 7
 
-# Service name for the ``import_history`` service (kept alongside the
-# ``import_history`` button entity: same underlying orchestrator, but the
-# service also exposes ``start_date`` / ``end_date`` for explicit
-# windows).
+# Service name for the ``import_history`` service. Exposes optional
+# ``start_date`` / ``end_date`` for explicit windows; omit both for
+# auto (incremental delta) mode.
 SERVICE_IMPORT_HISTORY = "import_history"
 # Companion service that clears the three per-BAN external statistic
 # streams so the next import walks all the way back to the business
