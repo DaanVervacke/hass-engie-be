@@ -17,10 +17,7 @@ blueprint:
             - integration: engie_be
     sync_time:
       name: Time of day to sync
-      description: >
-        When to run the sync each day. Prefer early morning (03:00 - 06:00
-        local time) so ENGIE has finalised the previous day's hourly data
-        by the time we fetch it.
+      description: When to run the sync each day.
       default: "04:00:00"
       selector:
         time:
