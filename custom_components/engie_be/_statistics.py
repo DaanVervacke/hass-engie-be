@@ -33,9 +33,9 @@ from .api import EngieBeApiClientError
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     DOMAIN,
-    FUEL_CONSUMPTION,
-    FUEL_GAS,
-    FUEL_INJECTION,
+    ENERGY_TYPE_CONSUMPTION,
+    ENERGY_TYPE_GAS,
+    ENERGY_TYPE_INJECTION,
     HISTORY_BACKFILL_YEARS,
     HISTORY_CHUNK_DAYS,
     LOGGER,
@@ -54,27 +54,29 @@ STREAM_INJECTION = "injection"
 STREAM_GAS = "gas"
 _STREAMS: tuple[str, ...] = (STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS)
 
-# User-facing fuel selectors map 1:1 to internal streams.
-_FUEL_TO_STREAMS: dict[str, frozenset[str]] = {
-    FUEL_CONSUMPTION: frozenset({STREAM_CONSUMPTION}),
-    FUEL_INJECTION: frozenset({STREAM_INJECTION}),
-    FUEL_GAS: frozenset({STREAM_GAS}),
+# User-facing energy-type selectors map 1:1 to internal streams.
+_ENERGY_TYPE_TO_STREAMS: dict[str, frozenset[str]] = {
+    ENERGY_TYPE_CONSUMPTION: frozenset({STREAM_CONSUMPTION}),
+    ENERGY_TYPE_INJECTION: frozenset({STREAM_INJECTION}),
+    ENERGY_TYPE_GAS: frozenset({STREAM_GAS}),
 }
 
 
-def streams_for_fuels(fuels: list[str] | tuple[str, ...] | None) -> frozenset[str]:
+def streams_for_energy_types(
+    energy_types: list[str] | tuple[str, ...] | None,
+) -> frozenset[str]:
     """
-    Return the set of internal streams matching a list of fuel selectors.
+    Return the set of internal streams matching a list of energy-type selectors.
 
     ``None`` or an empty list expands to all streams (auto mode).
-    Unknown fuel values are silently ignored so a future ENGIE-side
-    addition (e.g. district heating) does not break older service calls.
+    Unknown values are silently ignored so a future ENGIE-side addition
+    (e.g. district heating) does not break older service calls.
     """
-    if not fuels:
+    if not energy_types:
         return frozenset(_STREAMS)
     result: set[str] = set()
-    for fuel in fuels:
-        result |= _FUEL_TO_STREAMS.get(fuel, frozenset())
+    for value in energy_types:
+        result |= _ENERGY_TYPE_TO_STREAMS.get(value, frozenset())
     return frozenset(result) if result else frozenset(_STREAMS)
 
 

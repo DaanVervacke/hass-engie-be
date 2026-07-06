@@ -24,7 +24,7 @@ from ._contracts import is_account_dynamic
 from ._statistics import (
     async_clear_usage_history,
     async_import_usage_history,
-    streams_for_fuels,
+    streams_for_energy_types,
 )
 from .api import (
     EngieBeApiClient,
@@ -33,14 +33,14 @@ from .api import (
 )
 from .const import (
     ATTR_END_DATE,
-    ATTR_FUEL,
+    ATTR_ENERGY_TYPE,
     ATTR_START_DATE,
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_REFRESH_TOKEN,
     DEFAULT_CLIENT_ID,
     DOMAIN,
-    FUEL_OPTIONS,
+    ENERGY_TYPE_OPTIONS,
     LOGGER,
     SERVICE_CLEAR_IMPORT_HISTORY,
     SERVICE_IMPORT_HISTORY,
@@ -410,12 +410,12 @@ def _business_agreement_numbers(entry: EngieBeConfigEntry) -> set[str]:
     return bans
 
 
-_FUEL_LIST = vol.All(cv.ensure_list, [vol.In(FUEL_OPTIONS)])
+_ENERGY_TYPE_LIST = vol.All(cv.ensure_list, [vol.In(ENERGY_TYPE_OPTIONS)])
 
 _IMPORT_HISTORY_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional(ATTR_FUEL): _FUEL_LIST,
+        vol.Optional(ATTR_ENERGY_TYPE): _ENERGY_TYPE_LIST,
         vol.Optional(ATTR_START_DATE): cv.date,
         vol.Optional(ATTR_END_DATE): cv.date,
     },
@@ -424,7 +424,7 @@ _IMPORT_HISTORY_SCHEMA = vol.Schema(
 _CLEAR_IMPORT_HISTORY_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional(ATTR_FUEL): _FUEL_LIST,
+        vol.Optional(ATTR_ENERGY_TYPE): _ENERGY_TYPE_LIST,
     },
 )
 
@@ -519,7 +519,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 translation_domain=DOMAIN,
                 translation_key="service_no_target_device",
             )
-        streams = streams_for_fuels(call.data.get(ATTR_FUEL))  # type: ignore[attr-defined]
+        streams = streams_for_energy_types(call.data.get(ATTR_ENERGY_TYPE))  # type: ignore[attr-defined]
         start_date = call.data.get(ATTR_START_DATE)  # type: ignore[attr-defined]
         end_date = call.data.get(ATTR_END_DATE)  # type: ignore[attr-defined]
         for entry, subentry in _resolve_targets(
@@ -541,7 +541,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 translation_domain=DOMAIN,
                 translation_key="service_no_target_device",
             )
-        streams = streams_for_fuels(call.data.get(ATTR_FUEL))  # type: ignore[attr-defined]
+        streams = streams_for_energy_types(call.data.get(ATTR_ENERGY_TYPE))  # type: ignore[attr-defined]
         for _entry, subentry in _resolve_targets(
             hass, device_ids, "engie_be.clear_import_history"
         ):

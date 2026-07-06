@@ -133,12 +133,16 @@ SERVICE_IMPORT_HISTORY = "import_history"
 SERVICE_CLEAR_IMPORT_HISTORY = "clear_import_history"
 ATTR_START_DATE = "start_date"
 ATTR_END_DATE = "end_date"
-ATTR_FUEL = "fuel"
-# User-facing fuel identifiers accepted by the import / clear services.
-# Kept separate from the internal ``STREAM_*`` keys in ``_statistics.py``
-# so the service surface stays "electricity / gas" (what users think in)
-# while the orchestrator keeps its per-direction split.
-FUEL_CONSUMPTION = "consumption"
-FUEL_INJECTION = "injection"
-FUEL_GAS = "gas"
-FUEL_OPTIONS: tuple[str, ...] = (FUEL_CONSUMPTION, FUEL_INJECTION, FUEL_GAS)
+ATTR_ENERGY_TYPE = "energy_type"
+# User-facing energy-type identifiers accepted by the import / clear
+# services. Kept separate from the internal ``STREAM_*`` keys in
+# ``_statistics.py`` so the service surface uses UI-friendly names while
+# the orchestrator keeps its internal per-direction split.
+ENERGY_TYPE_CONSUMPTION = "consumption"
+ENERGY_TYPE_INJECTION = "injection"
+ENERGY_TYPE_GAS = "gas"
+ENERGY_TYPE_OPTIONS: tuple[str, ...] = (
+    ENERGY_TYPE_CONSUMPTION,
+    ENERGY_TYPE_INJECTION,
+    ENERGY_TYPE_GAS,
+)

@@ -6,12 +6,12 @@ import_history:
         device:
           integration: engie_be
           multiple: true
-    fuel:
+    energy_type:
       required: false
       selector:
         select:
           multiple: true
-          translation_key: fuel
+          translation_key: energy_type
           options:
             - "consumption"
             - "injection"
@@ -35,12 +35,12 @@ clear_import_history:
         device:
           integration: engie_be
           multiple: true
-    fuel:
+    energy_type:
       required: false
       selector:
         select:
           multiple: true
-          translation_key: fuel
+          translation_key: energy_type
           options:
             - "consumption"
             - "injection"

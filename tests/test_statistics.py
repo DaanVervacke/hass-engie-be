@@ -19,7 +19,7 @@ from custom_components.engie_be._statistics import (
     async_import_usage_history,
     earliest_contract_start_date,
     statistic_id,
-    streams_for_fuels,
+    streams_for_energy_types,
     usage_items_to_statistics,
 )
 from custom_components.engie_be.api import EngieBeApiClientCommunicationError
@@ -320,23 +320,23 @@ async def test_orchestrator_explicit_window_bypasses_cutoff(hass) -> None:  # no
     assert mocked_add.call_count == 3
 
 
-def test_streams_for_fuels_maps_user_selectors() -> None:
-    """Public helper maps user-facing fuels to internal stream keys."""
-    assert streams_for_fuels(None) == frozenset(
+def test_streams_for_energy_types_maps_user_selectors() -> None:
+    """Public helper maps user-facing energy types to internal stream keys."""
+    assert streams_for_energy_types(None) == frozenset(
         {STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS}
     )
-    assert streams_for_fuels([]) == frozenset(
+    assert streams_for_energy_types([]) == frozenset(
         {STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS}
     )
-    assert streams_for_fuels(["consumption"]) == frozenset({STREAM_CONSUMPTION})
-    assert streams_for_fuels(["injection"]) == frozenset({STREAM_INJECTION})
-    assert streams_for_fuels(["gas"]) == frozenset({STREAM_GAS})
-    assert streams_for_fuels(["consumption", "gas"]) == frozenset(
+    assert streams_for_energy_types(["consumption"]) == frozenset({STREAM_CONSUMPTION})
+    assert streams_for_energy_types(["injection"]) == frozenset({STREAM_INJECTION})
+    assert streams_for_energy_types(["gas"]) == frozenset({STREAM_GAS})
+    assert streams_for_energy_types(["consumption", "gas"]) == frozenset(
         {STREAM_CONSUMPTION, STREAM_GAS}
     )
-    # Unknown fuel silently degrades to "all" so old service payloads
+    # Unknown values silently degrade to "all" so old service payloads
     # never explode after a future selector rename.
-    assert streams_for_fuels(["district_heating"]) == frozenset(
+    assert streams_for_energy_types(["district_heating"]) == frozenset(
         {STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS}
     )
 

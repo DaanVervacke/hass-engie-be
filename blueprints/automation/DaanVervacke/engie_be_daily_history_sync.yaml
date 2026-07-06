@@ -21,7 +21,7 @@ blueprint:
       default: "04:00:00"
       selector:
         time:
-    fuel:
+    energy_type:
       name: Energy type
       description: >
         Which energy type to sync. Leave all selected to sync everything the
@@ -53,4 +53,4 @@ action:
     target:
       device_id: !input engie_device
     data:
-      fuel: !input fuel
+      energy_type: !input energy_type
