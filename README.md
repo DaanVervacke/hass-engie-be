@@ -332,11 +332,11 @@ If you have multiple households, repeat once per business agreement.
 To import a specific window (a single month, or a re-import after ENGIE
 corrects some data):
 
-1. Open **Settings** > **Devices & Services** > **ENGIE Belgium**.
-2. Click your business-agreement device.
-3. Under the device's actions, pick **ENGIE Belgium: Import historical usage data**.
+1. Open **Settings** > **Developer Tools** > **Actions**.
+2. Pick **ENGIE Belgium: Import historical usage data**.
+3. Select your business-agreement device as the target.
 4. Fill in a start and end date, or leave them empty to import everything.
-5. Run the action.
+5. Click **Perform action**.
 
 Running the same window again is safe, existing hours are overwritten.
 
@@ -349,8 +349,8 @@ call. They show up in the Energy Dashboard next to the kWh totals.
 ### Clear an import
 
 To wipe the imported data (for example before a full re-import), use
-**ENGIE Belgium: Clear historical usage statistics** on the same device
-page.
+**ENGIE Belgium: Clear historical usage statistics** from the same
+**Developer Tools** > **Actions** screen.
 
 ### Combining with a P1 meter
 
