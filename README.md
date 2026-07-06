@@ -17,7 +17,7 @@ as sensors, binary sensors, and calendar events.
 
 - Authenticates with your ENGIE Belgium account using two-factor authentication
 - Auto-detects gas and electricity contracts, including dynamic (EPEX-indexed) tariffs
-- Import your hourly usage / historic data from ENGIE into the Energy Dashboard: electricity consumption, injection, gas, and per-hour costs
+- Import your hourly usage / historic data from ENGIE into the Energy Dashboard: electricity consumption, injection, gas consumption, and per-hour costs
 - Creates price sensors per energy type, direction (offtake / injection), and tariff rate
 - Tracks the monthly capacity-tariff (captar) peak window for each electricity meter
 - Surfaces ENGIE's Happy Hours free-energy promotions on each account, both as sensors and as calendar events
@@ -306,7 +306,7 @@ To remove one, delete its subentry.
 ## Historical usage import (Energy Dashboard)
 
 Don't have a P1 meter? The integration can pull your hourly electricity
-and gas usage from ENGIE and feed it into the Energy Dashboard. The first
+and gas consumption from ENGIE and feed it into the Energy Dashboard. The first
 import goes back to the start of your initial business agreement, later runs only
 fetch what's new.
 
@@ -355,7 +355,7 @@ To wipe the imported data (e.g. before a full re-import), use
 If you have a P1 meter for real-time data but still want accurate
 historical data from ENGIE, you can use both. The Energy Dashboard lets
 you add multiple grid connections under **Grid consumption** (and the
-same for return-to-grid and gas).
+same for return-to-grid and gas consumption).
 
 ## Re-authentication
 
