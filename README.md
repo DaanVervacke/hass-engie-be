@@ -376,7 +376,7 @@ Or manually:
 3. Click **Preview** > **Import blueprint**.
 4. Under **Automations**, click **Create automation** on the imported blueprint.
 5. Pick the business-agreement device, a sync time (default 04:00), and
-   which fuels to sync. Save.
+   which energy types to sync. Save.
 
 The automation calls the same `engie_be.import_history` action once per day,
 in auto mode (delta only). First run backfills back to the business
