@@ -14,11 +14,6 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - **Blueprint: daily historical data sync** (`blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`) - import from the README, pick a device, a time, and one or more energy types. Home Assistant then runs `engie_be.import_history` once per day for users without a P1 meter.
 - **`include_costs` field on `import_history` and `clear_import_history` services** - set to `true` to also import or clear per-hour cost (EUR) statistics alongside kWh streams. Adds three new per-BAN statistic IDs: `engie_be:{BAN}_consumption_cost`, `engie_be:{BAN}_injection_cost`, and `engie_be:{BAN}_gas_cost`. Cost data is sourced from the same `usage-details` payload; no additional API calls. Off by default. The blueprint also exposes the new input.
 
-### Changed
-
-- **Historical import default start date is now the earliest active-contract start date** rather than a fixed three-year lookback. The ENGIE `energy-contracts` endpoint returns `legalContractStartDate` per active contract, and the orchestrator walks the earliest matching contract's start date so users no longer see minutes of empty pre-contract chunks on first import. Falls back to the previous three-year default when the contracts endpoint is unavailable.
-- **Import completion is now logged at the orchestrator level** (`Imported N hourly statistic rows for BAN ***XXXX (window ..)`), so calls made via the service or a blueprint automation surface a summary in the log.
-
 ## [0.11.0] - 2026-07-04
 
 ### Added
