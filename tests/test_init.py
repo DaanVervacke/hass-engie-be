@@ -1174,8 +1174,11 @@ async def test_setup_entry_populates_dynamic_override_from_contracts(
     assert sub_data.energy_contracts_payload is not None
     # Coordinator ``is_dynamic`` must reflect the override.
     assert sub_data.coordinator.is_dynamic is True
-    # Endpoint must have been called exactly once with the BAN.
-    client.async_get_energy_contracts.assert_awaited_once_with("002200000001")
+    # Endpoint must have been called exactly once with the BAN (include_inactive
+    # ensures recently-ended contracts are included in the cached payload).
+    client.async_get_energy_contracts.assert_awaited_once_with(
+        "002200000001", include_inactive=True
+    )
 
 
 async def test_setup_entry_dynamic_override_handles_mixed_fuel(
@@ -1518,7 +1521,9 @@ async def test_populate_dynamic_flags_skips_subentry_without_runtime_data(
 
     await _async_populate_dynamic_flags(client, entry)
 
-    client.async_get_energy_contracts.assert_awaited_once_with("002200000001")
+    client.async_get_energy_contracts.assert_awaited_once_with(
+        "002200000001", include_inactive=True
+    )
 
 
 async def test_populate_dynamic_flags_reraises_non_api_error(
@@ -1684,7 +1689,9 @@ async def test_setup_spawns_background_task_when_import_history_true(
         notif_id = f"engie_be_import_{subentry.subentry_id}"
         current = hass.data.get("persistent_notification", {}).get(notif_id, {})
         running_notif.update(current)
-        return 0
+        # Return a positive row count so the "complete" branch fires; the
+        # zero-row branch produces a different notification title.
+        return 42
 
     p1, p2, p3 = _setup_patches(client)
     with (
@@ -1723,6 +1730,52 @@ async def test_setup_spawns_background_task_when_import_history_true(
     assert (
         "complete" in notif["message"].lower() or "complete" in notif["title"].lower()
     )
+
+
+async def test_setup_no_data_notification_when_import_returns_zero(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Zero-row import: filter drops all requested streams (or ENGIE has no data).
+
+    The "produced no data" notification fires instead of the "complete" one.
+    """
+    entry = _build_entry_with_import(hass, import_history=True)
+    client = _make_client()
+
+    async def _fake_import(hass: Any, client: Any, subentry: Any, **kwargs: Any) -> int:  # noqa: ARG001
+        return 0
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(side_effect=_fake_import),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_awaited_once()
+
+    subentry_id = next(iter(entry.subentries))
+    notification_id = f"engie_be_import_{subentry_id}"
+    notifications = hass.data.get("persistent_notification", {})
+    assert notification_id in notifications
+    notif = notifications[notification_id]
+    # Distinct "no data" wording so users are not told data landed when it
+    # did not. Must NOT say "complete" in the title.
+    assert "no data" in notif["title"].lower()
+    assert "no historical usage was imported" in notif["message"].lower()
 
 
 async def test_setup_background_task_passes_date_window_to_orchestrator(
@@ -1875,3 +1928,59 @@ async def test_setup_background_task_failure_does_not_fail_setup(
     notification_id = f"engie_be_import_{subentry_id}"
     notifications = hass.data.get("persistent_notification", {})
     assert notification_id not in notifications
+
+
+async def test_setup_import_reuses_cached_contracts_payload(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Background import task threads the cached contracts payload through.
+
+    ``_async_populate_dynamic_flags`` stores the contracts payload on
+    ``EngieBeSubentryData.energy_contracts_payload`` before the background
+    task is created. The snapshot taken at task-creation time must equal
+    that payload so the orchestrator receives it via ``contracts_payload``
+    and skips its own fetch.
+    """
+    cached_payload = {
+        "items": [
+            {"division": "ELECTRICITY", "status": "ACTIVE"},
+            {"division": "GAS", "status": "INACTIVE"},
+        ]
+    }
+    # Configure the client so _async_populate_dynamic_flags stores
+    # cached_payload in sub_data.energy_contracts_payload before the
+    # background task snapshot is taken.
+    entry = _build_entry_with_import(hass, import_history=True)
+    client = _make_client(energy_contracts_return=cached_payload)
+    captured_kwargs: dict[str, Any] = {}
+
+    async def _capture_import(
+        hass: Any,  # noqa: ARG001
+        client: Any,  # noqa: ARG001
+        subentry: Any,  # noqa: ARG001
+        **kwargs: Any,
+    ) -> int:
+        captured_kwargs.update(kwargs)
+        return 1
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(side_effect=_capture_import),
+        ),
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    assert captured_kwargs.get("contracts_payload") == cached_payload

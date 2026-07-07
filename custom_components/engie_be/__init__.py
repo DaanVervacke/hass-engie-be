@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components import persistent_notification as pn
@@ -63,7 +64,7 @@ from .store import EngieBeHappyHoursStore, EngieBePeaksStore
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
-    from homeassistant.core import HomeAssistant
+    from homeassistant.core import HomeAssistant, ServiceCall
     from homeassistant.helpers.device_registry import DeviceEntry
 
     from .data import EngieBeConfigEntry
@@ -309,6 +310,10 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
         )
         snap_client = client
         snap_subentry = subentry
+        snap_sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
+        snap_contracts_payload = (
+            snap_sub_data.energy_contracts_payload if snap_sub_data else None
+        )
         entry.async_create_background_task(
             hass,
             _async_guarded_import(
@@ -318,6 +323,7 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
                 streams=streams,
                 start_date=start_date,
                 end_date=end_date,
+                contracts_payload=snap_contracts_payload,
             ),
             name=f"engie_be import {ban[-4:] if ban else '????'}",
         )
@@ -583,6 +589,7 @@ async def _async_guarded_import(  # noqa: PLR0913
     streams: frozenset[str],
     start_date: date | None = None,
     end_date: date | None = None,
+    contracts_payload: dict[str, Any] | None = None,
 ) -> None:
     """
     Run a setup-time historical import with two guards.
@@ -634,21 +641,39 @@ async def _async_guarded_import(  # noqa: PLR0913
             title="ENGIE Belgium: importing historical data",
             notification_id=notification_id,
         )
-        await async_import_usage_history(
+        rows_written = await async_import_usage_history(
             hass,
             client,
             subentry,
             streams=streams,
             start_date=start_date,
             end_date=end_date,
+            contracts_payload=contracts_payload,
         )
         # Clear any lingering Repairs issue from a prior failed attempt so
         # a transient error does not leave a stale card in Settings > Repairs.
         ir.async_delete_issue(hass, DOMAIN, issue_id)
+        if rows_written == 0:
+            # Filter emptied the stream set (user asked for a division the
+            # BAN has no contract for) or ENGIE returned no rows for the
+            # requested window. Distinct notification so the user is not
+            # told data landed when it did not.
+            message = (
+                f"No historical usage was imported for {address}. "
+                "This can happen when the selected energy types have no "
+                "matching contract on this business agreement, or when "
+                "ENGIE has no data for the requested window."
+            )
+            title = "ENGIE Belgium: historical import produced no data"
+        else:
+            message = (
+                f"Historical usage for {address} imported into long-term statistics."
+            )
+            title = "ENGIE Belgium: historical import complete"
         pn.async_create(
             hass,
-            f"Historical usage for {address} imported into long-term statistics.",
-            title="ENGIE Belgium: historical import complete",
+            message,
+            title=title,
             notification_id=notification_id,
         )
     except asyncio.CancelledError:
@@ -676,6 +701,48 @@ async def _async_guarded_import(  # noqa: PLR0913
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _ImportHistoryCall:
+    """Extracted, validated payload of an ``engie_be.import_history`` service call."""
+
+    device_ids: list[str]
+    energy_type: list[str] | None
+    include_costs: bool
+    start_date: date | None
+    end_date: date | None
+
+    @classmethod
+    def from_service_call(cls, call: ServiceCall) -> _ImportHistoryCall:
+        """Read fields off ``call.data``, preserving the handler's original defaults."""
+        data = call.data
+        return cls(
+            device_ids=list(data.get(ATTR_DEVICE_ID) or []),
+            energy_type=data.get(ATTR_ENERGY_TYPE),
+            include_costs=bool(data.get(ATTR_INCLUDE_COSTS, False)),
+            start_date=data.get(ATTR_START_DATE),
+            end_date=data.get(ATTR_END_DATE),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _ClearImportHistoryCall:
+    """Extracted, validated payload of an ``engie_be.clear_import_history`` call."""
+
+    device_ids: list[str]
+    energy_type: list[str] | None
+    include_costs: bool
+
+    @classmethod
+    def from_service_call(cls, call: ServiceCall) -> _ClearImportHistoryCall:
+        """Read fields off ``call.data``, preserving the handler's original defaults."""
+        data = call.data
+        return cls(
+            device_ids=list(data.get(ATTR_DEVICE_ID) or []),
+            energy_type=data.get(ATTR_ENERGY_TYPE),
+            include_costs=bool(data.get(ATTR_INCLUDE_COSTS, False)),
+        )
+
+
 def _async_register_services(hass: HomeAssistant) -> None:
     """
     Register domain-level services once per HA startup.
@@ -688,86 +755,110 @@ def _async_register_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY):
         return
 
-    async def _handle_import_history(call: object) -> None:
-        # ``call`` is ``ServiceCall``; typed loosely to keep the import
-        # surface small for this file.
-        device_ids: list[str] = call.data.get(ATTR_DEVICE_ID) or []  # type: ignore[attr-defined]
-        if not device_ids:
+    async def _handle_import_history(call: ServiceCall) -> None:
+        payload = _ImportHistoryCall.from_service_call(call)
+        if not payload.device_ids:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="service_no_target_device",
             )
-        raw_energy_types = call.data.get(ATTR_ENERGY_TYPE)  # type: ignore[attr-defined]
-        if raw_energy_types is not None and not raw_energy_types:
+        if payload.energy_type is not None and not payload.energy_type:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="service_no_energy_type_selected",
             )
-        include_costs: bool = call.data.get(ATTR_INCLUDE_COSTS, False)  # type: ignore[attr-defined]
         streams = streams_for_energy_types(
-            raw_energy_types,
-            include_costs=include_costs,
+            payload.energy_type,
+            include_costs=payload.include_costs,
         )
-        start_date = call.data.get(ATTR_START_DATE)  # type: ignore[attr-defined]
-        end_date = call.data.get(ATTR_END_DATE)  # type: ignore[attr-defined]
         LOGGER.debug(
             "import_history called: device_ids=%s energy_type=%s"
             " include_costs=%s start=%s end=%s",
-            device_ids,
-            raw_energy_types,
-            include_costs,
-            start_date,
-            end_date,
+            payload.device_ids,
+            payload.energy_type,
+            payload.include_costs,
+            payload.start_date,
+            payload.end_date,
         )
-        for entry, subentry in _resolve_targets(
-            hass, device_ids, "engie_be.import_history"
-        ):
+        targets = list(
+            _resolve_targets(hass, payload.device_ids, "engie_be.import_history")
+        )
+        # User-facing end_date is inclusive; the orchestrator (and the
+        # underlying ENGIE endpoint) treat it as exclusive. Bump by one
+        # day so picking 2026-04-15 imports through the 15th.
+        api_end_date = (
+            payload.end_date + timedelta(days=1) if payload.end_date else None
+        )
+
+        async def _run_one(
+            entry: EngieBeConfigEntry,
+            subentry: ConfigSubentry,
+        ) -> int:
             ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
             LOGGER.debug(
                 "import_history: dispatching to BAN ***%s title=%r",
                 ban[-4:] if ban else "????",
                 subentry.title,
             )
-            # User-facing end_date is inclusive; the orchestrator (and the
-            # underlying ENGIE endpoint) treat it as exclusive. Bump by one
-            # day so picking 2026-04-15 imports through the 15th.
-            api_end_date = end_date + timedelta(days=1) if end_date else None
-            await async_import_usage_history(
+            sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
+            cached_contracts = sub_data.energy_contracts_payload if sub_data else None
+            return await async_import_usage_history(
                 hass,
                 entry.runtime_data.client,
                 subentry,
-                start_date=start_date,
+                start_date=payload.start_date,
                 end_date=api_end_date,
                 streams=streams,
+                contracts_payload=cached_contracts,
             )
 
-    async def _handle_clear_import_history(call: object) -> None:
-        device_ids: list[str] = call.data.get(ATTR_DEVICE_ID) or []  # type: ignore[attr-defined]
-        if not device_ids:
+        results = await asyncio.gather(
+            *(_run_one(entry, subentry) for entry, subentry in targets),
+            return_exceptions=True,
+        )
+
+        for (_entry, subentry), result in zip(targets, results, strict=True):
+            if isinstance(result, EngieBeApiClientAuthenticationError):
+                ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+                LOGGER.warning(
+                    "import_history: authentication rejected for BAN ***%s; "
+                    "reauth will be triggered by the next token refresh",
+                    ban[-4:] if ban else "????",
+                )
+                continue
+            if isinstance(result, BaseException):
+                ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+                LOGGER.exception(
+                    "import_history: unexpected error for BAN ***%s",
+                    ban[-4:] if ban else "????",
+                    exc_info=result,
+                )
+
+    async def _handle_clear_import_history(call: ServiceCall) -> None:
+        payload = _ClearImportHistoryCall.from_service_call(call)
+        if not payload.device_ids:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="service_no_target_device",
             )
-        raw_energy_types = call.data.get(ATTR_ENERGY_TYPE)  # type: ignore[attr-defined]
-        if raw_energy_types is not None and not raw_energy_types:
+        if payload.energy_type is not None and not payload.energy_type:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="service_no_energy_type_selected",
             )
-        include_costs: bool = call.data.get(ATTR_INCLUDE_COSTS, False)  # type: ignore[attr-defined]
         streams = streams_for_energy_types(
-            raw_energy_types,
-            include_costs=include_costs,
+            payload.energy_type,
+            include_costs=payload.include_costs,
         )
         LOGGER.debug(
             "clear_import_history called: device_ids=%s"
             " energy_type=%s include_costs=%s",
-            device_ids,
-            raw_energy_types,
-            include_costs,
+            payload.device_ids,
+            payload.energy_type,
+            payload.include_costs,
         )
         for _entry, subentry in _resolve_targets(
-            hass, device_ids, "engie_be.clear_import_history"
+            hass, payload.device_ids, "engie_be.clear_import_history"
         ):
             ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
             if ban:
@@ -937,7 +1028,10 @@ async def _async_populate_dynamic_flags(
         return
 
     results = await asyncio.gather(
-        *(client.async_get_energy_contracts(ban) for _, ban in targets),
+        *(
+            client.async_get_energy_contracts(ban, include_inactive=True)
+            for _, ban in targets
+        ),
         return_exceptions=True,
     )
 

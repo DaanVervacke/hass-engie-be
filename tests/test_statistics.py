@@ -24,7 +24,10 @@ from custom_components.engie_be._statistics import (
     streams_for_energy_types,
     usage_items_to_statistics,
 )
-from custom_components.engie_be.api import EngieBeApiClientCommunicationError
+from custom_components.engie_be.api import (
+    EngieBeApiClientCommunicationError,
+    EngieBeApiClientError,
+)
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "usage_details_hourly.json"
 
@@ -246,8 +249,15 @@ async def test_orchestrator_first_import_writes_three_streams(hass) -> None:  # 
     payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
     client = MagicMock()
     client.async_get_usage_details = AsyncMock(return_value=payload)
-    # No contracts returned -> orchestrator falls back to HISTORY_BACKFILL_YEARS.
-    client.async_get_energy_contracts = AsyncMock(return_value={"items": []})
+    # Dual-fuel BAN so all three streams pass the division filter.
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
 
     recorder = MagicMock()
     recorder.async_add_executor_job = AsyncMock(return_value={})
@@ -285,6 +295,14 @@ async def test_orchestrator_incremental_seeds_from_last_stats(hass) -> None:  # 
     payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
     client = MagicMock()
     client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
 
     # Last stats say we've imported through 2026-07-02 22:00 UTC (== the
     # first row's start) with a running consumption sum of 100.0.
@@ -332,6 +350,14 @@ async def test_orchestrator_explicit_window_bypasses_cutoff(hass) -> None:  # no
     payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
     client = MagicMock()
     client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
 
     # last_stats says we're already through 2027-01-01; explicit window is
     # in 2026. Without the cutoff bypass, everything would be dropped.
@@ -469,7 +495,7 @@ async def test_orchestrator_uses_contract_start_when_no_prior_stats(hass) -> Non
     client.async_get_usage_details = AsyncMock(return_value=payload)
     # Contract started 30 days ago -> orchestrator should walk from there,
     # not from 3 years back. That means dramatically fewer chunks.
-
+    # Gas-only BAN so only the gas stream passes the division filter.
     thirty_days_ago = (dt_util.now() - timedelta(days=30)).date().isoformat()
     client.async_get_energy_contracts = AsyncMock(
         return_value={
@@ -519,6 +545,14 @@ async def test_orchestrator_persists_chunks_before_later_failure(hass) -> None: 
             EngieBeApiClientCommunicationError("timeout"),
         ]
     )
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
     recorder = MagicMock()
     recorder.async_add_executor_job = AsyncMock(return_value={})
 
@@ -549,6 +583,9 @@ async def test_orchestrator_streams_filter_writes_only_selected(hass) -> None:  
     payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
     client = MagicMock()
     client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "GAS", "status": "ACTIVE"}]}
+    )
 
     recorder = MagicMock()
     recorder.async_add_executor_job = AsyncMock(return_value={})
@@ -581,6 +618,14 @@ async def test_orchestrator_writes_cost_streams_when_include_costs(hass) -> None
     payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
     client = MagicMock()
     client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
 
     recorder = MagicMock()
     recorder.async_add_executor_job = AsyncMock(return_value={})
@@ -869,3 +914,324 @@ def test_streams_for_energy_types_include_costs_flag() -> None:
             STREAM_GAS_COST,
         }
     )
+
+
+async def test_orchestrator_filters_streams_by_contract_division(hass) -> None:  # noqa: ANN001
+    """Mono-electricity BAN drops gas stream even when the caller requests it."""
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    # Only ELECTRICITY on this BAN.
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+    )
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 4),
+            # Caller requests all three streams, but BAN has no gas contract.
+            streams=frozenset({STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS}),
+        )
+
+    # Only consumption and injection written; gas dropped by division filter.
+    assert mocked_add.call_count == 2
+    written_ids = {
+        call.args[1].get("statistic_id") for call in mocked_add.call_args_list
+    }
+    assert written_ids == {
+        "engie_be:000000000000_consumption",
+        "engie_be:000000000000_injection",
+    }
+    assert all("gas" not in sid for sid in written_ids)
+
+
+async def test_orchestrator_filters_cost_streams_by_contract_division(hass) -> None:  # noqa: ANN001
+    """Mono-electricity BAN drops gas_cost stream when include_costs is on."""
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+    )
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 4),
+            streams=streams_for_energy_types(
+                ["consumption", "injection", "gas"], include_costs=True
+            ),
+        )
+
+    written_ids = {
+        call.args[1].get("statistic_id") for call in mocked_add.call_args_list
+    }
+    # Only electricity streams written; gas and gas_cost dropped.
+    assert "engie_be:000000000000_gas" not in written_ids
+    assert "engie_be:000000000000_gas_cost" not in written_ids
+    assert "engie_be:000000000000_consumption" in written_ids
+    assert "engie_be:000000000000_consumption_cost" in written_ids
+    assert mocked_add.call_count == 4
+
+
+async def test_orchestrator_filters_cost_streams_mono_gas(hass) -> None:  # noqa: ANN001
+    """Mono-gas BAN drops consumption_cost and injection_cost with include_costs."""
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "GAS", "status": "ACTIVE"}]}
+    )
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 4),
+            streams=streams_for_energy_types(
+                ["consumption", "injection", "gas"], include_costs=True
+            ),
+        )
+
+    written_ids = {
+        call.args[1].get("statistic_id") for call in mocked_add.call_args_list
+    }
+    # Only gas streams written; both electricity directions and their cost
+    # twins are dropped because the BAN has no electricity contract.
+    assert "engie_be:000000000000_consumption" not in written_ids
+    assert "engie_be:000000000000_injection" not in written_ids
+    assert "engie_be:000000000000_consumption_cost" not in written_ids
+    assert "engie_be:000000000000_injection_cost" not in written_ids
+    assert "engie_be:000000000000_gas" in written_ids
+    assert "engie_be:000000000000_gas_cost" in written_ids
+    assert mocked_add.call_count == 2
+
+
+async def test_orchestrator_keeps_streams_from_inactive_contracts(hass) -> None:  # noqa: ANN001
+    """Inactive contract on a division still allows its stream to be written."""
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    # ELECTRICITY active, GAS inactive (user switched gas providers, kept ENGIE elec).
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "INACTIVE"},
+            ]
+        }
+    )
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 4),
+            streams=frozenset({STREAM_CONSUMPTION, STREAM_GAS}),
+        )
+
+    # Both streams written because inactive contracts still count.
+    written_ids = {
+        call.args[1].get("statistic_id") for call in mocked_add.call_args_list
+    }
+    assert "engie_be:000000000000_consumption" in written_ids
+    assert "engie_be:000000000000_gas" in written_ids
+    assert mocked_add.call_count == 2
+
+
+async def test_orchestrator_fails_open_when_contracts_fetch_errors(hass) -> None:  # noqa: ANN001
+    """Contracts-endpoint error leaves the division filter bypassed (fail-open)."""
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        side_effect=EngieBeApiClientError("network error")
+    )
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 4),
+            streams=frozenset({STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS}),
+        )
+
+    # All three streams written despite the contracts fetch failure.
+    written_ids = {
+        call.args[1].get("statistic_id") for call in mocked_add.call_args_list
+    }
+    assert written_ids == {
+        "engie_be:000000000000_consumption",
+        "engie_be:000000000000_injection",
+        "engie_be:000000000000_gas",
+    }
+    assert mocked_add.call_count == 3
+
+
+async def test_orchestrator_returns_zero_when_filter_empties_streams(hass) -> None:  # noqa: ANN001
+    """Filter that removes all streams causes an early return with count 0."""
+    client = MagicMock()
+    # Only ELECTRICITY on this BAN, but caller asks for gas only.
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+    )
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        count = await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 4),
+            streams=frozenset({STREAM_GAS}),
+        )
+
+    # Early return before any usage-details fetch or statistics write.
+    assert count == 0
+    assert mocked_add.call_count == 0
+    client.async_get_usage_details.assert_not_called()
+
+
+async def test_orchestrator_reuses_passed_in_contracts_payload(hass) -> None:  # noqa: ANN001
+    """When contracts_payload is passed in, the orchestrator skips its own fetch."""
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock()
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 4),
+            streams=frozenset({STREAM_CONSUMPTION, STREAM_INJECTION}),
+            contracts_payload={
+                "items": [
+                    {"division": "ELECTRICITY", "status": "ACTIVE"},
+                    {"division": "GAS", "status": "INACTIVE"},
+                ]
+            },
+        )
+
+    # The cached payload was used; no extra network call.
+    client.async_get_energy_contracts.assert_not_awaited()
+    # Both electricity streams written (division filter from the passed payload).
+    assert mocked_add.call_count == 2
+
+
+async def test_orchestrator_still_fetches_when_no_payload_passed(hass) -> None:  # noqa: ANN001
+    """When contracts_payload is not passed, the orchestrator fetches fresh."""
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+    )
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ),
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 3),
+            end_date=date(2026, 7, 4),
+            streams=frozenset({STREAM_CONSUMPTION}),
+        )
+
+    # No cached payload was supplied; one fresh fetch must have happened.
+    assert client.async_get_energy_contracts.await_count == 1

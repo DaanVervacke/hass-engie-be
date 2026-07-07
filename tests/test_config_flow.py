@@ -1474,6 +1474,14 @@ async def test_import_options_stored_in_subentry_data(
         "businessAgreementNumber"
     ]
 
+    # Contracts fetch returns a dual-fuel payload so all three options are shown.
+    dual_fuel_contracts = {
+        "items": [
+            {"division": "ELECTRICITY", "status": "ACTIVE"},
+            {"division": "GAS", "status": "ACTIVE"},
+        ]
+    }
+
     with (
         patch(
             "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
@@ -1486,6 +1494,10 @@ async def test_import_options_stored_in_subentry_data(
         patch(
             "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
             AsyncMock(return_value=relations),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_energy_contracts",
+            AsyncMock(return_value=dual_fuel_contracts),
         ),
     ):
         result = await hass.config_entries.flow.async_init(
@@ -1667,6 +1679,14 @@ async def test_import_history_choice_mixed_toggles_only_on_bans_in_options(
         "businessAgreementNumber"
     ]
 
+    # Contracts fetch returns dual-fuel so all three options are shown for ban_0.
+    dual_fuel_contracts = {
+        "items": [
+            {"division": "ELECTRICITY", "status": "ACTIVE"},
+            {"division": "GAS", "status": "ACTIVE"},
+        ]
+    }
+
     with (
         patch(
             "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
@@ -1679,6 +1699,10 @@ async def test_import_history_choice_mixed_toggles_only_on_bans_in_options(
         patch(
             "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
             AsyncMock(return_value=relations),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_energy_contracts",
+            AsyncMock(return_value=dual_fuel_contracts),
         ),
     ):
         result = await hass.config_entries.flow.async_init(
@@ -1741,3 +1765,305 @@ async def test_import_history_choice_mixed_toggles_only_on_bans_in_options(
     assert toggled_off.data[CONF_IMPORT_HISTORY] is False
     assert toggled_off.data[CONF_IMPORT_ENERGY_TYPES] == list(ENERGY_TYPE_OPTIONS)
     assert toggled_off.data[CONF_IMPORT_INCLUDE_COSTS] is False
+
+
+# ---------------------------------------------------------------------------
+# Contract-based energy-type filtering in the import_options step
+# ---------------------------------------------------------------------------
+
+
+async def test_import_options_elec_only_ban_hides_gas(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    A BAN with only ELECTRICITY contracts exposes only consumption and injection.
+
+    The gas option must be absent from the selector. Submitting a gas value
+    must raise MultipleInvalid because the Voluptuous schema only allows
+    the options present in the SelectSelector.
+    """
+    relations = _load_relations_fixture()
+    first_ban = relations["items"][0]["customerAccount"]["businessAgreements"][0][
+        "businessAgreementNumber"
+    ]
+    elec_only_contracts = {"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_energy_contracts",
+            AsyncMock(return_value=elec_only_contracts),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"selected_accounts": [first_ban]}
+        )
+        assert result["step_id"] == "import_history_choice"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _history_choice_all_on([first_ban]),
+        )
+        assert result["step_id"] == "import_options"
+
+        # Submitting gas for an elec-only BAN must be rejected by the schema.
+        with pytest.raises(vol.Invalid):
+            await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {
+                    "ban_0": {
+                        CONF_IMPORT_ENERGY_TYPES: ["gas"],
+                        CONF_IMPORT_INCLUDE_COSTS: False,
+                    }
+                },
+            )
+
+        # Submitting only the elec options must succeed.
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "ban_0": {
+                    CONF_IMPORT_ENERGY_TYPES: ["consumption", "injection"],
+                    CONF_IMPORT_INCLUDE_COSTS: False,
+                }
+            },
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    subentry = next(iter(result["result"].subentries.values()))
+    assert subentry.data[CONF_IMPORT_ENERGY_TYPES] == ["consumption", "injection"]
+
+
+async def test_import_options_gas_only_ban_hides_elec(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    A BAN with only GAS contracts exposes only gas.
+
+    Submitting consumption or injection must be rejected by the schema.
+    """
+    relations = _load_relations_fixture()
+    first_ban = relations["items"][0]["customerAccount"]["businessAgreements"][0][
+        "businessAgreementNumber"
+    ]
+    gas_only_contracts = {"items": [{"division": "GAS", "status": "ACTIVE"}]}
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_energy_contracts",
+            AsyncMock(return_value=gas_only_contracts),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"selected_accounts": [first_ban]}
+        )
+        assert result["step_id"] == "import_history_choice"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _history_choice_all_on([first_ban]),
+        )
+        assert result["step_id"] == "import_options"
+
+        # Submitting consumption for a gas-only BAN must be rejected.
+        with pytest.raises(vol.Invalid):
+            await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                {
+                    "ban_0": {
+                        CONF_IMPORT_ENERGY_TYPES: ["consumption"],
+                        CONF_IMPORT_INCLUDE_COSTS: False,
+                    }
+                },
+            )
+
+        # Submitting gas only must succeed.
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "ban_0": {
+                    CONF_IMPORT_ENERGY_TYPES: ["gas"],
+                    CONF_IMPORT_INCLUDE_COSTS: False,
+                }
+            },
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    subentry = next(iter(result["result"].subentries.values()))
+    assert subentry.data[CONF_IMPORT_ENERGY_TYPES] == ["gas"]
+
+
+async def test_import_options_contracts_fetch_fails_shows_all_options(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    A contracts fetch failure for a BAN falls back to showing all three options.
+
+    The flow must not abort; the user can still submit any valid energy type.
+    """
+    relations = _load_relations_fixture()
+    first_ban = relations["items"][0]["customerAccount"]["businessAgreements"][0][
+        "businessAgreementNumber"
+    ]
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_energy_contracts",
+            AsyncMock(side_effect=EngieBeApiClientCommunicationError("offline")),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"selected_accounts": [first_ban]}
+        )
+        assert result["step_id"] == "import_history_choice"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _history_choice_all_on([first_ban]),
+        )
+        # The step must still render despite the fetch failure.
+        assert result["step_id"] == "import_options"
+
+        # All three options are available as the fail-open fallback.
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "ban_0": {
+                    CONF_IMPORT_ENERGY_TYPES: list(ENERGY_TYPE_OPTIONS),
+                    CONF_IMPORT_INCLUDE_COSTS: False,
+                }
+            },
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    subentry = next(iter(result["result"].subentries.values()))
+    assert subentry.data[CONF_IMPORT_ENERGY_TYPES] == list(ENERGY_TYPE_OPTIONS)
+
+
+async def test_import_options_subentry_flow_elec_only_ban_hides_gas(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Subentry-add flow: an elec-only BAN in import_options hides the gas option.
+
+    Mirrors test_import_options_elec_only_ban_hides_gas for the
+    CustomerAccountSubentryFlowHandler path.
+    """
+    entry = _build_parent_entry(hass)
+    relations = _load_relations_fixture()
+    first_ban = relations["items"][0]["customerAccount"]["businessAgreements"][0][
+        "businessAgreementNumber"
+    ]
+    elec_only_contracts = {"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_energy_contracts",
+            AsyncMock(return_value=elec_only_contracts),
+        ),
+    ):
+        result = await _init_subentry_flow(hass, entry)
+        assert result["step_id"] == "user"
+
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {CONF_SELECTED_ACCOUNTS: [first_ban]},
+        )
+        assert result["step_id"] == "import_history_choice"
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            _history_choice_all_on([first_ban]),
+        )
+        assert result["step_id"] == "import_options"
+
+        # Gas must be rejected for this elec-only BAN.
+        with pytest.raises(vol.Invalid):
+            await hass.config_entries.subentries.async_configure(
+                result["flow_id"],
+                {
+                    "ban_0": {
+                        CONF_IMPORT_ENERGY_TYPES: ["gas"],
+                        CONF_IMPORT_INCLUDE_COSTS: False,
+                    }
+                },
+            )
+
+        # Elec options are accepted.
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            {
+                "ban_0": {
+                    CONF_IMPORT_ENERGY_TYPES: ["consumption", "injection"],
+                    CONF_IMPORT_INCLUDE_COSTS: False,
+                }
+            },
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY

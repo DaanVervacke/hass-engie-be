@@ -922,7 +922,7 @@ def _find_history_fallback(
             fb_year_str, fb_month_str = year_month_raw.split("-", 1)
             fb_year = int(fb_year_str)
             fb_month = int(fb_month_str)
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             LOGGER.debug(
                 "BAN %s: skipping history entry with unparseable yearMonth %r",
                 ban_masked,
@@ -1105,7 +1105,7 @@ def _parse_epex_response(raw: Any) -> EpexPayload:
         try:
             start_dt = datetime.fromisoformat(period_raw)
             value = float(value_raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             LOGGER.debug("Skipping malformed EPEX slot: %r", entry)
             continue
         # Normalise to Brussels-local for downstream slicing; the slot

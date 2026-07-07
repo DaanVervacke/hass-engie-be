@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -14,7 +15,7 @@ from homeassistant.config_entries import (
     SubentryFlowResult,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import SectionConfig, section
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -47,6 +48,9 @@ from .const import (
     DEFAULT_CLIENT_ID,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
+    ENERGY_TYPE_CONSUMPTION,
+    ENERGY_TYPE_GAS,
+    ENERGY_TYPE_INJECTION,
     ENERGY_TYPE_OPTIONS,
     LOGGER,
     MAX_UPDATE_INTERVAL_MINUTES,
@@ -442,6 +446,11 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         Contains four fields: ``import_energy_types`` (multi-select),
         ``import_include_costs`` (bool), ``import_start_date`` (optional date),
         and ``import_end_date`` (optional date).
+
+        Before rendering, the contracts endpoint is queried for each opted-in
+        BAN (with ``include_inactive=True``) so the energy-type selector can be
+        filtered to only the divisions that BAN actually carries. A failed fetch
+        for any BAN falls back to showing all three options for that BAN.
         """
         opted_in = [
             account
@@ -479,7 +488,15 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
             return self._async_finish_initial_setup(subentries=subentries)
 
-        schema, placeholders = _build_import_options_schema(opted_in)
+        divisions_by_ban = await _fetch_divisions_for_opted_in(
+            self.hass,
+            self._access_token,
+            self._refresh_token,
+            opted_in,
+        )
+        schema, placeholders = _build_import_options_schema(
+            opted_in, divisions_by_ban=divisions_by_ban
+        )
         return self.async_show_form(
             step_id="import_options",
             data_schema=schema,
@@ -839,6 +856,11 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         Mirrors the main-flow step of the same name. Only toggled-on BANs appear;
         toggled-off BANs are merged back in with import-history-off defaults on
         submit.
+
+        Before rendering, the contracts endpoint is queried for each opted-in
+        BAN (with ``include_inactive=True``) so the energy-type selector is
+        filtered to the divisions that BAN actually carries. A failed fetch for
+        any BAN falls back to showing all three options for that BAN.
         """
         opted_in = [
             account
@@ -866,7 +888,16 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
             ]
             return self._finish_subentry_add(enriched)
 
-        schema, placeholders = _build_import_options_schema(opted_in)
+        entry = self._get_entry()
+        divisions_by_ban = await _fetch_divisions_for_opted_in(
+            self.hass,
+            entry.data.get(CONF_ACCESS_TOKEN),
+            entry.data.get(CONF_REFRESH_TOKEN),
+            opted_in,
+        )
+        schema, placeholders = _build_import_options_schema(
+            opted_in, divisions_by_ban=divisions_by_ban
+        )
         return self.async_show_form(
             step_id="import_options",
             data_schema=schema,
@@ -1063,6 +1094,103 @@ def _candidates_excluding_configured(
     ]
 
 
+async def _fetch_divisions_for_opted_in(
+    hass: HomeAssistant,
+    access_token: str | None,
+    refresh_token: str | None,
+    opted_in: list[dict[str, Any]],
+) -> dict[str, set[str]]:
+    """
+    Build an API client from the given tokens and fetch division sets per BAN.
+
+    Wraps ``_fetch_ban_divisions`` so both the initial-setup flow and the
+    subentry-add flow share one call site for client construction and BAN
+    extraction. Neither caller needs the ``EngieBeApiClient`` afterwards,
+    so it stays scoped to this helper.
+    """
+    client = EngieBeApiClient(
+        session=async_get_clientsession(hass),
+        client_id=DEFAULT_CLIENT_ID,
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+    bans = [account[CONF_BUSINESS_AGREEMENT_NUMBER] for account in opted_in]
+    return await _fetch_ban_divisions(client, bans)
+
+
+async def _fetch_ban_divisions(
+    client: EngieBeApiClient,
+    bans: list[str],
+) -> dict[str, set[str]]:
+    """
+    Fetch the set of energy divisions present on each BAN, in parallel.
+
+    Queries the energy-contracts endpoint with ``include_inactive=True`` for
+    each BAN in ``bans``. Returns a dict mapping BAN -> set of division strings
+    (``"ELECTRICITY"``, ``"GAS"``). A failed fetch for any individual BAN is
+    logged at DEBUG level and that BAN is omitted from the result, leaving the
+    caller to apply a fail-open fallback (show all options). If all fetches
+    fail a WARNING is logged.
+    """
+    if not bans:
+        return {}
+
+    async def _fetch_one(ban: str) -> tuple[str, set[str]] | None:
+        try:
+            payload = await client.async_get_energy_contracts(
+                ban, include_inactive=True
+            )
+        except EngieBeApiClientError as exc:
+            LOGGER.debug(
+                "Contracts fetch failed for BAN %s, falling back to all options: %s",
+                ban,
+                exc,
+            )
+            return None
+        items = payload.get("items") if isinstance(payload, dict) else None
+        divisions: set[str] = set()
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    division = item.get("division")
+                    if isinstance(division, str) and division:
+                        divisions.add(division)
+        return (ban, divisions) if divisions else None
+
+    results = await asyncio.gather(*(_fetch_one(ban) for ban in bans))
+    divisions_by_ban: dict[str, set[str]] = {}
+    for result in results:
+        if result is not None:
+            ban, divs = result
+            divisions_by_ban[ban] = divs
+
+    if not divisions_by_ban and bans:
+        LOGGER.warning(
+            "Contracts fetch failed for all %d opted-in BAN(s); "
+            "showing all energy-type options as fallback",
+            len(bans),
+        )
+
+    return divisions_by_ban
+
+
+def _energy_types_for_divisions(divisions: set[str]) -> list[str]:
+    """
+    Return the energy-type option list restricted to the given set of divisions.
+
+    ``"ELECTRICITY"`` maps to ``[consumption, injection]``;
+    ``"GAS"`` maps to ``[gas]``. Unknown division strings are ignored.
+    """
+    types: list[str] = []
+    if "ELECTRICITY" in divisions:
+        types.extend([ENERGY_TYPE_CONSUMPTION, ENERGY_TYPE_INJECTION])
+    if "GAS" in divisions:
+        types.append(ENERGY_TYPE_GAS)
+    # Preserve the canonical ENERGY_TYPE_OPTIONS ordering: consumption,
+    # injection, gas. The extension order above already matches it.
+    return types
+
+
 def _import_section_schema(  # noqa: PLR0913
     *,
     default_import: bool = False,
@@ -1071,6 +1199,7 @@ def _import_section_schema(  # noqa: PLR0913
     default_start_date: str | None = None,
     default_end_date: str | None = None,
     include_history_toggle: bool = True,
+    available_energy_types: list[str] | None = None,
 ) -> section:
     """
     Build the voluptuous section for a single BAN's import options.
@@ -1079,7 +1208,28 @@ def _import_section_schema(  # noqa: PLR0913
     This is used by the ``import_options`` step (which follows the dedicated
     ``import_history_choice`` step) so the user is not asked to confirm the
     toggle a second time.
+
+    Pass ``available_energy_types`` to restrict the selector to a subset of
+    the full ``ENERGY_TYPE_OPTIONS`` list. The default value for the field is
+    also narrowed to that subset (unless ``default_energy_types`` is provided
+    explicitly, in which case that takes precedence). When ``None`` (the
+    default) all three options are shown.
     """
+    # Determine which options to expose in the selector.
+    shown_options = (
+        available_energy_types
+        if available_energy_types is not None
+        else list(ENERGY_TYPE_OPTIONS)
+    )
+    # Determine the pre-selected default. If the caller supplied an explicit
+    # default list, use it (clamped to the shown options so Voluptuous does
+    # not reject a stored value that is no longer available). If no explicit
+    # default was given, pre-select all shown options.
+    if default_energy_types is not None:
+        effective_default = [t for t in default_energy_types if t in shown_options]
+    else:
+        effective_default = list(shown_options)
+
     schema_dict: dict[Any, Any] = {}
     if include_history_toggle:
         schema_dict[
@@ -1091,15 +1241,11 @@ def _import_section_schema(  # noqa: PLR0913
     schema_dict[
         vol.Required(
             CONF_IMPORT_ENERGY_TYPES,
-            default=(
-                default_energy_types
-                if default_energy_types is not None
-                else list(ENERGY_TYPE_OPTIONS)
-            ),
+            default=effective_default,
         )
     ] = selector.SelectSelector(
         selector.SelectSelectorConfig(
-            options=list(ENERGY_TYPE_OPTIONS),
+            options=shown_options,
             multiple=True,
             mode=selector.SelectSelectorMode.LIST,
             translation_key="energy_type",
@@ -1142,9 +1288,18 @@ _README_URL = (
     "feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard"
 )
 
+_BLUEPRINT_IMPORT_URL = (
+    "https://my.home-assistant.io/redirect/blueprint_import/"
+    "?blueprint_url=https%3A%2F%2Fgithub.com%2FDaanVervacke%2Fhass-engie-be"
+    "%2Fblob%2Ffeat%2Fimport-historical-energy-data%2Fblueprints"
+    "%2Fautomation%2FDaanVervacke%2Fengie_be_daily_history_sync.yaml"
+)
+
 
 def _build_import_options_schema(
     accounts: list[dict[str, Any]],
+    *,
+    divisions_by_ban: dict[str, set[str]] | None = None,
 ) -> tuple[vol.Schema, dict[str, str]]:
     """
     Build a per-BAN sectioned schema for the import_options flow step.
@@ -1159,20 +1314,32 @@ def _build_import_options_schema(
     the step description's markdown link can point at the docs anchor without
     hardcoding a URL in strings.json.
 
+    When ``divisions_by_ban`` is provided, the energy-type selector for each
+    BAN is restricted to the divisions present in that BAN's contracts
+    (``"ELECTRICITY"`` -> consumption + injection; ``"GAS"`` -> gas). A BAN
+    absent from the map (fetch failed) falls back to all three options.
+
     Returns a ``(schema, placeholders)`` tuple.
     """
     schema_fields: dict[Any, Any] = {}
-    placeholders: dict[str, str] = {"readme_url": _README_URL}
+    placeholders: dict[str, str] = {
+        "readme_url": _README_URL,
+        "blueprint_import_url": _BLUEPRINT_IMPORT_URL,
+    }
     for i, account in enumerate(accounts):
         key = f"ban_{i}"
         title = subentry_title(account)
         placeholders[f"title_{i}"] = title
+        ban = account[CONF_BUSINESS_AGREEMENT_NUMBER]
+        divisions = (divisions_by_ban or {}).get(ban)
+        available = _energy_types_for_divisions(divisions) if divisions else None
         schema_fields[vol.Required(key)] = _import_section_schema(
             default_energy_types=account.get(CONF_IMPORT_ENERGY_TYPES),
             default_include_costs=account.get(CONF_IMPORT_INCLUDE_COSTS, False),
             default_start_date=account.get(CONF_IMPORT_START_DATE),
             default_end_date=account.get(CONF_IMPORT_END_DATE),
             include_history_toggle=False,
+            available_energy_types=available,
         )
     return vol.Schema(schema_fields), placeholders
 

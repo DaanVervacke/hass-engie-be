@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from homeassistant.config_entries import ConfigSubentryData
@@ -27,6 +27,8 @@ from custom_components.engie_be.const import (
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+
+from custom_components.engie_be.api import EngieBeApiClientError
 
 
 def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
@@ -290,3 +292,149 @@ async def test_import_history_service_end_date_none_stays_none(
 
     assert mocked.await_count == 1
     assert mocked.await_args.kwargs["end_date"] is None
+
+
+def _build_two_ban_entry(hass: HomeAssistant) -> MockConfigEntry:
+    """Config entry with two business-agreement subentries for gather tests."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=5,
+        title="user@example.com",
+        unique_id="user_example_com_two",
+        data={
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "hunter2",
+            CONF_ACCESS_TOKEN: "stored-access",
+            CONF_REFRESH_TOKEN: "stored-refresh",
+        },
+        options={"update_interval": 60},
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+                title="Rue de la Loi 16, 1000 Brussels",
+                unique_id="000000000001",
+                data={
+                    CONF_BUSINESS_AGREEMENT_NUMBER: "000000000001",
+                    CONF_PREMISES_NUMBER: "P-0001",
+                    CONF_CONSUMPTION_ADDRESS: "Rue de la Loi 16, 1000 Brussels",
+                },
+            ),
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+                title="Wetstraat 16, 1000 Brussels",
+                unique_id="000000000002",
+                data={
+                    CONF_BUSINESS_AGREEMENT_NUMBER: "000000000002",
+                    CONF_PREMISES_NUMBER: "P-0002",
+                    CONF_CONSUMPTION_ADDRESS: "Wetstraat 16, 1000 Brussels",
+                },
+            ),
+        ],
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def _setup_two_ban_entry(hass: HomeAssistant) -> MockConfigEntry:
+    """Build and fully set up a two-BAN config entry."""
+    entry = _build_two_ban_entry(hass)
+    client = _make_client()
+    with (
+        patch("custom_components.engie_be.EngieBeApiClient", return_value=client),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    return entry
+
+
+async def test_import_history_dispatches_in_parallel_across_bans(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Both BANs are dispatched via asyncio.gather; both mock calls happen."""
+    entry = await _setup_two_ban_entry(hass)
+    device_registry = dr.async_get(hass)
+    ban_devices = [
+        device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+        for subentry_id in entry.subentries
+    ]
+    assert all(d is not None for d in ban_devices)
+    device_ids = [d.id for d in ban_devices]
+
+    with patch(
+        "custom_components.engie_be.async_import_usage_history",
+        new=AsyncMock(return_value=42),
+    ) as mock_import:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": device_ids},
+            blocking=True,
+        )
+
+    assert mock_import.await_count == 2
+    # Both subentries must appear in the call args (3rd positional arg);
+    # order is not guaranteed because gather schedules concurrently.
+    called_bans = sorted(
+        c.args[2].data[CONF_BUSINESS_AGREEMENT_NUMBER]
+        for c in mock_import.await_args_list
+    )
+    assert called_bans == ["000000000001", "000000000002"]
+
+
+async def test_import_history_continues_when_one_ban_fails(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """If one BAN raises, the other still runs and no exception escapes."""
+    entry = await _setup_two_ban_entry(hass)
+    device_registry = dr.async_get(hass)
+    subentry_ids = list(entry.subentries)
+    ban_devices = [
+        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        for sid in subentry_ids
+    ]
+    assert all(d is not None for d in ban_devices)
+    device_ids = [d.id for d in ban_devices]
+
+    # First call raises; second succeeds. Accept positional + keyword args to
+    # match the real signature: async_import_usage_history(hass, client, subentry, ...).
+    call_count = 0
+
+    async def _fake_import(*_args: object, **_kwargs: object) -> int:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise EngieBeApiClientError("boom")
+        return 42
+
+    with (
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            side_effect=_fake_import,
+        ) as mock_import,
+        patch("custom_components.engie_be.LOGGER") as mock_logger,
+    ):
+        # Must not raise.
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": device_ids},
+            blocking=True,
+        )
+
+    assert mock_import.await_count == 2
+    # LOGGER.exception must have been called exactly once for the failing BAN.
+    assert mock_logger.exception.call_count == 1
+    exc_log_call: call = mock_logger.exception.call_args
+    assert "unexpected error" in exc_log_call.args[0]

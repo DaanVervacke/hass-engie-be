@@ -1,10 +1,12 @@
 """
 Historical usage import into Home Assistant long-term statistics.
 
-Turns ENGIE usage-details payloads into hour-aligned StatisticData rows and
-feeds them to ``async_add_external_statistics`` under three per-BAN
-statistic IDs (``engie_be:{ban}_consumption``, ``_injection``, ``_gas``).
-The Energy Dashboard picks these up automatically for the electricity and
+Turns ENGIE usage-details payloads into hour-aligned StatisticData rows
+and feeds them to ``async_add_external_statistics`` under six per-BAN
+statistic IDs: three energy streams (``engie_be:{ban}_consumption``,
+``_injection``, ``_gas`` in kWh) and three matching cost streams
+(``_consumption_cost``, ``_injection_cost``, ``_gas_cost`` in EUR).
+The energy dashboard picks these up automatically for electricity and
 gas source pickers.
 """
 
@@ -175,19 +177,16 @@ def statistic_id(business_agreement_number: str, stream: str) -> str:
     return f"{DOMAIN}:{ban}_{stream}"
 
 
+def _stream_division(stream: str) -> str:
+    """Map an internal stream key to its ENGIE contract ``division`` value."""
+    if stream in (STREAM_GAS, STREAM_GAS_COST):
+        return "GAS"
+    return "ELECTRICITY"
+
+
 def _wanted_divisions(streams: frozenset[str]) -> set[str]:
     """Map internal stream keys to ENGIE contract ``division`` values."""
-    divisions: set[str] = set()
-    if (
-        STREAM_CONSUMPTION in streams
-        or STREAM_INJECTION in streams
-        or STREAM_CONSUMPTION_COST in streams
-        or STREAM_INJECTION_COST in streams
-    ):
-        divisions.add("ELECTRICITY")
-    if STREAM_GAS in streams or STREAM_GAS_COST in streams:
-        divisions.add("GAS")
-    return divisions
+    return {_stream_division(s) for s in streams}
 
 
 def earliest_contract_start_date(
@@ -274,7 +273,7 @@ def _dig(payload: dict[str, Any] | None, path: tuple[str, ...]) -> float:
         node = node.get(key)
     try:
         return float(node) if node is not None else 0.0
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0
 
 
@@ -371,7 +370,7 @@ async def _last_stats(
     return out
 
 
-async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator params + branches are all irreducible
+async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orchestrator params + branches are all irreducible
     hass: HomeAssistant,
     client: EngieBeApiClient,
     subentry: ConfigSubentry,
@@ -379,6 +378,7 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
     start_date: date | None = None,
     end_date: date | None = None,
     streams: frozenset[str] | None = None,
+    contracts_payload: dict[str, Any] | None = None,
 ) -> int:
     """
     Import historical hourly usage for one business agreement.
@@ -404,11 +404,16 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
     statistics table, so a follow-up press resumes from
     ``_last_stats`` without redoing successful work.  Returns the total
     number of hourly rows written.
+
+    ``contracts_payload`` may be passed in by callers who have already
+    fetched contracts for this BAN (with ``include_inactive=True``).
+    When provided, the orchestrator skips its own fetch. When ``None``,
+    the orchestrator fetches fresh (fail-open on network error).
     """
     business_agreement_number = subentry.data[CONF_BUSINESS_AGREEMENT_NUMBER]
     masked_ban = business_agreement_number[-4:]
     device_name = subentry.title or f"BAN {business_agreement_number}"
-    active_streams = streams if streams else frozenset(_ENERGY_STREAMS)
+    active_streams = streams or frozenset(_ENERGY_STREAMS)
     LOGGER.info(
         "Starting historical usage import for BAN ***%s (streams=%s)",
         masked_ban,
@@ -419,6 +424,68 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
         masked_ban,
         sorted(active_streams),
     )
+
+    # Reuse a caller-provided contracts payload when available (setup and
+    # service-action call sites already have this cached on
+    # ``EngieBeSubentryData.energy_contracts_payload``). Fall back to a
+    # fresh fetch when nothing was passed in.
+    # include_inactive=True so a user who switched gas providers but kept ENGIE
+    # electricity still gets the gas history imported for the inactive contract.
+    if contracts_payload is None:
+        try:
+            contracts_payload = await client.async_get_energy_contracts(
+                business_agreement_number,
+                include_inactive=True,
+            )
+        except EngieBeApiClientError as err:
+            LOGGER.debug(
+                "BAN ***%s: could not fetch energy contracts (%s); "
+                "skipping division filter (fail-open)",
+                masked_ban,
+                err,
+            )
+
+    # Filter active_streams to only those whose division has at least one
+    # contract on this BAN (active or inactive). This prevents writing
+    # all-zero statistic streams for divisions the BAN has never had.
+    # Fail-open: if the fetch failed or the payload is malformed, skip
+    # filtering so an ENGIE outage does not kill an import.
+    contracted_divisions: set[str] | None = None
+    if isinstance(contracts_payload, dict):
+        items_list = contracts_payload.get("items")
+        if isinstance(items_list, list):
+            contracted_divisions = {
+                item["division"]
+                for item in items_list
+                if isinstance(item, dict) and "division" in item
+            }
+
+    if contracted_divisions is None:
+        LOGGER.debug(
+            "BAN ***%s: division filter skipped "
+            "(contracts payload unavailable or malformed)",
+            masked_ban,
+        )
+    else:
+        filtered = frozenset(
+            s for s in active_streams if _stream_division(s) in contracted_divisions
+        )
+        if filtered != active_streams:
+            dropped = sorted(active_streams - filtered)
+            LOGGER.debug(
+                "BAN ***%s: dropping streams with no contract on this BAN: %s",
+                masked_ban,
+                dropped,
+            )
+            active_streams = filtered
+        if not active_streams:
+            LOGGER.debug(
+                "BAN ***%s: no contracted streams remain after division filter; "
+                "nothing to import",
+                masked_ban,
+            )
+            return 0
+
     last = await _last_stats(hass, business_agreement_number, active_streams)
 
     # Running sums are threaded across chunks by the orchestrator so per-
@@ -456,25 +523,9 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
         # First import: prefer the earliest contract start date so we
         # don't waste API calls on pre-contract empty windows. Fall back
         # to a fixed HISTORY_BACKFILL_YEARS-year default only when the
-        # contracts endpoint fails or returns nothing usable.
-        contract_start: date | None = None
-        try:
-            contracts_payload = await client.async_get_energy_contracts(
-                business_agreement_number,
-                include_inactive=True,
-            )
-        except EngieBeApiClientError as err:
-            LOGGER.warning(
-                "Could not fetch energy contracts for BAN ***%s (%s); "
-                "using %d-year default backfill",
-                masked_ban,
-                err,
-                HISTORY_BACKFILL_YEARS,
-            )
-        else:
-            contract_start = earliest_contract_start_date(
-                contracts_payload, active_streams
-            )
+        # contracts endpoint failed or returned nothing usable.
+        # Reuse the already-fetched contracts_payload; no second API call.
+        contract_start = earliest_contract_start_date(contracts_payload, active_streams)
         if contract_start is not None:
             window_start_date = contract_start
             LOGGER.debug(
@@ -589,7 +640,7 @@ async def async_clear_usage_history(
     for the same BAN and cleared streams will do a full backfill again.
     Returns the list of cleared statistic IDs.
     """
-    active_streams = streams if streams else frozenset(_ENERGY_STREAMS)
+    active_streams = streams or frozenset(_ENERGY_STREAMS)
     stat_ids = [
         statistic_id(business_agreement_number, s)
         for s in _STREAMS

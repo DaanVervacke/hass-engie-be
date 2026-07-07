@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.12.0b12] - 2026-07-07
+
+### Added
+
+- The historical-import step in setup and **Add business agreement** now explains that the import runs once and does not fetch new days after that, and includes a one-click link to install the daily-sync blueprint for automated refreshes.
+
+### Fixed
+
+- Historical import no longer writes all-zero statistic streams for energy types the business agreement has no contract for. The importer now fetches the BAN's contract history (active and inactive) once per run and imports only streams whose division has at least one contract. If the contracts endpoint is unavailable the filter is skipped and the original stream selection is used. Users who already have zero-value streams from a previous beta can remove them via the **Clear historical usage statistics** service action.
+
+### Changed
+
+- Multi-BAN historical imports now run concurrently via `asyncio.gather` instead of sequentially, so a service call spanning N business agreements completes in roughly the time of the slowest one instead of the sum.
+- Setup fetches the energy-contracts payload once with `include_inactive=True` and reuses it for the division filter and start-date lookup, dropping one redundant API call per historical import.
+
+### Chore
+
+- Bump ruff pin from 0.14.14 to 0.15.20.
+
 ## [0.12.0b11] - 2026-07-07
 
 ### Docs

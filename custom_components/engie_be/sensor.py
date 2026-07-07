@@ -658,7 +658,7 @@ class EngieBeHappyHourMonthSensor(EngieBeEntity, SensorEntity):
             return None
         try:
             return float(raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     @property

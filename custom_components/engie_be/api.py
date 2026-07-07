@@ -389,7 +389,7 @@ def _redact_body(body: Any, content_type: str | None) -> str:  # noqa: PLR0911, 
                     default=str,
                 )
             )
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return repr(body)
 
     if isinstance(body, bytes):
@@ -813,12 +813,7 @@ class EngieBeApiClient:
             f"{BUSINESS_AGREEMENTS_BASE_URL}/business-agreements/"
             f"{business_agreement_number.replace(' ', '')}/energy-contracts"
         )
-        headers = {
-            "User-Agent": USER_AGENT_BROWSER,
-            "Accept": "application/json, application/problem+json",
-            "authorization": f"Bearer {self.access_token}",
-            "x-trace-id": str(uuid.uuid4()),
-        }
+        headers = self._authenticated_headers(user_agent=USER_AGENT_BROWSER)
         return await self._api_wrapper(
             session=self._session,
             method="GET",
@@ -878,12 +873,7 @@ class EngieBeApiClient:
         returns only bare customer-account identifiers.
         """
         url = f"{ACCOUNTS_BASE_URL}/customer-account-relations"
-        headers = {
-            "User-Agent": USER_AGENT_NATIVE,
-            "Accept": "application/json, application/problem+json",
-            "authorization": f"Bearer {self.access_token}",
-            "x-trace-id": str(uuid.uuid4()),
-        }
+        headers = self._authenticated_headers()
         return await self._api_wrapper(
             session=self._session,
             method="GET",
@@ -915,12 +905,7 @@ class EngieBeApiClient:
             f"{PEAKS_BASE_URL}/private/customers/me/contract-accounts/"
             f"{business_agreement_number.replace(' ', '')}/energy-insights/peaks"
         )
-        headers = {
-            "User-Agent": USER_AGENT_NATIVE,
-            "Accept": "application/json, application/problem+json",
-            "authorization": f"Bearer {self.access_token}",
-            "x-trace-id": str(uuid.uuid4()),
-        }
+        headers = self._authenticated_headers()
         return await self._api_wrapper(
             session=self._session,
             method="GET",
@@ -956,12 +941,7 @@ class EngieBeApiClient:
             f"{HAPPY_HOUR_BASE_URL}/business-agreements/"
             f"{business_agreement_number.replace(' ', '')}/happy-hour-event"
         )
-        headers = {
-            "User-Agent": USER_AGENT_NATIVE,
-            "Accept": "application/json, application/problem+json",
-            "authorization": f"Bearer {self.access_token}",
-            "x-trace-id": str(uuid.uuid4()),
-        }
+        headers = self._authenticated_headers()
         return await self._api_wrapper(
             session=self._session,
             method="GET",
@@ -994,12 +974,7 @@ class EngieBeApiClient:
             f"{HAPPY_HOUR_BASE_URL}/business-agreements/"
             f"{ban}/month-report/{year:04d}-{month:02d}"
         )
-        headers = {
-            "User-Agent": USER_AGENT_NATIVE,
-            "Accept": "application/json, application/problem+json",
-            "authorization": f"Bearer {self.access_token}",
-            "x-trace-id": str(uuid.uuid4()),
-        }
+        headers = self._authenticated_headers()
         return await self._api_wrapper(
             session=self._session,
             method="GET",
@@ -1035,12 +1010,7 @@ class EngieBeApiClient:
         """
         ban = business_agreement_number.replace(" ", "")
         url = f"{ENERGY_INSIGHTS_V2_BASE_URL}/business-agreements/{ban}/usage-details"
-        headers = {
-            "User-Agent": USER_AGENT_NATIVE,
-            "Accept": "application/json, application/problem+json",
-            "authorization": f"Bearer {self.access_token}",
-            "x-trace-id": str(uuid.uuid4()),
-        }
+        headers = self._authenticated_headers()
         return await self._api_wrapper(
             session=self._session,
             method="GET",
@@ -1081,13 +1051,9 @@ class EngieBeApiClient:
         Returns the parsed JSON response as a flat dict (top-level ``value``
         and ``reason`` keys).
         """
-        headers = {
-            "User-Agent": USER_AGENT_NATIVE,
-            "Accept": "application/json, application/problem+json",
-            "Content-Type": "application/json",
-            "authorization": f"Bearer {self.access_token}",
-            "x-trace-id": str(uuid.uuid4()),
-        }
+        headers = self._authenticated_headers(
+            extra={"Content-Type": "application/json"},
+        )
         body = {
             "name": HAPPY_HOURS_SERVICE_ENABLED_KEY,
             "additionalContext": {
@@ -1712,6 +1678,34 @@ class EngieBeApiClient:
             allow_redirects=False,
         )
         LOGGER.debug("Auth ALT-4 complete: email challenge triggered")
+
+    # ------------------------------------------------------------------
+    # Authenticated header helper
+    # ------------------------------------------------------------------
+
+    def _authenticated_headers(
+        self,
+        user_agent: str = USER_AGENT_NATIVE,
+        extra: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        """
+        Return the standard authenticated JSON header dict.
+
+        Used by every ENGIE endpoint that requires a Bearer token. ``x-trace-id``
+        is fresh per call so support requests can correlate a single HTTP
+        round-trip. Pass ``extra`` to merge per-endpoint headers (e.g.
+        ``Content-Type: application/json`` on POST bodies). Auth-flow methods use
+        custom header dicts and do not go through this helper.
+        """
+        headers = {
+            "User-Agent": user_agent,
+            "Accept": "application/json, application/problem+json",
+            "authorization": f"Bearer {self.access_token}",
+            "x-trace-id": str(uuid.uuid4()),
+        }
+        if extra:
+            headers.update(extra)
+        return headers
 
     # ------------------------------------------------------------------
     # Generic request wrapper
