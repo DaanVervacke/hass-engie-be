@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b8] - 2026-07-07
+
+### Docs
+
+- Setup-flow step descriptions cleaned up: drop the duplicate sub-description under **Import history** (the step description already covers it), drop the "Each section below is one BAN" filler, add a "Leave everything off to skip" hint on the first screen, and switch the misleading "auto-select from the contract start date" phrasing on **Start date** to "walk back to the earliest known contract on this business agreement".
+- README paragraph on the setup-time historical import no longer points users at a removed **Edit** dialog. The **Import historical usage** action from **Developer tools** > **Actions** is now the documented way to re-run.
+- Every README link in the setup-flow strings uses the same **[README](...)** anchor so users get a consistent path from every step.
+
 ## [0.12.0b7] - 2026-07-07
 
 ### Added
@@ -980,6 +988,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b8]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b7...v0.12.0b8
 [0.12.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b6...v0.12.0b7
 [0.12.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b5...v0.12.0b6
 [0.12.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b4...v0.12.0b5

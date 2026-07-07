@@ -64,271 +64,231 @@
             },
             "import_history_choice": {
                 "title": "Historical import",
-                "description": "Pick the households you want to import historical data for. The next screen lets you choose energy types, cost tracking, and an optional date window. Imports run in the background after setup. You still add the resulting statistics to the Energy dashboard yourself (see the integration docs).",
+                "description": "Pick the households you want to import historical data for. Leave everything off to skip. The next screen lets you choose energy types, cost tracking, and an optional date window. Imports run in the background after setup. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README](https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard) for the exact steps).",
                 "sections": {
                     "ban_0": {
                         "name": "{title_0}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     },
                     "ban_1": {
                         "name": "{title_1}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     },
                     "ban_2": {
                         "name": "{title_2}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     },
                     "ban_3": {
                         "name": "{title_3}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     },
                     "ban_4": {
                         "name": "{title_4}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     },
                     "ban_5": {
                         "name": "{title_5}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     },
                     "ban_6": {
                         "name": "{title_6}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     },
                     "ban_7": {
                         "name": "{title_7}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     },
                     "ban_8": {
                         "name": "{title_8}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     },
                     "ban_9": {
                         "name": "{title_9}",
                         "data": {
                             "import_history": "Import history"
                         },
-                        "data_description": {
-                            "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                        }
+                        "data_description": {}
                     }
                 }
             },
             "import_options": {
                 "title": "Historical import options",
-                "description": "Optionally import historical hourly usage data from ENGIE. Each section below is one of the business agreements you ticked on the previous screen. When setup completes the import runs in the background. Later restarts and reloads are skipped automatically once data is present. Add the resulting statistics to the Energy dashboard yourself (see the integration docs), or use the 'Import historical usage' service action to run or re-run at any time.",
+                "description": "Optionally import historical hourly usage data from ENGIE. Each section below is one of the business agreements you ticked on the previous screen. When setup completes the import runs in the background. Later restarts and reloads are skipped automatically once data is present. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README](https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard) for the exact steps). Use the 'Import historical usage' service action from Developer tools > Actions to run or re-run at any time.",
                 "sections": {
                     "ban_0": {
                         "name": "{title_0}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     },
                     "ban_1": {
                         "name": "{title_1}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     },
                     "ban_2": {
                         "name": "{title_2}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     },
                     "ban_3": {
                         "name": "{title_3}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     },
                     "ban_4": {
                         "name": "{title_4}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     },
                     "ban_5": {
                         "name": "{title_5}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     },
                     "ban_6": {
                         "name": "{title_6}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     },
                     "ban_7": {
                         "name": "{title_7}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     },
                     "ban_8": {
                         "name": "{title_8}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     },
                     "ban_9": {
                         "name": "{title_9}",
                         "data": {
-                            "import_history": "Import history",
                             "import_energy_types": "Energy types",
                             "import_include_costs": "Include costs",
                             "import_start_date": "Start date",
                             "import_end_date": "End date"
                         },
                         "data_description": {
-                            "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                             "import_energy_types": "Which energy types to import.",
                             "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                            "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                            "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                             "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                         }
                     }
@@ -378,271 +338,231 @@
                 },
                 "import_history_choice": {
                     "title": "Historical import",
-                    "description": "Pick the households you want to import historical data for. The next screen lets you choose energy types, cost tracking, and an optional date window. Imports run in the background after setup. You still add the resulting statistics to the Energy dashboard yourself (see the integration docs).",
+                    "description": "Pick the households you want to import historical data for. Leave everything off to skip. The next screen lets you choose energy types, cost tracking, and an optional date window. Imports run in the background after setup. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README](https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard) for the exact steps).",
                     "sections": {
                         "ban_0": {
                             "name": "{title_0}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         },
                         "ban_1": {
                             "name": "{title_1}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         },
                         "ban_2": {
                             "name": "{title_2}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         },
                         "ban_3": {
                             "name": "{title_3}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         },
                         "ban_4": {
                             "name": "{title_4}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         },
                         "ban_5": {
                             "name": "{title_5}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         },
                         "ban_6": {
                             "name": "{title_6}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         },
                         "ban_7": {
                             "name": "{title_7}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         },
                         "ban_8": {
                             "name": "{title_8}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         },
                         "ban_9": {
                             "name": "{title_9}",
                             "data": {
                                 "import_history": "Import history"
                             },
-                            "data_description": {
-                                "import_history": "Import historical hourly usage for this household after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself."
-                            }
+                            "data_description": {}
                         }
                     }
                 },
                 "import_options": {
                     "title": "Historical import options",
-                    "description": "Optionally import historical hourly usage data from ENGIE for the business agreements you just selected. Each section below is one BAN. Imports run in the background after setup. You still add the resulting statistics to the Energy dashboard yourself (see the integration docs).",
+                    "description": "Optionally import historical hourly usage data from ENGIE for the business agreements you just selected. Imports run in the background after setup. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README](https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard) for the exact steps).",
                     "sections": {
                         "ban_0": {
                             "name": "{title_0}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         },
                         "ban_1": {
                             "name": "{title_1}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         },
                         "ban_2": {
                             "name": "{title_2}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         },
                         "ban_3": {
                             "name": "{title_3}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         },
                         "ban_4": {
                             "name": "{title_4}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         },
                         "ban_5": {
                             "name": "{title_5}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         },
                         "ban_6": {
                             "name": "{title_6}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         },
                         "ban_7": {
                             "name": "{title_7}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         },
                         "ban_8": {
                             "name": "{title_8}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         },
                         "ban_9": {
                             "name": "{title_9}",
                             "data": {
-                                "import_history": "Import history",
                                 "import_energy_types": "Energy types",
                                 "import_include_costs": "Include costs",
                                 "import_start_date": "Start date",
                                 "import_end_date": "End date"
                             },
                             "data_description": {
-                                "import_history": "Import historical hourly usage for this household in a background task after setup. The values are written to Home Assistant's long-term statistics. You still need to add them to the Energy dashboard yourself.",
                                 "import_energy_types": "Which energy types to import.",
                                 "import_include_costs": "Also import the per-hour cost (EUR) for each selected energy type.",
-                                "import_start_date": "Start of the window to import. Leave empty to auto-select from the contract start date.",
+                                "import_start_date": "Start of the window to import. Leave empty to walk back to the earliest known contract on this business agreement.",
                                 "import_end_date": "End of the window to import (inclusive). Leave empty to auto-select through today."
                             }
                         }

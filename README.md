@@ -318,9 +318,9 @@ per business agreement. Enable "Import history", choose which energy types to
 include, and optionally turn on "Include costs" to also import per-hour EUR
 amounts. The import runs in the background after setup finishes and does not
 block the integration from loading. Reloading or restarting Home Assistant does
-not re-trigger the import once statistics are already present. To edit these
-settings later, open **Settings** > **Devices & services** > ENGIE Belgium,
-click the business agreement, and choose **Edit**.
+not re-trigger the import once statistics are already present. To re-run an
+import later (or trigger one you skipped at setup), use the **Import historical
+usage** action from **Settings** > **Developer tools** > **Actions**.
 
 ### Set up a daily sync
 
