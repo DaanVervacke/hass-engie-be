@@ -566,12 +566,16 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 ban[-4:] if ban else "????",
                 subentry.title,
             )
+            # User-facing end_date is inclusive; the orchestrator (and the
+            # underlying ENGIE endpoint) treat it as exclusive. Bump by one
+            # day so picking 2026-04-15 imports through the 15th.
+            api_end_date = end_date + timedelta(days=1) if end_date else None
             await async_import_usage_history(
                 hass,
                 entry.runtime_data.client,
                 subentry,
                 start_date=start_date,
-                end_date=end_date,
+                end_date=api_end_date,
                 streams=streams,
             )
 

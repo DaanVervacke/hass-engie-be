@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b3] - 2026-07-07
+
+### Fixed
+
+- **End date on `import_history` is now inclusive.** Picking `2026-04-15` as end date now imports through the 15th (previously the 15th was excluded). Field description updated to reflect this.
+
 ## [0.12.0b2] - 2026-07-07
 
 ### Fixed
@@ -937,6 +943,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b2...v0.12.0b3
 [0.12.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b1...v0.12.0b2
 [0.12.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.11.0...v0.12.0b1
 [0.11.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.1...v0.11.0

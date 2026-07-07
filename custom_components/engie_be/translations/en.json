@@ -168,7 +168,7 @@
                 },
                 "end_date": {
                     "name": "End date",
-                    "description": "End of the window to import. Leave empty to auto-select through today."
+                    "description": "End of the window to import (inclusive). Leave empty to auto-select through today."
                 }
             }
         },

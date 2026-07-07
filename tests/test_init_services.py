@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -229,3 +230,63 @@ async def test_service_raises_when_entry_is_reloading(
         )
 
     assert exc_info.value.translation_key == "service_entry_reloading"
+
+
+async def test_import_history_service_bumps_end_date_by_one_day(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """end_date is inclusive at the service boundary; orchestrator gets +1 day."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    ban_device = dr.async_get(hass).async_get_device(
+        identifiers={(DOMAIN, subentry_id)}
+    )
+    assert ban_device is not None
+
+    with patch(
+        "custom_components.engie_be.async_import_usage_history",
+        new=AsyncMock(return_value=0),
+    ) as mocked:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {
+                "device_id": [ban_device.id],
+                "start_date": "2026-04-01",
+                "end_date": "2026-04-15",
+            },
+            blocking=True,
+        )
+
+    assert mocked.await_count == 1
+    kwargs = mocked.await_args.kwargs
+    assert kwargs["start_date"] == date(2026, 4, 1)
+    assert kwargs["end_date"] == date(2026, 4, 16)
+
+
+async def test_import_history_service_end_date_none_stays_none(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Omitting end_date leaves the orchestrator to auto-select (None passthrough)."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    ban_device = dr.async_get(hass).async_get_device(
+        identifiers={(DOMAIN, subentry_id)}
+    )
+    assert ban_device is not None
+
+    with patch(
+        "custom_components.engie_be.async_import_usage_history",
+        new=AsyncMock(return_value=0),
+    ) as mocked:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    assert mocked.await_count == 1
+    assert mocked.await_args.kwargs["end_date"] is None
