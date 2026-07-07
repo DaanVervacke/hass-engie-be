@@ -17,7 +17,7 @@ as sensors, binary sensors, and calendar events.
 
 - Authenticates with your ENGIE Belgium account using two-factor authentication
 - Auto-detects gas and electricity contracts, including dynamic (EPEX-indexed) tariffs
-- Import your hourly usage / historic data from ENGIE into the Energy Dashboard: electricity consumption, injection, gas consumption, and per-hour costs
+- Import your hourly usage / historic data from ENGIE into the Energy dashboard: electricity consumption, injection, gas consumption, and per-hour costs
 - Creates price sensors per energy type, direction (offtake / injection), and tariff rate
 - Tracks the monthly capacity-tariff (captar) peak window for each electricity meter
 - Surfaces ENGIE's Happy Hours free-energy promotions on each account, both as sensors and as calendar events
@@ -303,12 +303,24 @@ To remove one, delete its subentry.
 > integration picks up the new metering point automatically on the next
 > refresh.
 
-## Historical usage import (Energy Dashboard)
+## Historical usage import (Energy dashboard)
 
 Don't have a P1 meter? The integration can pull your hourly electricity
-and gas consumption from ENGIE and feed it into the Energy Dashboard. The first
+and gas consumption from ENGIE and feed it into the Energy dashboard. The first
 import goes back to the start of your initial business agreement, later runs only
 fetch what's new.
+
+### Import during setup
+
+During the initial setup flow and when adding a new business agreement, a
+"Historical import options" step lets you turn on a one-time background import
+per business agreement. Enable "Import history", choose which energy types to
+include, and optionally turn on "Include costs" to also import per-hour EUR
+amounts. The import runs in the background after setup finishes and does not
+block the integration from loading. Reloading or restarting Home Assistant does
+not re-trigger the import once statistics are already present. To edit these
+settings later, open **Settings** > **Devices & services** > ENGIE Belgium,
+click the business agreement, and choose **Edit**.
 
 ### Set up a daily sync
 
@@ -329,7 +341,7 @@ If you have multiple households, repeat once per business agreement.
 
 ### Run a one-off import
 
-Use this for a first-time backfill of your Energy Dashboard, a specific
+Use this for a first-time backfill of your Energy dashboard, a specific
 month, or a re-import after ENGIE corrects some data:
 
 1. Open **Settings** > **Developer tools** > **Actions**.
@@ -345,7 +357,7 @@ Running the same window again is safe, existing hours are overwritten.
 
 Turn on **Include costs** to also import what each hour cost you in EUR.
 
-### Add to the Energy Dashboard
+### Add to the Energy dashboard
 
 After the first import finishes, open **Settings** > **Dashboards** >
 **Energy** and add the ENGIE statistics.
@@ -370,7 +382,7 @@ To wipe the imported data (e.g. before a full re-import), use
 ### Combining with a P1 meter
 
 If you have a P1 meter for real-time data but still want accurate
-historical data from ENGIE, you can use both. The Energy Dashboard lets
+historical data from ENGIE, you can use both. The Energy dashboard lets
 you add multiple grid connections under **Grid consumption** (and the
 same for return-to-grid and gas consumption).
 

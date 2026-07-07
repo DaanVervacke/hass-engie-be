@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b7] - 2026-07-07
+
+### Added
+
+- **Historical import option in the setup flow.** After picking a business agreement in setup or in **Add business agreement**, a new step lets you pick per-household which BANs to backfill, then a second step exposes energy types, an optional date window, and cost tracking for the ones you ticked. When the toggle is on for a BAN, the integration runs the import in a background task after setup completes. The guard on existing statistics prevents a re-run on reload or restart. Failures land in **Settings** > **Repairs** as a per-BAN card. Use the **Import historical usage** service action from **Developer tools** > **Actions** to re-run an import later.
+- Persistent notifications during the setup-time historical import: one when it starts, replaced by a completion notification when it finishes. Failures still surface via **Settings** > **Repairs**.
+- Section headers on the setup-time historical-import step show the consumption address, and the section now includes optional **Start date** / **End date** pickers matching the import service action.
+
 ## [0.12.0b6] - 2026-07-07
 
 ### Added
@@ -972,6 +980,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b6...v0.12.0b7
 [0.12.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b5...v0.12.0b6
 [0.12.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b4...v0.12.0b5
 [0.12.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b3...v0.12.0b4

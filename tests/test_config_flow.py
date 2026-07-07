@@ -36,12 +36,18 @@ from custom_components.engie_be.const import (
     CONF_ACCOUNT_HOLDER_NAME,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CONSUMPTION_ADDRESS,
+    CONF_IMPORT_END_DATE,
+    CONF_IMPORT_ENERGY_TYPES,
+    CONF_IMPORT_HISTORY,
+    CONF_IMPORT_INCLUDE_COSTS,
+    CONF_IMPORT_START_DATE,
     CONF_MFA_METHOD,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     CONF_SELECTED_ACCOUNTS,
     CONF_UPDATE_INTERVAL,
     DOMAIN,
+    ENERGY_TYPE_OPTIONS,
     MAX_UPDATE_INTERVAL_MINUTES,
     MFA_METHOD_EMAIL,
     MFA_METHOD_SMS,
@@ -76,6 +82,45 @@ def _fake_flow_state() -> AuthFlowState:
         mfa_challenge_state="mfa",
         code_verifier="verifier",
     )
+
+
+def _history_choice_all_off(bans: list[str]) -> dict[str, Any]:
+    """
+    Build an import_history_choice submission with all toggles off.
+
+    The schema uses positional section keys (ban_0, ban_1, ...) regardless
+    of the BAN value. The bans list length determines how many sections to build.
+    Each section contains only the import_history boolean toggle.
+    """
+    return {f"ban_{i}": {CONF_IMPORT_HISTORY: False} for i in range(len(bans))}
+
+
+def _history_choice_all_on(bans: list[str]) -> dict[str, Any]:
+    """
+    Build an import_history_choice submission with all toggles on.
+
+    Used to trigger the import_options step for all picked BANs.
+    """
+    return {f"ban_{i}": {CONF_IMPORT_HISTORY: True} for i in range(len(bans))}
+
+
+def _no_import_options(bans: list[str]) -> dict[str, Any]:
+    """
+    Build an import_options submission with defaults for each BAN.
+
+    The schema uses positional section keys (ban_0, ban_1, ...) regardless
+    of the BAN value. The bans list length determines how many sections to build.
+    Note: import_history is NOT included here because the import_options step
+    (which only appears after import_history_choice toggles were on) does not
+    repeat the toggle.
+    """
+    return {
+        f"ban_{i}": {
+            CONF_IMPORT_ENERGY_TYPES: list(ENERGY_TYPE_OPTIONS),
+            CONF_IMPORT_INCLUDE_COSTS: False,
+        }
+        for i in range(len(bans))
+    }
 
 
 def _load_relations_fixture() -> dict[str, Any]:
@@ -207,6 +252,16 @@ async def test_user_flow_happy_path_with_account_picker(
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {"selected_accounts": [first_ban]},
+        )
+
+        # select_accounts routes into the import_history_choice step.
+        assert result["type"] is data_entry_flow.FlowResultType.FORM
+        assert result["step_id"] == "import_history_choice"
+
+        # All toggles off: flow finishes directly without an import_options step.
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _history_choice_all_off([first_ban]),
         )
 
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
@@ -648,6 +703,16 @@ async def test_subentry_picker_creates_first_and_appends_extras(
             {CONF_SELECTED_ACCOUNTS: ["002200000001", "002200000002"]},
         )
 
+        # user step routes into import_history_choice.
+        assert result["type"] is data_entry_flow.FlowResultType.FORM
+        assert result["step_id"] == "import_history_choice"
+
+        # All toggles off: flow finishes directly without an import_options step.
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            _history_choice_all_off(["002200000001", "002200000002"]),
+        )
+
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
     # Two subentries on the parent entry: first via async_create_entry,
     # second auto-added by the picker via async_add_subentry.
@@ -716,6 +781,11 @@ async def test_subentry_picker_multi_pick_collapses_to_single_reload(
             result["flow_id"],
             {CONF_SELECTED_ACCOUNTS: ["002200000001", "002200000002"]},
         )
+        assert result["step_id"] == "import_history_choice"
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            _history_choice_all_off(["002200000001", "002200000002"]),
+        )
         await hass.async_block_till_done()
 
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
@@ -763,6 +833,11 @@ async def test_subentry_picker_single_pick_reloads_once(
             result["flow_id"],
             {CONF_SELECTED_ACCOUNTS: ["002200000001"]},
         )
+        assert result["step_id"] == "import_history_choice"
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            _history_choice_all_off(["002200000001"]),
+        )
         await hass.async_block_till_done()
 
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
@@ -802,6 +877,11 @@ async def test_subentry_picker_skips_already_configured(
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
             {CONF_SELECTED_ACCOUNTS: ["002200000002"]},
+        )
+        assert result["step_id"] == "import_history_choice"
+        result = await hass.config_entries.subentries.async_configure(
+            result["flow_id"],
+            _history_choice_all_off(["002200000002"]),
         )
 
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
@@ -1373,3 +1453,293 @@ async def test_reconfigure_flow_defaults_to_current_mfa_method(
     assert result["type"] is data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert entry.data.get(CONF_MFA_METHOD) == MFA_METHOD_SMS
+
+
+# ---------------------------------------------------------------------------
+# Import options: config flow stores per-BAN import config
+# ---------------------------------------------------------------------------
+
+
+async def test_import_options_stored_in_subentry_data(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    The import_options step stores import_history, energy_types, and include_costs.
+
+    Each field ends up in the subentry data dict after the flow completes.
+    """
+    relations = _load_relations_fixture()
+    first_ban = relations["items"][0]["customerAccount"]["businessAgreements"][0][
+        "businessAgreementNumber"
+    ]
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"selected_accounts": [first_ban]}
+        )
+
+        # select_accounts routes into import_history_choice; toggle on to proceed.
+        assert result["step_id"] == "import_history_choice"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _history_choice_all_on([first_ban]),
+        )
+
+        # import_history toggled on: import_options step appears with detail fields.
+        assert result["step_id"] == "import_options"
+
+        # Supply only consumption, include_costs, and a date window.
+        # The import_history toggle is NOT repeated here (it was set in step above).
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "ban_0": {
+                    CONF_IMPORT_ENERGY_TYPES: ["consumption"],
+                    CONF_IMPORT_INCLUDE_COSTS: True,
+                    CONF_IMPORT_START_DATE: "2025-01-01",
+                    CONF_IMPORT_END_DATE: "2025-06-30",
+                }
+            },
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    entry = result["result"]
+    assert len(entry.subentries) == 1
+    subentry = next(iter(entry.subentries.values()))
+    assert subentry.data[CONF_IMPORT_HISTORY] is True
+    assert subentry.data[CONF_IMPORT_ENERGY_TYPES] == ["consumption"]
+    assert subentry.data[CONF_IMPORT_INCLUDE_COSTS] is True
+    assert subentry.data[CONF_IMPORT_START_DATE] == "2025-01-01"
+    assert subentry.data[CONF_IMPORT_END_DATE] == "2025-06-30"
+
+
+async def test_import_options_defaults_when_not_selected(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Submitting import_options with import_history=False stores False."""
+    relations = _load_relations_fixture()
+    first_ban = relations["items"][0]["customerAccount"]["businessAgreements"][0][
+        "businessAgreementNumber"
+    ]
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"selected_accounts": [first_ban]}
+        )
+
+        # Toggle off in import_history_choice: flow finishes without import_options.
+        assert result["step_id"] == "import_history_choice"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _history_choice_all_off([first_ban]),
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    subentry = next(iter(result["result"].subentries.values()))
+    assert subentry.data[CONF_IMPORT_HISTORY] is False
+    assert subentry.data[CONF_IMPORT_INCLUDE_COSTS] is False
+
+
+# ---------------------------------------------------------------------------
+# Import history choice step: toggle behaviour
+# ---------------------------------------------------------------------------
+
+
+async def test_import_history_choice_all_off_skips_options_step(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """All toggles off in import_history_choice skips import_options and finishes."""
+    relations = _load_relations_fixture()
+    all_bans = [
+        item["customerAccount"]["businessAgreements"][0]["businessAgreementNumber"]
+        for item in relations["items"]
+    ]
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"selected_accounts": all_bans}
+        )
+
+        assert result["type"] is data_entry_flow.FlowResultType.FORM
+        assert result["step_id"] == "import_history_choice"
+
+        # All toggles off: flow must create the entry without showing import_options.
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            _history_choice_all_off(all_bans),
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    entry = result["result"]
+    assert len(entry.subentries) == len(all_bans)
+    # Every subentry must carry import_history=False and default energy types.
+    for subentry in entry.subentries.values():
+        assert subentry.data[CONF_IMPORT_HISTORY] is False
+        assert subentry.data[CONF_IMPORT_ENERGY_TYPES] == list(ENERGY_TYPE_OPTIONS)
+        assert subentry.data[CONF_IMPORT_INCLUDE_COSTS] is False
+
+
+async def test_import_history_choice_mixed_toggles_only_on_bans_in_options(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Mixed toggles: only toggled-on BANs appear in import_options.
+
+    Toggled-off BANs receive import-history-off defaults and are not shown
+    in the options step.
+    """
+    relations = _load_relations_fixture()
+    # The fixture has two BANs; pick them both but only toggle on the first.
+    ban_0 = relations["items"][0]["customerAccount"]["businessAgreements"][0][
+        "businessAgreementNumber"
+    ]
+    ban_1 = relations["items"][1]["customerAccount"]["businessAgreements"][0][
+        "businessAgreementNumber"
+    ]
+
+    with (
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_start_authentication",
+            AsyncMock(return_value=_fake_flow_state()),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_complete_authentication",
+            AsyncMock(return_value=_TOKENS),
+        ),
+        patch(
+            "custom_components.engie_be.config_flow.EngieBeApiClient.async_get_customer_account_relations",
+            AsyncMock(return_value=relations),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], _USER_INPUT
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"code": "123456"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"selected_accounts": [ban_0, ban_1]}
+        )
+
+        assert result["step_id"] == "import_history_choice"
+
+        # Toggle on only the first BAN, off for the second.
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "ban_0": {CONF_IMPORT_HISTORY: True},
+                "ban_1": {CONF_IMPORT_HISTORY: False},
+            },
+        )
+
+        # import_options appears because at least one toggle was on.
+        assert result["type"] is data_entry_flow.FlowResultType.FORM
+        assert result["step_id"] == "import_options"
+
+        # Only ban_0 is in the options step (positional key ban_0 maps to it).
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                "ban_0": {
+                    CONF_IMPORT_ENERGY_TYPES: ["consumption"],
+                    CONF_IMPORT_INCLUDE_COSTS: True,
+                    CONF_IMPORT_START_DATE: "2025-01-01",
+                    CONF_IMPORT_END_DATE: "2025-12-31",
+                }
+            },
+        )
+
+    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+    entry = result["result"]
+    assert len(entry.subentries) == 2
+
+    subentries_by_ban = {sub.unique_id: sub for sub in entry.subentries.values()}
+
+    # ban_0: toggled on, gets the explicit import config.
+    toggled_on = subentries_by_ban[ban_0]
+    assert toggled_on.data[CONF_IMPORT_HISTORY] is True
+    assert toggled_on.data[CONF_IMPORT_ENERGY_TYPES] == ["consumption"]
+    assert toggled_on.data[CONF_IMPORT_INCLUDE_COSTS] is True
+    assert toggled_on.data[CONF_IMPORT_START_DATE] == "2025-01-01"
+    assert toggled_on.data[CONF_IMPORT_END_DATE] == "2025-12-31"
+
+    # ban_1: toggled off, gets import-history-off defaults.
+    toggled_off = subentries_by_ban[ban_1]
+    assert toggled_off.data[CONF_IMPORT_HISTORY] is False
+    assert toggled_off.data[CONF_IMPORT_ENERGY_TYPES] == list(ENERGY_TYPE_OPTIONS)
+    assert toggled_off.data[CONF_IMPORT_INCLUDE_COSTS] is False
+
+

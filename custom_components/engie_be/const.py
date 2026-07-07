@@ -56,6 +56,13 @@ CONF_CONSUMPTION_ADDRESS = "consumption_address"
 # Subentry picker key
 CONF_SELECTED_ACCOUNTS = "selected_accounts"
 
+# Setup-time historical import options (stored per subentry)
+CONF_IMPORT_HISTORY = "import_history"
+CONF_IMPORT_ENERGY_TYPES = "import_energy_types"
+CONF_IMPORT_INCLUDE_COSTS = "import_include_costs"
+CONF_IMPORT_START_DATE = "import_start_date"
+CONF_IMPORT_END_DATE = "import_end_date"
+
 # MFA method options
 MFA_METHOD_SMS = "sms"
 MFA_METHOD_EMAIL = "email"

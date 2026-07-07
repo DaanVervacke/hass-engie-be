@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -35,10 +35,16 @@ from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CONSUMPTION_ADDRESS,
+    CONF_IMPORT_END_DATE,
+    CONF_IMPORT_ENERGY_TYPES,
+    CONF_IMPORT_HISTORY,
+    CONF_IMPORT_INCLUDE_COSTS,
+    CONF_IMPORT_START_DATE,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     CONF_UPDATE_INTERVAL,
     DOMAIN,
+    ENERGY_TYPE_OPTIONS,
     SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
@@ -1582,3 +1588,290 @@ async def test_remove_login_device_allowed(
     result = await async_remove_config_entry_device(hass, entry, device_entry)
 
     assert result is True
+
+
+# ---------------------------------------------------------------------------
+# Setup-time historical import (background task spawn)
+# ---------------------------------------------------------------------------
+
+_BAN = "000000000000"
+
+
+def _build_entry_with_import(  # noqa: PLR0913
+    hass: HomeAssistant,
+    *,
+    import_history: bool,
+    business_agreement_number: str = _BAN,
+    energy_types: list[str] | None = None,
+    include_costs: bool = False,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> MockConfigEntry:
+    """Build a v5 MockConfigEntry whose subentry carries import-history flags."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=5,
+        title="user@example.com",
+        unique_id="user_example_com",
+        data={
+            CONF_USERNAME: "user@example.com",
+            CONF_PASSWORD: "hunter2",
+            CONF_ACCESS_TOKEN: "stored-access",
+            CONF_REFRESH_TOKEN: "stored-refresh",
+        },
+        options={"update_interval": 60},
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+                title=_TEST_SUBENTRY_TITLE,
+                unique_id=business_agreement_number,
+                data={
+                    CONF_BUSINESS_AGREEMENT_NUMBER: business_agreement_number,
+                    CONF_PREMISES_NUMBER: "P-0001",
+                    CONF_CONSUMPTION_ADDRESS: _TEST_SUBENTRY_TITLE,
+                    CONF_IMPORT_HISTORY: import_history,
+                    CONF_IMPORT_ENERGY_TYPES: (
+                        energy_types
+                        if energy_types is not None
+                        else list(ENERGY_TYPE_OPTIONS)
+                    ),
+                    CONF_IMPORT_INCLUDE_COSTS: include_costs,
+                    CONF_IMPORT_START_DATE: start_date,
+                    CONF_IMPORT_END_DATE: end_date,
+                },
+            ),
+        ],
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+def _setup_patches(client: MagicMock) -> tuple:
+    """Return the standard coordinator patches used by setup-entry tests."""
+    return (
+        patch("custom_components.engie_be.EngieBeApiClient", return_value=client),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeDataUpdateCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.EngieBeEpexCoordinator"
+            ".async_config_entry_first_refresh",
+            new=AsyncMock(return_value=None),
+        ),
+    )
+
+
+async def test_setup_spawns_background_task_when_import_history_true(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Background import task spawned when import_history=True and no stats exist.
+
+    The task is spawned after async_forward_entry_setups returns and runs
+    async_import_usage_history once.
+    """
+    entry = _build_entry_with_import(hass, import_history=True)
+    client = _make_client()
+    running_notif: dict[str, Any] = {}
+
+    async def _fake_import(hass: Any, client: Any, subentry: Any, **kwargs: Any) -> int:  # noqa: ARG001
+        # Snapshot the notification state mid-import: at this point the
+        # "running" notification must exist; the completion notification
+        # is only written after this coroutine returns.
+        notif_id = f"engie_be_import_{subentry.subentry_id}"
+        current = hass.data.get("persistent_notification", {}).get(notif_id, {})
+        running_notif.update(current)
+        return 0
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        # No existing stats: _last_stats returns {}
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(side_effect=_fake_import),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_awaited_once()
+
+    # Verify the "running" notification was created before the import ran.
+    assert running_notif, "running notification was not created before import"
+    assert (
+        "importing" in running_notif["title"].lower()
+        or "backfilling" in running_notif["message"].lower()
+    )
+
+    # The "running" notification should be replaced by the completion one.
+    subentry_id = next(iter(entry.subentries))
+    notification_id = f"engie_be_import_{subentry_id}"
+    notifications = hass.data.get("persistent_notification", {})
+    assert notification_id in notifications
+    notif = notifications[notification_id]
+    assert (
+        "complete" in notif["message"].lower() or "complete" in notif["title"].lower()
+    )
+
+
+async def test_setup_background_task_passes_date_window_to_orchestrator(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Start/end dates from subentry data reach the orchestrator with the +1-day shift.
+
+    The user-facing end_date is inclusive; _async_guarded_import shifts it by
+    +1 day before calling async_import_usage_history so the orchestrator sees
+    the exclusive boundary.
+    """
+    entry = _build_entry_with_import(
+        hass,
+        import_history=True,
+        start_date="2025-01-01",
+        end_date="2025-06-30",
+    )
+    client = _make_client()
+    captured_kwargs: dict[str, Any] = {}
+
+    async def _capture_import(
+        hass: Any,  # noqa: ARG001
+        client: Any,  # noqa: ARG001
+        subentry: Any,  # noqa: ARG001
+        **kwargs: Any,
+    ) -> int:
+        captured_kwargs.update(kwargs)
+        return 0
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(side_effect=_capture_import),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_awaited_once()
+    assert captured_kwargs["start_date"] == date(2025, 1, 1)
+    # end_date is shifted +1 day: 2025-06-30 (inclusive) -> 2025-07-01 (exclusive)
+    assert captured_kwargs["end_date"] == date(2025, 7, 1)
+
+
+async def test_setup_skips_background_task_when_import_history_false(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """When import_history=False, no background import is spawned."""
+    entry = _build_entry_with_import(hass, import_history=False)
+    client = _make_client()
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_not_awaited()
+
+
+async def test_setup_background_task_skipped_when_stats_exist(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Background import skipped when statistics already exist for the target streams.
+
+    The _last_stats guard suppresses the import even when import_history=True.
+    """
+    entry = _build_entry_with_import(hass, import_history=True)
+    client = _make_client()
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        # Existing stats: _last_stats returns data for one stream
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(return_value={"consumption": {"start": 1000, "sum": 42.0}}),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_not_awaited()
+
+
+async def test_setup_background_task_failure_does_not_fail_setup(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Background import failure does not propagate into setup.
+
+    The entry is fully loaded; a Repairs issue is raised instead.
+    """
+    entry = _build_entry_with_import(hass, import_history=True)
+    client = _make_client()
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(side_effect=RuntimeError("upstream broken")),
+        ),
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    # Setup must still succeed despite the import failure.
+    assert ok is True
+    assert entry.state is ConfigEntryState.LOADED
+
+    # The "running" notification must be dismissed; only the Repairs issue remains.
+    subentry_id = next(iter(entry.subentries))
+    notification_id = f"engie_be_import_{subentry_id}"
+    notifications = hass.data.get("persistent_notification", {})
+    assert notification_id not in notifications

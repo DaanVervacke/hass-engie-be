@@ -15,6 +15,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import SectionConfig, section
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import slugify
@@ -34,6 +35,11 @@ from .api import (
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_IMPORT_END_DATE,
+    CONF_IMPORT_ENERGY_TYPES,
+    CONF_IMPORT_HISTORY,
+    CONF_IMPORT_INCLUDE_COSTS,
+    CONF_IMPORT_START_DATE,
     CONF_MFA_METHOD,
     CONF_REFRESH_TOKEN,
     CONF_SELECTED_ACCOUNTS,
@@ -41,6 +47,7 @@ from .const import (
     DEFAULT_CLIENT_ID,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
+    ENERGY_TYPE_OPTIONS,
     LOGGER,
     MAX_UPDATE_INTERVAL_MINUTES,
     MFA_METHOD_EMAIL,
@@ -70,6 +77,11 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._available_accounts: list[dict[str, Any]] = []
+        # Accounts picked in select_accounts; carried into import_history_choice
+        # and then import_options.
+        self._picked_accounts: list[dict[str, Any]] = []
+        # Per-BAN import toggle from import_history_choice; maps BAN -> bool.
+        self._import_choice: dict[str, bool] = {}
 
     @staticmethod
     def async_get_options_flow(
@@ -345,27 +357,133 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if not selected:
                 errors["base"] = "no_accounts_selected"
             else:
-                picked = [
+                self._picked_accounts = [
                     account
                     for account in self._available_accounts
                     if account[CONF_BUSINESS_AGREEMENT_NUMBER] in selected
                 ]
-                subentries = tuple(
-                    ConfigSubentryData(
-                        data=account,
-                        subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
-                        title=subentry_title(account),
-                        unique_id=account[CONF_BUSINESS_AGREEMENT_NUMBER],
-                    )
-                    for account in picked
-                )
-                return self._async_finish_initial_setup(subentries=subentries)
+                return await self.async_step_import_history_choice()
 
         return self.async_show_form(
             step_id="select_accounts",
             data_schema=self._async_build_picker_schema(),
             errors=errors,
             description_placeholders={"username": username},
+        )
+
+    # ------------------------------------------------------------------
+    # Import history choice step (chained from select_accounts)
+    # ------------------------------------------------------------------
+
+    async def async_step_import_history_choice(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Show one toggle per picked BAN to ask whether to backfill history.
+
+        Each BAN gets a collapsed section (``ban_0``, ``ban_1``, ...) with a
+        single ``import_history`` boolean. On submit:
+        - If all toggles are off, finish the flow immediately with every picked
+          account stored using the import-history-off defaults.
+        - If any toggle is on, store the choices in ``_import_choice`` and
+          advance to ``async_step_import_options`` showing only the toggled-on
+          BANs so the user can fill in the detail fields.
+        """
+        if user_input is not None:
+            self._import_choice = {
+                account[CONF_BUSINESS_AGREEMENT_NUMBER]: user_input.get(
+                    f"ban_{i}", {}
+                ).get(CONF_IMPORT_HISTORY, False)
+                for i, account in enumerate(self._picked_accounts)
+            }
+            if any(self._import_choice.values()):
+                return await self.async_step_import_options()
+
+            # All off: build subentries with defaults and finish.
+            enriched = _apply_import_defaults(self._picked_accounts)
+            subentries = tuple(
+                ConfigSubentryData(
+                    data=account,
+                    subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+                    title=subentry_title(account),
+                    unique_id=account[CONF_BUSINESS_AGREEMENT_NUMBER],
+                )
+                for account in enriched
+            )
+            return self._async_finish_initial_setup(subentries=subentries)
+
+        schema, placeholders = _build_import_history_choice_schema(
+            self._picked_accounts
+        )
+        return self.async_show_form(
+            step_id="import_history_choice",
+            data_schema=schema,
+            description_placeholders=placeholders,
+        )
+
+    # ------------------------------------------------------------------
+    # Import options step (chained from import_history_choice)
+    # ------------------------------------------------------------------
+
+    async def async_step_import_options(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> config_entries.ConfigFlowResult:
+        """
+        Present per-BAN detail sections for BANs with import_history toggled on.
+
+        Only the BANs whose ``import_history`` toggle was on in the preceding
+        ``import_history_choice`` step appear here. Each section is keyed by a
+        positional identifier (``ban_0``, ``ban_1``, ...) mapped to the
+        filtered list. BANs whose toggle was off are merged back in with
+        import-history-off defaults on submit.
+
+        Contains four fields: ``import_energy_types`` (multi-select),
+        ``import_include_costs`` (bool), ``import_start_date`` (optional date),
+        and ``import_end_date`` (optional date).
+        """
+        opted_in = [
+            account
+            for account in self._picked_accounts
+            if self._import_choice.get(account[CONF_BUSINESS_AGREEMENT_NUMBER], False)
+        ]
+        opted_out = [
+            account
+            for account in self._picked_accounts
+            if not self._import_choice.get(
+                account[CONF_BUSINESS_AGREEMENT_NUMBER], False
+            )
+        ]
+
+        if user_input is not None:
+            enriched_in = _apply_import_options(opted_in, user_input)
+            enriched_out = _apply_import_defaults(opted_out)
+            # Preserve original pick order: rebuild in _picked_accounts sequence.
+            ban_to_data: dict[str, dict[str, Any]] = {
+                account[CONF_BUSINESS_AGREEMENT_NUMBER]: account
+                for account in enriched_in + enriched_out
+            }
+            enriched = [
+                ban_to_data[acct[CONF_BUSINESS_AGREEMENT_NUMBER]]
+                for acct in self._picked_accounts
+            ]
+            subentries = tuple(
+                ConfigSubentryData(
+                    data=account,
+                    subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+                    title=subentry_title(account),
+                    unique_id=account[CONF_BUSINESS_AGREEMENT_NUMBER],
+                )
+                for account in enriched
+            )
+            return self._async_finish_initial_setup(subentries=subentries)
+
+        schema, placeholders = _build_import_options_schema(opted_in)
+        return self.async_show_form(
+            step_id="import_options",
+            data_schema=schema,
+            description_placeholders=placeholders,
         )
 
     @callback
@@ -633,6 +751,9 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         """Initialise the subentry flow handler."""
         super().__init__()
         self._available_accounts: list[dict[str, Any]] = []
+        self._picked_accounts: list[dict[str, Any]] = []
+        # Per-BAN import toggle from import_history_choice; maps BAN -> bool.
+        self._import_choice: dict[str, bool] = {}
 
     async def async_step_user(
         self,
@@ -668,11 +789,104 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
                 errors={"base": "no_accounts_selected"},
             )
 
-        picked = [
+        self._picked_accounts = [
             account
             for account in self._available_accounts
             if account[CONF_BUSINESS_AGREEMENT_NUMBER] in selected
         ]
+        return await self.async_step_import_history_choice()
+
+    async def async_step_import_history_choice(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> SubentryFlowResult:
+        """
+        Show one toggle per picked BAN to ask whether to backfill history.
+
+        Mirrors the main-flow step of the same name. On submit, if any toggle
+        is on the flow advances to ``async_step_import_options``; if all are
+        off it finishes immediately with import-history-off defaults applied.
+        """
+        if user_input is not None:
+            self._import_choice = {
+                account[CONF_BUSINESS_AGREEMENT_NUMBER]: user_input.get(
+                    f"ban_{i}", {}
+                ).get(CONF_IMPORT_HISTORY, False)
+                for i, account in enumerate(self._picked_accounts)
+            }
+            if any(self._import_choice.values()):
+                return await self.async_step_import_options()
+
+            enriched = _apply_import_defaults(self._picked_accounts)
+            return self._finish_subentry_add(enriched)
+
+        schema, placeholders = _build_import_history_choice_schema(
+            self._picked_accounts
+        )
+        return self.async_show_form(
+            step_id="import_history_choice",
+            data_schema=schema,
+            description_placeholders=placeholders,
+        )
+
+    async def async_step_import_options(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> SubentryFlowResult:
+        """
+        Present per-BAN detail sections for BANs with import_history toggled on.
+
+        Mirrors the main-flow step of the same name. Only toggled-on BANs appear;
+        toggled-off BANs are merged back in with import-history-off defaults on
+        submit.
+        """
+        opted_in = [
+            account
+            for account in self._picked_accounts
+            if self._import_choice.get(account[CONF_BUSINESS_AGREEMENT_NUMBER], False)
+        ]
+        opted_out = [
+            account
+            for account in self._picked_accounts
+            if not self._import_choice.get(
+                account[CONF_BUSINESS_AGREEMENT_NUMBER], False
+            )
+        ]
+
+        if user_input is not None:
+            enriched_in = _apply_import_options(opted_in, user_input)
+            enriched_out = _apply_import_defaults(opted_out)
+            ban_to_data: dict[str, dict[str, Any]] = {
+                account[CONF_BUSINESS_AGREEMENT_NUMBER]: account
+                for account in enriched_in + enriched_out
+            }
+            enriched = [
+                ban_to_data[acct[CONF_BUSINESS_AGREEMENT_NUMBER]]
+                for acct in self._picked_accounts
+            ]
+            return self._finish_subentry_add(enriched)
+
+        schema, placeholders = _build_import_options_schema(opted_in)
+        return self.async_show_form(
+            step_id="import_options",
+            data_schema=schema,
+            description_placeholders=placeholders,
+        )
+
+    def _finish_subentry_add(
+        self,
+        picked: list[dict[str, Any]],
+    ) -> SubentryFlowResult:
+        """
+        Create subentry/subentries from the final enriched account dicts.
+
+        Mirrors the logic that existed in ``async_step_user`` before the
+        import-options step was introduced. Programmatically adds every
+        pick after the first, gates the reload listener via
+        ``pending_subentry_target``, and finishes the first pick through
+        the framework's normal ``async_create_entry`` path.
+        """
+        entry = self._get_entry()
 
         # Programmatically add every pick after the first as a subentry on
         # the parent entry. The first pick is returned via async_create_entry
@@ -847,6 +1061,194 @@ def _candidates_excluding_configured(
         for agreement in extract_business_agreements(relations)
         if agreement[CONF_BUSINESS_AGREEMENT_NUMBER] not in already_configured
     ]
+
+
+def _import_section_schema(  # noqa: PLR0913
+    *,
+    default_import: bool = False,
+    default_energy_types: list[str] | None = None,
+    default_include_costs: bool = False,
+    default_start_date: str | None = None,
+    default_end_date: str | None = None,
+    include_history_toggle: bool = True,
+) -> section:
+    """
+    Build the voluptuous section for a single BAN's import options.
+
+    Pass ``include_history_toggle=False`` to omit the ``import_history`` field.
+    This is used by the ``import_options`` step (which follows the dedicated
+    ``import_history_choice`` step) so the user is not asked to confirm the
+    toggle a second time.
+    """
+    schema_dict: dict[Any, Any] = {}
+    if include_history_toggle:
+        schema_dict[
+            vol.Required(
+                CONF_IMPORT_HISTORY,
+                default=default_import,
+            )
+        ] = bool
+    schema_dict[
+        vol.Required(
+            CONF_IMPORT_ENERGY_TYPES,
+            default=(
+                default_energy_types
+                if default_energy_types is not None
+                else list(ENERGY_TYPE_OPTIONS)
+            ),
+        )
+    ] = selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=list(ENERGY_TYPE_OPTIONS),
+            multiple=True,
+            mode=selector.SelectSelectorMode.LIST,
+            translation_key="energy_type",
+        ),
+    )
+    schema_dict[
+        vol.Required(
+            CONF_IMPORT_INCLUDE_COSTS,
+            default=default_include_costs,
+        )
+    ] = bool
+    # Build date fields separately so we can conditionally attach the
+    # default only when a stored value exists. DateSelector validates via
+    # cv.date which rejects None, so passing default=None would break schema
+    # instantiation if the user has never set a date.
+    _start_key = (
+        vol.Optional(CONF_IMPORT_START_DATE, default=default_start_date)
+        if default_start_date is not None
+        else vol.Optional(CONF_IMPORT_START_DATE)
+    )
+    _end_key = (
+        vol.Optional(CONF_IMPORT_END_DATE, default=default_end_date)
+        if default_end_date is not None
+        else vol.Optional(CONF_IMPORT_END_DATE)
+    )
+    schema_dict[_start_key] = selector.DateSelector()
+    schema_dict[_end_key] = selector.DateSelector()
+    return section(
+        vol.Schema(schema_dict),
+        SectionConfig(collapsed=False),
+    )
+
+
+def _build_import_options_schema(
+    accounts: list[dict[str, Any]],
+) -> tuple[vol.Schema, dict[str, str]]:
+    """
+    Build a per-BAN sectioned schema for the import_options flow step.
+
+    Each business agreement gets its own collapsed section keyed by a
+    positional identifier (``ban_0``, ``ban_1``, ...) so strings.json can
+    provide a ``name`` template for each slot. The consumption address is
+    returned as step-level ``description_placeholders`` under the keys
+    ``title_0``, ``title_1``, ... so the frontend substitutes the address
+    into the section name (defined in strings.json as ``{title_0}``,
+    ``{title_1}``, etc.).
+
+    Returns a ``(schema, placeholders)`` tuple.
+    """
+    schema_fields: dict[Any, Any] = {}
+    placeholders: dict[str, str] = {}
+    for i, account in enumerate(accounts):
+        key = f"ban_{i}"
+        title = subentry_title(account)
+        placeholders[f"title_{i}"] = title
+        schema_fields[vol.Required(key)] = _import_section_schema(
+            default_energy_types=account.get(CONF_IMPORT_ENERGY_TYPES),
+            default_include_costs=account.get(CONF_IMPORT_INCLUDE_COSTS, False),
+            default_start_date=account.get(CONF_IMPORT_START_DATE),
+            default_end_date=account.get(CONF_IMPORT_END_DATE),
+            include_history_toggle=False,
+        )
+    return vol.Schema(schema_fields), placeholders
+
+
+def _build_import_history_choice_schema(
+    accounts: list[dict[str, Any]],
+) -> tuple[vol.Schema, dict[str, str]]:
+    """
+    Build a per-BAN sectioned schema for the import_history_choice flow step.
+
+    Each business agreement gets its own collapsed section keyed by a positional
+    identifier (``ban_0``, ``ban_1``, ...) with a single ``import_history``
+    boolean field. The consumption address is returned as step-level
+    ``description_placeholders`` under the keys ``title_0``, ``title_1``, ...
+
+    Returns a ``(schema, placeholders)`` tuple.
+    """
+    schema_fields: dict[Any, Any] = {}
+    placeholders: dict[str, str] = {}
+    for i, account in enumerate(accounts):
+        key = f"ban_{i}"
+        title = subentry_title(account)
+        placeholders[f"title_{i}"] = title
+        schema_fields[vol.Required(key)] = section(
+            vol.Schema(
+                {
+                    vol.Required(
+                        CONF_IMPORT_HISTORY,
+                        default=False,
+                    ): bool,
+                }
+            ),
+            SectionConfig(collapsed=False),
+        )
+    return vol.Schema(schema_fields), placeholders
+
+
+def _apply_import_defaults(
+    accounts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Apply import-history-off defaults to a list of account dicts.
+
+    Used for accounts whose ``import_history`` toggle was off in the
+    ``import_history_choice`` step, or when the choice step finishes with all
+    toggles off.
+    """
+    return [
+        {
+            **account,
+            CONF_IMPORT_HISTORY: False,
+            CONF_IMPORT_ENERGY_TYPES: list(ENERGY_TYPE_OPTIONS),
+            CONF_IMPORT_INCLUDE_COSTS: False,
+            CONF_IMPORT_START_DATE: None,
+            CONF_IMPORT_END_DATE: None,
+        }
+        for account in accounts
+    ]
+
+
+def _apply_import_options(
+    accounts: list[dict[str, Any]],
+    user_input: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """
+    Merge per-BAN import options from ``user_input`` into account dicts.
+
+    The schema uses positional section keys (``ban_0``, ``ban_1``, ...) so
+    this function maps position back to account using the same index.
+    """
+    enriched: list[dict[str, Any]] = []
+    for i, account in enumerate(accounts):
+        section_data = user_input.get(f"ban_{i}", {})
+        enriched.append(
+            {
+                **account,
+                CONF_IMPORT_HISTORY: True,
+                CONF_IMPORT_ENERGY_TYPES: section_data.get(
+                    CONF_IMPORT_ENERGY_TYPES, list(ENERGY_TYPE_OPTIONS)
+                ),
+                CONF_IMPORT_INCLUDE_COSTS: section_data.get(
+                    CONF_IMPORT_INCLUDE_COSTS, False
+                ),
+                CONF_IMPORT_START_DATE: section_data.get(CONF_IMPORT_START_DATE),
+                CONF_IMPORT_END_DATE: section_data.get(CONF_IMPORT_END_DATE),
+            }
+        )
+    return enriched
 
 
 class EngieBeOptionsFlowHandler(config_entries.OptionsFlow):

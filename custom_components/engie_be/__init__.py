@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import TYPE_CHECKING
 
 import voluptuous as vol
+from homeassistant.components import persistent_notification as pn
 from homeassistant.const import ATTR_DEVICE_ID, Platform
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
@@ -22,6 +23,7 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from ._contracts import is_account_dynamic
 from ._statistics import (
+    _last_stats,
     async_clear_usage_history,
     async_import_usage_history,
     streams_for_energy_types,
@@ -38,6 +40,11 @@ from .const import (
     ATTR_START_DATE,
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_IMPORT_END_DATE,
+    CONF_IMPORT_ENERGY_TYPES,
+    CONF_IMPORT_HISTORY,
+    CONF_IMPORT_INCLUDE_COSTS,
+    CONF_IMPORT_START_DATE,
     CONF_REFRESH_TOKEN,
     DEFAULT_CLIENT_ID,
     DOMAIN,
@@ -269,6 +276,60 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     _async_register_services(hass)
+
+    # Spawn setup-time background import tasks for subentries that have
+    # ``import_history = True`` and have not yet accumulated any statistics.
+    # The ``_last_stats`` guard prevents re-importing on every reload or
+    # restart: if data already exists for any stream on the requested set,
+    # the task exits immediately. Spawned with ``entry.async_create_background_task``
+    # so the task is entry-scoped and cancelled automatically on unload.
+    # We copy the BAN and client reference out of runtime_data here so
+    # the coroutine closure does not hold a stale subentry or runtime_data
+    # reference (those are torn down on reload/unload).
+    for subentry in subentries:
+        subentry_data = subentry.data or {}
+        if not subentry_data.get(CONF_IMPORT_HISTORY, False):
+            continue
+        raw_energy_types: list[str] = subentry_data.get(
+            CONF_IMPORT_ENERGY_TYPES, list(ENERGY_TYPE_OPTIONS)
+        )
+        include_costs: bool = subentry_data.get(CONF_IMPORT_INCLUDE_COSTS, False)
+        streams = streams_for_energy_types(
+            raw_energy_types, include_costs=include_costs
+        )
+        ban = subentry_data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+        # Parse optional ISO date strings stored by the config flow.
+        raw_start = subentry_data.get(CONF_IMPORT_START_DATE)
+        raw_end = subentry_data.get(CONF_IMPORT_END_DATE)
+        start_date: date | None = date.fromisoformat(raw_start) if raw_start else None
+        # User-facing end_date is inclusive; the orchestrator treats it as
+        # exclusive. Apply the same +1-day shift used in the service handler.
+        end_date: date | None = (
+            date.fromisoformat(raw_end) + timedelta(days=1) if raw_end else None
+        )
+        snap_client = client
+        snap_subentry = subentry
+        entry.async_create_background_task(
+            hass,
+            _async_guarded_import(
+                hass,
+                snap_client,
+                snap_subentry,
+                streams=streams,
+                start_date=start_date,
+                end_date=end_date,
+            ),
+            name=f"engie_be import {ban[-4:] if ban else '????'}",
+        )
+        LOGGER.debug(
+            "Scheduled setup-time import for BAN ***%s "
+            "(streams=%s include_costs=%s start=%s end=%s)",
+            ban[-4:] if ban else "????",
+            sorted(streams),
+            include_costs,
+            start_date,
+            end_date,
+        )
 
     # Recurring token refresh registered AFTER every step that can raise
     # ``ConfigEntryNotReady`` (initial token refresh at the top of this
@@ -512,6 +573,107 @@ def _resolve_targets(
             translation_key="service_no_valid_target",
         )
     return resolved
+
+
+async def _async_guarded_import(  # noqa: PLR0913
+    hass: HomeAssistant,
+    client: EngieBeApiClient,
+    subentry: ConfigSubentry,
+    *,
+    streams: frozenset[str],
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> None:
+    """
+    Run a setup-time historical import with two guards.
+
+    Guard 1 - ``_last_stats`` check: if any statistic already exists for
+    the target streams we skip the import entirely. This suppresses re-
+    imports on reload, HA restart, and options-flow saves without requiring
+    any persistent flag.
+
+    Guard 2 - broad try/except: a failure in the import does NOT fail entry
+    setup (the background task is entry-scoped and runs after
+    ``async_forward_entry_setups`` returns) and does NOT propagate into the
+    event loop. On failure a non-fixable Repairs issue is raised so the user
+    sees an actionable card in Settings -> Repairs without any notification
+    pop-up clutter. Repairs is preferred over a persistent notification here
+    because it survives restarts and groups naturally with other integration
+    issues, whereas a notification disappears on reload.
+
+    ``start_date`` and ``end_date`` bound the import window (``end_date``
+    must already be shifted to exclusive before calling this function).
+    ``None`` means auto-mode: walk back to the earliest contract-start
+    (``start_date``) or import through today (``end_date``).
+
+    Token rotation and coordinator polling continue normally in parallel
+    with this task.
+    """
+    ban = (subentry.data or {}).get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+    masked = ban[-4:] if ban else "????"
+    address = subentry.title or f"BAN ***{masked}"
+    notification_id = f"engie_be_import_{subentry.subentry_id}"
+    issue_id = f"setup_import_failed_{subentry.subentry_id}"
+    try:
+        existing = await _last_stats(hass, ban, streams)
+        if existing:
+            LOGGER.debug(
+                "Setup-time import skipped for BAN ***%s: stats already present "
+                "(streams with data: %s)",
+                masked,
+                sorted(existing.keys()),
+            )
+            ir.async_delete_issue(hass, DOMAIN, issue_id)
+            return
+        pn.async_create(
+            hass,
+            (
+                f"Importing historical usage for {address}. "
+                "This can take a few minutes for a multi-year window."
+            ),
+            title="ENGIE Belgium: importing historical data",
+            notification_id=notification_id,
+        )
+        await async_import_usage_history(
+            hass,
+            client,
+            subentry,
+            streams=streams,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        # Clear any lingering Repairs issue from a prior failed attempt so
+        # a transient error does not leave a stale card in Settings > Repairs.
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        pn.async_create(
+            hass,
+            f"Historical usage for {address} imported into long-term statistics.",
+            title="ENGIE Belgium: historical import complete",
+            notification_id=notification_id,
+        )
+    except asyncio.CancelledError:
+        # Entry unload cancels the background task via ``entry.async_create_
+        # background_task``. Dismiss the "running" notification so it does not
+        # orphan in the notification tray, then re-raise so HA can propagate
+        # cancellation cleanly.
+        pn.async_dismiss(hass, notification_id)
+        raise
+    except Exception:  # noqa: BLE001
+        LOGGER.exception(
+            "Setup-time historical import failed for BAN ***%s; "
+            "use the import_history service action to retry",
+            masked,
+        )
+        pn.async_dismiss(hass, notification_id)
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="setup_import_failed",
+            translation_placeholders={"title": subentry.title or ban},
+        )
 
 
 def _async_register_services(hass: HomeAssistant) -> None:
