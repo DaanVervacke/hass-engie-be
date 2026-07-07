@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b11] - 2026-07-07
+
+### Docs
+
+- README header redesigned: centered ENGIE logo (theme-aware SVG under `.github/assets/`), centered title reading **ENGIE (BE) - Home Assistant integration**, centered flat-square badge row (HACS · release · hacs/hassfest · tests · Home Assistant · quality-scale · license).
+
 ## [0.12.0b10] - 2026-07-07
 
 ### Fixed
@@ -1000,6 +1006,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b11]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b10...v0.12.0b11
 [0.12.0b10]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b9...v0.12.0b10
 [0.12.0b9]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b8...v0.12.0b9
 [0.12.0b8]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b7...v0.12.0b8

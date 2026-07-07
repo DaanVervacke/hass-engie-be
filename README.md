@@ -1,11 +1,23 @@
-# ENGIE Belgium HACS integration
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-engie-dark.svg">
+    <img src=".github/assets/logo-engie-light.svg" alt="ENGIE" width="220">
+  </picture>
+</p>
 
-[![HACS Custom][hacsbadge]][hacs]
-[![GitHub Release][releasebadge]][release]
-[![Tests][testsbadge]][tests]
-[![Home Assistant][habadge]][ha]
-[![Quality Scale][qualitybadge]][quality]
-[![License][licensebadge]](LICENSE)
+<h1 align="center">ENGIE (BE) - Home Assistant integration</h1>
+
+<p align="center">
+  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=flat-square" alt="HACS Custom"></a>
+  <a href="https://github.com/DaanVervacke/hass-engie-be/releases"><img src="https://img.shields.io/github/v/release/DaanVervacke/hass-engie-be?style=flat-square&label=version&sort=semver" alt="Latest release"></a>
+  <a href="https://github.com/DaanVervacke/hass-engie-be/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaanVervacke/hass-engie-be/validate.yml?style=flat-square&label=hacs%20%2F%20hassfest" alt="Validate"></a>
+  <a href="https://github.com/DaanVervacke/hass-engie-be/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaanVervacke/hass-engie-be/test.yml?style=flat-square&label=tests" alt="Tests"></a>
+  <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/DaanVervacke/hass-engie-be/main/hacs.json&query=$.homeassistant&label=Home%20Assistant&prefix=%3E%3D&color=41BDF5&logo=home-assistant&logoColor=white&style=flat-square" alt="Home Assistant"></a>
+  <a href="https://www.home-assistant.io/docs/quality_scale/"><img src="https://img.shields.io/badge/quality_scale-gold-gold.svg?style=flat-square" alt="Quality Scale"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/DaanVervacke/hass-engie-be?style=flat-square" alt="License"></a>
+</p>
+
+---
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
 [ENGIE Belgium](https://www.engie.be/). Retrieves your personal energy price
@@ -540,15 +552,3 @@ since the last release live under the **[Unreleased]** section.
 ---
 
 *Data provided by ENGIE Belgium*
-
-[hacs]: https://github.com/hacs/integration
-[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg
-[release]: https://github.com/DaanVervacke/hass-engie-be/releases
-[releasebadge]: https://img.shields.io/github/v/release/DaanVervacke/hass-engie-be
-[tests]: https://github.com/DaanVervacke/hass-engie-be/actions/workflows/test.yml
-[testsbadge]: https://img.shields.io/github/actions/workflow/status/DaanVervacke/hass-engie-be/test.yml?label=tests
-[ha]: https://www.home-assistant.io/
-[habadge]: https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/DaanVervacke/hass-engie-be/main/hacs.json&query=$.homeassistant&label=Home%20Assistant&prefix=%3E%3D&color=41BDF5&logo=home-assistant&logoColor=white
-[quality]: https://www.home-assistant.io/docs/quality_scale/
-[qualitybadge]: https://img.shields.io/badge/quality_scale-gold-gold.svg
-[licensebadge]: https://img.shields.io/github/license/DaanVervacke/hass-engie-be
