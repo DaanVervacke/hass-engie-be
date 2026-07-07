@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b6] - 2026-07-07
+
+### Added
+
+- **Debug log for malformed rows in the import converter.** When ENGIE returns a row with a missing or unparseable timestamp, the converter still skips it silently but now emits a per-chunk `DEBUG` line with the count so future API schema drift is diagnosable.
+
 ## [0.12.0b5] - 2026-07-07
 
 ### Changed
@@ -966,6 +972,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b5...v0.12.0b6
 [0.12.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b4...v0.12.0b5
 [0.12.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b3...v0.12.0b4
 [0.12.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b2...v0.12.0b3

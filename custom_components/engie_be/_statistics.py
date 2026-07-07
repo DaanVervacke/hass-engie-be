@@ -304,9 +304,11 @@ def usage_items_to_statistics(
     }
     result: dict[str, list[StatisticData]] = {stream: [] for stream in _STREAMS}
     now_utc = dt_util.utcnow()
+    malformed = 0
 
     for item in items:
         if not isinstance(item, dict):
+            malformed += 1
             continue
         end_str = item.get("end")
         if isinstance(end_str, str):
@@ -314,13 +316,16 @@ def usage_items_to_statistics(
                 if dt_util.as_utc(datetime.fromisoformat(end_str)) > now_utc:
                     continue
             except ValueError:
+                malformed += 1
                 continue
         start_str = item.get("start")
         if not isinstance(start_str, str):
+            malformed += 1
             continue
         try:
             start_local = datetime.fromisoformat(start_str)
         except ValueError:
+            malformed += 1
             continue
         start_utc = dt_util.as_utc(start_local)
         if last_stats_time_utc is not None and start_utc <= last_stats_time_utc:
@@ -331,6 +336,12 @@ def usage_items_to_statistics(
             result[stream].append(
                 StatisticData(start=start_utc, state=delta, sum=sums[stream])
             )
+    if malformed:
+        LOGGER.debug(
+            "Skipped %d malformed row(s) in this chunk (missing/unparseable "
+            "start or end timestamp)",
+            malformed,
+        )
     return result
 
 
