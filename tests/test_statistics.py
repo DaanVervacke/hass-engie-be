@@ -121,14 +121,16 @@ def test_converter_seeds_from_initial_sums() -> None:
     assert per_stream[STREAM_GAS][-1]["sum"] == pytest.approx(51.776)
 
 
-def test_converter_drops_partial_data_rows() -> None:
-    """A ``partialData: true`` row is skipped so in-progress hours never persist."""
+def test_converter_drops_rows_with_future_end() -> None:
+    """Rows with a future ``end`` are dropped (in-progress or simulated hours)."""
     items = _load_items()
+    future_end = (dt_util.utcnow() + timedelta(hours=2)).isoformat()
+    future_start = (dt_util.utcnow() + timedelta(hours=1)).isoformat()
     poisoned = [
         *items,
         {
-            "start": "2026-07-03T23:00:00+02:00",
-            "end": "2026-07-04T00:00:00+02:00",
+            "start": future_start,
+            "end": future_end,
             "partialData": True,
             "energy": {
                 "electricity": {
@@ -143,7 +145,59 @@ def test_converter_drops_partial_data_rows() -> None:
         poisoned, initial_sums={}, last_stats_time_utc=None
     )
 
-    # Same row count as the clean fixture; the poisoned row was dropped.
+    # Same row count as the clean fixture; the future row was dropped.
+    assert len(per_stream[STREAM_CONSUMPTION]) == len(items)
+    assert per_stream[STREAM_CONSUMPTION][-1]["sum"] == pytest.approx(0.003)
+
+
+def test_converter_keeps_partial_data_from_past() -> None:
+    """Past-dated ``partialData: true`` rows are kept (data from inactive contracts)."""
+    items = _load_items()
+    # Add a past-dated partialData row (e.g. from an expired contract).
+    past_row = {
+        "start": "2025-01-15T10:00:00+01:00",
+        "end": "2025-01-15T11:00:00+01:00",
+        "partialData": True,
+        "energy": {
+            "electricity": {
+                "offtake": {"kWhSum": 0.5},
+                "injection": {"kWhSum": 0.0},
+            },
+            "gas": {"kWh": 0.0},
+        },
+    }
+    per_stream = usage_items_to_statistics(
+        [past_row, *items], initial_sums={}, last_stats_time_utc=None
+    )
+
+    assert len(per_stream[STREAM_CONSUMPTION]) == len(items) + 1
+    assert per_stream[STREAM_CONSUMPTION][0]["state"] == pytest.approx(0.5)
+
+
+def test_converter_drops_future_end_regardless_of_partial_flag() -> None:
+    """Future-end rows drop even when ``partialData: false`` (simulated non-partial)."""
+    items = _load_items()
+    future_end = (dt_util.utcnow() + timedelta(hours=2)).isoformat()
+    future_start = (dt_util.utcnow() + timedelta(hours=1)).isoformat()
+    simulated = [
+        *items,
+        {
+            "start": future_start,
+            "end": future_end,
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": 999},
+                    "injection": {"kWhSum": 999},
+                },
+                "gas": {"kWh": 999},
+            },
+        },
+    ]
+    per_stream = usage_items_to_statistics(
+        simulated, initial_sums={}, last_stats_time_utc=None
+    )
+
     assert len(per_stream[STREAM_CONSUMPTION]) == len(items)
     assert per_stream[STREAM_CONSUMPTION][-1]["sum"] == pytest.approx(0.003)
 

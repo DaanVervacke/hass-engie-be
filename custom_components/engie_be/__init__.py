@@ -450,6 +450,12 @@ def _resolve_targets(
     """
     device_reg = dr.async_get(hass)
     resolved: list[tuple[EngieBeConfigEntry, ConfigSubentry]] = []
+    LOGGER.debug(
+        "%s: resolving %d device_id(s): %s",
+        service_name,
+        len(device_ids),
+        device_ids,
+    )
     for device_id in device_ids:
         device = device_reg.async_get(device_id)
         if device is None:
@@ -485,6 +491,14 @@ def _resolve_targets(
                     translation_key="service_entry_reloading",
                     translation_placeholders={"entry_id": entry.entry_id},
                 )
+            LOGGER.debug(
+                "%s: device %s -> entry_id=%s subentry_id=%s title=%r",
+                service_name,
+                device_id,
+                entry.entry_id,
+                subentry_id,
+                subentry.title,
+            )
             resolved.append((entry, subentry))
             found = True
             break
@@ -534,9 +548,24 @@ def _async_register_services(hass: HomeAssistant) -> None:
         )
         start_date = call.data.get(ATTR_START_DATE)  # type: ignore[attr-defined]
         end_date = call.data.get(ATTR_END_DATE)  # type: ignore[attr-defined]
+        LOGGER.debug(
+            "import_history called: device_ids=%s energy_type=%s"
+            " include_costs=%s start=%s end=%s",
+            device_ids,
+            raw_energy_types,
+            include_costs,
+            start_date,
+            end_date,
+        )
         for entry, subentry in _resolve_targets(
             hass, device_ids, "engie_be.import_history"
         ):
+            ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+            LOGGER.debug(
+                "import_history: dispatching to BAN ***%s title=%r",
+                ban[-4:] if ban else "????",
+                subentry.title,
+            )
             await async_import_usage_history(
                 hass,
                 entry.runtime_data.client,
@@ -564,11 +593,23 @@ def _async_register_services(hass: HomeAssistant) -> None:
             raw_energy_types,
             include_costs=include_costs,
         )
+        LOGGER.debug(
+            "clear_import_history called: device_ids=%s"
+            " energy_type=%s include_costs=%s",
+            device_ids,
+            raw_energy_types,
+            include_costs,
+        )
         for _entry, subentry in _resolve_targets(
             hass, device_ids, "engie_be.clear_import_history"
         ):
             ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
             if ban:
+                LOGGER.debug(
+                    "clear_import_history: dispatching to BAN ***%s title=%r",
+                    ban[-4:],
+                    subentry.title,
+                )
                 await async_clear_usage_history(hass, ban, streams=streams)
 
     hass.services.async_register(

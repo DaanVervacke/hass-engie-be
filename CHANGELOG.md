@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b2] - 2026-07-07
+
+### Fixed
+
+- **Historical import now returns data from before your current contract.** The usage-details endpoint on `api.engie.be` only serves data for the currently-active contract on a BAN. Switched to the `www.engie.be` variant, which serves history across all prior contracts on the same BAN. Also flipped `includeSimulation=true` so ENGIE returns cross-contract history.
+- **Row filter no longer drops real historical data.** ENGIE flags rows from expired contracts as `partialData: true` even though the values are final. The converter now skips only rows whose `end` timestamp is in the future (in-progress or simulated hours), which keeps past-dated final rows regardless of the partial flag.
+
+### Changed
+
+- **`energy_type` and `include_costs` fields on both services are now required.** The per-field checkbox in the Developer Tools UI is gone: `energy_type` must have at least one selection (validated) and `include_costs` is already a boolean toggle. Defaults preserved (all three energy types pre-selected; costs off).
+
+### Added
+
+- **Debug logging across the historical-import path.** Service handlers log the raw `device_ids` and resolved BAN/title per dispatch; the orchestrator logs the active streams, selected import window and code path (explicit / contract-start / fallback / resume), running-sums seed on resume, and the `statistic_id` list about to be cleared.
+
 ## [0.12.0b1] - 2026-07-06
 
 ### Added
@@ -922,6 +937,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b1...v0.12.0b2
 [0.12.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.11.0...v0.12.0b1
 [0.11.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0...v0.10.1

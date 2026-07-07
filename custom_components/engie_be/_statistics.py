@@ -231,7 +231,14 @@ def earliest_contract_start_date(
             starts.append(date.fromisoformat(raw))
         except ValueError:
             continue
-    return min(starts) if starts else None
+    earliest = min(starts) if starts else None
+    LOGGER.debug(
+        "earliest_contract_start_date: %d contract(s) for division(s) %s -> %s",
+        len(starts),
+        sorted(wanted),
+        earliest.isoformat() if earliest is not None else "none",
+    )
+    return earliest
 
 
 def _metadata(
@@ -279,8 +286,12 @@ def usage_items_to_statistics(
     """
     Convert ENGIE usage items to per-stream hour-aligned StatisticData.
 
-    - Rows with ``partialData: true`` are skipped so an in-progress hour
-      never lands in permanent statistics.
+    - Rows whose ``end`` is in the future are skipped so an in-progress
+      or simulated hour never lands in permanent statistics. ENGIE also
+      marks rows from expired contracts as ``partialData: true`` even
+      though the values are final, so a plain ``partialData`` filter
+      would drop real historical data. ``end > now`` catches only the
+      truly not-yet-finalised rows.
     - Rows at or before ``last_stats_time_utc`` are skipped so re-runs
       don't double-count. ENGIE bucket starts equal the last recorded
       start on the boundary hour, so ``<=`` (not ``<``) is correct.
@@ -292,10 +303,18 @@ def usage_items_to_statistics(
         stream: initial_sums.get(stream, 0.0) for stream in _STREAMS
     }
     result: dict[str, list[StatisticData]] = {stream: [] for stream in _STREAMS}
+    now_utc = dt_util.utcnow()
 
     for item in items:
-        if not isinstance(item, dict) or item.get("partialData"):
+        if not isinstance(item, dict):
             continue
+        end_str = item.get("end")
+        if isinstance(end_str, str):
+            try:
+                if dt_util.as_utc(datetime.fromisoformat(end_str)) > now_utc:
+                    continue
+            except ValueError:
+                continue
         start_str = item.get("start")
         if not isinstance(start_str, str):
             continue
@@ -384,6 +403,11 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
         masked_ban,
         sorted(active_streams),
     )
+    LOGGER.debug(
+        "BAN ***%s: active_streams resolved to %s",
+        masked_ban,
+        sorted(active_streams),
+    )
     last = await _last_stats(hass, business_agreement_number, active_streams)
 
     # Running sums are threaded across chunks by the orchestrator so per-
@@ -397,6 +421,12 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
     if last:
         newest = max(float(entry["start"]) for entry in last.values())
         last_stats_time_utc = dt_util.utc_from_timestamp(newest)
+        LOGGER.debug(
+            "BAN ***%s: resuming from last_stats at %s, running_sums seed=%s",
+            masked_ban,
+            last_stats_time_utc.isoformat(),
+            {s: round(v, 4) for s, v in running_sums.items()},
+        )
 
     # Query in local (Brussels) civil dates because ENGIE's startDate /
     # endDate params are civil-day boundaries; the response items carry
@@ -406,6 +436,11 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
     explicit_window = start_date is not None or end_date is not None
     if start_date is not None:
         window_start_date = start_date
+        LOGGER.debug(
+            "BAN ***%s: explicit start_date %s used as window start",
+            masked_ban,
+            window_start_date.isoformat(),
+        )
     elif last_stats_time_utc is None:
         # First import: prefer the earliest contract start date so we
         # don't waste API calls on pre-contract empty windows. Fall back
@@ -440,6 +475,12 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
             window_start_date = (
                 now_local - timedelta(days=365 * HISTORY_BACKFILL_YEARS)
             ).date()
+            LOGGER.debug(
+                "BAN ***%s: no contract start found; using %d-year fallback start %s",
+                masked_ban,
+                HISTORY_BACKFILL_YEARS,
+                window_start_date.isoformat(),
+            )
     else:
         # Round down to the day containing the last recorded bucket; the
         # ``<=`` guard in the pure converter drops the already-imported
@@ -447,11 +488,23 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
         window_start_date = dt_util.as_local(
             last_stats_time_utc + timedelta(hours=1)
         ).date()
+        LOGGER.debug(
+            "BAN ***%s: resuming from last recorded hour; window start set to %s",
+            masked_ban,
+            window_start_date.isoformat(),
+        )
 
     # endDate is exclusive; when auto, include tomorrow so today's
     # completed hours land regardless of the caller's civil day.
     window_end_date = (
         end_date if end_date is not None else (now_local + timedelta(days=1)).date()
+    )
+    LOGGER.debug(
+        "BAN ***%s: import window %s..%s (explicit_window=%s)",
+        masked_ban,
+        window_start_date.isoformat(),
+        window_end_date.isoformat(),
+        explicit_window,
     )
 
     # In explicit mode, let ENGIE's rows overwrite (statistic_id, start)
@@ -471,7 +524,12 @@ async def async_import_usage_history(  # noqa: PLR0913, PLR0915 - orchestrator p
             start_date=cursor_date,
             end_date=chunk_end_date,
             granularity="HOURLY",
-            include_simulation=False,
+            # ENGIE scopes the response to the currently-active contract
+            # unless includeSimulation is true, in which case it serves
+            # data across all past contracts on this BAN. Any projected
+            # future rows carry partialData:true and get dropped by the
+            # converter.
+            include_simulation=True,
         )
         items = response.get("items") if isinstance(response, dict) else None
         if not isinstance(items, list):
@@ -528,6 +586,11 @@ async def async_clear_usage_history(
     ]
     if not stat_ids:
         return []
+    LOGGER.debug(
+        "async_clear_usage_history: clearing %d statistic_id(s): %s",
+        len(stat_ids),
+        stat_ids,
+    )
     recorder = get_instance(hass)
     # ``clear_statistics`` mutates the statistics_meta table and must run
     # on the recorder's own thread; the recorder asserts this and raises

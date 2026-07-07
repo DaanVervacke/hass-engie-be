@@ -20,7 +20,7 @@ HAPPY_HOUR_BASE_URL = "https://api.engie.be/engie/ms/energy-insights/customer/v1
 # endpoint used to backfill historical hourly consumption / injection /
 # gas into Home Assistant's long-term statistics.
 ENERGY_INSIGHTS_V2_BASE_URL = (
-    "https://api.engie.be/engie/ms/energy-insights/customer/v2"
+    "https://www.engie.be/api/engie/be/ms/energy-insights/customer/v2"
 )
 BOOLEAN_FEATURE_FLAG_BASE_URL = "https://api.engie.be/engie/ms/feature-flags/customer/v1/boolean-feature-flags/_query"
 BUSINESS_AGREEMENTS_BASE_URL = (

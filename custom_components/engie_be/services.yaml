@@ -2,7 +2,7 @@ import_history:
   target: {}
   fields:
     energy_type:
-      required: false
+      required: true
       default:
         - "consumption"
         - "injection"
@@ -16,7 +16,7 @@ import_history:
             - "injection"
             - "gas"
     include_costs:
-      required: false
+      required: true
       default: false
       selector:
         boolean:
@@ -35,7 +35,7 @@ clear_import_history:
   target: {}
   fields:
     energy_type:
-      required: false
+      required: true
       default:
         - "consumption"
         - "injection"
@@ -49,7 +49,7 @@ clear_import_history:
             - "injection"
             - "gas"
     include_costs:
-      required: false
+      required: true
       default: false
       selector:
         boolean:
