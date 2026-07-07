@@ -251,8 +251,8 @@ first:
 
 Configuration is done entirely through the Home Assistant UI. New ENGIE
 accounts created via the [user management page](https://www.engie.be/nl/energiedesk/usermanagement/manage-access/)
-have 2FA enabled by default and work out of the box. The integration only
-supports accounts where 2FA via SMS or email is already enabled.
+have 2FA enabled by default. The integration only supports accounts
+where 2FA via SMS or email is enabled.
 
 If you haven't reached the credential form yet, use the **Add Integration**
 badge in [Installation](#hacs-recommended) or open
@@ -270,8 +270,8 @@ badge in [Installation](#hacs-recommended) or open
    sensors, even if several of them are billed under the same customer
    account.
 
-The integration will then fetch your energy prices and capacity-tariff peaks
-and create the appropriate sensors.
+The integration then fetches your energy prices and capacity-tariff peaks
+and creates the sensors for each household.
 
 ### Options
 

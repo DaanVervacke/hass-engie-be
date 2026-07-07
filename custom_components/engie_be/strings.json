@@ -2,7 +2,7 @@
     "config": {
         "step": {
             "user": {
-                "description": "Enter your ENGIE Belgium credentials and two-factor authentication method. **A dedicated ENGIE account is required**: signing into the same account from engie.be or the ENGIE Smart App appears to revoke the integration's session and force you to re-authenticate. Create a separate user via the [ENGIE user management page]({user_management_url}). New accounts have 2FA enabled by default and work out of the box.",
+                "description": "Enter your ENGIE Belgium credentials and two-factor authentication method. **A dedicated ENGIE account is required**: signing into the same account from engie.be or the ENGIE Smart App appears to revoke the integration's session and force you to re-authenticate. Create a separate user via the [ENGIE user management page]({user_management_url}). New accounts have 2FA enabled by default.",
                 "data": {
                     "username": "Email address",
                     "password": "Password",

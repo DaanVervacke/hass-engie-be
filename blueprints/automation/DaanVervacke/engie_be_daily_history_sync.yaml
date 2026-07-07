@@ -52,12 +52,12 @@ blueprint:
 mode: single
 max_exceeded: silent
 
-trigger:
-  - platform: time
+triggers:
+  - trigger: time
     at: !input sync_time
 
-action:
-  - service: engie_be.import_history
+actions:
+  - action: engie_be.import_history
     target:
       device_id: !input engie_device
     data:

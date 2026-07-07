@@ -395,7 +395,7 @@ def _business_agreement_numbers(entry: EngieBeConfigEntry) -> set[str]:
     Return the set of BANs currently attached as business-agreement subentries.
 
     A subentry's BAN is its ``unique_id`` (set by the picker), falling back
-    to the stored ``CONF_BUSINESS_AGREEMENT_NUMBER`` for robustness. Used by
+    to the stored ``CONF_BUSINESS_AGREEMENT_NUMBER`` when unset. Used by
     the ``pending_subentry_target`` reload gate, which keys on BANs rather
     than subentry ids because the first pick's ``subentry_id`` is generated
     by the framework finish path and is not predictable up front.

@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b4] - 2026-07-07
+
+### Changed
+
+- **Blueprint updated to the 2024.8+ automation syntax**: `triggers:` / `trigger: time` / `actions:` / `action:` in place of the pre-2024.8 `trigger:` / `platform:` / `action:` / `service:` keys. HA still accepts the old shape but is moving away from it.
+
+### Docs
+
+- Dropped "out of the box" and "appropriate sensors" from the README and the config-flow user step description.
+
 ## [0.12.0b3] - 2026-07-07
 
 ### Fixed
@@ -943,6 +953,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b3...v0.12.0b4
 [0.12.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b2...v0.12.0b3
 [0.12.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b1...v0.12.0b2
 [0.12.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.11.0...v0.12.0b1
