@@ -1741,5 +1741,3 @@ async def test_import_history_choice_mixed_toggles_only_on_bans_in_options(
     assert toggled_off.data[CONF_IMPORT_HISTORY] is False
     assert toggled_off.data[CONF_IMPORT_ENERGY_TYPES] == list(ENERGY_TYPE_OPTIONS)
     assert toggled_off.data[CONF_IMPORT_INCLUDE_COSTS] is False
-
-

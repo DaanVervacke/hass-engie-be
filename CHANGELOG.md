@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b9] - 2026-07-07
+
+### Fixed
+
+- **CI** hassfest rejected the Repairs description because `{title}` was wrapped in single quotes; dropped the quotes. Also reformatted `tests/test_config_flow.py` to satisfy `ruff format --check`.
+
 ## [0.12.0b8] - 2026-07-07
 
 ### Docs
@@ -988,6 +994,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b9]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b8...v0.12.0b9
 [0.12.0b8]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b7...v0.12.0b8
 [0.12.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b6...v0.12.0b7
 [0.12.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b5...v0.12.0b6

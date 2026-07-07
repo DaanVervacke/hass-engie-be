@@ -615,7 +615,7 @@
         },
         "setup_import_failed": {
             "title": "ENGIE Belgium: historical import failed",
-            "description": "The setup-time historical usage import for '{title}' failed. Check the Home Assistant log for details. Use the 'Import historical usage' service action to retry."
+            "description": "The setup-time historical usage import failed for {title}. Check the Home Assistant log for details. Use the Import historical usage service action to retry."
         }
     },
     "services": {
