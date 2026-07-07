@@ -227,7 +227,7 @@ After HACS finishes, restart Home Assistant.
 
 [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=engie_be)
 
-Click the badge above to open the **Add Integration** dialog for ENGIE
+Click the badge above to open the **Add integration** dialog for ENGIE
 Belgium. The credential form opens directly. See [Configuration](#configuration)
 for what each field expects.
 
@@ -238,7 +238,7 @@ If the badges above do not work in your browser:
 1. Open HACS in your Home Assistant instance.
 2. Search for **ENGIE Belgium** in the HACS search bar and install it.
 3. Restart Home Assistant.
-4. Go to **Settings** > **Devices & Services** > **Add Integration** and search for **ENGIE Belgium**.
+4. Go to **Settings** > **Devices & services** > **Add integration** and search for **ENGIE Belgium**.
 
 If the search returns no results, add this repository as a custom repository
 first:
@@ -254,9 +254,9 @@ accounts created via the [user management page](https://www.engie.be/nl/energied
 have 2FA enabled by default. The integration only supports accounts
 where 2FA via SMS or email is enabled.
 
-If you haven't reached the credential form yet, use the **Add Integration**
+If you haven't reached the credential form yet, use the **Add integration**
 badge in [Installation](#hacs-recommended) or open
-**Settings** > **Devices & Services** > **Add Integration** and search for
+**Settings** > **Devices & services** > **Add integration** and search for
 **ENGIE Belgium**.
 
 1. Enter your credentials:
@@ -279,7 +279,7 @@ After setup, you can change the price update interval:
 
 [![Open your Home Assistant instance and show your ENGIE Belgium integration.](https://my.home-assistant.io/badges/integration.svg)](https://my.home-assistant.io/redirect/integration/?domain=engie_be)
 
-1. Click the badge above (or go to **Settings** > **Devices & Services** and find **ENGIE Belgium**).
+1. Click the badge above (or go to **Settings** > **Devices & services** and find **ENGIE Belgium**).
 2. Click **Configure** (the cog wheel icon).
 3. Set the **Update interval** (5-1440 minutes, default: 60 minutes).
 
@@ -294,7 +294,7 @@ your login can access. Pick one or more, and each becomes its own device
 with its own sensors and its own captar peaks history.
 
 To add another household later, open the ENGIE Belgium card in
-**Settings** > **Devices & Services** and click **Add business agreement**.
+**Settings** > **Devices & services** and click **Add business agreement**.
 To remove one, delete its subentry.
 
 > Each subentry is keyed on its business-agreement number (BAN), so the
@@ -315,27 +315,28 @@ fetch what's new.
 The easiest way is the included blueprint. It runs the import once a day
 so your dashboard stays up-to-date.
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FDaanVervacke%2Fhass-engie-be%2Fblob%2Fmain%2Fblueprints%2Fautomation%2FDaanVervacke%2Fengie_be_daily_history_sync.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FDaanVervacke%2Fhass-engie-be%2Fblob%2Ffeat%2Fimport-historical-energy-data%2Fblueprints%2Fautomation%2FDaanVervacke%2Fengie_be_daily_history_sync.yaml)
 
 Or manually:
 
 1. **Settings** > **Automations & scenes** > **Blueprints** > **Import blueprint**.
-2. Paste: `https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`
+2. Paste: `https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`
 3. **Preview** > **Import blueprint**.
 4. Under **Automations**, click **Create automation** on the imported blueprint.
 5. Pick your business agreement, a time to run, and save.
 
 If you have multiple households, repeat once per business agreement.
 
-### Import a specific date range
+### Run a one-off import
 
-To import a specific window (a single month, or a re-import after ENGIE
-corrects some data):
+Use this for a first-time backfill of your Energy Dashboard, a specific
+month, or a re-import after ENGIE corrects some data:
 
-1. Open **Settings** > **Developer Tools** > **Actions**.
+1. Open **Settings** > **Developer tools** > **Actions**.
 2. Pick **Import historical usage** under **ENGIE Belgium**.
 3. Select your business-agreement device as the target.
-4. Fill in a start and end date, or leave them empty to import everything.
+4. Leave both dates empty to import everything from your first business
+   agreement onwards, or fill in a specific window.
 5. Click **Perform action**.
 
 Running the same window again is safe, existing hours are overwritten.
@@ -344,11 +345,27 @@ Running the same window again is safe, existing hours are overwritten.
 
 Turn on **Include costs** to also import what each hour cost you in EUR.
 
+### Add to the Energy Dashboard
+
+After the first import finishes, open **Settings** > **Dashboards** >
+**Energy** and add the ENGIE statistics.
+
+**Electricity.** Under **Grid connections**, click **Add grid connection**. In the **Configure grid connection** dialog:
+
+- **Energy imported from grid**: `Historical electricity consumption - {your address}`
+- **Energy exported to grid**: `Historical electricity injection - {your address}`
+
+If you enabled **Include costs**, tick **Use an entity tracking the total costs** and pick `Historical electricity consumption cost - {your address}` in **Entity with the total costs**. For **Export compensation**, tick **Use an entity tracking the total compensation** and pick `Historical electricity injection compensation - {your address}`.
+
+**Gas.** Under **Gas consumption**, click **Add gas source**. In the **Configure gas consumption** dialog, pick `Historical gas consumption - {your address}`. Add the matching cost statistic the same way if you enabled **Include costs**.
+
+Save and give the dashboard a moment to refresh.
+
 ### Clear an import
 
 To wipe the imported data (e.g. before a full re-import), use
 **Clear historical usage statistics** (under **ENGIE Belgium**) from the same
-**Developer Tools** > **Actions** screen.
+**Developer tools** > **Actions** screen.
 
 ### Combining with a P1 meter
 
@@ -361,12 +378,12 @@ same for return-to-grid and gas consumption).
 
 ENGIE rotates refresh tokens regularly, and the upstream auth server can revoke
 a session at any time. The most common trigger is the same ENGIE account being
-used elsewhere (engie.be web, ENGIE Smart App). If you see the **"Repair"**
+used elsewhere (engie.be web, ENGIE Smart App). If you see the **Repairs**
 notification frequently, use a dedicated account (see [Prerequisites](#prerequisites)).
 
 To complete re-authentication:
 
-1. Open **Settings** > **Devices & Services** and click the **Reconfigure**
+1. Open **Settings** > **Devices & services** and click the **Reconfigure**
    prompt on the ENGIE Belgium card (or click the notification).
 2. Choose how you want to receive a verification code (SMS or email).
 3. Enter the 6-digit code that ENGIE sends you.
@@ -441,7 +458,7 @@ automation:
 
 ## Removing the integration
 
-1. Go to **Settings** > **Devices & Services**.
+1. Go to **Settings** > **Devices & services**.
 2. Find the **ENGIE Belgium** card and click the three-dot menu.
 3. Select **Delete**.
 
@@ -453,7 +470,7 @@ and never modifies anything upstream.
 If the integration is misbehaving, work through these steps before filing an
 issue:
 
-1. **Enable debug logging.** Open **Settings** > **Devices & Services**, click
+1. **Enable debug logging.** Open **Settings** > **Devices & services**, click
    the three-dot menu on the ENGIE Belgium entry, and select **Enable debug
    logging**. Reproduce the issue, then choose **Disable debug logging** from
    the same menu, and Home Assistant will offer to download the captured log.

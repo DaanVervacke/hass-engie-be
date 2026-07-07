@@ -155,7 +155,7 @@ _STREAM_SPECS: dict[str, _StreamSpec] = {
     ),
     STREAM_INJECTION_COST: _StreamSpec(
         item_path=("costs", "electricity", "injection", "amountSum"),
-        display_name="electricity injection cost",
+        display_name="electricity injection compensation",
         unit_of_measurement=_UNIT_EUR,
         unit_class=None,
     ),

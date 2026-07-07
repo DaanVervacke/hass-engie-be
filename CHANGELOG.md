@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b5] - 2026-07-07
+
+### Changed
+
+- **Injection cost stream renamed to "compensation"** in the Energy Dashboard picker. Statistic ID stays `engie_be:{BAN}_injection_cost` for backwards compatibility with earlier beta imports; only the display name changes. Matches HA's own **Export compensation** terminology.
+- **Blueprint URLs point at the feature branch** until this release lands on `main`. Import badge, manual paste URL, and blueprint `source_url` metadata all reference `feat/import-historical-energy-data`.
+
+### Docs
+
+- README "Add to the Energy Dashboard" section rewritten with the real HA UI labels: **Grid connections**, **Add grid connection**, **Configure grid connection**, **Energy imported from grid**, **Energy exported to grid**, **Use an entity tracking the total costs**, **Export compensation**, **Add gas source**, **Configure gas consumption**.
+- Retitled "Import a specific date range" to "Run a one-off import" and led with the first-time-backfill use case.
+- UI capitalization corrected across README, service strings, and blueprint: **Devices & services**, **Developer tools**, **Automations & scenes**, **Add integration**, **Repairs**.
+
 ## [0.12.0b4] - 2026-07-07
 
 ### Changed
@@ -953,6 +966,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b4...v0.12.0b5
 [0.12.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b3...v0.12.0b4
 [0.12.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b2...v0.12.0b3
 [0.12.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b1...v0.12.0b2
