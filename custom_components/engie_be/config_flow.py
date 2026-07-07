@@ -1133,6 +1133,16 @@ def _import_section_schema(  # noqa: PLR0913
     )
 
 
+# Hassfest rejects hardcoded URLs in strings.json descriptions and asks
+# integrations to inject them via description_placeholders instead. The
+# ``{readme_url}`` placeholder is referenced by every import step description
+# in strings.json and populated by the schema builders below.
+_README_URL = (
+    "https://github.com/DaanVervacke/hass-engie-be/blob/"
+    "feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard"
+)
+
+
 def _build_import_options_schema(
     accounts: list[dict[str, Any]],
 ) -> tuple[vol.Schema, dict[str, str]]:
@@ -1145,12 +1155,14 @@ def _build_import_options_schema(
     returned as step-level ``description_placeholders`` under the keys
     ``title_0``, ``title_1``, ... so the frontend substitutes the address
     into the section name (defined in strings.json as ``{title_0}``,
-    ``{title_1}``, etc.).
+    ``{title_1}``, etc.). The ``readme_url`` placeholder is also injected so
+    the step description's markdown link can point at the docs anchor without
+    hardcoding a URL in strings.json.
 
     Returns a ``(schema, placeholders)`` tuple.
     """
     schema_fields: dict[Any, Any] = {}
-    placeholders: dict[str, str] = {}
+    placeholders: dict[str, str] = {"readme_url": _README_URL}
     for i, account in enumerate(accounts):
         key = f"ban_{i}"
         title = subentry_title(account)
@@ -1179,7 +1191,7 @@ def _build_import_history_choice_schema(
     Returns a ``(schema, placeholders)`` tuple.
     """
     schema_fields: dict[Any, Any] = {}
-    placeholders: dict[str, str] = {}
+    placeholders: dict[str, str] = {"readme_url": _README_URL}
     for i, account in enumerate(accounts):
         key = f"ban_{i}"
         title = subentry_title(account)

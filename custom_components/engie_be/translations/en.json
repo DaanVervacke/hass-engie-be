@@ -64,7 +64,7 @@
             },
             "import_history_choice": {
                 "title": "Historical import",
-                "description": "Pick the households you want to import historical data for. Leave everything off to skip. The next screen lets you choose energy types, cost tracking, and an optional date window. Imports run in the background after setup. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README](https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard) for the exact steps).",
+                "description": "Pick the households you want to import historical data for. Leave everything off to skip. The next screen lets you choose energy types, cost tracking, and an optional date window. Imports run in the background after setup. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README]({readme_url}) for the exact steps).",
                 "sections": {
                     "ban_0": {
                         "name": "{title_0}",
@@ -140,7 +140,7 @@
             },
             "import_options": {
                 "title": "Historical import options",
-                "description": "Optionally import historical hourly usage data from ENGIE. Each section below is one of the business agreements you ticked on the previous screen. When setup completes the import runs in the background. Later restarts and reloads are skipped automatically once data is present. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README](https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard) for the exact steps). Use the 'Import historical usage' service action from Developer tools > Actions to run or re-run at any time.",
+                "description": "Optionally import historical hourly usage data from ENGIE. Each section below is one of the business agreements you ticked on the previous screen. When setup completes the import runs in the background. Later restarts and reloads are skipped automatically once data is present. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README]({readme_url}) for the exact steps). Use the 'Import historical usage' service action from Developer tools > Actions to run or re-run at any time.",
                 "sections": {
                     "ban_0": {
                         "name": "{title_0}",
@@ -338,7 +338,7 @@
                 },
                 "import_history_choice": {
                     "title": "Historical import",
-                    "description": "Pick the households you want to import historical data for. Leave everything off to skip. The next screen lets you choose energy types, cost tracking, and an optional date window. Imports run in the background after setup. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README](https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard) for the exact steps).",
+                    "description": "Pick the households you want to import historical data for. Leave everything off to skip. The next screen lets you choose energy types, cost tracking, and an optional date window. Imports run in the background after setup. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README]({readme_url}) for the exact steps).",
                     "sections": {
                         "ban_0": {
                             "name": "{title_0}",
@@ -414,7 +414,7 @@
                 },
                 "import_options": {
                     "title": "Historical import options",
-                    "description": "Optionally import historical hourly usage data from ENGIE for the business agreements you just selected. Imports run in the background after setup. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README](https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard) for the exact steps).",
+                    "description": "Optionally import historical hourly usage data from ENGIE for the business agreements you just selected. Imports run in the background after setup. You still need to add the resulting statistics to the Energy dashboard yourself (see the [README]({readme_url}) for the exact steps).",
                     "sections": {
                         "ban_0": {
                             "name": "{title_0}",

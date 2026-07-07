@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0b10] - 2026-07-07
+
+### Fixed
+
+- **CI** hassfest rejected inline URLs in the four setup-flow step descriptions. Moved the URL to a module-level constant and injected it via `description_placeholders` as `{readme_url}` so `strings.json` no longer hardcodes the link.
+
 ## [0.12.0b9] - 2026-07-07
 
 ### Fixed
@@ -994,6 +1000,7 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[0.12.0b10]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b9...v0.12.0b10
 [0.12.0b9]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b8...v0.12.0b9
 [0.12.0b8]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b7...v0.12.0b8
 [0.12.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b6...v0.12.0b7
