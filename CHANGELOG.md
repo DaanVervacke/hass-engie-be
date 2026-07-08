@@ -7,6 +7,29 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+> PR-number links will be substituted at release-tagging.
+
+### Added
+
+- Time-of-use (TOU) tariff schedules per electricity meter. Two enum sensors per EAN (current offtake slot, current injection slot) plus two binary sensors ("at optimal offtake slot", "at optimal injection slot") when the schedule has more than one slot code. Uses hour-boundary scheduling so state flips exactly on the slot transition, not on the next coordinator refresh. Gated on the `dgo-tou-is-active` feature flag: when off, the `/tou-schedules` endpoint is not called and no sensors are created (matches the solar-surplus feature-flag pattern). [#NN]
+- TOU weekly schedule as calendar events: accounts where `dgo-tou-is-active` is `true` now emit one CalendarEvent per EAN, per direction, per slot for the next 7 days on the existing per-account calendar entity. No new entity or API call required. [#NN]
+- Solar surplus sensors per electricity delivery point (five per EAN). The level sensor exposes today's aggregate `no_data` / `no_surplus` / `minimal_surplus` / `low_surplus` / `high_surplus` with the full 3-day hourly outlook in its `forecast` attribute. Four numeric kWh sensors report the current-hour, next-hour, today-total and today-peak expected surplus. Current and next-hour sensors are hour-boundary-scheduled so state rolls over exactly on the hour. Only created for accounts where ENGIE actually returns forecast data. [#NN]
+- Energy dashboard integration for solar production forecast via `async_get_solar_forecast`. The integration's forecast now appears automatically in the Energy dashboard's solar-production configuration, aggregated across every electricity delivery point in Wh. [#NN]
+- The `solar-surplus-shown-dashboard` feature flag is now probed before every per-EAN fan-out. Accounts where ENGIE has the flag off skip the forecasts endpoint entirely, saving one GET per electricity meter per refresh. Auth errors on the flag probe escalate to reauth. [#NN]
+- Device conditions for the automation editor. Every ENGIE Belgium device now exposes four first-class conditions in the automation editor: "Solar surplus is at level", "Current offtake slot is", "Current injection slot is", and "EPEX price is negative". Users can build automations without writing template YAML. [#NN]
+- Outstanding balance and overdue amount sensors per business agreement: outstanding balance owed to ENGIE (EUR), overdue amount (portion past its due date, EUR), and next invoice due date (timestamp). Fetched unconditionally on every coordinator refresh. Only created when the billing endpoint returns data. [#NN]
+
+### Changed
+
+- Solar surplus level sensor now exposes `forecast_creation_date` and
+  `inference_key` attributes, letting automations detect stale/placeholder
+  forecasts from ENGIE. [#NN]
+
+### Tests
+
+- API getter, coordinator, sensor and Energy-hook tests for the new solar-surplus feature (`test_api_solar_surplus.py`, `test_coordinator_solar_surplus.py`, `test_sensor_solar_surplus.py`, `test_energy.py`). [#NN]
+- Billing tests across four files: `test_api_billing.py`, `test_billing_helpers.py`, `test_coordinator_billing.py`, `test_sensor_billing.py`, and extended `test_diagnostics.py`. [#NN]
+
 ## [0.12.0] - 2026-07-08
 
 This release adds the option to import your **historical energy usage** from

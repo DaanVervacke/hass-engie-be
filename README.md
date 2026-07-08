@@ -33,6 +33,7 @@ as sensors, binary sensors, and calendar events.
 - Creates price sensors per energy type, direction (offtake / injection), and tariff rate
 - Tracks the monthly capacity-tariff (captar) peak window for each electricity meter
 - Surfaces ENGIE's Happy Hours free-energy promotions on each account, both as sensors and as calendar events
+- Exposes ENGIE's Solar Surplus forecasts (3-day hourly injection outlook) for households with solar panels
 - Supports multiple households (business agreements) under a single ENGIE login, including several active addresses under one customer account
 - Configurable update interval
 
@@ -206,6 +207,172 @@ The integration checks your enrolment status on every refresh (by default every
 events appear shortly after you enrol an address and disappear shortly
 after you opt out. You do not need to remove and re-add the integration
 when your enrolment changes.
+
+### Solar Surplus
+
+Solar Surplus is ENGIE's forecast of how much of your solar production will
+exceed your consumption for each hour of the next three days (today plus the
+two following days). ENGIE derives it from weather data, your solar-panel
+specifications, and your consumption pattern over the previous two weeks.
+The forecast is indicative and refreshes each morning.
+
+Five sensors are created per electricity meter (EAN) on accounts where
+ENGIE returns forecast data:
+
+| Sensor | Entity ID |
+|---|---|
+| Solar surplus forecast (today's level) | `sensor.engie_belgium_{EAN}_solar_surplus_forecast` |
+| Solar surplus current hour (kWh) | `sensor.engie_belgium_{EAN}_solar_surplus_current` |
+| Solar surplus next hour (kWh) | `sensor.engie_belgium_{EAN}_solar_surplus_next_hour` |
+| Solar surplus total today (kWh) | `sensor.engie_belgium_{EAN}_solar_surplus_today_total` |
+| Solar surplus peak today (kWh) | `sensor.engie_belgium_{EAN}_solar_surplus_today_peak` |
+
+The level sensor's state is the aggregate level for the current day and
+takes one of five values: `no_data`, `no_surplus`, `minimal_surplus`,
+`low_surplus`, `high_surplus`. Its `forecast` attribute is a flat list of
+`{start, value, level}` entries covering the full 3-day outlook.
+Two provenance attributes describe today's forecast: `forecast_creation_date`
+(ISO 8601 timestamp of when ENGIE computed it -- the sentinel
+`1970-01-01T01:00:00+01:00` marks a placeholder for accounts without solar
+data) and `inference_key` (`actuals` for real forecasts, `no_data` for the
+placeholder).
+
+The four numeric sensors report the expected surplus in kWh: the current
+and next-hour sensors follow the hour boundary directly (state updates
+the moment the slot rolls over, not on the next coordinator refresh),
+the total-today sensor sums every hourly slot for today, and the
+peak-today sensor exposes the highest hourly value plus a `peak_start`
+attribute with its timestamp.
+
+The integration also implements Home Assistant's `async_get_solar_forecast`
+hook. Once configured, your ENGIE forecast appears as a "Solar production
+forecast" source on **Settings** > **Dashboards** > **Energy** > your
+solar-production configuration, without any extra wiring. Values are
+aggregated across every electricity delivery point on the account and
+converted to Wh, per the Energy dashboard contract.
+
+Prerequisites (per ENGIE, see
+[engie.be/nl/solar-surplus](https://www.engie.be/nl/solar-surplus)):
+
+- Solar panels with injection
+- A digital meter that shares data with ENGIE
+- An active ENGIE Smart App
+- An Easy, Direct, Empower, or Flow electricity contract (Basic and
+  vacancy contracts do not qualify)
+
+Older meters with `terugdraaiende teller` (net metering) work too, though
+ENGIE notes the financial benefit is reduced.
+
+The sensors are created automatically for accounts where ENGIE returns a
+non-empty forecast and disappear when it stops (for example after moving
+to a contract that does not qualify). No manual opt-in is required.
+
+Typical use cases the ENGIE blog calls out: shift washing machines,
+dryers, dishwashers, electric boilers, and EV charging to hours with
+`high_surplus`. Delayed-start programs, programmable outlets, and Smart
+Charge can all key off these sensors in a Home Assistant automation.
+
+### Time-of-Use tariff schedules
+
+Fluvius is rolling out time-of-use (TOU) billing for Belgian digital-meter
+customers. The DGO/network distribution charges are already TOU-based for
+most accounts, even when the supplier contract is flat-rate. ENGIE exposes a
+per-EAN schedule endpoint that returns the full weekly PEAK/OFFPEAK layout for
+both the supplier's product and the Fluvius network tariff, in both
+directions (offtake and injection).
+
+Two enum sensors and two binary sensors are created per electricity meter
+(EAN) whenever the endpoint returns schedule data:
+
+| Entity | Entity ID |
+|---|---|
+| Current offtake slot | `sensor.engie_belgium_{BAN}_{EAN}_offtake_slot` |
+| Current injection slot | `sensor.engie_belgium_{BAN}_{EAN}_injection_slot` |
+| Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` |
+| Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` |
+
+The slot sensors are ENUM sensors whose state is one of `peak`, `offpeak`,
+`superoffpeak`, `exclusive_night`, or `day`. The state flips exactly at the
+slot boundary (boundary-scheduled, not on the next coordinator refresh).
+
+Each slot sensor exposes these attributes:
+
+| Attribute | Description |
+|---|---|
+| `optimal_slot` | The schedule's declared optimal slot code (e.g. `offpeak`) |
+| `next_transition` | ISO-8601 timestamp of the next slot boundary in Brussels local time |
+| `weekday_slots` | Full weekly schedule as a dict of day-name to slot list |
+| `dgo_tgo_slot` | Current slot code from the Fluvius DGO/TGO schedule |
+
+The binary "is optimal" sensors turn `on` when the current slot matches the
+schedule's `optimalTimeslotCode`. For a typical offtake schedule, this means
+`on` during OFFPEAK hours (lower network cost); for injection it means `on`
+during PEAK hours (best sell price).
+
+The "is optimal" binary sensors are created when the schedule is non-trivial
+(has more than one distinct slot code across the week) or when the
+`dgo-tou-is-active` feature flag is `true` (supplier contract is TOU-billed).
+Flat all-OFFPEAK schedules on non-TOU accounts do not get these sensors
+because the answer would always be `on`.
+
+The endpoint responds regardless of the `dgo-tou-is-active` flag state
+because the DGO/network schedule applies to all digital-meter customers.
+
+When the `dgo-tou-is-active` flag is `true` (supplier contract is TOU-billed),
+the per-account calendar entity also emits one event per slot per direction for
+the next 7 days, so you can see the full week's PEAK/OFFPEAK schedule in any
+Home Assistant calendar card without opening the Smart App.
+
+Example automation: run the dishwasher when it is optimal to consume:
+
+```yaml
+automation:
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.engie_belgium_000000000000_541448820070000000_tou_offtake_is_optimal
+      to: "on"
+  action:
+    - service: switch.turn_on
+      target:
+        entity_id: switch.dishwasher
+```
+
+### Billing
+
+Three entities per business agreement reflect the current billing state
+as returned by the ENGIE billing API. They are created automatically on
+every coordinator refresh when the billing endpoint returns data.
+
+| Entity | Entity ID | Description |
+|---|---|---|
+| Outstanding balance | `sensor.engie_belgium_{BAN}_outstanding_balance` | Total open (unpaid) amount owed to ENGIE in EUR |
+| Overdue amount | `sensor.engie_belgium_{BAN}_overdue_amount` | Portion of the outstanding balance past its due date in EUR |
+| Next invoice due | `sensor.engie_belgium_{BAN}_next_invoice_due` | Timestamp of the earliest open invoice due date |
+
+The outstanding-balance sensor reports the full amount owed to ENGIE (all
+invoices not yet paid, regardless of due date). The overdue-amount sensor
+reports only the portion that ENGIE marks as past its due date. Both are
+in EUR with two decimal places.
+
+The next-invoice-due sensor is a timestamp at midnight Brussels-local time
+on the earliest open invoice due date. It returns `unknown` when the
+balance is zero (no open transactions).
+
+## Automation from the UI
+
+Every ENGIE Belgium device exposes automation conditions directly to
+Home Assistant's automation editor. In **Settings - Automations and Scenes**,
+under a new automation's "Conditions" step, pick your ENGIE device and
+choose from:
+
+- Solar surplus is at level (no_data / no_surplus / minimal_surplus / low_surplus / high_surplus)
+- Current offtake slot is (peak / offpeak / superoffpeak / ...)
+- Current injection slot is
+- EPEX price is negative
+
+No template YAML required. The dropdown options track `SOLAR_SURPLUS_LEVELS`
+and `TOU_SLOT_CODES` in `const.py` automatically, so new codes added by
+ENGIE appear in the editor without any code change.
 
 ### Authentication
 
