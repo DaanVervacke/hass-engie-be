@@ -32,3 +32,7 @@ config-bak*/
 config-pre-*/
 .swap-source/
 .v071-source/
+
+
+# implementation plans (developer-only, not for the repo)
+plans/
