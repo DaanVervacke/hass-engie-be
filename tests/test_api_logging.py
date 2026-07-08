@@ -25,20 +25,22 @@ from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 import pytest
 
-from custom_components.engie_be.api import (
+from custom_components.engie_be._api_logging import (
     _HTML_PREVIEW_MAX,
     _PARTIAL_MASK_BODY_KEYS,
     _REDACT_BODY_KEYS,
     _REDACT_HEADER_KEYS,
     _REDACTED,
-    EngieBeApiClient,
-    EngieBeApiClientAuthenticationError,
-    EngieBeApiClientCommunicationError,
-    EpexNotPublishedError,
     _redact_body,
     _redact_mapping,
     _redact_text,
     _redact_url,
+)
+from custom_components.engie_be.api import (
+    EngieBeApiClient,
+    EngieBeApiClientAuthenticationError,
+    EngieBeApiClientCommunicationError,
+    EpexNotPublishedError,
 )
 
 _LOGGER_NAME = "custom_components.engie_be"
