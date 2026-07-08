@@ -21,7 +21,7 @@ from homeassistant.const import (
 from homeassistant.util import dt as dt_util
 
 from ._billing import next_due_date, overview_due_amount, overview_open_amount
-from ._epex import next_epex_slot_boundary
+from ._epex import epex_payload, next_epex_slot_boundary
 from ._happy_hour import happy_hour_window
 from ._peaks import peaks_meta, peaks_payload
 from ._tou import current_slot as tou_current_slot
@@ -36,7 +36,6 @@ from .const import (
     TOU_SLOT_CODES,
     TOU_WEEKDAY_KEYS,
 )
-from .data import EpexPayload
 from .entity import EngieBeEntity, EngieBeEpexEntity, _BoundaryScheduleMixin
 
 # Coordinator centralises updates; entities never poll individually.
@@ -48,7 +47,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
     from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
-    from .data import EngieBeConfigEntry
+    from .data import EngieBeConfigEntry, EpexPayload
 
 
 # Mapping from service-point division to display name.
@@ -256,7 +255,7 @@ async def async_setup_entry(
         # from the feature-flags endpoint during the coordinator's
         # first refresh; the parent entry is reloaded automatically
         # when enrolment flips so entities track the service status.
-        if sub_data.is_happy_hour_enrolled:
+        if sub_data.feature_flags.happy_hour_enrolled:
             happy_hour_sensors = _build_happy_hour_sensors(coordinator, subentry)
             LOGGER.debug(
                 "Subentry %s (BAN %s): enrolled in Happy Hours, "
@@ -279,7 +278,7 @@ async def async_setup_entry(
         if coordinator.is_dynamic:
             entities.extend(_build_epex_sensors(epex_coordinator, subentry))
 
-        if sub_data.has_solar:
+        if sub_data.feature_flags.solar:
             entities.extend(
                 _build_solar_surplus_sensors(
                     coordinator,
@@ -293,7 +292,7 @@ async def async_setup_entry(
         # ``/tou-schedules`` fetch entirely when the flag is off, so
         # ``coordinator.data["tou_schedules"]`` stays absent; without the
         # gate, sensor properties would report ``None`` on every read.
-        if sub_data.is_tou_active:
+        if sub_data.feature_flags.tou_active:
             entities.extend(
                 _build_tou_sensors(
                     coordinator,
@@ -906,12 +905,6 @@ def _build_epex_sensors(
     ]
 
 
-def _epex_payload(coordinator: EngieBeEpexCoordinator) -> EpexPayload | None:
-    """Return the cached EPEX payload, or ``None`` if not yet fetched."""
-    payload = coordinator.data
-    return payload if isinstance(payload, EpexPayload) else None
-
-
 def _slots_for_date(payload: EpexPayload, target: date) -> list[Any]:
     """Return slots whose Brussels-local start date matches ``target``."""
     return [slot for slot in payload.slots if slot.start.date() == target]
@@ -958,7 +951,7 @@ class _EngieBeEpexSensorBase(_BoundaryScheduleMixin, EngieBeEpexEntity, SensorEn
     @property
     def available(self) -> bool:
         """Available only when a parsed payload exists for the entry."""
-        return super().available and _epex_payload(self.coordinator) is not None
+        return super().available and epex_payload(self.coordinator) is not None
 
     def _next_boundary(self) -> datetime | None:
         """
@@ -969,7 +962,7 @@ class _EngieBeEpexSensorBase(_BoundaryScheduleMixin, EngieBeEpexEntity, SensorEn
         next-hour slot shifts, so a single callback at the next slot
         boundary covers both dependent values.
         """
-        payload = _epex_payload(self.coordinator)
+        payload = epex_payload(self.coordinator)
         if payload is None:
             return None
         return next_epex_slot_boundary(payload, dt_util.utcnow())
@@ -981,7 +974,7 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
     @property
     def native_value(self) -> float | None:
         """Return the EUR/kWh price of the slot covering the current instant."""
-        payload = _epex_payload(self.coordinator)
+        payload = epex_payload(self.coordinator)
         if payload is None:
             return None
         now = dt_util.utcnow()
@@ -1001,7 +994,7 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
         Raw EUR/MWh is included alongside EUR/kWh for users who prefer
         wholesale-market units.
         """
-        payload = _epex_payload(self.coordinator)
+        payload = epex_payload(self.coordinator)
         if payload is None:
             return {}
 
@@ -1036,7 +1029,7 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
     @property
     def native_value(self) -> float | None:
         """Return the EUR/kWh price of the slot covering ``now + 1h``."""
-        payload = _epex_payload(self.coordinator)
+        payload = epex_payload(self.coordinator)
         if payload is None:
             return None
         target = dt_util.utcnow() + timedelta(hours=1)
@@ -1055,7 +1048,7 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
         slot, not a today/tomorrow slate browser, so the per-day arrays
         and market metadata are omitted to keep the entity focused.
         """
-        payload = _epex_payload(self.coordinator)
+        payload = epex_payload(self.coordinator)
         if payload is None:
             return {}
         target = dt_util.utcnow() + timedelta(hours=1)
@@ -1092,7 +1085,7 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
         self._mode = mode
 
     def _selected_slot(self) -> Any | None:
-        payload = _epex_payload(self.coordinator)
+        payload = epex_payload(self.coordinator)
         if payload is None:
             return None
         today = dt_util.now(_BRUSSELS_TZ).date()

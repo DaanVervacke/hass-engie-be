@@ -97,7 +97,7 @@ async def test_no_data_response_marks_has_solar_false(
     assert "solar_surplus" in result
     assert _EAN in result["solar_surplus"]["data"]
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.has_solar is False
+    assert sub_data.feature_flags.solar is False
     client.async_get_solar_surplus_forecasts.assert_awaited_once_with(
         "B-0001",
         f"{_EAN}_ID1",
@@ -120,7 +120,7 @@ async def test_non_no_data_response_marks_has_solar_true(
     await coord._async_update_data()
 
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.has_solar is True
+    assert sub_data.feature_flags.solar is True
 
 
 async def test_no_electricity_ean_skips_fetch(
@@ -140,7 +140,7 @@ async def test_no_electricity_ean_skips_fetch(
 
     client.async_get_solar_surplus_forecasts.assert_not_awaited()
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.has_solar is None
+    assert sub_data.feature_flags.solar is None
 
 
 async def test_transient_error_keeps_previous_wrapper(
@@ -166,7 +166,7 @@ async def test_transient_error_keeps_previous_wrapper(
 
     assert result["solar_surplus"] is previous_wrapper
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.has_solar is True
+    assert sub_data.feature_flags.solar is True
 
 
 async def test_auth_error_escalates(
@@ -209,7 +209,7 @@ async def test_flag_off_skips_fetch_and_marks_no_solar(
     assert "solar_surplus" not in result
     client.async_get_solar_surplus_forecasts.assert_not_awaited()
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.has_solar is False
+    assert sub_data.feature_flags.solar is False
 
 
 async def test_flag_probe_error_soft_fails_to_enabled(
@@ -233,7 +233,7 @@ async def test_flag_probe_error_soft_fails_to_enabled(
     assert "solar_surplus" in result
     client.async_get_solar_surplus_forecasts.assert_awaited_once()
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.has_solar is True
+    assert sub_data.feature_flags.solar is True
 
 
 async def test_flag_auth_error_escalates(
@@ -293,7 +293,7 @@ async def test_first_has_solar_observation_seeds_cache_without_reload(
     await coord._async_update_data()
 
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.has_solar is True
+    assert sub_data.feature_flags.solar is True
     assert entry.runtime_data.reload_pending is False
     reload_mock.assert_not_awaited()
 
@@ -313,7 +313,7 @@ async def test_has_solar_true_to_false_flip_schedules_reload(
     wire_engie_runtime(entry, client, subentry, coord)
 
     # Seed: cache says the customer HAS solar; new refresh returns all NO_DATA.
-    entry.runtime_data.subentry_data[subentry.subentry_id].has_solar = True
+    entry.runtime_data.subentry_data[subentry.subentry_id].feature_flags.solar = True
 
     reload_mock = AsyncMock()
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_mock)
@@ -322,7 +322,7 @@ async def test_has_solar_true_to_false_flip_schedules_reload(
     await hass.async_block_till_done()
 
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.has_solar is False
+    assert sub_data.feature_flags.solar is False
     assert entry.runtime_data.reload_pending is True
     reload_mock.assert_awaited_once_with(entry.entry_id)
 
@@ -342,7 +342,7 @@ async def test_has_solar_no_flip_does_not_schedule_reload(
     wire_engie_runtime(entry, client, subentry, coord)
 
     # Seed: cache says True; new refresh also returns True (has data).
-    entry.runtime_data.subentry_data[subentry.subentry_id].has_solar = True
+    entry.runtime_data.subentry_data[subentry.subentry_id].feature_flags.solar = True
 
     reload_mock = AsyncMock()
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_mock)
@@ -350,7 +350,7 @@ async def test_has_solar_no_flip_does_not_schedule_reload(
     await coord._async_update_data()
 
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.has_solar is True
+    assert sub_data.feature_flags.solar is True
     assert entry.runtime_data.reload_pending is False
     reload_mock.assert_not_awaited()
 
@@ -381,8 +381,8 @@ async def test_simultaneous_happy_hour_and_solar_flips_debounce_to_one_reload(
 
     # Seed BOTH caches at the pre-flip state so this refresh causes two flips.
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    sub_data.is_happy_hour_enrolled = False  # will flip to True
-    sub_data.has_solar = False  # will flip to True
+    sub_data.feature_flags.happy_hour_enrolled = False  # will flip to True
+    sub_data.feature_flags.solar = False  # will flip to True
 
     reload_mock = AsyncMock()
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_mock)
@@ -391,8 +391,8 @@ async def test_simultaneous_happy_hour_and_solar_flips_debounce_to_one_reload(
     await hass.async_block_till_done()
 
     # Both flags flipped in the runtime cache.
-    assert sub_data.is_happy_hour_enrolled is True
-    assert sub_data.has_solar is True
+    assert sub_data.feature_flags.happy_hour_enrolled is True
+    assert sub_data.feature_flags.solar is True
     # But only ONE reload was scheduled.
     assert entry.runtime_data.reload_pending is True
     reload_mock.assert_awaited_once_with(entry.entry_id)
@@ -418,7 +418,7 @@ async def test_reload_pending_blocks_second_flip_from_re_scheduling(
     wire_engie_runtime(entry, client, subentry, coord)
 
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    sub_data.has_solar = False  # will flip to True
+    sub_data.feature_flags.solar = False  # will flip to True
     entry.runtime_data.reload_pending = True  # simulate earlier reload queued
 
     reload_mock = AsyncMock()
@@ -428,6 +428,6 @@ async def test_reload_pending_blocks_second_flip_from_re_scheduling(
     await hass.async_block_till_done()
 
     # Cache still updates.
-    assert sub_data.has_solar is True
+    assert sub_data.feature_flags.solar is True
     # But no new reload was scheduled -- the debounce holds.
     reload_mock.assert_not_awaited()

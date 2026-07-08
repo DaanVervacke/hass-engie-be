@@ -54,6 +54,16 @@ if TYPE_CHECKING:
 # pulls DST data from the host -- this matches HA core practice.
 _BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
 
+# Per-flag metadata for the two thin coordinator helpers.
+# Maps the leaf field name on FeatureFlagState to (log_prefix, task_name_suffix).
+# Strings must stay verbatim to keep log lines byte-identical with the
+# six methods they replace.
+_FEATURE_FLAG_METADATA: dict[str, tuple[str, str]] = {
+    "happy_hour_enrolled": ("Happy Hours enrolment", "happy_hour_enrolment_change"),
+    "solar": ("solar-surplus availability", "solar_surplus_change"),
+    "tou_active": ("TOU-active state", "tou_change"),
+}
+
 
 class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """
@@ -288,7 +298,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(existing_solar, dict):
                 previous_solar_wrapper = existing_solar
 
-        previous_has_solar = self._read_cached_has_solar()
+        previous_has_solar = self._read_cached_flag("solar")
         solar_shown = await self._async_fetch_solar_flag(
             client,
             business_agreement_number,
@@ -311,10 +321,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # unavailable until the next reload.
             new_has_solar = False
 
-        self._async_apply_has_solar(
-            previous_has_solar=previous_has_solar,
-            new_has_solar=new_has_solar,
-        )
+        self._async_apply_flag("solar", previous=previous_has_solar, new=new_has_solar)
 
         # Fetch TOU schedules. The flag gates the supplier-side TOU
         # meaning but the endpoint returns data regardless (the network
@@ -326,7 +333,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(existing_tou, dict):
                 previous_tou_wrapper = existing_tou
 
-        previous_is_tou_active = self._read_cached_is_tou_active()
+        previous_is_tou_active = self._read_cached_flag("tou_active")
         tou_active = await self._async_fetch_tou_flag(
             client,
             business_agreement_number,
@@ -342,9 +349,8 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Flag off → drop any stale wrapper so entities from a prior
         # enabled run report unavailable until the next reload. Mirrors
         # the solar-surplus behaviour when its own flag is off.
-        self._async_apply_is_tou_active(
-            previous_is_tou_active=previous_is_tou_active,
-            new_is_tou_active=tou_active,
+        self._async_apply_flag(
+            "tou_active", previous=previous_is_tou_active, new=tou_active
         )
 
         # Fetch account-balance / billing data. The endpoint is per-BAN
@@ -370,13 +376,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _read_cached_enrollment(self) -> bool | None:
         """Return the previously-observed Happy Hours enrolment, or ``None``."""
-        runtime = getattr(self.config_entry, "runtime_data", None)
-        if runtime is None:
-            return None
-        subentry_data = runtime.subentry_data.get(self.subentry.subentry_id)
-        if subentry_data is None:
-            return None
-        return subentry_data.is_happy_hour_enrolled
+        return self._read_cached_flag("happy_hour_enrolled")
 
     async def _async_fetch_enrollment(
         self,
@@ -431,12 +431,10 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         new_enrolled: bool,
     ) -> None:
         """Persist the new enrolment value and schedule a reload on a flip."""
-        self._async_apply_flag_state(
-            field_name="is_happy_hour_enrolled",
+        self._async_apply_flag(
+            "happy_hour_enrolled",
             previous=previous_enrolled,
             new=new_enrolled,
-            log_prefix="Happy Hours enrolment",
-            task_name_suffix="happy_hour_enrolment_change",
         )
 
     async def _async_probe_boolean_flag(
@@ -530,16 +528,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mask_identifier(ean),
         )
         self._solar_surplus_unavailable.discard(ean)
-
-    def _read_cached_has_solar(self) -> bool | None:
-        """Return the previously-observed has_solar state, or ``None``."""
-        runtime = getattr(self.config_entry, "runtime_data", None)
-        if runtime is None:
-            return None
-        subentry_data = runtime.subentry_data.get(self.subentry.subentry_id)
-        if subentry_data is None:
-            return None
-        return subentry_data.has_solar
 
     async def _async_fetch_solar_surplus(
         self,
@@ -642,7 +630,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return {"data": per_ean, "fetched_at": dt_util.utcnow().isoformat()}
 
     @callback
-    def _async_apply_flag_state(
+    def _async_apply_flag_state(  # noqa: PLR0913
         self,
         *,
         field_name: str,
@@ -650,6 +638,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         new: bool,
         log_prefix: str,
         task_name_suffix: str,
+        target: object | None = None,
     ) -> None:
         """
         Persist a boolean flag state and schedule a reload on a flip.
@@ -657,7 +646,9 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Shared implementation of the first-observation, no-change, and
         flip branches used by Happy Hours enrolment, solar-surplus
         availability, and TOU activation. ``field_name`` is the
-        attribute on ``EngieBeSubentryData`` to mutate.
+        attribute to mutate. When ``target`` is provided the attribute is
+        written on that object instead of ``EngieBeSubentryData``
+        directly (used by the nested ``feature_flags`` bundle).
 
         The ``reload_pending`` check MUST fire before the flag is set to
         ``True`` so two simultaneous flips in the same refresh tick do
@@ -670,7 +661,8 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if subentry_data is None:
             return
 
-        setattr(subentry_data, field_name, new)
+        write_target = target if target is not None else subentry_data
+        setattr(write_target, field_name, new)
 
         if previous is None:
             LOGGER.debug(
@@ -700,33 +692,43 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=f"engie_be_reload_on_{task_name_suffix}_{self.config_entry.entry_id}",
         )
 
-    @callback
-    def _async_apply_has_solar(
-        self,
-        *,
-        previous_has_solar: bool | None,
-        new_has_solar: bool | None,
-    ) -> None:
-        """Persist the has_solar signal and schedule a reload on a flip."""
-        if new_has_solar is None:
-            return
-        self._async_apply_flag_state(
-            field_name="has_solar",
-            previous=previous_has_solar,
-            new=new_has_solar,
-            log_prefix="solar-surplus availability",
-            task_name_suffix="solar_surplus_change",
-        )
-
-    def _read_cached_is_tou_active(self) -> bool | None:
-        """Return the previously-observed is_tou_active state, or ``None``."""
+    def _subentry_data(self) -> object | None:
+        """Return the runtime subentry data for this subentry, or ``None``."""
         runtime = getattr(self.config_entry, "runtime_data", None)
         if runtime is None:
             return None
-        subentry_data = runtime.subentry_data.get(self.subentry.subentry_id)
+        return runtime.subentry_data.get(self.subentry.subentry_id)
+
+    def _read_cached_flag(self, name: str) -> bool | None:
+        """Return the previously-observed value for ``name``, or ``None``."""
+        subentry_data = self._subentry_data()
         if subentry_data is None:
             return None
-        return subentry_data.is_tou_active
+        return getattr(subentry_data.feature_flags, name)
+
+    @callback
+    def _async_apply_flag(
+        self,
+        name: str,
+        *,
+        previous: bool | None,
+        new: bool | None,
+    ) -> None:
+        """Persist ``name`` on ``feature_flags`` and schedule a reload on a flip."""
+        if new is None:
+            return
+        subentry_data = self._subentry_data()
+        if subentry_data is None:
+            return
+        log_prefix, task_suffix = _FEATURE_FLAG_METADATA[name]
+        self._async_apply_flag_state(
+            field_name=name,
+            previous=previous,
+            new=new,
+            log_prefix=log_prefix,
+            task_name_suffix=task_suffix,
+            target=subentry_data.feature_flags,
+        )
 
     async def _async_fetch_tou_flag(
         self,
@@ -855,24 +857,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ban_masked,
         )
         self._billing_unavailable = False
-
-    @callback
-    def _async_apply_is_tou_active(
-        self,
-        *,
-        previous_is_tou_active: bool | None,
-        new_is_tou_active: bool | None,
-    ) -> None:
-        """Persist the is_tou_active signal and schedule a reload on a flip."""
-        if new_is_tou_active is None:
-            return
-        self._async_apply_flag_state(
-            field_name="is_tou_active",
-            previous=previous_is_tou_active,
-            new=new_is_tou_active,
-            log_prefix="TOU-active state",
-            task_name_suffix="tou_change",
-        )
 
     async def _async_fetch_happy_hour(
         self,

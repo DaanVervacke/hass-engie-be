@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from .coordinator import EngieBeEpexCoordinator
     from .data import EpexPayload
 
 
@@ -49,3 +50,11 @@ def next_epex_slot_boundary(
     if not candidates:
         return None
     return min(candidates)
+
+
+def epex_payload(coordinator: EngieBeEpexCoordinator) -> EpexPayload | None:
+    """Return the cached EPEX payload, or ``None`` if not yet fetched."""
+    from .data import EpexPayload  # noqa: PLC0415 - runtime isinstance check
+
+    payload = coordinator.data
+    return payload if isinstance(payload, EpexPayload) else None

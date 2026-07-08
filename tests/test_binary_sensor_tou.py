@@ -19,7 +19,11 @@ from custom_components.engie_be.const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
-from custom_components.engie_be.data import EngieBeData, EngieBeSubentryData
+from custom_components.engie_be.data import (
+    EngieBeData,
+    EngieBeSubentryData,
+    FeatureFlagState,
+)
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _TOU_BIHORAIRE = _FIXTURES / "tou_schedules_bihoraire.json"
@@ -67,7 +71,7 @@ def _make_coordinator(
         service_points=(
             service_points if service_points is not None else {_EAN: "ELECTRICITY"}
         ),
-        is_tou_active=is_tou_active,
+        feature_flags=FeatureFlagState(tou_active=is_tou_active),
     )
     runtime = EngieBeData(
         client=MagicMock(),

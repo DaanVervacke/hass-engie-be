@@ -116,7 +116,8 @@ def _wire_runtime(
     """
     Attach an ``EngieBeData`` runtime with one ``EngieBeSubentryData`` per coordinator.
 
-    The enrolment cache lives on ``EngieBeSubentryData.is_happy_hour_enrolled``,
+    The enrolment cache lives on
+    ``EngieBeSubentryData.feature_flags.happy_hour_enrolled``,
     so the runtime must hold a real dataclass instance per subentry (not a
     bare ``MagicMock``) for the read/write paths in
     ``_read_cached_enrollment`` and ``_async_apply_enrollment`` to behave
@@ -188,7 +189,9 @@ async def test_un_enrolled_ban_skips_happy_hour_event_fetch(
     assert "happy_hour" not in result
     client.async_get_happy_hour_event.assert_not_awaited()
     assert (
-        entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled
+        entry.runtime_data.subentry_data[
+            subentry.subentry_id
+        ].feature_flags.happy_hour_enrolled
         is False
     )
 
@@ -211,7 +214,9 @@ async def test_enrolled_ban_polls_happy_hour_event(hass: HomeAssistant) -> None:
     }
     client.async_get_happy_hour_event.assert_awaited_once_with("B-0001")
     assert (
-        entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled
+        entry.runtime_data.subentry_data[
+            subentry.subentry_id
+        ].feature_flags.happy_hour_enrolled
         is True
     )
 
@@ -233,7 +238,9 @@ async def test_first_refresh_sets_cache_without_scheduling_reload(
 
     # Pre-state: no cached enrolment.
     assert (
-        entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled
+        entry.runtime_data.subentry_data[
+            subentry.subentry_id
+        ].feature_flags.happy_hour_enrolled
         is None
     )
     assert entry.runtime_data.reload_pending is False
@@ -241,7 +248,9 @@ async def test_first_refresh_sets_cache_without_scheduling_reload(
     await coord._async_update_data()
 
     assert (
-        entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled
+        entry.runtime_data.subentry_data[
+            subentry.subentry_id
+        ].feature_flags.happy_hour_enrolled
         is True
     )
     # First observation must NOT mark a reload as pending.
@@ -265,7 +274,8 @@ async def test_enrolment_flip_schedules_reload(
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
     # Seed the cache with a previous "enrolled" observation.
-    entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled = True
+    ff = entry.runtime_data.subentry_data[subentry.subentry_id].feature_flags
+    ff.happy_hour_enrolled = True
 
     reload_mock = AsyncMock()
     monkeypatch.setattr(
@@ -277,10 +287,7 @@ async def test_enrolment_flip_schedules_reload(
     await coord._async_update_data()
 
     assert entry.runtime_data.reload_pending is True
-    assert (
-        entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled
-        is False
-    )
+    assert ff.happy_hour_enrolled is False
     # The reload is dispatched via ``hass.async_create_task``; await pending
     # tasks so the AsyncMock observes the call.
     await hass.async_block_till_done()
@@ -310,8 +317,10 @@ async def test_multi_subentry_flip_debounces_to_single_reload(
     )
 
     # Seed both with the opposite-of-now state to force a flip on both.
-    entry.runtime_data.subentry_data[sub_a.subentry_id].is_happy_hour_enrolled = False
-    entry.runtime_data.subentry_data[sub_b.subentry_id].is_happy_hour_enrolled = False
+    ff_a = entry.runtime_data.subentry_data[sub_a.subentry_id].feature_flags
+    ff_b = entry.runtime_data.subentry_data[sub_b.subentry_id].feature_flags
+    ff_a.happy_hour_enrolled = False
+    ff_b.happy_hour_enrolled = False
 
     reload_mock = AsyncMock()
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_mock)
@@ -336,7 +345,8 @@ async def test_no_flip_does_not_schedule_reload(
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
     # Seed with the SAME state we are about to observe.
-    entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled = True
+    ff = entry.runtime_data.subentry_data[subentry.subentry_id].feature_flags
+    ff.happy_hour_enrolled = True
 
     reload_mock = AsyncMock()
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_mock)
@@ -364,14 +374,12 @@ async def test_feature_flags_generic_error_soft_fails_to_cached(
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
     # Pre-seed an enrolled state; transient error must preserve it.
-    entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled = True
+    ff = entry.runtime_data.subentry_data[subentry.subentry_id].feature_flags
+    ff.happy_hour_enrolled = True
 
     await coord._async_update_data()
 
-    assert (
-        entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled
-        is True
-    )
+    assert ff.happy_hour_enrolled is True
     # Happy Hours endpoint MUST still be polled because the cached value
     # remains True.
     client.async_get_happy_hour_event.assert_awaited_once()
@@ -390,7 +398,9 @@ async def test_feature_flags_generic_error_with_no_cache_defaults_false(
     await coord._async_update_data()
 
     assert (
-        entry.runtime_data.subentry_data[subentry.subentry_id].is_happy_hour_enrolled
+        entry.runtime_data.subentry_data[
+            subentry.subentry_id
+        ].feature_flags.happy_hour_enrolled
         is False
     )
     client.async_get_happy_hour_event.assert_not_awaited()

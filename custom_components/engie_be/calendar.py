@@ -80,8 +80,10 @@ async def async_setup_entry(
                 EngieBeCalendar(
                     sub_data.coordinator,
                     subentry,
-                    happy_hour_enrolled=bool(sub_data.is_happy_hour_enrolled),
-                    tou_active=bool(sub_data.is_tou_active),
+                    happy_hour_enrolled=bool(
+                        sub_data.feature_flags.happy_hour_enrolled
+                    ),
+                    tou_active=bool(sub_data.feature_flags.tou_active),
                 )
             ],
             config_subentry_id=subentry.subentry_id,

@@ -90,7 +90,7 @@ async def test_tou_flag_off_skips_fetch_and_marks_inactive(
     assert "tou_schedules" not in result
     client.async_get_tou_schedules.assert_not_awaited()
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.is_tou_active is False
+    assert sub_data.feature_flags.tou_active is False
 
 
 async def test_tou_flag_on_stores_wrapper_marks_active(
@@ -113,7 +113,7 @@ async def test_tou_flag_on_stores_wrapper_marks_active(
 
     assert "tou_schedules" in result
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.is_tou_active is True
+    assert sub_data.feature_flags.tou_active is True
 
 
 async def test_transient_endpoint_error_preserves_previous_wrapper(
@@ -208,7 +208,7 @@ async def test_flag_probe_error_soft_fails_to_enabled(
     await coord._async_update_data()
 
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.is_tou_active is True
+    assert sub_data.feature_flags.tou_active is True
     client.async_get_tou_schedules.assert_awaited_once()
 
 
@@ -230,7 +230,8 @@ async def test_flag_flip_true_to_false_schedules_reload(
     wire_engie_runtime(entry, client, subentry, coord)
 
     # Seed: TOU was active; this refresh returns False.
-    entry.runtime_data.subentry_data[subentry.subentry_id].is_tou_active = True
+    ff = entry.runtime_data.subentry_data[subentry.subentry_id].feature_flags
+    ff.tou_active = True
 
     reload_mock = AsyncMock()
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_mock)
@@ -239,7 +240,7 @@ async def test_flag_flip_true_to_false_schedules_reload(
     await hass.async_block_till_done()
 
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.is_tou_active is False
+    assert sub_data.feature_flags.tou_active is False
     assert entry.runtime_data.reload_pending is True
     reload_mock.assert_awaited_once_with(entry.entry_id)
 
@@ -267,7 +268,7 @@ async def test_first_tou_observation_seeds_cache_without_reload(
     await coord._async_update_data()
 
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.is_tou_active is True
+    assert sub_data.feature_flags.tou_active is True
     assert entry.runtime_data.reload_pending is False
     reload_mock.assert_not_awaited()
 
@@ -289,7 +290,8 @@ async def test_flag_no_flip_does_not_schedule_reload(
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord)
 
-    entry.runtime_data.subentry_data[subentry.subentry_id].is_tou_active = False
+    ff = entry.runtime_data.subentry_data[subentry.subentry_id].feature_flags
+    ff.tou_active = False
 
     reload_mock = AsyncMock()
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_mock)
@@ -297,6 +299,6 @@ async def test_flag_no_flip_does_not_schedule_reload(
     await coord._async_update_data()
 
     sub_data = entry.runtime_data.subentry_data[subentry.subentry_id]
-    assert sub_data.is_tou_active is False
+    assert sub_data.feature_flags.tou_active is False
     assert entry.runtime_data.reload_pending is False
     reload_mock.assert_not_awaited()

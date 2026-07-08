@@ -49,7 +49,8 @@ def _make_sub_data(*, is_happy_hour_enrolled: bool) -> MagicMock:
     sub_data.coordinator.config_entry = MagicMock()
     sub_data.coordinator.config_entry.entry_id = "test_entry_id"
     sub_data.service_points = {}
-    sub_data.is_happy_hour_enrolled = is_happy_hour_enrolled
+    sub_data.feature_flags = MagicMock()
+    sub_data.feature_flags.happy_hour_enrolled = is_happy_hour_enrolled
     return sub_data
 
 

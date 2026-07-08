@@ -37,6 +37,10 @@ The user selected these 8 findings from the deep audit (findings #1, 2, 3, 5, 6,
 | 027 | Device conditions for automation UX (DIR-03) | P3 | S-M | — | DONE |
 | 028 | Remove `EngieBeHasOverdueInvoiceBinarySensor` and `has_overdue` logic | P2 | S | 025 | DONE |
 | 029 | Rename `account_balance` → `outstanding_balance` + `account_balance_due` → `overdue_amount` | P2 | S | 025 | DONE |
+| 030 | Dedupe `_epex_payload` helper across sensor.py and binary_sensor.py | P3 | S | — | DONE |
+| 031 | Scrub semicolons from README and CHANGELOG prose | P3 | S | — | DONE |
+| 032 | Scope-trim `EngieBeOpenInvoiceCountSensor` from plan 025 | P2 | S | 025, 028, 029 | DONE |
+| 033 | Bundle per-subentry feature-flag booleans into `FeatureFlagState` | P3 | M | 022 | DONE |
 
 Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with one-line reason) | `REJECTED` (with one-line rationale)
 
@@ -92,6 +96,20 @@ Reconcile at HEAD `85011b7` after plans 018-027 all landed.
 **Rejected**: none this pass — no new findings surfaced during reconcile.
 
 **Executable right now**: plan 008 is the only TODO.
+
+## 2026-07-08 reconcile pass (post-v0.13.0b1 tag)
+
+Reconcile at HEAD `91bf9e6` after the v0.13.0 feature bundle landed on `feat/v0.13.0` (commits `4d845ca`, `e173e0d`, `96d7c6e`, `91c7ce4`, `344e693`, `91bf9e6`).
+
+**Tree state**: 873 tests passing, working tree clean, ruff clean, manifest `0.13.0b1`, CHANGELOG `[Unreleased]` populated with v0.13.0 entries. Plans directory is now tracked (previously untracked) per the `chore(v0.13.0): plans archive` commit — this is a deliberate maintainer policy shift, not drift.
+
+**Verified DONE (spot-check)**: all 28 previously-DONE plans still hold; no regressions surfaced in the audit-worthy files touched by the v0.13.0 landing. Plans 025-029 (billing sensors, TOU calendar, device conditions, overdue removal, sensor rename) are the direct beneficiaries of the new `test(billing)`, `test(tou)`, and `test(automation)` commits — coverage now includes the automation surfaces those plans introduced.
+
+**Refreshed**: plan 008 needed no content refresh. Its "Current state" excerpts already target manifest `0.13.0b1` (from the prior reconcile), and the CHANGELOG shape is unchanged. The drift-check diff shows only additive `[Unreleased]` entries + the `0.12.0 -> 0.13.0b1` bump — both anticipated by the plan.
+
+**Rejected**: none this pass.
+
+**Executable right now**: plan 008 remains the only TODO. Given the size of `[Unreleased]` (23 entries queued for v0.13.0), this is a good moment to land the automation before the next GA cut.
 
 ## 2026-07-08 post-v0.13.0 re-audit note
 
