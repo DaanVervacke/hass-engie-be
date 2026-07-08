@@ -25,6 +25,7 @@ from .const import (
     ACCOUNTS_BASE_URL,
     API_BASE_URL,
     AUTH_BASE_URL,
+    BILLING_BASE_URL,
     BOOLEAN_FEATURE_FLAG_BASE_URL,
     BUSINESS_AGREEMENTS_BASE_URL,
     ENERGY_INSIGHTS_V2_BASE_URL,
@@ -38,6 +39,8 @@ from .const import (
     PEAKS_BASE_URL,
     PREMISES_BASE_URL,
     REDIRECT_URI,
+    SOLAR_SURPLUS_SHOWN_DASHBOARD_KEY,
+    TOU_FLAG_KEY,
     USER_AGENT_BROWSER,
     USER_AGENT_NATIVE,
 )
@@ -1025,6 +1028,41 @@ class EngieBeApiClient:
             json_response=True,
         )
 
+    async def async_get_solar_surplus_forecasts(
+        self,
+        business_agreement_number: str,
+        delivery_point_id: str,
+    ) -> dict[str, Any]:
+        """
+        Fetch solar-surplus injection forecasts for a delivery point.
+
+        ``delivery_point_id`` is the ENGIE-formatted service-point ID,
+        typically ``{EAN}_ID1``.
+
+        Returns the parsed JSON response. Shape:
+        ``{"forecasts": [{"forecastDate": "YYYY-MM-DD", "level": "...",
+        "details": [{"startTime": "...", "value": <kWh>, "level": "..."}]}]}``.
+
+        The endpoint sits behind the Smart App's
+        ``solar-surplus-shown-dashboard`` feature flag. Customers without a
+        solar installation receive a well-formed response whose per-slot
+        ``level`` values are all ``NO_DATA``; callers infer availability
+        from the response rather than a separate flag probe.
+        """
+        ban = business_agreement_number.replace(" ", "")
+        url = (
+            f"{HAPPY_HOUR_BASE_URL}/business-agreements/"
+            f"{ban}/solar-surplus/{delivery_point_id}/forecasts"
+        )
+        headers = self._authenticated_headers()
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            json_response=True,
+        )
+
     async def async_get_happy_hours_service_enabled_flag(
         self,
         business_agreement_number: str,
@@ -1051,11 +1089,124 @@ class EngieBeApiClient:
         Returns the parsed JSON response as a flat dict (top-level ``value``
         and ``reason`` keys).
         """
+        return await self._async_query_boolean_feature_flag(
+            HAPPY_HOURS_SERVICE_ENABLED_KEY,
+            business_agreement_number,
+        )
+
+    async def async_get_solar_surplus_shown_dashboard_flag(
+        self,
+        business_agreement_number: str,
+    ) -> dict[str, Any]:
+        """
+        Fetch the ``solar-surplus-shown-dashboard`` boolean feature flag for a BAN.
+
+        Mirrors the Smart App's UI gate: ``value: true`` means the customer
+        has a qualifying contract and delivery point for solar surplus, so
+        it is safe to fetch per-EAN forecasts. ``value: false`` means the
+        app hides the surplus tile and we skip the per-EAN fan-out to
+        keep the refresh cycle lean.
+
+        Returns the parsed JSON response as a flat dict (top-level ``value``
+        and ``reason`` keys).
+        """
+        return await self._async_query_boolean_feature_flag(
+            SOLAR_SURPLUS_SHOWN_DASHBOARD_KEY,
+            business_agreement_number,
+        )
+
+    async def async_get_tou_schedules(
+        self,
+        business_agreement_number: str,
+    ) -> dict[str, Any]:
+        """
+        Fetch the time-of-use tariff schedules for a business agreement.
+
+        Returns the parsed JSON response. Shape:
+        ``{"items": [{"eanWithSuffix": "..._ID1", "supplierSchedule": {...},
+        "dgoTgoSchedule": {...}}]}`` where each schedule has per-direction
+        ``offtake`` / ``injection`` maps of weekday -> list of
+        ``{startTime, endTime, slotCode}`` slots. Endpoint responds even
+        when the ``dgo-tou-is-active`` feature flag is off because the
+        DGO/network schedule always applies to metered electricity.
+        """
+        ban = business_agreement_number.replace(" ", "")
+        url = f"{HAPPY_HOUR_BASE_URL}/business-agreements/{ban}/tou-schedules"
+        headers = self._authenticated_headers()
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            json_response=True,
+        )
+
+    async def async_get_account_balance(
+        self,
+        business_agreement_number: str,
+    ) -> dict[str, Any]:
+        """
+        Fetch the current account balance for a business agreement.
+
+        Returns the parsed JSON response. Shape confirmed via spike capture
+        on 2026-07-08. The response includes a ``status`` field
+        (``"CLEAR"``, ``"OPEN_DEBIT"``, ``"OPEN_OVERDUE"``, etc.), an
+        ``overview`` block with totals, a ``details`` block with
+        ``financialTransactions`` (list of per-invoice rows with
+        ``dueDate``, ``openAmount``, ``dueAmount``, and ``invoiceType``),
+        and a ``refundBlocked`` flag. Amounts are in EUR. No customer
+        name, IBAN, or address is returned by this endpoint.
+        """
+        ban = business_agreement_number.replace(" ", "")
+        url = f"{BILLING_BASE_URL}/business-agreements/{ban}/account-balance"
+        headers = self._authenticated_headers()
+        return await self._api_wrapper(
+            session=self._session,
+            method="GET",
+            url=url,
+            headers=headers,
+            json_response=True,
+        )
+
+    async def async_get_dgo_tou_is_active_flag(
+        self,
+        business_agreement_number: str,
+    ) -> dict[str, Any]:
+        """
+        Fetch the ``dgo-tou-is-active`` boolean feature flag for a BAN.
+
+        Mirrors the Smart App's UI gate for the TOU tile. ``value: true``
+        means the customer's supplier contract is TOU-billed and slot
+        sensors are directly relevant to their bill. ``value: false``
+        still allows displaying the network/DGO schedule since that
+        applies to all digital-meter customers.
+
+        Returns the parsed JSON response as a flat dict (top-level
+        ``value`` and ``reason`` keys).
+        """
+        return await self._async_query_boolean_feature_flag(
+            TOU_FLAG_KEY,
+            business_agreement_number,
+        )
+
+    async def _async_query_boolean_feature_flag(
+        self,
+        flag_name: str,
+        business_agreement_number: str,
+    ) -> dict[str, Any]:
+        """
+        Query a single boolean feature flag for a business agreement.
+
+        Shared plumbing for the targeted boolean-feature-flags endpoint,
+        which returns a flat ``{"value": bool, "reason": str, ...}`` object
+        for the named flag. Callers are the public wrappers that pin the
+        specific flag name so the call site stays self-documenting.
+        """
         headers = self._authenticated_headers(
             extra={"Content-Type": "application/json"},
         )
         body = {
-            "name": HAPPY_HOURS_SERVICE_ENABLED_KEY,
+            "name": flag_name,
             "additionalContext": {
                 "contractAccountId": business_agreement_number.replace(" ", ""),
                 "platform": "android",

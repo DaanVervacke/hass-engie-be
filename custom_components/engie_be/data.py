@@ -78,6 +78,21 @@ class EngieBeSubentryData:
     entry reload whenever this flips so Happy Hours entities appear or
     disappear without manual intervention.
 
+    ``has_solar`` mirrors whether the customer has a solar installation
+    that ENGIE can forecast. It is ``None`` until the first successful
+    solar-surplus fetch, ``True`` when any hourly forecast slot across the
+    3-day horizon carries a non-``NO_DATA`` level, and ``False`` when
+    every slot is ``NO_DATA`` (the observed shape for customers without
+    solar). The coordinator schedules a config-entry reload on a flip so
+    the surplus sensor appears or disappears without manual intervention.
+
+    ``is_tou_active`` mirrors the latest reading of ``dgo-tou-is-active``. It
+    is ``None`` before the first successful refresh, ``True`` when the
+    customer's supplier contract is TOU-priced, and ``False`` otherwise. Slot
+    sensors are always created when the endpoint returns data (the network
+    schedule applies universally); the flag is exposed as a binary sensor so
+    users can distinguish supplier-side TOU from network-only TOU.
+
     ``happy_hours_store`` persists every Happy Hours window the
     coordinator observes (the API only ever returns the next upcoming
     window under ``tomorrow``, so historical windows would otherwise
@@ -94,6 +109,8 @@ class EngieBeSubentryData:
     is_dynamic_override: bool | None = field(default=None)
     energy_contracts_payload: dict[str, Any] | None = field(default=None)
     is_happy_hour_enrolled: bool | None = field(default=None)
+    has_solar: bool | None = field(default=None)
+    is_tou_active: bool | None = field(default=None)
 
 
 @dataclass

@@ -15,6 +15,8 @@ from homeassistant.util import dt as dt_util
 
 from ._epex import next_epex_slot_boundary
 from ._happy_hour import happy_hour_window, is_happy_hour_active
+from ._tou import current_slot as tou_current_slot
+from ._tou import has_multiple_slot_codes, schedule_for_ean
 from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
@@ -159,6 +161,14 @@ async def async_setup_entry(
                     coordinator=epex_coordinator, subentry=subentry
                 )
             )
+
+        # TOU "is optimal slot" binary sensors: created when the supplier
+        # contract is TOU-active OR when the per-EAN schedule has more than
+        # one distinct slot code (i.e. not a flat all-OFFPEAK schedule).
+        # The gate avoids spamming "is optimal" on flat-rate accounts
+        # where every hour is OFFPEAK and the answer is always True.
+        tou_entities = _build_tou_binary_sensors(sub_data.coordinator, subentry)
+        subentry_entities.extend(tou_entities)
 
         if not subentry_entities:
             continue
@@ -388,3 +398,180 @@ class EngieBeHappyHourActiveSensor(
         if now < end:
             return end
         return None
+
+
+# ---------------------------------------------------------------------------
+# TOU "is optimal slot" binary sensors
+# ---------------------------------------------------------------------------
+
+TOU_OFFTAKE_IS_OPTIMAL_DESCRIPTION = BinarySensorEntityDescription(
+    key="tou_offtake_is_optimal",
+    translation_key="tou_offtake_is_optimal",
+)
+
+TOU_INJECTION_IS_OPTIMAL_DESCRIPTION = BinarySensorEntityDescription(
+    key="tou_injection_is_optimal",
+    translation_key="tou_injection_is_optimal",
+)
+
+
+def _build_tou_binary_sensors(
+    coordinator: EngieBeDataUpdateCoordinator,
+    subentry: ConfigSubentry,
+) -> list[BinarySensorEntity]:
+    """
+    Build TOU optimal-slot binary sensors for every electricity EAN.
+
+    Gated on the ``dgo-tou-is-active`` feature flag mirroring the solar-
+    surplus pattern: when the flag is off the coordinator skips the fetch
+    entirely, so the wrapper is absent and there is nothing to key
+    against. Only ``is_tou_active is True`` accounts get the binary sensors.
+    """
+    from .data import EngieBeSubentryData  # noqa: PLC0415 - avoid import cycle
+
+    runtime = getattr(coordinator.config_entry, "runtime_data", None)
+    sub_data: EngieBeSubentryData | None = (
+        runtime.subentry_data.get(subentry.subentry_id) if runtime is not None else None
+    )
+    if sub_data is None or sub_data.is_tou_active is not True:
+        return []
+    service_points = sub_data.service_points
+
+    entities: list[BinarySensorEntity] = []
+    for ean, division in service_points.items():
+        if division != "ELECTRICITY":
+            continue
+        ean_suffix = f"{ean}_ID1"
+        tou_data = _tou_wrapper_data(coordinator)
+        item = schedule_for_ean(tou_data, ean_suffix) if tou_data is not None else None
+        offtake_sched = (
+            item.get("supplierSchedule", {}).get("offtake", {})
+            if isinstance(item, dict)
+            else {}
+        )
+        injection_sched = (
+            item.get("supplierSchedule", {}).get("injection", {})
+            if isinstance(item, dict)
+            else {}
+        )
+        # Suppress binary sensors on trivial (all-OFFPEAK) schedules where
+        # the answer would always be True and add no automation value.
+        show_offtake = has_multiple_slot_codes(offtake_sched)
+        show_injection = has_multiple_slot_codes(injection_sched)
+        if show_offtake:
+            entities.append(
+                EngieBeTouIsOptimalSensor(
+                    coordinator=coordinator,
+                    subentry=subentry,
+                    entity_description=TOU_OFFTAKE_IS_OPTIMAL_DESCRIPTION,
+                    ean=ean,
+                    direction="offtake",
+                )
+            )
+        if show_injection:
+            entities.append(
+                EngieBeTouIsOptimalSensor(
+                    coordinator=coordinator,
+                    subentry=subentry,
+                    entity_description=TOU_INJECTION_IS_OPTIMAL_DESCRIPTION,
+                    ean=ean,
+                    direction="injection",
+                )
+            )
+    return entities
+
+
+def _tou_wrapper_data(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict | None:
+    """Return the raw TOU payload dict from the coordinator wrapper, or None."""
+    data = coordinator.data
+    if not isinstance(data, dict):
+        return None
+    wrapper = data.get("tou_schedules")
+    if not isinstance(wrapper, dict):
+        return None
+    payload = wrapper.get("data")
+    return payload if isinstance(payload, dict) else None
+
+
+class EngieBeTouIsOptimalSensor(
+    _BoundaryScheduleMixin, EngieBeEntity, BinarySensorEntity
+):
+    """
+    Binary sensor indicating whether the current TOU slot is the optimal one.
+
+    ``on`` when the current slot code equals the schedule's
+    ``optimalTimeslotCode``. Uses ``_BoundaryScheduleMixin`` so state
+    flips at the exact slot boundary rather than the next coordinator
+    refresh.
+
+    Created only when the schedule is non-trivial (has more than one
+    distinct slot code) or when the supplier contract is TOU-active.
+    """
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        entity_description: BinarySensorEntityDescription,
+        ean: str,
+        direction: str,
+    ) -> None:
+        """Initialise the is-optimal indicator."""
+        super().__init__(coordinator, subentry)
+        self.entity_description = entity_description
+        self._ean = ean
+        self._direction = direction
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_{ean}_{entity_description.key}"
+        )
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = (
+                f"binary_sensor.engie_belgium_{ban}_{ean}_{entity_description.key}"
+            )
+        self._attr_translation_placeholders = {"ean": ean}
+
+    def _supplier_schedule(self) -> dict | None:
+        """Return the supplier direction schedule, or None."""
+        tou_data = _tou_wrapper_data(self.coordinator)
+        if tou_data is None:
+            return None
+        ean_suffix = f"{self._ean}_ID1"
+        item = schedule_for_ean(tou_data, ean_suffix)
+        if not isinstance(item, dict):
+            return None
+        schedule = item.get("supplierSchedule")
+        if not isinstance(schedule, dict):
+            return None
+        direction_sched = schedule.get(self._direction)
+        return direction_sched if isinstance(direction_sched, dict) else None
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True when the current slot is the optimal slot."""
+        schedule = self._supplier_schedule()
+        if schedule is None:
+            return None
+        optimal = schedule.get("optimalTimeslotCode")
+        if not isinstance(optimal, str):
+            return None
+        code, _ = tou_current_slot(schedule, dt_util.utcnow())
+        if code is None:
+            return None
+        return code == optimal.lower()
+
+    def _next_boundary(self) -> datetime | None:
+        """Return the next slot transition in UTC, or None."""
+        schedule = self._supplier_schedule()
+        if schedule is None:
+            return None
+        from datetime import UTC  # noqa: PLC0415
+
+        now = dt_util.utcnow()
+        _, next_trans = tou_current_slot(schedule, now)
+        if next_trans is None:
+            return None
+        return next_trans.astimezone(UTC)
