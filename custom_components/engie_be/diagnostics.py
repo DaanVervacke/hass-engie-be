@@ -20,12 +20,12 @@ from .const import (
     KEY_IS_DYNAMIC,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
-from .data import EpexPayload
+from .data import EpexPayload, unwrap_payload
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from .coordinator import EngieBeEpexCoordinator
+    from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
     from .data import EngieBeConfigEntry, EngieBeSubentryData
 
 TO_REDACT: set[str] = {
@@ -64,8 +64,11 @@ def _redacted_title(title: str | None) -> str:
     return f"**REDACTED:{digest}**"
 
 
-def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
+def _summarise_coordinator_data(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any]:
     """Return a privacy-preserving summary of per-subentry coordinator data."""
+    data = coordinator.data
     if not isinstance(data, dict):
         return {"raw_type": type(data).__name__}
 
@@ -95,7 +98,6 @@ def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
         peaks_month = None
         peaks_is_fallback = None
     solar_wrapper = data.get("solar_surplus")
-    billing_wrapper = data.get("billing")
     return {
         "item_count": len(items),
         "ean_hashes": ean_hashes,
@@ -105,7 +107,7 @@ def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
         "peaks_is_fallback": peaks_is_fallback,
         "is_dynamic": bool(data.get(KEY_IS_DYNAMIC, False)),
         "solar_surplus": _summarise_solar_surplus(solar_wrapper),
-        "billing": _summarise_billing(billing_wrapper),
+        "billing": _summarise_billing(coordinator),
     }
 
 
@@ -162,7 +164,9 @@ def _summarise_solar_surplus(wrapper: Any) -> dict[str, Any] | None:
     }
 
 
-def _summarise_billing(wrapper: Any) -> dict[str, Any] | None:
+def _summarise_billing(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any] | None:
     """
     Return a privacy-safe summary of the cached billing wrapper.
 
@@ -171,14 +175,20 @@ def _summarise_billing(wrapper: Any) -> dict[str, Any] | None:
 
     Never emits: raw amounts, invoice IDs, ``invoiceStructuredCommunication``,
     or any other PII from the billing payload.
-    """
-    if not isinstance(wrapper, dict):
-        return None
-    payload = wrapper.get("data")
-    has_data = isinstance(payload, dict)
-    fetched_at = wrapper.get("fetched_at")
 
-    if not has_data or not isinstance(payload, dict):
+    Returns ``None`` when the coordinator has no billing wrapper at all.
+    """
+    raw_wrapper = (
+        coordinator.data.get("billing") if isinstance(coordinator.data, dict) else None
+    )
+    if not isinstance(raw_wrapper, dict):
+        return None
+    fetched_at = raw_wrapper.get("fetched_at")
+
+    payload = unwrap_payload(coordinator, "billing")
+    has_data = payload is not None
+
+    if not has_data:
         return {
             "has_data": False,
             "fetched_at": fetched_at if isinstance(fetched_at, str) else None,
@@ -195,7 +205,7 @@ def _summarise_billing(wrapper: Any) -> dict[str, Any] | None:
     return {
         "has_data": True,
         "fetched_at": fetched_at if isinstance(fetched_at, str) else None,
-        "status": billing_status(wrapper),
+        "status": billing_status(coordinator),
         "transaction_count": tx_count,
     }
 
@@ -283,7 +293,7 @@ def _summarise_subentry(
                 if coordinator.update_interval is not None
                 else None
             ),
-            "data_summary": _summarise_coordinator_data(coordinator.data),
+            "data_summary": _summarise_coordinator_data(coordinator),
         },
     }
 
