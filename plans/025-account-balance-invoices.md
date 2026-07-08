@@ -21,6 +21,27 @@
 - **Category**: direction (feature)
 - **Planned at**: commit `85011b7`, 2026-07-08
 
+## Superseded scope (2026-07-09)
+
+The original scope listed **three** billing sensors (balance,
+next-invoice-due, invoice-count) plus one has-overdue binary sensor.
+Only balance and next-invoice-due shipped in this plan. The invoice-count
+sensor was dropped and the has-overdue binary was replaced:
+
+- **has-overdue binary sensor**: removed by plan 028, superseded by the
+  `overdue_amount` scalar sensor added in plan 029. The scalar carries
+  strictly more information (EUR value, not just presence) and covers
+  the same automation triggers via a numeric threshold.
+- **`EngieBeOpenInvoiceCountSensor`**: dropped. `overdue_amount > 0` is
+  the load-bearing automation signal. A separate count sensor adds an
+  entity per BAN for a value that end-users do not surface in
+  automations. Revisit only if a user asks for the count as a distinct
+  signal (for example a dashboard tile).
+
+The rest of this plan (API client, coordinator wiring, diagnostics,
+tests, README section) shipped as written. See plans 028 and 029 for
+the follow-up removals and renames.
+
 ## Why this matters
 
 Every ENGIE customer has monthly invoices and an outstanding account
