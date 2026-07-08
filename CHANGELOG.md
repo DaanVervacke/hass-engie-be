@@ -119,7 +119,7 @@ for instructions. If anything looks off, check **Settings** > **System** >
 
 ### Fixed
 
-- **CI** hassfest rejected the Repairs description because `{title}` was wrapped in single quotes; dropped the quotes. Also reformatted `tests/test_config_flow.py` to satisfy `ruff format --check`.
+- **CI** hassfest rejected the Repairs description because `{title}` was wrapped in single quotes. Dropped the quotes. Also reformatted `tests/test_config_flow.py` to satisfy `ruff format --check`.
 
 ## [0.12.0b8] - 2026-07-07
 
@@ -147,7 +147,7 @@ for instructions. If anything looks off, check **Settings** > **System** >
 
 ### Changed
 
-- **Injection cost stream renamed to "compensation"** in the Energy Dashboard picker. Statistic ID stays `engie_be:{BAN}_injection_cost` for backwards compatibility with earlier beta imports; only the display name changes. Matches HA's own **Export compensation** terminology.
+- **Injection cost stream renamed to "compensation"** in the Energy Dashboard picker. Statistic ID stays `engie_be:{BAN}_injection_cost` for backwards compatibility with earlier beta imports. Only the display name changes. Matches HA's own **Export compensation** terminology.
 - **Blueprint URLs point at the feature branch** until this release lands on `main`. Import badge, manual paste URL, and blueprint `source_url` metadata all reference `feat/import-historical-energy-data`.
 
 ### Docs
@@ -181,20 +181,20 @@ for instructions. If anything looks off, check **Settings** > **System** >
 
 ### Changed
 
-- **`energy_type` and `include_costs` fields on both services are now required.** The per-field checkbox in the Developer Tools UI is gone: `energy_type` must have at least one selection (validated) and `include_costs` is already a boolean toggle. Defaults preserved (all three energy types pre-selected; costs off).
+- **`energy_type` and `include_costs` fields on both services are now required.** The per-field checkbox in the Developer Tools UI is gone: `energy_type` must have at least one selection (validated) and `include_costs` is already a boolean toggle. Defaults preserved (all three energy types pre-selected, costs off).
 
 ### Added
 
-- **Debug logging across the historical-import path.** Service handlers log the raw `device_ids` and resolved BAN/title per dispatch; the orchestrator logs the active streams, selected import window and code path (explicit / contract-start / fallback / resume), running-sums seed on resume, and the `statistic_id` list about to be cleared.
+- **Debug logging across the historical-import path.** Service handlers log the raw `device_ids` and resolved BAN/title per dispatch. The orchestrator logs the active streams, selected import window and code path (explicit / contract-start / fallback / resume), running-sums seed on resume, and the `statistic_id` list about to be cleared.
 
 ## [0.12.0b1] - 2026-07-06
 
 ### Added
 
-- **Import historical usage into the Energy Dashboard** via the `engie_be.import_history` service action (Developer Tools > Actions > *Import historical usage* under **ENGIE Belgium**, or from an automation). Target one or more business-agreement devices; optional `energy_type` field (consumption / injection / gas consumption / any combination), `start_date`, and `end_date`. Omit all fields for auto mode: first call pulls hourly usage from ENGIE back to the business agreement's start date and writes it into Home Assistant's long-term statistics under per-BAN external statistic IDs (`engie_be:{BAN}_consumption`, `_injection`, `_gas`); subsequent calls only fetch new hours since the last run. Provide dates to re-import a specific window, overwriting existing hourly rows in place. The values appear in the Energy Dashboard's electricity and gas source pickers.
+- **Import historical usage into the Energy Dashboard** via the `engie_be.import_history` service action (Developer Tools > Actions > *Import historical usage* under **ENGIE Belgium**, or from an automation). Target one or more business-agreement devices. Optional `energy_type` field (consumption / injection / gas consumption / any combination), `start_date`, and `end_date`. Omit all fields for auto mode: first call pulls hourly usage from ENGIE back to the business agreement's start date and writes it into Home Assistant's long-term statistics under per-BAN external statistic IDs (`engie_be:{BAN}_consumption`, `_injection`, `_gas`). Subsequent calls only fetch new hours since the last run. Provide dates to re-import a specific window, overwriting existing hourly rows in place. The values appear in the Energy Dashboard's electricity and gas source pickers.
 - **`engie_be.clear_import_history` service** deletes imported statistic streams for the targeted business-agreement device. Optional energy-type field to clear only the selected streams. The next `Import historical usage` call for the same device and energy type backfills again from the business agreement's start date. Useful when ENGIE republishes historical data after the fact.
 - **Blueprint: daily historical data sync** (`blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`) - import from the README, pick a device, a time, and one or more energy types. Home Assistant then runs `engie_be.import_history` once per day for users without a P1 meter.
-- **`include_costs` field on `import_history` and `clear_import_history` services** - set to `true` to also import or clear per-hour cost (EUR) statistics alongside kWh streams. Adds three new per-BAN statistic IDs: `engie_be:{BAN}_consumption_cost`, `engie_be:{BAN}_injection_cost`, and `engie_be:{BAN}_gas_cost`. Cost data is sourced from the same `usage-details` payload; no additional API calls. Off by default. The blueprint also exposes the new input.
+- **`include_costs` field on `import_history` and `clear_import_history` services** - set to `true` to also import or clear per-hour cost (EUR) statistics alongside kWh streams. Adds three new per-BAN statistic IDs: `engie_be:{BAN}_consumption_cost`, `engie_be:{BAN}_injection_cost`, and `engie_be:{BAN}_gas_cost`. Cost data is sourced from the same `usage-details` payload. No additional API calls. Off by default. The blueprint also exposes the new input.
 
 ## [0.11.0] - 2026-07-04
 
@@ -472,7 +472,7 @@ Home Assistant is on 2026.6.0 or newer first, as noted above.)
   armed for a far-future window now cancel that timer before they
   finish. The newer test harness
   (`pytest-homeassistant-custom-component` `0.13.337`) fails any test
-  that leaves a timer running, so these are cleaned up explicitly; this
+  that leaves a timer running, so these are cleaned up explicitly. This
   is a test-only change with no effect on the shipped integration.
 
 ## [0.10.0b4] - 2026-06-07
@@ -746,7 +746,7 @@ Home Assistant is on 2026.6.0 or newer first, as noted above.)
   redacted: tokens are fully masked, while emails, EAN identifiers,
   and customer IDs are partially masked (last 4 chars preserved).
   HTML bodies are truncated to 120 characters to avoid dumping live
-  auth pages full of CSRF tokens. No behaviour changes; logging is
+  auth pages full of CSRF tokens. No behaviour changes. Logging is
   only emitted when the integration logger is at DEBUG ([#80]).
 
 ### Internal
@@ -764,7 +764,7 @@ Home Assistant is on 2026.6.0 or newer first, as noted above.)
   to the module-level imports and dropped the unjustified
   `# noqa: PLC0415`. `data.py` has no runtime imports of any sibling
   module (everything is `TYPE_CHECKING`-gated), so the local import
-  was not load-bearing. Audit hygiene only; no runtime behaviour
+  was not load-bearing. Audit hygiene only. No runtime behaviour
   change ([#82]).
 
 ## [0.8.2] - 2026-05-07
@@ -965,7 +965,7 @@ Home Assistant is on 2026.6.0 or newer first, as noted above.)
 
 ### Fixed
 
-- Properly refresh energy prices and sensors; allow refresh interval
+- Properly refresh energy prices and sensors. Allow refresh interval
   to be set in minutes ([#30]).
 
 ## [0.4.1] - 2026-03-23

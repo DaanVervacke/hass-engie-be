@@ -306,7 +306,7 @@ Each slot sensor exposes these attributes:
 
 The binary "is optimal" sensors turn `on` when the current slot matches the
 schedule's `optimalTimeslotCode`. For a typical offtake schedule, this means
-`on` during OFFPEAK hours (lower network cost); for injection it means `on`
+`on` during OFFPEAK hours (lower network cost). For injection it means `on`
 during PEAK hours (best sell price).
 
 The "is optimal" binary sensors are created when the schedule is non-trivial
