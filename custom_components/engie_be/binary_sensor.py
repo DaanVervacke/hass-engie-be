@@ -13,7 +13,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.util import dt as dt_util
 
-from ._epex import next_epex_slot_boundary
+from ._epex import epex_payload, next_epex_slot_boundary
 from ._happy_hour import happy_hour_window, is_happy_hour_active
 from ._tou import current_slot as tou_current_slot
 from ._tou import has_multiple_slot_codes, schedule_for_ean
@@ -24,7 +24,6 @@ from .const import (
     SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
-from .data import EpexPayload
 from .entity import (
     EngieBeAuthEntity,
     EngieBeEntity,
@@ -136,7 +135,7 @@ async def async_setup_entry(
         # coordinator's first refresh; the parent entry is reloaded
         # automatically when enrolment flips so entities track the
         # service status.
-        if sub_data.is_happy_hour_enrolled:
+        if sub_data.feature_flags.happy_hour_enrolled:
             LOGGER.debug(
                 "Subentry %s (BAN %s): enrolled in Happy Hours, "
                 "registering happy_hours_active binary sensor",
@@ -217,12 +216,6 @@ class EngieBeAuthSensor(EngieBeAuthEntity, BinarySensorEntity):
         return self._entry.runtime_data.authenticated
 
 
-def _epex_payload(coordinator: EngieBeEpexCoordinator) -> EpexPayload | None:
-    """Return the cached EPEX payload, or ``None`` if not yet available."""
-    payload = coordinator.data
-    return payload if isinstance(payload, EpexPayload) else None
-
-
 class EngieBeEpexNegativeSensor(
     _BoundaryScheduleMixin, EngieBeEpexEntity, BinarySensorEntity
 ):
@@ -292,7 +285,7 @@ class EngieBeEpexNegativeSensor(
         """
         if not super().available:
             return False
-        return _epex_payload(self.coordinator) is not None
+        return epex_payload(self.coordinator) is not None
 
     @property
     def is_on(self) -> bool | None:
@@ -303,7 +296,7 @@ class EngieBeEpexNegativeSensor(
         the current instant -- distinct from the unavailable case
         handled in ``available``.
         """
-        payload = _epex_payload(self.coordinator)
+        payload = epex_payload(self.coordinator)
         if payload is None:
             return None
         now = dt_util.utcnow()
@@ -322,7 +315,7 @@ class EngieBeEpexNegativeSensor(
         returns ``None``; the next coordinator update re-arms via
         :meth:`_handle_coordinator_update` once a fresh payload lands.
         """
-        payload = _epex_payload(self.coordinator)
+        payload = epex_payload(self.coordinator)
         if payload is None:
             return None
         return next_epex_slot_boundary(payload, dt_util.utcnow())
@@ -427,13 +420,13 @@ def _build_tou_binary_sensors(
     entirely, so the wrapper is absent and there is nothing to key
     against. Only ``is_tou_active is True`` accounts get the binary sensors.
     """
-    from .data import EngieBeSubentryData  # noqa: PLC0415 - avoid import cycle
+    from .data import EngieBeSubentryData  # noqa: PLC0415, TC001 - avoid import cycle
 
     runtime = getattr(coordinator.config_entry, "runtime_data", None)
     sub_data: EngieBeSubentryData | None = (
         runtime.subentry_data.get(subentry.subentry_id) if runtime is not None else None
     )
-    if sub_data is None or sub_data.is_tou_active is not True:
+    if sub_data is None or sub_data.feature_flags.tou_active is not True:
         return []
     service_points = sub_data.service_points
 

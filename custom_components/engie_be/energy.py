@@ -49,7 +49,7 @@ async def async_get_solar_forecast(
 
     aggregated: dict[str, float] = {}
     for sub_data in runtime.subentry_data.values():
-        if not sub_data.has_solar:
+        if not sub_data.feature_flags.solar:
             continue
         coordinator = sub_data.coordinator
         data = coordinator.data

@@ -726,7 +726,7 @@ async def test_update_data_passes_previous_happy_hour_wrapper_when_present(
     seeded_wrapper = {"data": {"tomorrow": {"startTime": "x", "endTime": "y"}}}
     coordinator.data = {"happy_hour": seeded_wrapper, "items": []}
     subentry_data = entry.runtime_data.subentry_data[coordinator.subentry.subentry_id]
-    subentry_data.is_happy_hour_enrolled = True
+    subentry_data.feature_flags.happy_hour_enrolled = True
 
     client = MagicMock()
     client.async_get_prices = AsyncMock(return_value={"items": []})

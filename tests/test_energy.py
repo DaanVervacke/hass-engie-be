@@ -55,7 +55,8 @@ def _wire(
         coord = MagicMock()
         coord.data = data
         sub = MagicMock()
-        sub.has_solar = has_solar
+        sub.feature_flags = MagicMock()
+        sub.feature_flags.solar = has_solar
         sub.coordinator = coord
         subentry_data[sub_id] = sub
     runtime = MagicMock()
