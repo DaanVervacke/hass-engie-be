@@ -7,6 +7,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- Type `_BoundaryScheduleMixin` against `CoordinatorEntity` to drop seven type-ignore markers.
+
 ## [0.12.0b12] - 2026-07-07
 
 ### Added

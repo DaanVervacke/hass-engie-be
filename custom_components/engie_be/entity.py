@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.const import CONF_USERNAME
 from homeassistant.core import callback
@@ -23,8 +23,13 @@ if TYPE_CHECKING:
 
     from .data import EngieBeConfigEntry
 
+if TYPE_CHECKING:
+    _MixinBase = CoordinatorEntity[Any]
+else:
+    _MixinBase = object
 
-class _BoundaryScheduleMixin:
+
+class _BoundaryScheduleMixin(_MixinBase):
     """
     Mixin that re-evaluates entity state at the next "boundary" instant.
 
@@ -93,8 +98,8 @@ class _BoundaryScheduleMixin:
 
     async def async_added_to_hass(self) -> None:
         """Arm the next-boundary timer when the entity joins HA."""
-        await super().async_added_to_hass()  # type: ignore[misc]
-        self.async_on_remove(self._cancel_boundary)  # type: ignore[attr-defined]
+        await super().async_added_to_hass()
+        self.async_on_remove(self._cancel_boundary)
         self._schedule_next_boundary()
 
     @callback
@@ -109,7 +114,7 @@ class _BoundaryScheduleMixin:
         """
         self._cancel_boundary()
         self._schedule_next_boundary()
-        super()._handle_coordinator_update()  # type: ignore[misc]
+        super()._handle_coordinator_update()
 
     @callback
     def _cancel_boundary(self) -> None:
@@ -137,7 +142,7 @@ class _BoundaryScheduleMixin:
             )
             return
         self._unsub_boundary = async_track_point_in_utc_time(
-            self.hass,  # type: ignore[attr-defined]
+            self.hass,
             self._boundary_fired,
             target,
         )
@@ -165,7 +170,7 @@ class _BoundaryScheduleMixin:
             dt_util.utcnow().isoformat(),
         )
         self._schedule_next_boundary()
-        self.async_write_ha_state()  # type: ignore[attr-defined]
+        self.async_write_ha_state()
         LOGGER.debug(
             "%s: wrote new value %r after boundary",
             self._boundary_log_name(),
@@ -184,7 +189,7 @@ class _BoundaryScheduleMixin:
         Returns ``None`` when neither attribute is present.
         """
         if hasattr(self, "is_on"):
-            return self.is_on  # type: ignore[attr-defined]
+            return cast("Any", self).is_on
         return getattr(self, "native_value", None)
 
 
