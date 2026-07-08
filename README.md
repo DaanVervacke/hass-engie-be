@@ -317,10 +317,13 @@ To remove one, delete its subentry.
 
 ## Historical usage import (Energy dashboard)
 
-Don't have a P1 meter? The integration can pull your hourly electricity
-and gas consumption from ENGIE and feed it into the Energy dashboard. The first
-import goes back to the start of your initial business agreement, later runs only
-fetch what's new.
+The integration can backfill your energy data straight from ENGIE. It pulls
+every hour of electricity consumption, electricity injection, and gas
+consumption ENGIE has on record for your business agreement, and adds it to
+Home Assistant's long-term statistics. The first import goes back to the
+start of your initial business agreement. Later runs only fetch what's new.
+Optionally, per-hour EUR costs come in too. Once the data's in, you still
+need to add it to the Energy dashboard yourself, see the steps below.
 
 ### Import during setup
 

@@ -252,7 +252,7 @@ def _metadata(
     # elvia, suez_water, mill) is to fold the disambiguating context
     # into the ``name`` itself. Format: primary descriptor, then the
     # consumption address, so multi-BAN users can scan a list in the
-    # Energy Dashboard source picker.
+    # Energy dashboard source picker.
     return StatisticMetaData(
         mean_type=StatisticMeanType.NONE,
         has_sum=True,
@@ -295,7 +295,7 @@ def usage_items_to_statistics(
       don't double-count. ENGIE bucket starts equal the last recorded
       start on the boundary hour, so ``<=`` (not ``<``) is correct.
     - Sums are running cumulative totals seeded from ``initial_sums``;
-      HA's Energy Dashboard reads the ``sum`` column, not per-bucket
+      HA's Energy dashboard reads the ``sum`` column, not per-bucket
       ``state``, so the running total is what matters.
     """
     sums: dict[str, float] = {

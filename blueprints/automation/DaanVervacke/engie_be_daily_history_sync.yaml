@@ -2,7 +2,7 @@ blueprint:
   name: ENGIE Belgium - Daily historical data sync
   description: >
     Runs `engie_be.import_history` once a day. Useful if you don't have
-    a P1 meter and want to keep your Energy Dashboard up-to-date with
+    a P1 meter and want to keep your Energy dashboard up-to-date with
     the latest data from ENGIE. Only fetches new data (since the
     previous run). Set up once per business-agreement device. For a
     one-off run, click "Run actions" on the automation in Settings >

@@ -7,9 +7,59 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-### Changed
+## [0.12.0] - 2026-07-08
 
-- Type `_BoundaryScheduleMixin` against `CoordinatorEntity` to drop seven type-ignore markers.
+This release adds the option to import your **historical energy usage** from
+ENGIE. ENGIE keeps hourly data on your electricity consumption, electricity
+injection, and gas consumption. The integration can now pull all of that into Home
+Assistant's long-term statistics.
+
+### What's new
+
+- **Historical usage import.** You can now backfill your historical energy data. A
+  new **Import historical usage** action (under **ENGIE Belgium** in
+  **Developer tools** > **Actions**) pulls every hour of electricity
+  consumption, electricity injection and gas consumption that ENGIE has
+  on record for your business agreements and adds it to Home Assistant's
+  long-term statistics. Ready to use in the Energy dashboard. Run the action again
+  and it'll only fetch new data. Need to (re-)fetch a specific period
+  instead? Optional start and end dates let you re-import a specific
+  time window.
+
+- Turn on **Include costs** to also import your historical financial data (costs and compensation) for the energy used.
+  These feed directly into the Energy dashboard's cost
+  tracking. Off by default.
+
+- **Import during setup.** Adding the integration or a new business
+  agreement now includes a **Historical import** step in the setup wizard. Just
+  tick the addresses you want imported and it'll import the data in the background
+  once the setup is done.
+
+- **No P1 meter? There's a blueprint for that.** The README has a
+  one-click import button for a blueprint that runs the historical import
+  automatically once a day, at a time you choose. That way your Energy
+  dashboard stays up to date even without a P1 meter.
+
+- **Clearing old data.** A separate action to remove the imported statistics for
+  a business agreement, so the next import starts fresh from scratch.
+
+### Upgrading
+
+Coming from v0.11.0 or v0.10.x? You don't need to do anything. Your
+accounts and settings carry over as is.
+
+Want to try the historical import yourself?
+
+1. Go to **Settings** > **Developer tools** > **Actions**.
+2. Select **Import historical usage** under **ENGIE Belgium**.
+3. Choose your business agreement device as the target.
+4. Click **Perform action**.
+
+Once the data's in, you'll still need to add it to the Energy dashboard
+manually. See the **Add to the Energy dashboard** section of the
+[README](https://github.com/DaanVervacke/hass-engie-be#add-to-the-energy-dashboard)
+for instructions. If anything looks off, check **Settings** > **System** >
+**Repairs**.
 
 ## [0.12.0b12] - 2026-07-07
 
