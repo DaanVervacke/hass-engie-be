@@ -825,6 +825,57 @@
             },
             "epex_next_hour": {
                 "name": "EPEX next hour price"
+            },
+            "solar_surplus_forecast": {
+                "name": "Solar surplus forecast ({ean})",
+                "state": {
+                    "no_data": "No data",
+                    "no_surplus": "No surplus",
+                    "minimal_surplus": "Minimal surplus",
+                    "low_surplus": "Low surplus",
+                    "high_surplus": "High surplus"
+                }
+            },
+            "solar_surplus_current": {
+                "name": "Solar surplus current hour ({ean})"
+            },
+            "solar_surplus_next_hour": {
+                "name": "Solar surplus next hour ({ean})"
+            },
+            "solar_surplus_today_total": {
+                "name": "Solar surplus total today ({ean})"
+            },
+            "solar_surplus_today_peak": {
+                "name": "Solar surplus peak today ({ean})"
+            },
+            "outstanding_balance": {
+                "name": "Outstanding balance"
+            },
+            "overdue_amount": {
+                "name": "Overdue amount"
+            },
+            "next_invoice_due": {
+                "name": "Next invoice due"
+            },
+            "tou_offtake_slot": {
+                "name": "Current offtake slot ({ean})",
+                "state": {
+                    "peak": "Peak",
+                    "offpeak": "Off-peak",
+                    "superoffpeak": "Super off-peak",
+                    "exclusive_night": "Exclusive night",
+                    "day": "Day"
+                }
+            },
+            "tou_injection_slot": {
+                "name": "Current injection slot ({ean})",
+                "state": {
+                    "peak": "Peak",
+                    "offpeak": "Off-peak",
+                    "superoffpeak": "Super off-peak",
+                    "exclusive_night": "Exclusive night",
+                    "day": "Day"
+                }
             }
         },
         "binary_sensor": {
@@ -836,7 +887,21 @@
             },
             "happy_hours_active": {
                 "name": "Happy Hours is active"
+            },
+            "tou_offtake_is_optimal": {
+                "name": "Offtake at optimal slot ({ean})"
+            },
+            "tou_injection_is_optimal": {
+                "name": "Injection at optimal slot ({ean})"
             }
+        }
+    },
+    "device_automation": {
+        "condition_type": {
+            "solar_surplus_is_at_level": "Solar surplus is at level",
+            "offtake_slot_is": "Current offtake slot is",
+            "injection_slot_is": "Current injection slot is",
+            "epex_price_is_negative": "EPEX price is negative"
         }
     }
 }

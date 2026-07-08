@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -98,6 +99,16 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._needs_relations_backfill: bool = any(
             not subentry.data.get(key) for key in RELATIONS_BACKFILLABLE_KEYS
         )
+        # Per-EAN solar-surplus outage tracking: transient errors soft-fail
+        # to the last-known wrapper, so the coordinator's built-in
+        # once-per-outage logging does not fire. Track it manually to
+        # match the ``log-when-unavailable`` rule (warn on outage entry,
+        # debug while it persists, info on recovery).
+        self._solar_surplus_unavailable: set[str] = set()
+        # TOU schedules outage tracking: same once-per-outage discipline.
+        self._tou_unavailable: bool = False
+        # Billing endpoint outage tracking: same once-per-outage discipline.
+        self._billing_unavailable: bool = False
 
     @property
     def is_dynamic(self) -> bool:
@@ -129,7 +140,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data = self.data
         return bool(isinstance(data, dict) and data.get(KEY_IS_DYNAMIC))
 
-    async def _async_update_data(self) -> dict[str, Any]:  # noqa: PLR0912
+    async def _async_update_data(self) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
         """Fetch energy prices and capacity-tariff peaks for this account."""
         client = self.config_entry.runtime_data.client
         business_agreement_number = self.business_agreement_number
@@ -263,6 +274,97 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             new_enrolled=new_enrolled,
         )
 
+        # Fetch solar-surplus forecasts. Two gates apply: the Smart App
+        # feature flag (``solar-surplus-shown-dashboard``) mirrors ENGIE's
+        # own contract for whether this account qualifies for the feature,
+        # and the per-EAN forecast payload carries ``level = NO_DATA``
+        # everywhere for accounts without a solar installation. We honour
+        # the flag first (skips the per-EAN fan-out entirely when off) and
+        # fall back to the data-driven signal for accounts where the flag
+        # is on but no forecast data is available yet.
+        previous_solar_wrapper: dict[str, Any] | None = None
+        if isinstance(self.data, dict):
+            existing_solar = self.data.get("solar_surplus")
+            if isinstance(existing_solar, dict):
+                previous_solar_wrapper = existing_solar
+
+        previous_has_solar = self._read_cached_has_solar()
+        solar_shown = await self._async_fetch_solar_flag(
+            client,
+            business_agreement_number,
+        )
+
+        if solar_shown:
+            solar_wrapper = await self._async_fetch_solar_surplus(
+                client,
+                business_agreement_number,
+                previous_solar_wrapper,
+            )
+            if solar_wrapper is not None:
+                data["solar_surplus"] = solar_wrapper
+            new_has_solar = _derive_has_solar(
+                solar_wrapper if solar_wrapper is not None else previous_solar_wrapper,
+            )
+        else:
+            # Flag off: skip the per-EAN fan-out and drop any stale
+            # wrapper so entities from a prior enabled run report
+            # unavailable until the next reload.
+            new_has_solar = False
+
+        self._async_apply_has_solar(
+            previous_has_solar=previous_has_solar,
+            new_has_solar=new_has_solar,
+        )
+
+        # Fetch TOU schedules. The flag gates the supplier-side TOU
+        # meaning but the endpoint returns data regardless (the network
+        # schedule always applies to digital-meter customers). Fetch
+        # unconditionally and surface the flag separately.
+        previous_tou_wrapper: dict[str, Any] | None = None
+        if isinstance(self.data, dict):
+            existing_tou = self.data.get("tou_schedules")
+            if isinstance(existing_tou, dict):
+                previous_tou_wrapper = existing_tou
+
+        previous_is_tou_active = self._read_cached_is_tou_active()
+        tou_active = await self._async_fetch_tou_flag(
+            client,
+            business_agreement_number,
+        )
+        if tou_active:
+            tou_wrapper = await self._async_fetch_tou_schedules(
+                client,
+                business_agreement_number,
+                previous_tou_wrapper,
+            )
+            if tou_wrapper is not None:
+                data["tou_schedules"] = tou_wrapper
+        # Flag off → drop any stale wrapper so entities from a prior
+        # enabled run report unavailable until the next reload. Mirrors
+        # the solar-surplus behaviour when its own flag is off.
+        self._async_apply_is_tou_active(
+            previous_is_tou_active=previous_is_tou_active,
+            new_is_tou_active=tou_active,
+        )
+
+        # Fetch account-balance / billing data. The endpoint is per-BAN
+        # with no feature flag; fetch unconditionally on every refresh.
+        # Soft-fail to previous wrapper on transient errors so sensors
+        # stay populated. Auth errors escalate to reauth.
+        previous_billing_wrapper: dict[str, Any] | None = None
+        if isinstance(self.data, dict):
+            existing_billing = self.data.get("billing")
+            if isinstance(existing_billing, dict):
+                previous_billing_wrapper = existing_billing
+
+        billing_wrapper = await self._async_fetch_billing(
+            client,
+            business_agreement_number,
+            previous_billing_wrapper,
+        )
+        if billing_wrapper is not None:
+            data["billing"] = billing_wrapper
+
         self.last_successful_fetch = dt_util.utcnow()
         return data
 
@@ -328,19 +430,238 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         previous_enrolled: bool | None,
         new_enrolled: bool,
     ) -> None:
+        """Persist the new enrolment value and schedule a reload on a flip."""
+        self._async_apply_flag_state(
+            field_name="is_happy_hour_enrolled",
+            previous=previous_enrolled,
+            new=new_enrolled,
+            log_prefix="Happy Hours enrolment",
+            task_name_suffix="happy_hour_enrolment_change",
+        )
+
+    async def _async_probe_boolean_flag(
+        self,
+        client: EngieBeApiClient,
+        business_agreement_number: str,
+        *,
+        api_method: str,
+        log_prefix: str,
+    ) -> bool:
         """
-        Persist the new enrolment value and schedule a reload on a flip.
+        Probe a boolean feature flag with the shared soft-fail discipline.
 
-        ``previous_enrolled`` is ``None`` on the very first refresh of a
-        coordinator; in that case we just set the cache so ``__init__``
-        and the platform setups can read it on subsequent passes,
-        without scheduling a reload (platforms have not yet been set up
-        against the old value, so there is nothing to reconcile).
+        Auth failures escalate via ``ConfigEntryAuthFailed``. Any other
+        API error logs a warning at ``log_prefix`` and soft-fails to
+        ``True`` (the "keep trying" side) — matching the fail-open
+        discipline where a transient flag-endpoint outage should not
+        strip entities from accounts that are legitimately enrolled.
 
-        On a true flip (``True`` <-> ``False``) we mark the parent entry
-        for reload and queue an ``async_reload`` call. The
-        ``reload_pending`` flag on ``EngieBeData`` debounces the case
-        where multiple subentries flip in the same refresh tick.
+        Returns the ``value`` field of the flag response coerced to bool.
+        """
+        try:
+            flags = await getattr(client, api_method)(business_agreement_number)
+        except EngieBeApiClientAuthenticationError as exception:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+            ) from exception
+        except EngieBeApiClientError as exception:
+            LOGGER.warning(
+                "Failed to fetch %s feature flag for BAN %s, "
+                "assuming enabled and continuing: %s",
+                log_prefix,
+                mask_identifier(business_agreement_number),
+                exception,
+            )
+            return True
+        value = flags.get("value") if isinstance(flags, dict) else None
+        LOGGER.debug(
+            "BAN %s: %s feature flag is %s",
+            mask_identifier(business_agreement_number),
+            log_prefix,
+            value,
+        )
+        return bool(value)
+
+    async def _async_fetch_solar_flag(
+        self,
+        client: EngieBeApiClient,
+        business_agreement_number: str,
+    ) -> bool:
+        """Probe the ``solar-surplus-shown-dashboard`` feature flag."""
+        return await self._async_probe_boolean_flag(
+            client,
+            business_agreement_number,
+            api_method="async_get_solar_surplus_shown_dashboard_flag",
+            log_prefix="solar-surplus",
+        )
+
+    def _note_solar_unavailable(
+        self,
+        ean: str,
+        ban_masked: str,
+        exception: Exception,
+    ) -> None:
+        """Log a solar-surplus outage at most once per EAN per outage."""
+        if ean in self._solar_surplus_unavailable:
+            LOGGER.debug(
+                "BAN %s EAN %s: solar-surplus still unavailable: %s",
+                ban_masked,
+                mask_identifier(ean),
+                exception,
+            )
+            return
+        LOGGER.warning(
+            "Failed to fetch solar-surplus forecasts for BAN %s EAN %s, "
+            "keeping last-known value: %s",
+            ban_masked,
+            mask_identifier(ean),
+            exception,
+        )
+        self._solar_surplus_unavailable.add(ean)
+
+    def _note_solar_recovered(self, ean: str, ban_masked: str) -> None:
+        """Log recovery once after a solar-surplus outage cleared."""
+        if ean not in self._solar_surplus_unavailable:
+            return
+        LOGGER.info(
+            "BAN %s EAN %s: solar-surplus fetch recovered",
+            ban_masked,
+            mask_identifier(ean),
+        )
+        self._solar_surplus_unavailable.discard(ean)
+
+    def _read_cached_has_solar(self) -> bool | None:
+        """Return the previously-observed has_solar state, or ``None``."""
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        if runtime is None:
+            return None
+        subentry_data = runtime.subentry_data.get(self.subentry.subentry_id)
+        if subentry_data is None:
+            return None
+        return subentry_data.has_solar
+
+    async def _async_fetch_solar_surplus(
+        self,
+        client: EngieBeApiClient,
+        business_agreement_number: str,
+        previous_wrapper: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """
+        Fetch solar-surplus forecasts for every electricity EAN.
+
+        Returns a wrapper ``{"data": {ean: forecasts_list}, "fetched_at":
+        <ISO-UTC>}``. ``forecasts_list`` is the raw ``forecasts`` array
+        from the API (one entry per day, each with an hourly ``details``
+        list). Missing / failed per-EAN calls carry their previous
+        wrapper value forward.
+
+        Auth failures escalate to reauth. All other errors soft-fail:
+        the previous wrapper is preserved so entities don't blank on a
+        transient outage.
+        """
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        subentry_data = (
+            runtime.subentry_data.get(self.subentry.subentry_id)
+            if runtime is not None
+            else None
+        )
+        service_points = (
+            subentry_data.service_points if subentry_data is not None else {}
+        )
+        electricity_eans = [
+            ean for ean, division in service_points.items() if division == "ELECTRICITY"
+        ]
+        if not electricity_eans:
+            return previous_wrapper
+
+        ban_masked = mask_identifier(business_agreement_number)
+        previous_per_ean = (
+            previous_wrapper.get("data")
+            if isinstance(previous_wrapper, dict)
+            and isinstance(previous_wrapper.get("data"), dict)
+            else {}
+        )
+
+        async def _fetch_one(ean: str) -> tuple[str, Any, bool]:
+            try:
+                payload = await client.async_get_solar_surplus_forecasts(
+                    business_agreement_number,
+                    # ENGIE delivery-point IDs observed in the wild are
+                    # always ``{EAN}_ID1``. Multi-panel installations may
+                    # expose ``_ID2``/``_ID3`` but no service-points
+                    # endpoint currently surfaces them; extend this
+                    # mapping when a real multi-ID sample appears.
+                    f"{ean}_ID1",
+                )
+            except EngieBeApiClientAuthenticationError:
+                raise
+            except EngieBeApiClientError as exception:
+                self._note_solar_unavailable(ean, ban_masked, exception)
+                return ean, previous_per_ean.get(ean), False
+            forecasts = payload.get("forecasts") if isinstance(payload, dict) else None
+            fresh = isinstance(forecasts, list)
+            if fresh:
+                self._note_solar_recovered(ean, ban_masked)
+            return ean, forecasts if fresh else previous_per_ean.get(ean), fresh
+
+        results = await asyncio.gather(
+            *(_fetch_one(ean) for ean in electricity_eans),
+            return_exceptions=True,
+        )
+
+        per_ean: dict[str, Any] = {}
+        any_fresh = False
+        for result in results:
+            if isinstance(result, EngieBeApiClientAuthenticationError):
+                raise ConfigEntryAuthFailed(
+                    translation_domain=DOMAIN,
+                    translation_key="auth_failed",
+                ) from result
+            if isinstance(result, BaseException):
+                LOGGER.debug(
+                    "Unexpected solar-surplus fetch exception, "
+                    "skipping this EAN this cycle: %s",
+                    result,
+                )
+                continue
+            ean, forecasts, fresh = result
+            if forecasts is not None:
+                per_ean[ean] = forecasts
+            if fresh:
+                any_fresh = True
+
+        if not per_ean:
+            return previous_wrapper
+        if not any_fresh:
+            # Every EAN carried its previous value forward; keep the
+            # previous wrapper intact so ``fetched_at`` still reflects the
+            # last time real data was seen.
+            return previous_wrapper
+
+        return {"data": per_ean, "fetched_at": dt_util.utcnow().isoformat()}
+
+    @callback
+    def _async_apply_flag_state(
+        self,
+        *,
+        field_name: str,
+        previous: bool | None,
+        new: bool,
+        log_prefix: str,
+        task_name_suffix: str,
+    ) -> None:
+        """
+        Persist a boolean flag state and schedule a reload on a flip.
+
+        Shared implementation of the first-observation, no-change, and
+        flip branches used by Happy Hours enrolment, solar-surplus
+        availability, and TOU activation. ``field_name`` is the
+        attribute on ``EngieBeSubentryData`` to mutate.
+
+        The ``reload_pending`` check MUST fire before the flag is set to
+        ``True`` so two simultaneous flips in the same refresh tick do
+        not both queue a reload.
         """
         runtime = getattr(self.config_entry, "runtime_data", None)
         if runtime is None:
@@ -349,42 +670,208 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if subentry_data is None:
             return
 
-        subentry_data.is_happy_hour_enrolled = new_enrolled
+        setattr(subentry_data, field_name, new)
 
-        if previous_enrolled is None:
+        if previous is None:
             LOGGER.debug(
-                "BAN %s: initial Happy Hours enrolment observed as %s; "
+                "BAN %s: initial %s state observed as %s; "
                 "platforms will register accordingly",
                 mask_identifier(self.business_agreement_number),
-                new_enrolled,
+                log_prefix,
+                new,
             )
             return
-        if previous_enrolled == new_enrolled:
+        if previous == new:
             return
         if runtime.reload_pending:
             return
 
         runtime.reload_pending = True
         LOGGER.info(
-            "Happy Hours enrolment changed for BAN %s (%s -> %s); "
+            "%s changed for BAN %s (%s -> %s); "
             "reloading config entry to reconcile entities",
+            log_prefix,
             mask_identifier(self.business_agreement_number),
-            previous_enrolled,
-            new_enrolled,
+            previous,
+            new,
         )
-        # ``async_create_background_task`` (not ``async_create_task``) so the
-        # reload survives the teardown of the very coordinator that scheduled
-        # it. ``async_reload`` will cancel our own update task; a foreground
-        # ``async_create_task`` would be cancelled with us, leaving the entry
-        # in a half-reloaded state. The named background task is also visible
-        # in HA developer tools for diagnostics. See CFG-2 in the pre-release
-        # audit.
         self.hass.async_create_background_task(
             self.hass.config_entries.async_reload(self.config_entry.entry_id),
-            name=(
-                "engie_be_reload_on_happy_hour_enrolment_change_"
-                f"{self.config_entry.entry_id}"
-            ),
+            name=f"engie_be_reload_on_{task_name_suffix}_{self.config_entry.entry_id}",
+        )
+
+    @callback
+    def _async_apply_has_solar(
+        self,
+        *,
+        previous_has_solar: bool | None,
+        new_has_solar: bool | None,
+    ) -> None:
+        """Persist the has_solar signal and schedule a reload on a flip."""
+        if new_has_solar is None:
+            return
+        self._async_apply_flag_state(
+            field_name="has_solar",
+            previous=previous_has_solar,
+            new=new_has_solar,
+            log_prefix="solar-surplus availability",
+            task_name_suffix="solar_surplus_change",
+        )
+
+    def _read_cached_is_tou_active(self) -> bool | None:
+        """Return the previously-observed is_tou_active state, or ``None``."""
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        if runtime is None:
+            return None
+        subentry_data = runtime.subentry_data.get(self.subentry.subentry_id)
+        if subentry_data is None:
+            return None
+        return subentry_data.is_tou_active
+
+    async def _async_fetch_tou_flag(
+        self,
+        client: EngieBeApiClient,
+        business_agreement_number: str,
+    ) -> bool:
+        """Probe the ``dgo-tou-is-active`` feature flag."""
+        return await self._async_probe_boolean_flag(
+            client,
+            business_agreement_number,
+            api_method="async_get_dgo_tou_is_active_flag",
+            log_prefix="TOU",
+        )
+
+    async def _async_fetch_tou_schedules(
+        self,
+        client: EngieBeApiClient,
+        business_agreement_number: str,
+        previous_wrapper: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """
+        Fetch the TOU schedules for this business agreement.
+
+        Returns a wrapper ``{"data": <payload>, "fetched_at": <ISO-UTC>}``
+        on success, or ``previous_wrapper`` on transient failure. Auth
+        errors escalate to reauth.
+        """
+        ban_masked = mask_identifier(business_agreement_number)
+        try:
+            payload = await client.async_get_tou_schedules(business_agreement_number)
+        except EngieBeApiClientAuthenticationError as exception:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+            ) from exception
+        except EngieBeApiClientError as exception:
+            self._note_tou_unavailable(ban_masked, exception)
+            return previous_wrapper
+        self._note_tou_recovered(ban_masked)
+        return {"data": payload, "fetched_at": dt_util.utcnow().isoformat()}
+
+    def _note_tou_unavailable(
+        self,
+        ban_masked: str,
+        exception: Exception,
+    ) -> None:
+        """Log a TOU schedules outage at most once per outage."""
+        if self._tou_unavailable:
+            LOGGER.debug(
+                "BAN %s: TOU schedules still unavailable: %s",
+                ban_masked,
+                exception,
+            )
+            return
+        LOGGER.warning(
+            "Failed to fetch TOU schedules for BAN %s, keeping last-known value: %s",
+            ban_masked,
+            exception,
+        )
+        self._tou_unavailable = True
+
+    def _note_tou_recovered(self, ban_masked: str) -> None:
+        """Log recovery once after a TOU schedules outage cleared."""
+        if not self._tou_unavailable:
+            return
+        LOGGER.info(
+            "BAN %s: TOU schedules fetch recovered",
+            ban_masked,
+        )
+        self._tou_unavailable = False
+
+    async def _async_fetch_billing(
+        self,
+        client: EngieBeApiClient,
+        business_agreement_number: str,
+        previous_wrapper: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """
+        Fetch the account-balance payload for this business agreement.
+
+        Returns a wrapper ``{"data": <payload>, "fetched_at": <ISO-UTC>}``
+        on success. On transient failure the previous wrapper is returned
+        unchanged (so sensors keep their last-known values). Auth errors
+        escalate to reauth.
+        """
+        ban_masked = mask_identifier(business_agreement_number)
+        try:
+            payload = await client.async_get_account_balance(business_agreement_number)
+        except EngieBeApiClientAuthenticationError as exception:
+            raise ConfigEntryAuthFailed(
+                translation_domain=DOMAIN,
+                translation_key="auth_failed",
+            ) from exception
+        except EngieBeApiClientError as exception:
+            self._note_billing_unavailable(ban_masked, exception)
+            return previous_wrapper
+        self._note_billing_recovered(ban_masked)
+        return {"data": payload, "fetched_at": dt_util.utcnow().isoformat()}
+
+    def _note_billing_unavailable(
+        self,
+        ban_masked: str,
+        exception: Exception,
+    ) -> None:
+        """Log a billing endpoint outage at most once per outage."""
+        if self._billing_unavailable:
+            LOGGER.debug(
+                "BAN %s: billing endpoint still unavailable: %s",
+                ban_masked,
+                exception,
+            )
+            return
+        LOGGER.warning(
+            "Failed to fetch account balance for BAN %s, keeping last-known value: %s",
+            ban_masked,
+            exception,
+        )
+        self._billing_unavailable = True
+
+    def _note_billing_recovered(self, ban_masked: str) -> None:
+        """Log recovery once after a billing endpoint outage cleared."""
+        if not self._billing_unavailable:
+            return
+        LOGGER.info(
+            "BAN %s: account-balance fetch recovered",
+            ban_masked,
+        )
+        self._billing_unavailable = False
+
+    @callback
+    def _async_apply_is_tou_active(
+        self,
+        *,
+        previous_is_tou_active: bool | None,
+        new_is_tou_active: bool | None,
+    ) -> None:
+        """Persist the is_tou_active signal and schedule a reload on a flip."""
+        if new_is_tou_active is None:
+            return
+        self._async_apply_flag_state(
+            field_name="is_tou_active",
+            previous=previous_is_tou_active,
+            new=new_is_tou_active,
+            log_prefix="TOU-active state",
+            task_name_suffix="tou_change",
         )
 
     async def _async_fetch_happy_hour(
@@ -944,6 +1431,39 @@ def _find_history_fallback(
         "month": best_month,
         "is_fallback": True,
     }
+
+
+def _derive_has_solar(wrapper: dict[str, Any] | None) -> bool | None:
+    """
+    Infer whether the customer has a solar installation from a wrapper.
+
+    Returns ``True`` when any hourly slot across any EAN and any day
+    carries a level other than ``NO_DATA``, ``False`` when the wrapper
+    is present but every slot is ``NO_DATA`` (the shape ENGIE returns
+    for customers without solar), and ``None`` when no wrapper is
+    available so callers know to preserve the last-known value.
+    """
+    if not isinstance(wrapper, dict):
+        return None
+    per_ean = wrapper.get("data")
+    if not isinstance(per_ean, dict):
+        return None
+    for forecasts in per_ean.values():
+        if not isinstance(forecasts, list):
+            continue
+        for day in forecasts:
+            if not isinstance(day, dict):
+                continue
+            details = day.get("details")
+            if not isinstance(details, list):
+                continue
+            for slot in details:
+                if not isinstance(slot, dict):
+                    continue
+                level = slot.get("level")
+                if isinstance(level, str) and level.upper() != "NO_DATA":
+                    return True
+    return False
 
 
 class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):

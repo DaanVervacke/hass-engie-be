@@ -25,6 +25,7 @@ from homeassistant.util import dt as dt_util
 
 from ._happy_hour import happy_hour_events
 from ._peaks import captar_peak_events
+from ._tou_calendar import tou_slot_events
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     LOGGER,
@@ -80,6 +81,7 @@ async def async_setup_entry(
                     sub_data.coordinator,
                     subentry,
                     happy_hour_enrolled=bool(sub_data.is_happy_hour_enrolled),
+                    tou_active=bool(sub_data.is_tou_active),
                 )
             ],
             config_subentry_id=subentry.subentry_id,
@@ -110,6 +112,7 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
         subentry: ConfigSubentry,
         *,
         happy_hour_enrolled: bool,
+        tou_active: bool = False,
     ) -> None:
         """Initialise the calendar entity for one customer-account subentry."""
         super().__init__(coordinator, subentry)
@@ -128,6 +131,8 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
         self._event_providers: list[EventProvider] = list(EVENT_PROVIDERS)
         if happy_hour_enrolled:
             self._event_providers.append(happy_hour_events)
+        if tou_active:
+            self._event_providers.append(tou_slot_events)
         # Force a BAN-prefixed entity_id so each business agreement
         # gets a predictable, collision-proof calendar entity_id
         # regardless of address. HA's auto-derived slug would key off

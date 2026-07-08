@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
+from ._billing import billing_status
 from ._contracts import energy_products_by_ean
 from .const import (
     CONF_ACCESS_TOKEN,
@@ -93,6 +94,8 @@ def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
     else:
         peaks_month = None
         peaks_is_fallback = None
+    solar_wrapper = data.get("solar_surplus")
+    billing_wrapper = data.get("billing")
     return {
         "item_count": len(items),
         "ean_hashes": ean_hashes,
@@ -101,6 +104,99 @@ def _summarise_coordinator_data(data: Any) -> dict[str, Any]:
         "peaks_month": peaks_month,
         "peaks_is_fallback": peaks_is_fallback,
         "is_dynamic": bool(data.get(KEY_IS_DYNAMIC, False)),
+        "solar_surplus": _summarise_solar_surplus(solar_wrapper),
+        "billing": _summarise_billing(billing_wrapper),
+    }
+
+
+def _summarise_solar_surplus(wrapper: Any) -> dict[str, Any] | None:
+    """
+    Return a privacy-safe summary of the cached solar_surplus wrapper.
+
+    Wrapper shape: ``{"data": {ean: forecasts_list}, "fetched_at": ISO}``.
+    Emits per-EAN hashes, day count, hourly-slot count, and the mix of
+    level values seen (as a sorted list). Never emits raw startTime,
+    value, or full EAN strings.
+    """
+    if not isinstance(wrapper, dict):
+        return None
+    per_ean = wrapper.get("data")
+    if not isinstance(per_ean, dict):
+        return None
+
+    per_ean_summary: dict[str, dict[str, Any]] = {}
+    for ean, forecasts in per_ean.items():
+        if not isinstance(forecasts, list):
+            continue
+        day_count = 0
+        slot_count = 0
+        levels: set[str] = set()
+        for day in forecasts:
+            if not isinstance(day, dict):
+                continue
+            day_count += 1
+            top_level = day.get("level")
+            if isinstance(top_level, str):
+                levels.add(top_level)
+            details = day.get("details")
+            if not isinstance(details, list):
+                continue
+            for slot in details:
+                if not isinstance(slot, dict):
+                    continue
+                slot_count += 1
+                slot_level = slot.get("level")
+                if isinstance(slot_level, str):
+                    levels.add(slot_level)
+        per_ean_summary[_hash_ean(ean)] = {
+            "day_count": day_count,
+            "slot_count": slot_count,
+            "levels_present": sorted(levels),
+        }
+
+    fetched_at = wrapper.get("fetched_at")
+    return {
+        "ean_count": len(per_ean_summary),
+        "per_ean": per_ean_summary,
+        "fetched_at": fetched_at if isinstance(fetched_at, str) else None,
+    }
+
+
+def _summarise_billing(wrapper: Any) -> dict[str, Any] | None:
+    """
+    Return a privacy-safe summary of the cached billing wrapper.
+
+    Wrapper shape: ``{"data": <account-balance-payload>, "fetched_at": ISO}``.
+    Emits: ``has_data``, ``fetched_at``, ``status``, ``transaction_count``.
+
+    Never emits: raw amounts, invoice IDs, ``invoiceStructuredCommunication``,
+    or any other PII from the billing payload.
+    """
+    if not isinstance(wrapper, dict):
+        return None
+    payload = wrapper.get("data")
+    has_data = isinstance(payload, dict)
+    fetched_at = wrapper.get("fetched_at")
+
+    if not has_data or not isinstance(payload, dict):
+        return {
+            "has_data": False,
+            "fetched_at": fetched_at if isinstance(fetched_at, str) else None,
+            "status": None,
+            "transaction_count": 0,
+        }
+
+    details = payload.get("details") if isinstance(payload, dict) else None
+    transactions = (
+        details.get("financialTransactions") if isinstance(details, dict) else None
+    )
+    tx_count = len(transactions) if isinstance(transactions, list) else 0
+
+    return {
+        "has_data": True,
+        "fetched_at": fetched_at if isinstance(fetched_at, str) else None,
+        "status": billing_status(wrapper),
+        "transaction_count": tx_count,
     }
 
 

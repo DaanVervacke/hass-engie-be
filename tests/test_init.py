@@ -149,6 +149,15 @@ def _make_client(  # noqa: PLR0913 - kwargs-only test helper, one knob per endpo
     # can override on the per-test client.
     client.async_get_happy_hour_event = AsyncMock(return_value={})
     client.async_get_happy_hours_service_enabled_flag = AsyncMock(return_value={})
+    # Solar-surplus flag probe runs on every per-subentry refresh; default to
+    # ``{}`` (flag off) so the per-EAN fan-out is skipped in tests that do
+    # not exercise the surplus feature.
+    client.async_get_solar_surplus_shown_dashboard_flag = AsyncMock(return_value={})
+    client.async_get_solar_surplus_forecasts = AsyncMock(return_value={"forecasts": []})
+    # TOU endpoints: default to flag off and empty items list so existing
+    # tests that don't exercise TOU stay unaffected.
+    client.async_get_dgo_tou_is_active_flag = AsyncMock(return_value={})
+    client.async_get_tou_schedules = AsyncMock(return_value={"items": []})
     # Energy-contracts endpoint is hit by ``_async_populate_dynamic_flags``
     # at setup; default to an empty payload so detection silently leaves
     # the override at None and falls back to the legacy heuristic.
@@ -159,6 +168,23 @@ def _make_client(  # noqa: PLR0913 - kwargs-only test helper, one knob per endpo
     # EngieBeEpexCoordinator at first refresh; default to an empty
     # timeSeries so the parser returns an empty payload without raising.
     client.async_get_epex_prices = AsyncMock(return_value={"timeSeries": []})
+    # Billing endpoint is hit on every per-subentry coordinator refresh;
+    # default to a CLEAR (zero balance) payload so billing sensors report
+    # 0.0 without raising.
+    client.async_get_account_balance = AsyncMock(
+        return_value={
+            "status": "CLEAR",
+            "details": {"financialTransactions": [], "pendingOnlinePayments": []},
+            "overview": {
+                "openAmount": 0.0,
+                "dueAmount": 0.0,
+                "totalAmount": 0.0,
+                "pendingOnlinePaymentsAmount": 0,
+                "installmentPlanAmount": 0.0,
+            },
+            "refundBlocked": "false",
+        },
+    )
     return client
 
 

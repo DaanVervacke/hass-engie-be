@@ -20,15 +20,21 @@ from homeassistant.const import (
 )
 from homeassistant.util import dt as dt_util
 
+from ._billing import next_due_date, overview_due_amount, overview_open_amount
 from ._epex import next_epex_slot_boundary
 from ._happy_hour import happy_hour_window
 from ._peaks import peaks_meta, peaks_payload
+from ._tou import current_slot as tou_current_slot
+from ._tou import schedule_for_ean
 from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     EPEX_TZ,
     LOGGER,
+    SOLAR_SURPLUS_LEVELS,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+    TOU_SLOT_CODES,
+    TOU_WEEKDAY_KEYS,
 )
 from .data import EpexPayload
 from .entity import EngieBeEntity, EngieBeEpexEntity, _BoundaryScheduleMixin
@@ -272,6 +278,36 @@ async def async_setup_entry(
             )
         if coordinator.is_dynamic:
             entities.extend(_build_epex_sensors(epex_coordinator, subentry))
+
+        if sub_data.has_solar:
+            entities.extend(
+                _build_solar_surplus_sensors(
+                    coordinator,
+                    subentry,
+                    sub_data.service_points,
+                )
+            )
+
+        # TOU slot sensors gated on the ``dgo-tou-is-active`` feature flag,
+        # mirroring the solar-surplus pattern. The coordinator skips the
+        # ``/tou-schedules`` fetch entirely when the flag is off, so
+        # ``coordinator.data["tou_schedules"]`` stays absent; without the
+        # gate, sensor properties would report ``None`` on every read.
+        if sub_data.is_tou_active:
+            entities.extend(
+                _build_tou_sensors(
+                    coordinator,
+                    subentry,
+                    sub_data.service_points,
+                )
+            )
+
+        # Gate billing sensors on the billing wrapper being present. The
+        # endpoint is per-BAN with no feature flag; if the first fetch
+        # failed the wrapper is absent and we skip sensor creation until
+        # the next coordinator refresh that succeeds.
+        if isinstance(coordinator.data.get("billing"), dict):
+            entities.extend(_build_billing_sensors(coordinator, subentry))
 
         async_add_entities(entities, config_subentry_id=subentry.subentry_id)
 
@@ -1098,3 +1134,742 @@ def _serialize_slot(slot: Any) -> dict[str, Any]:
         "value": slot.value_eur_per_kwh,
         "value_eur_per_mwh": slot.value_eur_per_kwh * 1000.0,
     }
+
+
+# ---------------------------------------------------------------------------
+# Solar-surplus forecast sensors
+# ---------------------------------------------------------------------------
+
+_SOLAR_SURPLUS_FORECAST = SensorEntityDescription(
+    key="solar_surplus_forecast",
+    translation_key="solar_surplus_forecast",
+    icon="mdi:solar-power-variant",
+    device_class=SensorDeviceClass.ENUM,
+    options=list(SOLAR_SURPLUS_LEVELS),
+)
+_SOLAR_SURPLUS_CURRENT = SensorEntityDescription(
+    key="solar_surplus_current",
+    translation_key="solar_surplus_current",
+    icon="mdi:solar-power",
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=3,
+)
+_SOLAR_SURPLUS_NEXT_HOUR = SensorEntityDescription(
+    key="solar_surplus_next_hour",
+    translation_key="solar_surplus_next_hour",
+    icon="mdi:solar-power",
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=3,
+)
+_SOLAR_SURPLUS_TODAY_TOTAL = SensorEntityDescription(
+    key="solar_surplus_today_total",
+    translation_key="solar_surplus_today_total",
+    icon="mdi:solar-power",
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=2,
+)
+_SOLAR_SURPLUS_TODAY_PEAK = SensorEntityDescription(
+    key="solar_surplus_today_peak",
+    translation_key="solar_surplus_today_peak",
+    icon="mdi:solar-power",
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    device_class=SensorDeviceClass.ENERGY,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=3,
+)
+
+
+def _build_solar_surplus_sensors(
+    coordinator: EngieBeDataUpdateCoordinator,
+    subentry: ConfigSubentry,
+    service_points: dict[str, str],
+) -> list[SensorEntity]:
+    """Build the solar-surplus sensors for every electricity EAN."""
+    entities: list[SensorEntity] = []
+    for ean, division in service_points.items():
+        if division != "ELECTRICITY":
+            continue
+        entities.append(EngieBeSolarSurplusSensor(coordinator, subentry, ean))
+        entities.append(EngieBeSolarSurplusCurrentSensor(coordinator, subentry, ean))
+        entities.append(EngieBeSolarSurplusNextHourSensor(coordinator, subentry, ean))
+        entities.append(EngieBeSolarSurplusTodayTotalSensor(coordinator, subentry, ean))
+        entities.append(EngieBeSolarSurplusTodayPeakSensor(coordinator, subentry, ean))
+    return entities
+
+
+def _parse_solar_slot_start(raw: Any) -> datetime | None:
+    """Parse a ``startTime`` string into a timezone-aware datetime, or None."""
+    if not isinstance(raw, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _solar_slots(forecasts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Flatten a per-EAN forecasts list into a list of hourly slot dicts."""
+    flat: list[dict[str, Any]] = []
+    for day in forecasts:
+        if not isinstance(day, dict):
+            continue
+        details = day.get("details")
+        if not isinstance(details, list):
+            continue
+        for slot in details:
+            if not isinstance(slot, dict):
+                continue
+            flat.append(slot)
+    return flat
+
+
+def _solar_slot_covering(
+    slots: list[dict[str, Any]], instant: datetime
+) -> dict[str, Any] | None:
+    """Return the slot whose [start, start+1h) interval covers ``instant``."""
+    for slot in slots:
+        start = _parse_solar_slot_start(slot.get("startTime"))
+        if start is None:
+            continue
+        if start <= instant < start + timedelta(hours=1):
+            return slot
+    return None
+
+
+def _solar_slots_for_local_date(
+    slots: list[dict[str, Any]], target_date: date
+) -> list[dict[str, Any]]:
+    """Return every slot whose Brussels-local date matches ``target_date``."""
+    matching: list[dict[str, Any]] = []
+    for slot in slots:
+        start = _parse_solar_slot_start(slot.get("startTime"))
+        if start is None:
+            continue
+        if start.astimezone(ZoneInfo(EPEX_TZ)).date() == target_date:
+            matching.append(slot)
+    return matching
+
+
+def _solar_next_hour_boundary(
+    slots: list[dict[str, Any]], now: datetime
+) -> datetime | None:
+    """Return the next slot-start strictly after ``now``, in UTC."""
+    future_starts = [
+        start
+        for slot in slots
+        if (start := _parse_solar_slot_start(slot.get("startTime"))) is not None
+        and start > now
+    ]
+    if not future_starts:
+        return None
+    return min(future_starts).astimezone(UTC)
+
+
+class _EngieBePerEanBase(EngieBeEntity, SensorEntity):
+    """
+    Shared per-EAN wiring: unique_id, entity_id, and translation placeholders.
+
+    Subclasses add per-feature state / helpers. Future per-EAN sensors
+    (e.g. a hypothetical per-EAN import-status sensor) should inherit
+    from this class directly.
+    """
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        entity_description: SensorEntityDescription,
+        ean: str,
+    ) -> None:
+        """Bind coordinator, subentry, entity description, and EAN."""
+        super().__init__(coordinator, subentry)
+        self.entity_description = entity_description
+        self._ean = ean
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_{ean}_{entity_description.key}"
+        )
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = (
+                f"sensor.engie_belgium_{ban}_{ean}_{entity_description.key}"
+            )
+        self._attr_translation_placeholders = {"ean": ean}
+
+
+class _EngieBeSolarSurplusBase(_EngieBePerEanBase):
+    """Common wiring for every per-EAN solar-surplus sensor."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        entity_description: SensorEntityDescription,
+        ean: str,
+    ) -> None:
+        """Bind coordinator, subentry, entity description, and EAN."""
+        super().__init__(coordinator, subentry, entity_description, ean)
+        # Cache: (forecasts_id, flat_slots). Invalidates automatically on
+        # coordinator refresh because ``_async_update_data`` publishes a
+        # fresh ``data`` dict on every refresh, giving the ``forecasts``
+        # list a new object identity.
+        self._slots_cache: tuple[int, list[dict[str, Any]]] | None = None
+
+    def _cached_flat_slots(self) -> list[dict[str, Any]]:
+        """Return the flat slot list for this EAN, memoized per refresh."""
+        forecasts = self._forecasts_for_ean()
+        if not forecasts:
+            self._slots_cache = None
+            return []
+        key = id(forecasts)
+        if self._slots_cache is not None and self._slots_cache[0] == key:
+            return self._slots_cache[1]
+        flat = _solar_slots(forecasts)
+        self._slots_cache = (key, flat)
+        return flat
+
+    def _forecasts_for_ean(self) -> list[dict[str, Any]] | None:
+        """Return the raw ``forecasts`` list for this EAN, or ``None``."""
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return None
+        wrapper = data.get("solar_surplus")
+        if not isinstance(wrapper, dict):
+            return None
+        per_ean = wrapper.get("data")
+        if not isinstance(per_ean, dict):
+            return None
+        forecasts = per_ean.get(self._ean)
+        return forecasts if isinstance(forecasts, list) else None
+
+
+class EngieBeSolarSurplusSensor(_EngieBeSolarSurplusBase):
+    """Today's solar-surplus level for one delivery point, with 3-day forecast."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        ean: str,
+    ) -> None:
+        """Initialise the enum-state sensor. Keeps the historical unique_id shape."""
+        super().__init__(coordinator, subentry, _SOLAR_SURPLUS_FORECAST, ean)
+        # The original level sensor was shipped with a unique_id that did
+        # not carry the ``solar_surplus_forecast`` suffix (just
+        # ``_solar_surplus``). Preserve it so installed users don't get a
+        # duplicated entity on upgrade.
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_{ean}_solar_surplus"
+        )
+
+    def _today_entry(self) -> dict[str, Any] | None:
+        """Return the day-entry dict for Brussels-local today, or None."""
+        forecasts = self._forecasts_for_ean()
+        if not forecasts:
+            return None
+        today = dt_util.now(ZoneInfo(EPEX_TZ)).date().isoformat()
+        for day in forecasts:
+            if isinstance(day, dict) and day.get("forecastDate") == today:
+                return day
+        # Fall back to first available day (existing behaviour of native_value)
+        return next(
+            (day for day in forecasts if isinstance(day, dict)),
+            None,
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        """Return today's aggregate forecast level as a lower-case enum value."""
+        today_entry = self._today_entry()
+        if today_entry is None:
+            return None
+        level = today_entry.get("level")
+        if not isinstance(level, str):
+            return None
+        candidate = level.lower()
+        return candidate if candidate in SOLAR_SURPLUS_LEVELS else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the flat hourly forecast and today's forecast provenance."""
+        slots = self._cached_flat_slots()
+        if not slots:
+            return {}
+        flat: list[dict[str, Any]] = []
+        for slot in slots:
+            level = slot.get("level")
+            if not isinstance(level, str):
+                continue
+            flat.append(
+                {
+                    "start": slot.get("startTime"),
+                    "value": slot.get("value"),
+                    "level": level.lower(),
+                }
+            )
+        today = self._today_entry() or {}
+        creation_raw = today.get("forecastCreationDate")
+        inference_raw = today.get("inferenceKey")
+        return {
+            "ean": self._ean,
+            "forecast": flat,
+            "forecast_creation_date": (
+                creation_raw if isinstance(creation_raw, str) else None
+            ),
+            "inference_key": (
+                inference_raw if isinstance(inference_raw, str) else None
+            ),
+        }
+
+
+class _EngieBeSolarSurplusHourlySensorBase(
+    _BoundaryScheduleMixin, _EngieBeSolarSurplusBase
+):
+    """Base for numeric sensors that transition on the hour boundary."""
+
+    def _next_boundary(self) -> datetime | None:
+        """Fire at the next slot boundary in the forecast, in UTC."""
+        slots = self._cached_flat_slots()
+        if not slots:
+            return None
+        return _solar_next_hour_boundary(slots, dt_util.utcnow())
+
+
+class EngieBeSolarSurplusCurrentSensor(_EngieBeSolarSurplusHourlySensorBase):
+    """Expected solar surplus in kWh for the slot covering the current hour."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        ean: str,
+    ) -> None:
+        """Initialise the current-hour surplus sensor."""
+        super().__init__(coordinator, subentry, _SOLAR_SURPLUS_CURRENT, ean)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the expected surplus kWh for the slot covering ``now``."""
+        slots = self._cached_flat_slots()
+        if not slots:
+            return None
+        slot = _solar_slot_covering(slots, dt_util.utcnow())
+        if slot is None:
+            return None
+        value = slot.get("value")
+        try:
+            return float(value) if value is not None else None
+        except TypeError, ValueError:
+            return None
+
+
+class EngieBeSolarSurplusNextHourSensor(_EngieBeSolarSurplusHourlySensorBase):
+    """Expected solar surplus in kWh for the slot starting one hour from now."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        ean: str,
+    ) -> None:
+        """Initialise the next-hour surplus sensor."""
+        super().__init__(coordinator, subentry, _SOLAR_SURPLUS_NEXT_HOUR, ean)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the expected surplus kWh for the slot at ``now + 1h``."""
+        slots = self._cached_flat_slots()
+        if not slots:
+            return None
+        target = dt_util.utcnow() + timedelta(hours=1)
+        slot = _solar_slot_covering(slots, target)
+        if slot is None:
+            return None
+        value = slot.get("value")
+        try:
+            return float(value) if value is not None else None
+        except TypeError, ValueError:
+            return None
+
+
+class EngieBeSolarSurplusTodayTotalSensor(_EngieBeSolarSurplusBase):
+    """Sum of today's hourly solar-surplus forecast values in kWh."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        ean: str,
+    ) -> None:
+        """Initialise the today-total surplus sensor."""
+        super().__init__(coordinator, subentry, _SOLAR_SURPLUS_TODAY_TOTAL, ean)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the sum of today's hourly surplus values, or ``None``."""
+        slots = self._cached_flat_slots()
+        if not slots:
+            return None
+        today = dt_util.now(ZoneInfo(EPEX_TZ)).date()
+        total = 0.0
+        seen = False
+        for slot in _solar_slots_for_local_date(slots, today):
+            value = slot.get("value")
+            try:
+                total += float(value) if value is not None else 0.0
+            except TypeError, ValueError:
+                continue
+            seen = True
+        return round(total, 3) if seen else None
+
+
+class EngieBeSolarSurplusTodayPeakSensor(_EngieBeSolarSurplusBase):
+    """Peak of today's hourly solar-surplus forecast values in kWh."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        ean: str,
+    ) -> None:
+        """Initialise the today-peak surplus sensor."""
+        super().__init__(coordinator, subentry, _SOLAR_SURPLUS_TODAY_PEAK, ean)
+
+    def _today_slots_with_values(
+        self,
+    ) -> list[tuple[datetime, float]]:
+        """Return today's parsed (start, value) tuples in slot order."""
+        slots = self._cached_flat_slots()
+        if not slots:
+            return []
+        today = dt_util.now(ZoneInfo(EPEX_TZ)).date()
+        parsed: list[tuple[datetime, float]] = []
+        for slot in _solar_slots_for_local_date(slots, today):
+            start = _parse_solar_slot_start(slot.get("startTime"))
+            value = slot.get("value")
+            if start is None or value is None:
+                continue
+            try:
+                parsed.append((start, float(value)))
+            except TypeError, ValueError:
+                continue
+        return parsed
+
+    @property
+    def native_value(self) -> float | None:
+        """Return today's peak surplus value in kWh."""
+        parsed = self._today_slots_with_values()
+        if not parsed:
+            return None
+        return round(max(value for _, value in parsed), 3)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the timestamp of today's peak slot."""
+        parsed = self._today_slots_with_values()
+        if not parsed:
+            return {}
+        peak_start, _ = max(parsed, key=lambda pair: pair[1])
+        return {"peak_start": peak_start.isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# Time-of-Use (TOU) tariff schedule sensors
+# ---------------------------------------------------------------------------
+
+_TOU_OFFTAKE_SLOT = SensorEntityDescription(
+    key="offtake_slot",
+    translation_key="tou_offtake_slot",
+    device_class=SensorDeviceClass.ENUM,
+    options=list(TOU_SLOT_CODES),
+    icon="mdi:transmission-tower-import",
+)
+_TOU_INJECTION_SLOT = SensorEntityDescription(
+    key="injection_slot",
+    translation_key="tou_injection_slot",
+    device_class=SensorDeviceClass.ENUM,
+    options=list(TOU_SLOT_CODES),
+    icon="mdi:transmission-tower-export",
+)
+
+
+def _build_tou_sensors(
+    coordinator: EngieBeDataUpdateCoordinator,
+    subentry: ConfigSubentry,
+    service_points: dict[str, str],
+) -> list[SensorEntity]:
+    """Build TOU slot sensors for every electricity EAN."""
+    entities: list[SensorEntity] = []
+    for ean, division in service_points.items():
+        if division != "ELECTRICITY":
+            continue
+        entities.append(
+            EngieBeTouSlotSensor(
+                coordinator,
+                subentry,
+                _TOU_OFFTAKE_SLOT,
+                ean=ean,
+                direction="offtake",
+            )
+        )
+        entities.append(
+            EngieBeTouSlotSensor(
+                coordinator,
+                subentry,
+                _TOU_INJECTION_SLOT,
+                ean=ean,
+                direction="injection",
+            )
+        )
+    return entities
+
+
+class _EngieBeTouSlotBase(_BoundaryScheduleMixin, _EngieBePerEanBase):
+    """Per-EAN, per-direction current TOU slot with boundary scheduling."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        entity_description: SensorEntityDescription,
+        ean: str,
+        direction: str,
+    ) -> None:
+        """Bind coordinator, subentry, entity description, EAN, and direction."""
+        super().__init__(coordinator, subentry, entity_description, ean)
+        self._direction = direction
+
+    def _tou_item(self) -> dict[str, Any] | None:
+        """Return the per-EAN TOU item dict from the coordinator wrapper, or None."""
+        data = self.coordinator.data
+        if not isinstance(data, dict):
+            return None
+        wrapper = data.get("tou_schedules")
+        if not isinstance(wrapper, dict):
+            return None
+        payload = wrapper.get("data")
+        if not isinstance(payload, dict):
+            return None
+        ean_suffix = f"{self._ean}_ID1"
+        return schedule_for_ean(payload, ean_suffix)
+
+    def _supplier_schedule(self) -> dict[str, Any] | None:
+        """Return the supplier schedule for this direction, or None."""
+        item = self._tou_item()
+        if item is None:
+            return None
+        schedule = item.get("supplierSchedule")
+        if not isinstance(schedule, dict):
+            return None
+        direction_sched = schedule.get(self._direction)
+        return direction_sched if isinstance(direction_sched, dict) else None
+
+    def _dgo_schedule(self) -> dict[str, Any] | None:
+        """Return the DGO/TGO schedule for this direction, or None."""
+        item = self._tou_item()
+        if item is None:
+            return None
+        schedule = item.get("dgoTgoSchedule")
+        if not isinstance(schedule, dict):
+            return None
+        direction_sched = schedule.get(self._direction)
+        return direction_sched if isinstance(direction_sched, dict) else None
+
+    def _next_boundary(self) -> datetime | None:
+        """Return the next slot transition time in UTC, or None."""
+        schedule = self._supplier_schedule()
+        if schedule is None:
+            return None
+        now = dt_util.utcnow()
+        _, next_trans = tou_current_slot(schedule, now)
+        if next_trans is None:
+            return None
+        return next_trans.astimezone(UTC)
+
+
+class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
+    """Current TOU tariff slot (offtake or injection) for one electricity EAN."""
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the current slot code (lowercase), or None."""
+        schedule = self._supplier_schedule()
+        if schedule is None:
+            return None
+        code, _ = tou_current_slot(schedule, dt_util.utcnow())
+        if code is None:
+            return None
+        return code if code in TOU_SLOT_CODES else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose optimal slot, next transition, weekly schedule, and DGO slot."""
+        attrs: dict[str, Any] = {}
+        schedule = self._supplier_schedule()
+        if schedule is None:
+            return attrs
+        attrs["optimal_slot"] = schedule.get("optimalTimeslotCode", "").lower() or None
+        now = dt_util.utcnow()
+        _, next_trans = tou_current_slot(schedule, now)
+        attrs["next_transition"] = next_trans.isoformat() if next_trans else None
+        # Expose the full weekly schedule as a compact attribute.
+        weekly: dict[str, list[dict[str, Any]]] = {}
+        for day in TOU_WEEKDAY_KEYS:
+            slots = schedule.get(day)
+            if isinstance(slots, list):
+                weekly[day] = [
+                    {
+                        "start": s.get("startTime"),
+                        "end": s.get("endTime"),
+                        "code": s.get("slotCode", "").lower(),
+                    }
+                    for s in slots
+                    if isinstance(s, dict)
+                ]
+        attrs["weekday_slots"] = weekly
+        # DGO/TGO slot as secondary information attribute.
+        dgo_schedule = self._dgo_schedule()
+        if dgo_schedule is not None:
+            dgo_code, _ = tou_current_slot(dgo_schedule, now)
+            attrs["dgo_tgo_slot"] = dgo_code
+        else:
+            attrs["dgo_tgo_slot"] = None
+        return attrs
+
+
+# ---------------------------------------------------------------------------
+# Billing (outstanding balance + overdue amount) sensors
+# ---------------------------------------------------------------------------
+
+_BILLING_OUTSTANDING_BALANCE = SensorEntityDescription(
+    key="outstanding_balance",
+    translation_key="outstanding_balance",
+    native_unit_of_measurement=CURRENCY_EURO,
+    device_class=SensorDeviceClass.MONETARY,
+    state_class=SensorStateClass.TOTAL,
+    suggested_display_precision=2,
+)
+
+_BILLING_OVERDUE_AMOUNT = SensorEntityDescription(
+    key="overdue_amount",
+    translation_key="overdue_amount",
+    native_unit_of_measurement=CURRENCY_EURO,
+    device_class=SensorDeviceClass.MONETARY,
+    state_class=SensorStateClass.TOTAL,
+    suggested_display_precision=2,
+)
+
+_BILLING_NEXT_INVOICE_DUE = SensorEntityDescription(
+    key="next_invoice_due",
+    translation_key="next_invoice_due",
+    device_class=SensorDeviceClass.TIMESTAMP,
+)
+
+
+def _billing_wrapper(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any] | None:
+    """Return the billing wrapper from the coordinator, or None."""
+    if not isinstance(coordinator.data, dict):
+        return None
+    wrapper = coordinator.data.get("billing")
+    return wrapper if isinstance(wrapper, dict) else None
+
+
+def _build_billing_sensors(
+    coordinator: EngieBeDataUpdateCoordinator,
+    subentry: ConfigSubentry,
+) -> list[SensorEntity]:
+    """Build the billing sensors for one subentry when billing data is present."""
+    return [
+        EngieBeOutstandingBalanceSensor(coordinator, subentry),
+        EngieBeOverdueAmountSensor(coordinator, subentry),
+        EngieBeNextInvoiceDueSensor(coordinator, subentry),
+    ]
+
+
+class _EngieBeBillingBase(EngieBeEntity, SensorEntity):
+    """Shared wiring for per-BAN billing sensors."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+        entity_description: SensorEntityDescription,
+    ) -> None:
+        """Bind coordinator, subentry, and entity description."""
+        super().__init__(coordinator, subentry)
+        self.entity_description = entity_description
+        self._attr_unique_id = (
+            f"{coordinator.config_entry.entry_id}"
+            f"_{subentry.subentry_id}_{entity_description.key}"
+        )
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = f"sensor.engie_belgium_{ban}_{entity_description.key}"
+
+
+class EngieBeOutstandingBalanceSensor(_EngieBeBillingBase):
+    """
+    Outstanding balance owed to ENGIE in EUR.
+
+    Positive means the customer owes ENGIE; negative means credit.
+    """
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
+        """Initialise the outstanding-balance sensor."""
+        super().__init__(coordinator, subentry, _BILLING_OUTSTANDING_BALANCE)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the open amount from the billing overview."""
+        return overview_open_amount(_billing_wrapper(self.coordinator))
+
+
+class EngieBeOverdueAmountSensor(_EngieBeBillingBase):
+    """Overdue amount in EUR (portion of the outstanding balance past its due date)."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
+        """Initialise the overdue-amount sensor."""
+        super().__init__(coordinator, subentry, _BILLING_OVERDUE_AMOUNT)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the due amount from the billing overview."""
+        return overview_due_amount(_billing_wrapper(self.coordinator))
+
+
+class EngieBeNextInvoiceDueSensor(_EngieBeBillingBase):
+    """Timestamp of the earliest open invoice due date."""
+
+    def __init__(
+        self,
+        coordinator: EngieBeDataUpdateCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
+        """Initialise the next-invoice-due sensor."""
+        super().__init__(coordinator, subentry, _BILLING_NEXT_INVOICE_DUE)
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the next due date as a timezone-aware datetime, or None."""
+        wrapper = _billing_wrapper(self.coordinator)
+        if wrapper is None:
+            return None
+        return next_due_date(wrapper)

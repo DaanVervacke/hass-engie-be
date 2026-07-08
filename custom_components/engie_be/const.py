@@ -23,6 +23,8 @@ ENERGY_INSIGHTS_V2_BASE_URL = (
     "https://www.engie.be/api/engie/be/ms/energy-insights/customer/v2"
 )
 BOOLEAN_FEATURE_FLAG_BASE_URL = "https://api.engie.be/engie/ms/feature-flags/customer/v1/boolean-feature-flags/_query"
+# Billing customer service (invoices, account balance).
+BILLING_BASE_URL = "https://api.engie.be/engie/ms/billing/customer/v1"
 BUSINESS_AGREEMENTS_BASE_URL = (
     "https://www.engie.be/api/engie/be/ms/business-agreements/customer/v1"
 )
@@ -34,6 +36,68 @@ BUSINESS_AGREEMENTS_BASE_URL = (
 # the gate keeps the integration aligned with the actual service state
 # rather than a UI quirk.
 HAPPY_HOURS_SERVICE_ENABLED_KEY = "happy-hours-service-enabled"
+
+# Feature-flag key that gates the Solar Surplus feature in the Smart App.
+# Extracted from the Android app's ``libapp.so`` (``isSolarSurplusShownDashboard``).
+# When ``false`` the app hides the surplus dashboard tile; we skip the
+# per-EAN forecasts fetch entirely so we match the app's contract and
+# save one GET per electricity EAN per refresh.
+SOLAR_SURPLUS_SHOWN_DASHBOARD_KEY = "solar-surplus-shown-dashboard"
+
+# Feature-flag key that gates the Time-of-Use dashboard tile in the Smart
+# App. Extracted from the Android app's ``libapp.so``
+# (``dgo-tou-is-active`` + ``isTimeOfUseActive`` sync method). The flag
+# only gates the UI tile; the /tou-schedules endpoint returns data even
+# when the flag is false, because the DGO/network schedule always applies.
+TOU_FLAG_KEY = "dgo-tou-is-active"
+
+# TOU_SLOT_CODES: union of every slot code the Smart App can display, so a
+# new code from ENGIE never lands the sensor in ``unknown``.
+#
+# - ``peak`` / ``offpeak`` / ``exclusive_night`` — Dart ``TimeSlotCategory``
+#   enum. ``PEAK`` and ``OFFPEAK`` observed on the wire (BAN 002209795515,
+#   2026-07-08). ``EXCLUSIVE_NIGHT`` documented for the Fluvius rollout.
+# - ``day`` — Dart enum, not yet observed.
+# - ``superoffpeak`` — the app carries a ``"Super Offpeak"`` display label,
+#   and the integration already maps ``SUPEROFFPEAK`` for tri-rate PRICE
+#   sensors at ``sensor.py:81``. Tri-rate Belgian contracts extend the
+#   binary peak/offpeak split; the same code is expected on the TOU
+#   schedule endpoint for those accounts.
+#
+# Wire values are uppercase (e.g. ``PEAK``, ``OFFPEAK``, ``SUPEROFFPEAK``,
+# ``EXCLUSIVE_NIGHT``, ``DAY``). Sensors expose the ``.lower()`` form so
+# the ENUM device class matches the strings.json translation keys.
+TOU_SLOT_CODES: tuple[str, ...] = (
+    "peak",
+    "offpeak",
+    "superoffpeak",
+    "exclusive_night",
+    "day",
+)
+
+# Weekday keys returned by the API, in ISO order.
+TOU_WEEKDAY_KEYS: tuple[str, ...] = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
+# Solar surplus forecast levels. Values match the ENGIE Smart App Flutter
+# app's ``SolarSurplusForecastSunState`` enum (verified from the Android
+# app's libapp.so) in lowercase. ``NO_DATA`` is the "no forecast yet" /
+# "no solar" sentinel; the other four escalate from ``NO_SURPLUS`` to
+# ``HIGH_SURPLUS`` for increasing expected injection.
+SOLAR_SURPLUS_LEVELS: tuple[str, ...] = (
+    "no_data",
+    "no_surplus",
+    "minimal_surplus",
+    "low_surplus",
+    "high_surplus",
+)
 
 # OAuth configuration (public mobile-app client, no secret needed)
 DEFAULT_CLIENT_ID = "R0PQyUdjO5B2tBaRnltgitVnnUmjGyld"
