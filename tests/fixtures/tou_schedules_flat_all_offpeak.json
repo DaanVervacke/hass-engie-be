@@ -1,0 +1,35 @@
+{
+  "items": [
+    {
+      "eanWithSuffix": "541448820070000000_ID1",
+      "supplierSchedule": {
+        "activeConfigurationId": "RTPCMP_FLAT",
+        "offtake": {
+          "optimalTimeslotCode": "OFFPEAK",
+          "monday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "tuesday":   [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "wednesday": [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "thursday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "friday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "saturday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "sunday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
+        },
+        "injection": {
+          "optimalTimeslotCode": "OFFPEAK",
+          "monday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "tuesday":   [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "wednesday": [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "thursday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "friday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "saturday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "sunday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
+        }
+      },
+      "dgoTgoSchedule": {
+        "activeConfigurationId": "RTPCMP_FLAT",
+        "offtake":   {"optimalTimeslotCode": "OFFPEAK", "monday": [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}], "tuesday": [], "wednesday": [], "thursday": [], "friday": [], "saturday": [], "sunday": []},
+        "injection": {"optimalTimeslotCode": "OFFPEAK", "monday": [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}], "tuesday": [], "wednesday": [], "thursday": [], "friday": [], "saturday": [], "sunday": []}
+      }
+    }
+  ]
+}

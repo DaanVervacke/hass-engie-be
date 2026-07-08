@@ -1,0 +1,53 @@
+{
+  "items": [
+    {
+      "eanWithSuffix": "541448820070000000_ID1",
+      "supplierSchedule": {
+        "activeConfigurationId": "RTPCMP_004",
+        "offtake": {
+          "optimalTimeslotCode": "OFFPEAK",
+          "monday":    [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "tuesday":   [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "wednesday": [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "thursday":  [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "friday":    [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "saturday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "sunday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
+        },
+        "injection": {
+          "optimalTimeslotCode": "PEAK",
+          "monday":    [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "tuesday":   [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "wednesday": [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "thursday":  [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "friday":    [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "saturday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "sunday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
+        }
+      },
+      "dgoTgoSchedule": {
+        "activeConfigurationId": "RTPCMP_004",
+        "offtake": {
+          "optimalTimeslotCode": "OFFPEAK",
+          "monday":    [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "tuesday":   [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "wednesday": [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "thursday":  [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "friday":    [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "saturday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "sunday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
+        },
+        "injection": {
+          "optimalTimeslotCode": "PEAK",
+          "monday":    [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "tuesday":   [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "wednesday": [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "thursday":  [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "friday":    [{"startTime": "00:00", "endTime": "06:00", "slotCode": "OFFPEAK"}, {"startTime": "06:00", "endTime": "21:00", "slotCode": "PEAK"}, {"startTime": "21:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "saturday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
+          "sunday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
+        }
+      }
+    }
+  ]
+}
