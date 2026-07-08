@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.util import dt as dt_util
 
+from custom_components.engie_be._tou_calendar import tou_slot_events
 from custom_components.engie_be.calendar import (
     EngieBeCalendar,
     async_setup_entry,
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     import pytest
 
 _PEAKS_FIXTURE = Path(__file__).parent / "fixtures" / "peaks_2026_04.json"
+_TOU_FIXTURE = Path(__file__).parent / "fixtures" / "tou_schedules_bihoraire.json"
 
 
 def _peaks() -> dict:
@@ -467,3 +469,118 @@ async def test_async_setup_entry_warns_when_subentry_runtime_missing(
 
     async_add_entities.assert_not_called()
     assert "No runtime data for subentry sub_ban" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# TOU slot event provider
+# ---------------------------------------------------------------------------
+
+
+def _tou_schedules() -> dict:
+    """Return a fresh copy of the bi-horaire TOU schedules fixture payload."""
+    return json.loads(_TOU_FIXTURE.read_text(encoding="utf-8"))
+
+
+def _tou_wrapper(payload: dict) -> dict:
+    """Wrap a TOU payload in the coordinator ``tou_schedules`` wrapper shape."""
+    return {"data": payload}
+
+
+def test_tou_slot_events_returns_empty_when_tou_active_false() -> None:
+    """When ``tou_active=False`` the TOU provider is not registered."""
+    coordinator = _make_coordinator(
+        {"tou_schedules": _tou_wrapper(_tou_schedules())},
+    )
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(
+        coordinator, subentry, happy_hour_enrolled=False, tou_active=False
+    )
+    assert tou_slot_events not in calendar._event_providers
+
+
+def test_tou_slot_events_registers_provider_when_tou_active() -> None:
+    """When ``tou_active=True`` the TOU provider is appended."""
+    coordinator = _make_coordinator(
+        {"tou_schedules": _tou_wrapper(_tou_schedules())},
+    )
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(
+        coordinator, subentry, happy_hour_enrolled=False, tou_active=True
+    )
+    assert tou_slot_events in calendar._event_providers
+
+
+def test_tou_slot_events_emits_events_for_next_7_days() -> None:
+    """With a bi-horaire fixture the provider emits events covering 7 days."""
+    coordinator = _make_coordinator(
+        {"tou_schedules": _tou_wrapper(_tou_schedules())},
+    )
+    events = tou_slot_events(coordinator)
+    # Bi-horaire has 3 slots per weekday (OFFPEAK/PEAK/OFFPEAK) and 1 per
+    # weekend day per direction, so there must be more than 0 events.
+    assert len(events) > 0
+    # All events must have start < end.
+    for event in events:
+        assert event.start < event.end
+
+
+def test_tou_slot_events_summary_includes_code_and_direction() -> None:
+    """Event summary carries both the slot code and the direction."""
+    coordinator = _make_coordinator(
+        {"tou_schedules": _tou_wrapper(_tou_schedules())},
+    )
+    events = tou_slot_events(coordinator)
+    summaries = {e.summary for e in events}
+    # Fixture has PEAK and OFFPEAK codes for both offtake and injection.
+    assert any("PEAK" in s and "offtake" in s for s in summaries)
+    assert any("OFFPEAK" in s and "offtake" in s for s in summaries)
+    assert any("PEAK" in s and "injection" in s for s in summaries)
+
+
+def test_tou_slot_events_00_00_end_produces_midnight_boundary() -> None:
+    """A slot with endTime '00:00' must end at midnight of the following day."""
+    coordinator = _make_coordinator(
+        {"tou_schedules": _tou_wrapper(_tou_schedules())},
+    )
+    events = tou_slot_events(coordinator)
+    # Weekend slots in the fixture are "00:00"-"00:00" OFFPEAK (whole day).
+    # At least one event must span from midnight to the next-day midnight,
+    # i.e. end.hour == 0 and end.minute == 0 and end.date() > start.date().
+    midnight_end_events = [
+        e
+        for e in events
+        if e.end.hour == 0 and e.end.minute == 0 and e.end.date() > e.start.date()
+    ]
+    assert len(midnight_end_events) > 0
+
+
+def test_tou_slot_events_returns_empty_when_wrapper_missing() -> None:
+    """No ``tou_schedules`` key on coordinator data yields an empty list."""
+    coordinator = _make_coordinator({})
+    events = tou_slot_events(coordinator)
+    assert events == []
+
+
+def test_tou_slot_events_returns_empty_when_coordinator_data_none() -> None:
+    """``coordinator.data`` being ``None`` is handled gracefully."""
+    coordinator = _make_coordinator(None)
+    events = tou_slot_events(coordinator)
+    assert events == []
+
+
+async def test_async_get_events_includes_tou_when_active() -> None:
+    """``async_get_events`` returns TOU events when ``tou_active=True``."""
+    now = dt_util.utcnow()
+    coordinator = _make_coordinator(
+        {"tou_schedules": _tou_wrapper(_tou_schedules())},
+    )
+    subentry = _make_subentry()
+    calendar = EngieBeCalendar(
+        coordinator, subentry, happy_hour_enrolled=False, tou_active=True
+    )
+    events = await calendar.async_get_events(
+        hass=MagicMock(),
+        start_date=now,
+        end_date=now + timedelta(days=7),
+    )
+    assert any("TOU:" in e.summary for e in events)
