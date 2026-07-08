@@ -1,0 +1,15 @@
+{
+  "status": "CLEAR",
+  "details": {
+    "pendingOnlinePayments": [],
+    "financialTransactions": []
+  },
+  "overview": {
+    "totalAmount": 0.0,
+    "openAmount": 0.0,
+    "dueAmount": 0.0,
+    "pendingOnlinePaymentsAmount": 0,
+    "installmentPlanAmount": 0.0
+  },
+  "refundBlocked": "false"
+}

@@ -1,0 +1,24 @@
+{
+  "status": "OPEN_DEBIT",
+  "details": {
+    "pendingOnlinePayments": [],
+    "financialTransactions": [
+      {
+        "type": "INVOICE",
+        "dueAmount": 0,
+        "openAmount": 80.6,
+        "dueDate": "2026-07-22",
+        "invoiceType": "PERIODIC_INVOICE"
+      }
+    ],
+    "invoiceStructuredCommunication": "000000000000"
+  },
+  "overview": {
+    "totalAmount": 80.6,
+    "openAmount": 80.6,
+    "dueAmount": 0.0,
+    "pendingOnlinePaymentsAmount": 0,
+    "installmentPlanAmount": 0.0
+  },
+  "refundBlocked": "false"
+}

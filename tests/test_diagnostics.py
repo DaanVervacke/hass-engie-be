@@ -34,8 +34,10 @@ from custom_components.engie_be.diagnostics import (
     TO_REDACT,
     _hash_ean,
     _redacted_title,
+    _summarise_billing,
     _summarise_coordinator_data,
     _summarise_epex,
+    _summarise_solar_surplus,
     async_get_config_entry_diagnostics,
 )
 
@@ -528,3 +530,164 @@ async def test_diagnostics_skips_non_business_agreement_subentries(
         assert sid not in diag["subentries"]
     # The single business-agreement subentry is still summarised.
     assert len(diag["subentries"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Solar-surplus summariser
+# ---------------------------------------------------------------------------
+
+
+def test_summarise_solar_surplus_returns_none_for_missing_wrapper() -> None:
+    """No wrapper -> None (so top-level key is present but empty)."""
+    assert _summarise_solar_surplus(None) is None
+    assert _summarise_solar_surplus("not a dict") is None
+    assert _summarise_solar_surplus({}) is None
+    assert _summarise_solar_surplus({"data": "not a dict"}) is None
+
+
+def test_summarise_solar_surplus_hashes_eans_and_counts_slots() -> None:
+    """Wrapper with real payload yields hashed EAN keys and shape metadata."""
+    ean = "541448820070414088"
+    wrapper = {
+        "data": {
+            ean: [
+                {
+                    "forecastDate": "2026-07-08",
+                    "level": "HIGH_SURPLUS",
+                    "details": [
+                        {
+                            "startTime": "2026-07-08T10:00:00+02:00",
+                            "value": 1.5,
+                            "level": "LOW_SURPLUS",
+                        },
+                        {
+                            "startTime": "2026-07-08T11:00:00+02:00",
+                            "value": 3.2,
+                            "level": "HIGH_SURPLUS",
+                        },
+                    ],
+                },
+                {
+                    "forecastDate": "2026-07-09",
+                    "level": "LOW_SURPLUS",
+                    "details": [
+                        {
+                            "startTime": "2026-07-09T10:00:00+02:00",
+                            "value": 2.0,
+                            "level": "LOW_SURPLUS",
+                        },
+                    ],
+                },
+            ],
+        },
+        "fetched_at": "2026-07-08T10:00:00+00:00",
+    }
+    result = _summarise_solar_surplus(wrapper)
+    assert result is not None
+    assert result["ean_count"] == 1
+    assert result["fetched_at"] == "2026-07-08T10:00:00+00:00"
+    assert _hash_ean(ean) in result["per_ean"]
+    per_ean_entry = result["per_ean"][_hash_ean(ean)]
+    assert per_ean_entry["day_count"] == 2
+    assert per_ean_entry["slot_count"] == 3
+    assert per_ean_entry["levels_present"] == ["HIGH_SURPLUS", "LOW_SURPLUS"]
+    # Raw EAN must NOT appear anywhere in the output.
+    assert ean not in json.dumps(result)
+
+
+def test_summarise_solar_surplus_survives_malformed_shape() -> None:
+    """Non-dict days, non-list details are silently skipped."""
+    wrapper = {
+        "data": {
+            "5414ZZ": [
+                "not a dict",
+                {"forecastDate": "2026-07-08", "details": "not a list"},
+                {"forecastDate": "2026-07-09", "details": ["not a dict slot"]},
+            ],
+        },
+        "fetched_at": None,
+    }
+    result = _summarise_solar_surplus(wrapper)
+    assert result is not None
+    assert result["ean_count"] == 1
+    assert result["fetched_at"] is None
+    entry = next(iter(result["per_ean"].values()))
+    assert entry["day_count"] == 2  # the two dict-shaped days counted
+    assert entry["slot_count"] == 0  # neither day yielded slot dicts
+
+
+# ---------------------------------------------------------------------------
+# Billing summariser
+# ---------------------------------------------------------------------------
+
+_BILLING_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _billing_wrap(fixture_name: str) -> dict:
+    """Load a billing fixture and wrap it in coordinator storage shape."""
+    payload = json.loads(
+        (_BILLING_FIXTURES / f"billing_{fixture_name}.json").read_text()
+    )
+    return {"data": payload, "fetched_at": "2026-07-20T10:00:00+00:00"}
+
+
+def test_summarise_billing_returns_none_for_non_dict() -> None:
+    """_summarise_billing returns None for non-dict input."""
+    assert _summarise_billing(None) is None
+    assert _summarise_billing("not a dict") is None
+    assert _summarise_billing(42) is None
+
+
+def test_summarise_billing_clear_fixture() -> None:
+    """_summarise_billing on cleared wrapper reports CLEAR status, 0 transactions."""
+    result = _summarise_billing(_billing_wrap("cleared"))
+    assert result is not None
+    assert result["has_data"] is True
+    assert result["status"] == "CLEAR"
+    assert result["transaction_count"] == 0
+    assert result["fetched_at"] == "2026-07-20T10:00:00+00:00"
+
+
+def test_summarise_billing_open_debit_fixture() -> None:
+    """_summarise_billing on open_debit counts transactions and reports no overdue."""
+    result = _summarise_billing(_billing_wrap("open_debit"))
+    assert result is not None
+    assert result["has_data"] is True
+    assert result["status"] == "OPEN_DEBIT"
+    assert result["transaction_count"] == 1
+
+
+def test_summarise_billing_does_not_leak_amounts_or_communication() -> None:
+    """_summarise_billing never emits raw amounts or invoiceStructuredCommunication."""
+    wrapper = {
+        "data": {
+            "status": "OPEN_OVERDUE",
+            "overview": {"totalAmount": 50.0, "openAmount": 50.0, "dueAmount": 50.0},
+            "details": {
+                "invoiceStructuredCommunication": "+++111/2222/33333+++",
+                "financialTransactions": [
+                    {"openAmount": 50.0, "dueAmount": 50.0, "dueDate": "2026-06-01"},
+                ],
+            },
+        },
+        "fetched_at": "2026-07-20T10:00:00+00:00",
+    }
+    result = _summarise_billing(wrapper)
+    serialised = json.dumps(result)
+    # Raw field names and amounts must not appear in diagnostics output.
+    for forbidden in ("openAmount", "dueAmount", "totalAmount"):
+        assert forbidden not in serialised
+    # invoiceStructuredCommunication must not appear
+    assert "invoiceStructuredCommunication" not in serialised
+    # Raw numeric amounts from the wrapper (50.0) must not appear
+    assert "50.0" not in serialised
+
+
+def test_summarise_billing_missing_data_returns_empty_shell() -> None:
+    """A wrapper with no inner 'data' dict returns a has_data=False shell."""
+    wrapper = {"fetched_at": "2026-07-20T10:00:00+00:00"}
+    result = _summarise_billing(wrapper)
+    assert result is not None
+    assert result["has_data"] is False
+    assert result["status"] is None
+    assert result["transaction_count"] == 0
