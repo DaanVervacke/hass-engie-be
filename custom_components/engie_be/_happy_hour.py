@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.calendar import CalendarEvent
 
 from .const import LOGGER
+from .data import unwrap_payload
 
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
@@ -78,13 +79,7 @@ def happy_hour_payload(
     event scheduled. Callers must distinguish ``None`` (no data) from
     ``{}`` (no event scheduled) themselves when that matters.
     """
-    if not isinstance(coordinator.data, dict):
-        return None
-    wrapper = coordinator.data.get("happy_hour")
-    if not isinstance(wrapper, dict):
-        return None
-    payload = wrapper.get("data")
-    return payload if isinstance(payload, dict) else None
+    return unwrap_payload(coordinator, "happy_hour")
 
 
 _HAPPY_HOUR_PAYLOAD_KEYS = ("today", "tomorrow")

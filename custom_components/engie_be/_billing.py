@@ -3,22 +3,29 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
+
+from .data import unwrap_payload
 
 # Brussels timezone used to anchor ``dueDate`` strings (which are dates,
 # not datetimes) to a timezone-aware datetime at midnight local time.
 _BRUSSELS_TZ = ZoneInfo("Europe/Brussels")
 
+if TYPE_CHECKING:
+    from .coordinator import EngieBeDataUpdateCoordinator
 
-def overview_open_amount(wrapper: Any) -> float | None:
-    """
-    Return the total open (unpaid) amount from the billing wrapper.
 
-    Wrapper shape: ``{"data": <account-balance-payload>, "fetched_at": ISO}``.
-    Returns ``None`` when the wrapper is absent or malformed.
+def overview_open_amount(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> float | None:
     """
-    payload = _unwrap(wrapper)
+    Return the total open (unpaid) amount from the billing overview.
+
+    Returns ``None`` when the coordinator has no billing data or the
+    payload is malformed.
+    """
+    payload = unwrap_payload(coordinator, "billing")
     if payload is None:
         return None
     overview = payload.get("overview")
@@ -33,13 +40,16 @@ def overview_open_amount(wrapper: Any) -> float | None:
         return None
 
 
-def overview_due_amount(wrapper: Any) -> float | None:
+def overview_due_amount(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> float | None:
     """
-    Return the amount that is past its due date from the billing wrapper.
+    Return the amount that is past its due date from the billing payload.
 
-    Returns ``None`` when the wrapper is absent or malformed.
+    Returns ``None`` when the coordinator has no billing data or the
+    payload is malformed.
     """
-    payload = _unwrap(wrapper)
+    payload = unwrap_payload(coordinator, "billing")
     if payload is None:
         return None
     overview = payload.get("overview")
@@ -54,16 +64,19 @@ def overview_due_amount(wrapper: Any) -> float | None:
         return None
 
 
-def next_due_date(wrapper: Any) -> datetime | None:
+def next_due_date(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> datetime | None:
     """
     Return the earliest due date among open transactions, as a timezone-aware datetime.
 
     The returned datetime is midnight Brussels-local on the due date,
     timezone-aware.
 
-    Returns ``None`` when no open transactions exist or the wrapper is absent.
+    Returns ``None`` when no open transactions exist or the coordinator
+    has no billing data.
     """
-    transactions = _transactions(wrapper)
+    transactions = _transactions(coordinator)
     if not transactions:
         return None
 
@@ -91,9 +104,11 @@ def next_due_date(wrapper: Any) -> datetime | None:
     return earliest
 
 
-def billing_status(wrapper: Any) -> str | None:
-    """Return the top-level ``status`` string from the billing wrapper, or None."""
-    payload = _unwrap(wrapper)
+def billing_status(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> str | None:
+    """Return the top-level ``status`` string from the billing payload, or None."""
+    payload = unwrap_payload(coordinator, "billing")
     if payload is None:
         return None
     status = payload.get("status")
@@ -105,17 +120,11 @@ def billing_status(wrapper: Any) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _unwrap(wrapper: Any) -> dict[str, Any] | None:
-    """Unwrap the coordinator billing wrapper, returning the inner payload."""
-    if not isinstance(wrapper, dict):
-        return None
-    payload = wrapper.get("data")
-    return payload if isinstance(payload, dict) else None
-
-
-def _transactions(wrapper: Any) -> list[dict[str, Any]]:
+def _transactions(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> list[dict[str, Any]]:
     """Return the financialTransactions list, or an empty list."""
-    payload = _unwrap(wrapper)
+    payload = unwrap_payload(coordinator, "billing")
     if payload is None:
         return []
     details = payload.get("details")

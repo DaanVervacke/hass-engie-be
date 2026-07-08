@@ -1767,16 +1767,6 @@ _BILLING_NEXT_INVOICE_DUE = SensorEntityDescription(
 )
 
 
-def _billing_wrapper(
-    coordinator: EngieBeDataUpdateCoordinator,
-) -> dict[str, Any] | None:
-    """Return the billing wrapper from the coordinator, or None."""
-    if not isinstance(coordinator.data, dict):
-        return None
-    wrapper = coordinator.data.get("billing")
-    return wrapper if isinstance(wrapper, dict) else None
-
-
 def _build_billing_sensors(
     coordinator: EngieBeDataUpdateCoordinator,
     subentry: ConfigSubentry,
@@ -1828,7 +1818,7 @@ class EngieBeOutstandingBalanceSensor(_EngieBeBillingBase):
     @property
     def native_value(self) -> float | None:
         """Return the open amount from the billing overview."""
-        return overview_open_amount(_billing_wrapper(self.coordinator))
+        return overview_open_amount(self.coordinator)
 
 
 class EngieBeOverdueAmountSensor(_EngieBeBillingBase):
@@ -1845,7 +1835,7 @@ class EngieBeOverdueAmountSensor(_EngieBeBillingBase):
     @property
     def native_value(self) -> float | None:
         """Return the due amount from the billing overview."""
-        return overview_due_amount(_billing_wrapper(self.coordinator))
+        return overview_due_amount(self.coordinator)
 
 
 class EngieBeNextInvoiceDueSensor(_EngieBeBillingBase):
@@ -1862,7 +1852,4 @@ class EngieBeNextInvoiceDueSensor(_EngieBeBillingBase):
     @property
     def native_value(self) -> datetime | None:
         """Return the next due date as a timezone-aware datetime, or None."""
-        wrapper = _billing_wrapper(self.coordinator)
-        if wrapper is None:
-            return None
-        return next_due_date(wrapper)
+        return next_due_date(self.coordinator)

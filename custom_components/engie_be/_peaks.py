@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.calendar import CalendarEvent
 
+from .data import unwrap_payload
+
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
 
@@ -22,19 +24,8 @@ _CAPTAR_EVENT_SUMMARY = "Captar monthly peak"
 def peaks_payload(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> dict[str, Any] | None:
-    """
-    Return the inner peaks dict from coordinator data, or ``None``.
-
-    The coordinator wraps the API response as
-    ``{"data", "year", "month", "is_fallback"}``. This helper unwraps it.
-    """
-    if not isinstance(coordinator.data, dict):
-        return None
-    wrapper = coordinator.data.get("peaks")
-    if not isinstance(wrapper, dict):
-        return None
-    payload = wrapper.get("data")
-    return payload if isinstance(payload, dict) else None
+    """Return the inner peaks dict from coordinator data, or ``None``."""
+    return unwrap_payload(coordinator, "peaks")
 
 
 def peaks_meta(

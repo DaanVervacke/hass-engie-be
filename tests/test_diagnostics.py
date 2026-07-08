@@ -410,24 +410,33 @@ async def test_diagnostics_does_not_leak_raw_eans_from_contracts(
 # ---------------------------------------------------------------------------
 
 
+def _make_coord(data: object) -> MagicMock:
+    """Build a minimal mock coordinator for _summarise_coordinator_data tests."""
+    coord = MagicMock()
+    coord.data = data
+    return coord
+
+
 def test_summarise_coordinator_data_non_dict_returns_raw_type() -> None:
     """Non-dict coordinator data degrades to a type tag instead of raising."""
-    assert _summarise_coordinator_data(None) == {"raw_type": "NoneType"}
-    assert _summarise_coordinator_data([1, 2, 3]) == {"raw_type": "list"}
+    assert _summarise_coordinator_data(_make_coord(None)) == {"raw_type": "NoneType"}
+    assert _summarise_coordinator_data(_make_coord([1, 2, 3])) == {"raw_type": "list"}
 
 
 def test_summarise_coordinator_data_includes_peaks_metadata() -> None:
     """A present peaks wrapper with int year/month yields a ``YYYY-MM`` label."""
     summary = _summarise_coordinator_data(
-        {
-            "items": [{"ean": "541448820000000001_ID1"}],
-            "peaks": {
-                "data": {"peak": 3.5},
-                "year": 2026,
-                "month": 6,
-                "is_fallback": True,
-            },
-        },
+        _make_coord(
+            {
+                "items": [{"ean": "541448820000000001_ID1"}],
+                "peaks": {
+                    "data": {"peak": 3.5},
+                    "year": 2026,
+                    "month": 6,
+                    "is_fallback": True,
+                },
+            }
+        )
     )
 
     assert summary["item_count"] == 1
@@ -440,9 +449,7 @@ def test_summarise_coordinator_data_includes_peaks_metadata() -> None:
 def test_summarise_coordinator_data_peaks_present_without_valid_month() -> None:
     """A present peaks wrapper lacking int year/month reports a None month."""
     summary = _summarise_coordinator_data(
-        {
-            "peaks": {"data": {"peak": 1.0}},
-        },
+        _make_coord({"peaks": {"data": {"peak": 1.0}}})
     )
 
     assert summary["peaks_present"] is True
@@ -623,24 +630,44 @@ def test_summarise_solar_surplus_survives_malformed_shape() -> None:
 _BILLING_FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _billing_wrap(fixture_name: str) -> dict:
-    """Load a billing fixture and wrap it in coordinator storage shape."""
+def _billing_coord(fixture_name: str) -> MagicMock:
+    """Load a billing fixture and wrap it in a mock coordinator."""
     payload = json.loads(
         (_BILLING_FIXTURES / f"billing_{fixture_name}.json").read_text()
     )
-    return {"data": payload, "fetched_at": "2026-07-20T10:00:00+00:00"}
+    wrapper = {"data": payload, "fetched_at": "2026-07-20T10:00:00+00:00"}
+    coord = MagicMock()
+    coord.data = {"billing": wrapper}
+    return coord
 
 
-def test_summarise_billing_returns_none_for_non_dict() -> None:
-    """_summarise_billing returns None for non-dict input."""
-    assert _summarise_billing(None) is None
-    assert _summarise_billing("not a dict") is None
-    assert _summarise_billing(42) is None
+def _billing_coord_from_wrapper(wrapper: object) -> MagicMock:
+    """Build a mock coordinator whose billing wrapper is the given object."""
+    coord = MagicMock()
+    coord.data = {"billing": wrapper}
+    return coord
+
+
+def test_summarise_billing_returns_none_when_no_billing_key() -> None:
+    """_summarise_billing returns None when the coordinator has no billing wrapper."""
+    coord = MagicMock()
+    coord.data = {}
+    assert _summarise_billing(coord) is None
+
+
+def test_summarise_billing_returns_none_when_billing_not_dict() -> None:
+    """_summarise_billing returns None when the billing wrapper is not a dict."""
+    coord = MagicMock()
+    coord.data = {"billing": None}
+    assert _summarise_billing(coord) is None
+    coord2 = MagicMock()
+    coord2.data = {"billing": "not a dict"}
+    assert _summarise_billing(coord2) is None
 
 
 def test_summarise_billing_clear_fixture() -> None:
-    """_summarise_billing on cleared wrapper reports CLEAR status, 0 transactions."""
-    result = _summarise_billing(_billing_wrap("cleared"))
+    """_summarise_billing on cleared fixture reports CLEAR status, 0 transactions."""
+    result = _summarise_billing(_billing_coord("cleared"))
     assert result is not None
     assert result["has_data"] is True
     assert result["status"] == "CLEAR"
@@ -650,7 +677,7 @@ def test_summarise_billing_clear_fixture() -> None:
 
 def test_summarise_billing_open_debit_fixture() -> None:
     """_summarise_billing on open_debit counts transactions and reports no overdue."""
-    result = _summarise_billing(_billing_wrap("open_debit"))
+    result = _summarise_billing(_billing_coord("open_debit"))
     assert result is not None
     assert result["has_data"] is True
     assert result["status"] == "OPEN_DEBIT"
@@ -672,7 +699,7 @@ def test_summarise_billing_does_not_leak_amounts_or_communication() -> None:
         },
         "fetched_at": "2026-07-20T10:00:00+00:00",
     }
-    result = _summarise_billing(wrapper)
+    result = _summarise_billing(_billing_coord_from_wrapper(wrapper))
     serialised = json.dumps(result)
     # Raw field names and amounts must not appear in diagnostics output.
     for forbidden in ("openAmount", "dueAmount", "totalAmount"):
@@ -686,7 +713,7 @@ def test_summarise_billing_does_not_leak_amounts_or_communication() -> None:
 def test_summarise_billing_missing_data_returns_empty_shell() -> None:
     """A wrapper with no inner 'data' dict returns a has_data=False shell."""
     wrapper = {"fetched_at": "2026-07-20T10:00:00+00:00"}
-    result = _summarise_billing(wrapper)
+    result = _summarise_billing(_billing_coord_from_wrapper(wrapper))
     assert result is not None
     assert result["has_data"] is False
     assert result["status"] is None

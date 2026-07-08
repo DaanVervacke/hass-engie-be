@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from homeassistant.config_entries import ConfigEntry
+    from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
     from .api import EngieBeApiClient
     from .coordinator import (
@@ -17,6 +18,34 @@ if TYPE_CHECKING:
         EngieBeEpexCoordinator,
     )
     from .store import EngieBeHappyHoursStore, EngieBePeaksStore
+
+
+def unwrap_payload(
+    coordinator: DataUpdateCoordinator[Any],
+    key: str,
+) -> dict[str, Any] | None:
+    """
+    Return the inner ``data`` dict from a coordinator dict-wrapper.
+
+    The coordinator stores each domain payload under a top-level key
+    (``"peaks"``, ``"happy_hour"``, ``"billing"``, ...) wrapped in a
+    dict of shape ``{"data": <payload>, ...}``. This helper peels both
+    levels and narrows the return type.
+
+    Returns ``None`` when:
+
+    * the coordinator has no data yet,
+    * the top-level container is not a dict,
+    * the wrapper under ``key`` is missing or not a dict, or
+    * the inner ``"data"`` value is missing or not a dict.
+    """
+    if not isinstance(coordinator.data, dict):
+        return None
+    wrapper = coordinator.data.get(key)
+    if not isinstance(wrapper, dict):
+        return None
+    payload = wrapper.get("data")
+    return payload if isinstance(payload, dict) else None
 
 
 type EngieBeConfigEntry = ConfigEntry[EngieBeData]
