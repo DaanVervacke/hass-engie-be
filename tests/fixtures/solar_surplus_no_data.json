@@ -1,0 +1,15 @@
+{
+  "forecasts": [
+    {
+      "forecastDate": "2026-07-08",
+      "level": "NO_DATA",
+      "details": [
+        {"startTime": "2026-07-08T06:00:00+02:00", "value": 0, "level": "NO_DATA"},
+        {"startTime": "2026-07-08T07:00:00+02:00", "value": 0, "level": "NO_DATA"},
+        {"startTime": "2026-07-08T08:00:00+02:00", "value": 0, "level": "NO_DATA"}
+      ],
+      "forecastCreationDate": "1970-01-01T01:00:00+01:00",
+      "inferenceKey": "no_data"
+    }
+  ]
+}

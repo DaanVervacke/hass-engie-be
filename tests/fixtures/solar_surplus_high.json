@@ -1,0 +1,24 @@
+{
+  "forecasts": [
+    {
+      "forecastDate": "2026-07-08",
+      "level": "HIGH_SURPLUS",
+      "details": [
+        {"startTime": "2026-07-08T06:00:00+02:00", "value": 0.2, "level": "LOW_SURPLUS"},
+        {"startTime": "2026-07-08T12:00:00+02:00", "value": 2.4, "level": "HIGH_SURPLUS"},
+        {"startTime": "2026-07-08T18:00:00+02:00", "value": 0.1, "level": "MINIMAL_SURPLUS"}
+      ],
+      "forecastCreationDate": "2026-07-07T22:00:00+02:00",
+      "inferenceKey": "actuals"
+    },
+    {
+      "forecastDate": "2026-07-09",
+      "level": "LOW_SURPLUS",
+      "details": [
+        {"startTime": "2026-07-09T12:00:00+02:00", "value": 3.1, "level": "LOW_SURPLUS"}
+      ],
+      "forecastCreationDate": "2026-07-07T22:00:00+02:00",
+      "inferenceKey": "actuals"
+    }
+  ]
+}
