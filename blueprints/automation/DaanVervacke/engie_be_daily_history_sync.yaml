@@ -8,7 +8,7 @@ blueprint:
     one-off run, click "Run actions" on the automation in Settings >
     Automations & scenes.
   domain: automation
-  source_url: https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml
+  source_url: https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml
   input:
     engie_device:
       name: ENGIE business agreement

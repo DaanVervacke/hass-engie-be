@@ -342,12 +342,12 @@ usage** action from **Settings** > **Developer tools** > **Actions**.
 The easiest way is the included blueprint. It runs the import once a day
 so your dashboard stays up-to-date.
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FDaanVervacke%2Fhass-engie-be%2Fblob%2Ffeat%2Fimport-historical-energy-data%2Fblueprints%2Fautomation%2FDaanVervacke%2Fengie_be_daily_history_sync.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FDaanVervacke%2Fhass-engie-be%2Fblob%2Fmain%2Fblueprints%2Fautomation%2FDaanVervacke%2Fengie_be_daily_history_sync.yaml)
 
 Or manually:
 
 1. **Settings** > **Automations & scenes** > **Blueprints** > **Import blueprint**.
-2. Paste: `https://github.com/DaanVervacke/hass-engie-be/blob/feat/import-historical-energy-data/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`
+2. Paste: `https://github.com/DaanVervacke/hass-engie-be/blob/main/blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`
 3. **Preview** > **Import blueprint**.
 4. Under **Automations**, click **Create automation** on the imported blueprint.
 5. Pick your business agreement, a time to run, and save.

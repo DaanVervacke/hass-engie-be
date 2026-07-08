@@ -1285,13 +1285,13 @@ def _import_section_schema(  # noqa: PLR0913
 # in strings.json and populated by the schema builders below.
 _README_URL = (
     "https://github.com/DaanVervacke/hass-engie-be/blob/"
-    "feat/import-historical-energy-data/README.md#add-to-the-energy-dashboard"
+    "main/README.md#add-to-the-energy-dashboard"
 )
 
 _BLUEPRINT_IMPORT_URL = (
     "https://my.home-assistant.io/redirect/blueprint_import/"
     "?blueprint_url=https%3A%2F%2Fgithub.com%2FDaanVervacke%2Fhass-engie-be"
-    "%2Fblob%2Ffeat%2Fimport-historical-energy-data%2Fblueprints"
+    "%2Fblob%2Fmain%2Fblueprints"
     "%2Fautomation%2FDaanVervacke%2Fengie_be_daily_history_sync.yaml"
 )
 
