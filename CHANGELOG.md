@@ -37,6 +37,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- Correct Smart App tab label ("Je producten"), stop labelling Belgian P1 meters as DSMR, and note the June 2026 Happy Hours enrolment pause plus the public archive of past windows. [#NN]
 - Correct TOU section: the schedule reflects a TOU supplier product, not a Fluvius network-tariff rollout. Flemish distribution tariff since 2023 is the capacity tariff (kW peak based), not time-of-use. [#NN]
 - Replace Python-2 legacy except A, B: syntax at 13 sites so the integration loads on Python 3.13 (previously worked only on 3.14). [#NN]
 - Add selector option translations for solar-surplus level, TOU slot, and TOU direction fields required by hassfest. Without these `selector.*` blocks in `strings.json`, hassfest reported 8 errors and the option labels in the automation editor picker rendered as raw enum keys. [#NN]
