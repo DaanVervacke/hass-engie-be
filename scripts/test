@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+.venv/bin/pytest tests/ -v --tb=short \
+    --cov=custom_components.engie_be \
+    --cov-report=term-missing \
+    --cov-fail-under=95 "$@"
