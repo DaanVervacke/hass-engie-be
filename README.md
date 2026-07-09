@@ -201,7 +201,7 @@ event description.
 
 Happy Hours are free-energy windows ENGIE schedules for enrolled
 accounts. Windows are announced the day before, and enrolment is per
-address through the ENGIE Smart App under "Je diensten". See
+address through the ENGIE Smart App under "Je producten". See
 [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/) for
 eligibility.
 
@@ -230,7 +230,10 @@ but not right now", check the timestamps.
 The integration also emits Happy Hours events on the per-account
 calendar and keeps a rolling archive of every window it observes so
 the calendar shows the full history across restarts. Windows from
-before you installed the integration cannot be recovered.
+before you installed the integration are not retrievable via the
+Smart App or the API used by this integration, though ENGIE
+publishes a public overview at
+[engie.be/nl/happyhours/overzicht](https://www.engie.be/nl/happyhours/overzicht).
 
 Enrolment is picked up automatically on every refresh. Entities
 appear shortly after you enrol an address and disappear after you
@@ -721,9 +724,10 @@ removed and no history is lost.
 
 ## Known limitations
 
-- **Historical usage data lags a few days.** ENGIE only publishes hourly usage once a day is finalised, so today and yesterday are not available yet. For real-time consumption you need a P1 / DSMR (Dutch Smart Meter Requirements) meter.
+- **Historical usage data lags a few days.** ENGIE only publishes hourly usage once a day is finalised, so today and yesterday are not available yet. For real-time consumption you need a separate P1-port digital-meter reader.
 - **No historical price retrieval.** ENGIE does not expose historical energy prices through the API. The integration can only report the currently active price period. Historical sensor data is what Home Assistant's own recorder stores.
-- **Happy Hours history starts when the integration is installed.** ENGIE does not provide a historical list of past Happy Hours windows. The integration records each window it observes locally, so windows that ran before the integration was set up cannot be recovered.
+- **Happy Hours history starts when the integration is installed.** ENGIE's Smart App and API surface only the next upcoming Happy Hours window. The integration records each window it observes locally, so past windows are recoverable inside HA only from the point of install onwards. ENGIE also publishes a public archive of all past Happy Hours at [engie.be/nl/happyhours/overzicht](https://www.engie.be/nl/happyhours/overzicht) if you need older data.
+- **Happy Hours enrolment paused until 2027.** ENGIE closed new enrolments on 1 June 2026 via the Smart App and states enrolments will reopen in 2027. Existing enrolments continue automatically. See [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/).
 - **EPEX prices published around 14:00 Brussels time.** ENGIE publishes the next day's dynamic prices each afternoon after the EPEX day-ahead auction settles. Before that time, only today's prices are available and tomorrow's sensors show `unknown`. See [engie.be/nl/dynamic-tarief/dagelijks-gebruik](https://www.engie.be/nl/dynamic-tarief/dagelijks-gebruik/).
 - **Dedicated account required.** The same ENGIE credentials cannot be shared with engie.be or the ENGIE Smart App without triggering frequent re-authentication prompts. This is an ENGIE platform constraint, not a Home Assistant limitation. See [Prerequisites](#prerequisites).
 - **Two-factor authentication required.** The integration requires MFA to be enabled on the ENGIE account. Accounts without MFA (e.g. older sub-accounts) are not supported.
