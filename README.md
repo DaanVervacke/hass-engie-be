@@ -237,7 +237,7 @@ you installed the integration cannot be retrieved because ENGIE does not
 expose Happy Hours history.
 
 Happy Hours is an opt-in program from ENGIE. You need to enrol each address
-separately through the ENGIE Smart App under "Je producten". See
+separately through the ENGIE Smart App under "Je diensten". See
 [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/) for
 eligibility and the latest details.
 
