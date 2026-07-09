@@ -14,6 +14,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     CURRENCY_EURO,
+    PERCENTAGE,
     EntityCategory,
     UnitOfEnergy,
     UnitOfPower,
@@ -608,6 +609,30 @@ _HAPPY_HOUR_MONTH_REWARD = SensorEntityDescription(
     state_class=SensorStateClass.TOTAL,
     suggested_display_precision=2,
 )
+_HAPPY_HOUR_MONTH_CONSUMPTION_CHANGE = SensorEntityDescription(
+    key="happy_hours_month_consumption_change",
+    translation_key="happy_hours_month_consumption_change",
+    icon="mdi:trending-up",
+    native_unit_of_measurement=PERCENTAGE,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=1,
+)
+_HAPPY_HOUR_MONTH_ELIGIBLE_HOURS_CHANGE = SensorEntityDescription(
+    key="happy_hours_month_eligible_hours_change",
+    translation_key="happy_hours_month_eligible_hours_change",
+    icon="mdi:trending-up",
+    native_unit_of_measurement=PERCENTAGE,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=1,
+)
+_HAPPY_HOUR_MONTH_REWARD_CHANGE = SensorEntityDescription(
+    key="happy_hours_month_reward_change",
+    translation_key="happy_hours_month_reward_change",
+    icon="mdi:trending-up",
+    native_unit_of_measurement=PERCENTAGE,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=1,
+)
 
 
 def _month_report_wrapper(
@@ -635,7 +660,7 @@ def _build_happy_hour_month_report_sensors(
     coordinator: EngieBeDataUpdateCoordinator,
     subentry: ConfigSubentry,
 ) -> list[SensorEntity]:
-    """Build the three Happy Hours month-report sensors for one subentry."""
+    """Build the six Happy Hours month-report sensors for one subentry."""
     return [
         EngieBeHappyHourMonthSensor(
             coordinator,
@@ -652,6 +677,39 @@ def _build_happy_hour_month_report_sensors(
         EngieBeHappyHourMonthRewardSensor(
             coordinator,
             subentry,
+        ),
+        EngieBeHappyHourMonthSensor(
+            coordinator,
+            subentry,
+            _HAPPY_HOUR_MONTH_CONSUMPTION_CHANGE,
+            path=(
+                "month",
+                "happyHour",
+                "comparisonToPreviousMonth",
+                "consumptionKWhPercentageChange",
+            ),
+        ),
+        EngieBeHappyHourMonthSensor(
+            coordinator,
+            subentry,
+            _HAPPY_HOUR_MONTH_ELIGIBLE_HOURS_CHANGE,
+            path=(
+                "month",
+                "happyHour",
+                "comparisonToPreviousMonth",
+                "numberOfEligibleHappyHoursPercentageChange",
+            ),
+        ),
+        EngieBeHappyHourMonthSensor(
+            coordinator,
+            subentry,
+            _HAPPY_HOUR_MONTH_REWARD_CHANGE,
+            path=(
+                "month",
+                "happyHour",
+                "comparisonToPreviousMonth",
+                "rewardEurosPercentageChange",
+            ),
         ),
     ]
 
