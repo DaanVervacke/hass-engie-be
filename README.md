@@ -22,12 +22,41 @@
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
 [ENGIE Belgium](https://www.engie.be/). Retrieves your personal energy price
 data, monthly capacity-tariff peaks, Happy Hours free-energy windows, and
-EPEX day-ahead wholesale prices from the ENGIE Belgium API and exposes them
+EPEX (European Power Exchange) day-ahead wholesale prices from the ENGIE Belgium API and exposes them
 as sensors, binary sensors, and calendar events.
+
+## Table of contents
+
+- [Features](#features)
+- [Sensors](#sensors)
+  - [Gas](#gas)
+  - [Electricity: single-rate](#electricity-single-rate)
+  - [Electricity: dual-rate (peak / off-peak)](#electricity-dual-rate-peak--off-peak)
+  - [Electricity: tri-rate (peak / off-peak / super off-peak)](#electricity-tri-rate-peak--off-peak--super-off-peak)
+  - [Capacity tariff (captar)](#capacity-tariff-captar)
+  - [Dynamic tariff (EPEX-indexed)](#dynamic-tariff-epex-indexed)
+  - [Happy Hours](#happy-hours)
+  - [Solar Surplus](#solar-surplus)
+  - [Time-of-Use tariff schedules](#time-of-use-tariff-schedules)
+  - [Billing](#billing)
+- [Automation from the UI](#automation-from-the-ui)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Multiple households](#multiple-households)
+- [Historical usage import (Energy dashboard)](#historical-usage-import-energy-dashboard)
+- [Re-authentication](#re-authentication)
+- [Automation examples](#automation-examples)
+- [Known limitations](#known-limitations)
+- [Removing the integration](#removing-the-integration)
+- [Troubleshooting](#troubleshooting)
+- [Credential storage](#credential-storage)
+- [Changelog](#changelog)
+- [License](#license)
 
 ## Features
 
-- Authenticates with your ENGIE Belgium account using two-factor authentication
+- Authenticates with your ENGIE Belgium account using two-factor authentication (MFA)
 - Auto-detects gas and electricity contracts, including dynamic (EPEX-indexed) tariffs
 - Import your hourly usage / historic data from ENGIE into the Energy dashboard: electricity consumption, injection, gas consumption, and per-hour costs
 - Creates price sensors per energy type, direction (offtake / injection), and tariff rate
@@ -44,7 +73,7 @@ as sensors, binary sensors, and calendar events.
 
 The integration auto-detects your contracts and creates the right sensors. All
 price sensors report values in **EUR/kWh** with 6 decimals, and each one
-exposes its EAN, the validity window, and the applicable VAT rate as
+exposes its EAN (18-digit meter identifier), the validity window, and the applicable VAT rate as
 attributes. Every sensor below is also available as an `_excl_vat` variant
 (same name, `_excl_vat` suffix on both the entity ID and the friendly name).
 
@@ -62,7 +91,7 @@ Gas contracts are always single-rate.
 
 Price-sensor entity IDs embed the meter's EAN and the tariff direction
 (and, for multi-rate contracts, the slot code). The friendly name in
-the HA UI is translated per contract type, but the entity ID always
+the Home Assistant UI is translated per contract type, but the entity ID always
 follows this pattern.
 
 | Sensor | Entity ID |
@@ -285,7 +314,7 @@ Charge can all key off these sensors in a Home Assistant automation.
 ### Time-of-Use tariff schedules
 
 Fluvius is rolling out time-of-use (TOU) billing for Belgian digital-meter
-customers. The DGO/network distribution charges are already TOU-based for
+customers. The DGO (Distribution Grid Operator) / network distribution charges are already TOU-based for
 most accounts, even when the supplier contract is flat-rate. ENGIE exposes a
 per-EAN schedule endpoint that returns the full weekly PEAK/OFFPEAK layout for
 both the supplier's product and the Fluvius network tariff, in both
@@ -312,7 +341,7 @@ Each slot sensor exposes these attributes:
 | `optimal_slot` | The schedule's declared optimal slot code (e.g. `offpeak`) |
 | `next_transition` | ISO-8601 timestamp of the next slot boundary in Brussels local time |
 | `weekday_slots` | Full weekly schedule as a dict of day-name to slot list |
-| `dgo_tgo_slot` | Current slot code from the Fluvius DGO/TGO schedule |
+| `dgo_tgo_slot` | Current slot code from the Fluvius DGO / TGO (Transmission Grid Operator) schedule |
 
 The binary "is optimal" sensors turn `on` when the current slot matches the
 schedule's `optimalTimeslotCode`. For a typical offtake schedule, this means
@@ -675,7 +704,7 @@ automation:
 
 ## Known limitations
 
-- **Historical usage data lags a few days.** ENGIE only publishes hourly usage once a day is finalised, so today and yesterday are not available yet. For real-time consumption you need a P1 / DSMR meter.
+- **Historical usage data lags a few days.** ENGIE only publishes hourly usage once a day is finalised, so today and yesterday are not available yet. For real-time consumption you need a P1 / DSMR (Dutch Smart Meter Requirements) meter.
 - **No historical price retrieval.** ENGIE does not expose historical energy prices through the API. The integration can only report the currently active price period. Historical sensor data is what Home Assistant's own recorder stores.
 - **Happy Hours history starts when the integration is installed.** ENGIE does not provide a historical list of past Happy Hours windows. The integration records each window it observes locally, so windows that ran before the integration was set up cannot be recovered.
 - **EPEX prices available from ~13:15 Brussels time.** ENGIE publishes the next day's EPEX day-ahead prices after the daily auction closes. Before that time, only today's prices are available and tomorrow's sensors will show `unknown`.
