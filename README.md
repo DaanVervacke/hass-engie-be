@@ -94,43 +94,43 @@ Price-sensor entity IDs embed the meter's EAN and the tariff direction
 the Home Assistant UI is translated per contract type, but the entity ID always
 follows this pattern.
 
-| Sensor | Entity ID |
-|---|---|
-| Gas offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake` |
+| Sensor | Entity ID | Description |
+|---|---|---|
+| Gas offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake` | Current gas offtake price for this meter (EUR/kWh, VAT included) |
 
 ### Electricity: single-rate
 
 Created when your contract has a single electricity rate.
 
-| Sensor | Entity ID |
-|---|---|
-| Electricity offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake` |
-| Electricity injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection` |
+| Sensor | Entity ID | Description |
+|---|---|---|
+| Electricity offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake` | Current electricity offtake price for this meter (EUR/kWh, VAT included) |
+| Electricity injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection` | Current injection compensation for this meter (EUR/kWh, VAT included) |
 
 ### Electricity: dual-rate (peak / off-peak)
 
 Created when your contract has separate peak and off-peak rates. These replace
 the single-rate sensors above for that meter.
 
-| Sensor | Entity ID |
-|---|---|
-| Electricity peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_peak` |
-| Electricity off-peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_offpeak` |
-| Electricity peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_peak` |
-| Electricity off-peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_offpeak` |
+| Sensor | Entity ID | Description |
+|---|---|---|
+| Electricity peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_peak` | Offtake price during peak hours (EUR/kWh, VAT included) |
+| Electricity off-peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_offpeak` | Offtake price during off-peak hours (EUR/kWh, VAT included) |
+| Electricity peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_peak` | Injection compensation during peak hours (EUR/kWh, VAT included) |
+| Electricity off-peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_offpeak` | Injection compensation during off-peak hours (EUR/kWh, VAT included) |
 
 ### Electricity: tri-rate (peak / off-peak / super off-peak)
 
 Created when your contract has three time-of-use rates.
 
-| Sensor | Entity ID |
-|---|---|
-| Electricity peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_peak` |
-| Electricity off-peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_offpeak` |
-| Electricity super off-peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_superoffpeak` |
-| Electricity peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_peak` |
-| Electricity off-peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_offpeak` |
-| Electricity super off-peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_superoffpeak` |
+| Sensor | Entity ID | Description |
+|---|---|---|
+| Electricity peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_peak` | Offtake price during peak hours (EUR/kWh, VAT included) |
+| Electricity off-peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_offpeak` | Offtake price during off-peak hours (EUR/kWh, VAT included) |
+| Electricity super off-peak offtake price | `sensor.engie_belgium_{BAN}_{EAN}_offtake_superoffpeak` | Offtake price during super off-peak hours (EUR/kWh, VAT included) |
+| Electricity peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_peak` | Injection compensation during peak hours (EUR/kWh, VAT included) |
+| Electricity off-peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_offpeak` | Injection compensation during off-peak hours (EUR/kWh, VAT included) |
+| Electricity super off-peak injection price | `sensor.engie_belgium_{BAN}_{EAN}_injection_superoffpeak` | Injection compensation during super off-peak hours (EUR/kWh, VAT included) |
 
 > Injection sensors are only created when injection data is present.
 
@@ -163,12 +163,12 @@ Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get four
 extra sensors that surface day-ahead wholesale prices from the public EPEX
 endpoint.
 
-| Sensor | Entity ID |
-|---|---|
-| EPEX current price | `sensor.engie_belgium_{BAN}_epex_current` |
-| EPEX next hour price | `sensor.engie_belgium_{BAN}_epex_next_hour` |
-| EPEX lowest price today | `sensor.engie_belgium_{BAN}_epex_low_today` |
-| EPEX highest price today | `sensor.engie_belgium_{BAN}_epex_high_today` |
+| Sensor | Entity ID | Description |
+|---|---|---|
+| EPEX current price | `sensor.engie_belgium_{BAN}_epex_current` | Wholesale EPEX day-ahead price for the current hour (EUR/kWh) |
+| EPEX next hour price | `sensor.engie_belgium_{BAN}_epex_next_hour` | Wholesale EPEX day-ahead price for the next hour (EUR/kWh) |
+| EPEX lowest price today | `sensor.engie_belgium_{BAN}_epex_low_today` | Lowest EPEX hourly price of today (EUR/kWh) |
+| EPEX highest price today | `sensor.engie_belgium_{BAN}_epex_high_today` | Highest EPEX hourly price of today (EUR/kWh) |
 
 All four sensors are in **EUR/kWh** (4 decimals). Tomorrow's prices appear
 once ENGIE publishes them, typically shortly after 13:15 Europe/Brussels.
@@ -205,17 +205,17 @@ energy consumed at your address is free. These are announced the day
 before and are exposed here for every account enrolled
 in the Happy Hours program.
 
-| Entity | Entity ID |
-|---|---|
-| Happy Hours is active | `binary_sensor.engie_belgium_{BAN}_happy_hours_active` |
-| Happy Hours next start | `sensor.engie_belgium_{BAN}_happy_hours_next_start` |
-| Happy Hours next end | `sensor.engie_belgium_{BAN}_happy_hours_next_end` |
-| Happy Hours monthly consumption | `sensor.engie_belgium_{BAN}_happy_hours_month_consumption` |
-| Happy Hours eligible hours this month | `sensor.engie_belgium_{BAN}_happy_hours_month_eligible_hours` |
-| Happy Hours monthly reward | `sensor.engie_belgium_{BAN}_happy_hours_month_reward` |
-| Happy Hours monthly consumption vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_consumption_change` |
-| Happy Hours eligible hours vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_eligible_hours_change` |
-| Happy Hours monthly reward vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_reward_change` |
+| Entity | Entity ID | Description |
+|---|---|---|
+| Happy Hours is active | `binary_sensor.engie_belgium_{BAN}_happy_hours_active` | on while a scheduled Happy Hours window is currently running |
+| Happy Hours next start | `sensor.engie_belgium_{BAN}_happy_hours_next_start` | Start timestamp of the next scheduled Happy Hours window |
+| Happy Hours next end | `sensor.engie_belgium_{BAN}_happy_hours_next_end` | End timestamp of the next scheduled Happy Hours window |
+| Happy Hours monthly consumption | `sensor.engie_belgium_{BAN}_happy_hours_month_consumption` | Electricity consumed during Happy Hours this month (kWh) |
+| Happy Hours eligible hours this month | `sensor.engie_belgium_{BAN}_happy_hours_month_eligible_hours` | Number of eligible Happy Hours windows this month |
+| Happy Hours monthly reward | `sensor.engie_belgium_{BAN}_happy_hours_month_reward` | Value of the free energy earned this month (EUR) |
+| Happy Hours monthly consumption vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_consumption_change` | Percent change in Happy Hours consumption vs last month |
+| Happy Hours eligible hours vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_eligible_hours_change` | Percent change in eligible-hour count vs last month |
+| Happy Hours monthly reward vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_reward_change` | Percent change in reward earned vs last month |
 
 The binary sensor is `on` while the current moment falls inside a scheduled
 window, and `off` otherwise. The three monthly-summary sensors show your
@@ -258,13 +258,13 @@ The forecast is indicative and refreshes each morning.
 Five sensors are created per electricity meter (EAN) on accounts where
 ENGIE returns forecast data:
 
-| Sensor | Entity ID |
-|---|---|
-| Solar surplus forecast (today's level) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_forecast` |
-| Solar surplus current hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_current` |
-| Solar surplus next hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_next_hour` |
-| Solar surplus total today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_total` |
-| Solar surplus peak today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_peak` |
+| Sensor | Entity ID | Description |
+|---|---|---|
+| Solar surplus forecast (today's level) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_forecast` | Aggregate surplus level for today (no_data / no_surplus / minimal_surplus / low_surplus / high_surplus) |
+| Solar surplus current hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_current` | Expected surplus for the current hour (kWh) |
+| Solar surplus next hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_next_hour` | Expected surplus for the next hour (kWh) |
+| Solar surplus total today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_total` | Expected total surplus for today (kWh) |
+| Solar surplus peak today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_peak` | Highest hourly surplus expected today (kWh) |
 
 The level sensor's state is the aggregate level for the current day and
 takes one of five values: `no_data`, `no_surplus`, `minimal_surplus`,
@@ -323,12 +323,12 @@ directions (offtake and injection).
 Two enum sensors and two binary sensors are created per electricity meter
 (EAN) whenever the endpoint returns schedule data:
 
-| Entity | Entity ID |
-|---|---|
-| Current offtake slot | `sensor.engie_belgium_{BAN}_{EAN}_offtake_slot` |
-| Current injection slot | `sensor.engie_belgium_{BAN}_{EAN}_injection_slot` |
-| Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` |
-| Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` |
+| Entity | Entity ID | Description |
+|---|---|---|
+| Current offtake slot | `sensor.engie_belgium_{BAN}_{EAN}_offtake_slot` | Current tariff slot for offtake on this meter (peak / offpeak / superoffpeak / exclusive_night / day) |
+| Current injection slot | `sensor.engie_belgium_{BAN}_{EAN}_injection_slot` | Current tariff slot for injection on this meter |
+| Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` | on when the current offtake slot matches the schedule's optimal code |
+| Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` | on when the current injection slot matches the schedule's optimal code |
 
 The slot sensors are ENUM sensors whose state is one of `peak`, `offpeak`,
 `superoffpeak`, `exclusive_night`, or `day`. The state flips exactly at the
@@ -414,20 +414,64 @@ for the general automation model.
 
 ### Triggers (29)
 
-- **State transitions (10)**: EPEX became negative / no longer
-  negative, offtake and injection became optimal / no longer
-  optimal, Happy Hours became active / inactive, authentication
-  lost / restored.
-- **Enum changes (6)**: solar surplus level changed, offtake and
-  injection slot changed, plus "became" variants for each.
-- **Thresholds (5)**: EPEX current / next hour crossed threshold,
-  solar surplus current / next hour crossed threshold, captar peak
-  crossed threshold.
-- **Value updates (3)**: captar peak updated, EPEX high / low
-  today updated.
-- **Calendar-slot events (5)**: fires at start / end of captar
-  peak window and Happy Hours window, and at TOU slot boundary
-  start for a chosen direction and slot code.
+Triggers are targeted at the ENGIE entity type shown in the automation
+editor picker (binary sensor for state-transition and Happy Hours
+triggers, sensor for enum-change and threshold triggers, calendar for
+event-class triggers). Pick the right entity in the "When" step.
+
+**State-transition triggers (10)**:
+
+| Trigger | Fires when |
+|---|---|
+| EPEX price became negative | Current EPEX price crosses below zero |
+| EPEX price no longer negative | Current EPEX price returns to zero or above |
+| Offtake became optimal | Current offtake slot enters the schedule's optimal code |
+| Offtake no longer optimal | Current offtake slot leaves the optimal code |
+| Injection became optimal | Current injection slot enters the schedule's optimal code |
+| Injection no longer optimal | Current injection slot leaves the optimal code |
+| Happy Hours became active | Current moment enters a Happy Hours window |
+| Happy Hours became inactive | Current moment leaves a Happy Hours window |
+| Authentication lost | Integration reports a lost session with ENGIE |
+| Authentication restored | Integration reports a re-established session with ENGIE |
+
+**Enum-change triggers (6)**:
+
+| Trigger | Fires when |
+|---|---|
+| Solar surplus level changed | Aggregate surplus level transitions to any different code |
+| Offtake slot changed | Current offtake slot transitions to any different code |
+| Injection slot changed | Current injection slot transitions to any different code |
+| Solar surplus became `<level>` | Aggregate surplus level enters a chosen code |
+| Offtake slot became `<code>` | Current offtake slot enters a chosen code |
+| Injection slot became `<code>` | Current injection slot enters a chosen code |
+
+**Threshold triggers (5)**:
+
+| Trigger | Fires when |
+|---|---|
+| EPEX current price crossed threshold | Current EPEX price crosses a chosen EUR/kWh threshold |
+| EPEX next hour price crossed threshold | Next-hour EPEX price crosses a chosen EUR/kWh threshold |
+| Solar surplus current hour crossed threshold | Current-hour surplus crosses a chosen kWh threshold |
+| Solar surplus next hour crossed threshold | Next-hour surplus crosses a chosen kWh threshold |
+| Captar peak crossed threshold | Monthly captar peak crosses a chosen kW threshold |
+
+**Value-update triggers (3)**:
+
+| Trigger | Fires when |
+|---|---|
+| Captar peak updated | Monthly captar peak value or window changes |
+| EPEX high today updated | Highest EPEX price of today changes |
+| EPEX low today updated | Lowest EPEX price of today changes |
+
+**Calendar-slot triggers (5)**:
+
+| Trigger | Fires when |
+|---|---|
+| Captar peak window started | At the start of the current monthly captar peak window |
+| Captar peak window ended | At the end of the current monthly captar peak window |
+| Happy Hours window started | At the start of a scheduled Happy Hours window |
+| Happy Hours window ended | At the end of a scheduled Happy Hours window |
+| TOU slot started | At the start of a chosen TOU slot for a chosen direction |
 
 ### Conditions (10)
 
