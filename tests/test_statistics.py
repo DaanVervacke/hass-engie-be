@@ -290,8 +290,9 @@ async def test_orchestrator_first_import_writes_three_streams(hass) -> None:  # 
     }
 
 
-async def test_orchestrator_incremental_seeds_from_last_stats(hass) -> None:  # noqa: ANN001
+async def test_orchestrator_incremental_seeds_from_last_stats(hass, freezer) -> None:  # noqa: ANN001
     """Subsequent import: running sums continue from the last recorded sum."""
+    freezer.move_to("2026-07-06T12:00:00Z")
     payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
     client = MagicMock()
     client.async_get_usage_details = AsyncMock(return_value=payload)
