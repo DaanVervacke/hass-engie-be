@@ -202,12 +202,12 @@ state-based automations without a template.
 
 ENGIE Belgium occasionally schedules "Happy Hours" windows during which the
 energy consumed at your address is free. These are announced the day
-before and are exposed here for every account enrolled
+before and are exposed by the integration for every account enrolled
 in the Happy Hours program.
 
 | Entity | Entity ID | Description |
 |---|---|---|
-| Happy Hours is active | `binary_sensor.engie_belgium_{BAN}_happy_hours_active` | on while a scheduled Happy Hours window is currently running |
+| Happy Hours is active | `binary_sensor.engie_belgium_{BAN}_happy_hours_active` | On while a scheduled Happy Hours window is currently active |
 | Happy Hours next start | `sensor.engie_belgium_{BAN}_happy_hours_next_start` | Start timestamp of the next scheduled Happy Hours window |
 | Happy Hours next end | `sensor.engie_belgium_{BAN}_happy_hours_next_end` | End timestamp of the next scheduled Happy Hours window |
 | Happy Hours monthly consumption | `sensor.engie_belgium_{BAN}_happy_hours_month_consumption` | Electricity consumed during Happy Hours this month (kWh) |
@@ -327,8 +327,8 @@ Two enum sensors and two binary sensors are created per electricity meter
 |---|---|---|
 | Current offtake slot | `sensor.engie_belgium_{BAN}_{EAN}_offtake_slot` | Current tariff slot for offtake on this meter (peak / offpeak / superoffpeak / exclusive_night / day) |
 | Current injection slot | `sensor.engie_belgium_{BAN}_{EAN}_injection_slot` | Current tariff slot for injection on this meter |
-| Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` | on when the current offtake slot matches the schedule's optimal code |
-| Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` | on when the current injection slot matches the schedule's optimal code |
+| Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` | On when the current offtake slot matches the schedule's optimal code |
+| Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` | On when the current injection slot matches the schedule's optimal code |
 
 The slot sensors are ENUM sensors whose state is one of `peak`, `offpeak`,
 `superoffpeak`, `exclusive_night`, or `day`. The state flips exactly at the
