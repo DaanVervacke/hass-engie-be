@@ -38,6 +38,7 @@ class EngieBePeaksStore:
         )
         self._subentry_id = subentry_id
         self._peaks: list[dict[str, Any]] = []
+        self._peaks_sorted: list[dict[str, Any]] | None = None
         self._loaded: bool = False
 
     async def async_load(self) -> None:
@@ -47,6 +48,7 @@ class EngieBePeaksStore:
             raw = data.get("peaks")
             if isinstance(raw, list):
                 self._peaks = [p for p in raw if _is_valid_peak(p)]
+                self._peaks_sorted = None
         self._loaded = True
         LOGGER.debug(
             "Subentry %s: loaded %d historical peaks from store",
@@ -57,7 +59,11 @@ class EngieBePeaksStore:
     @property
     def peaks(self) -> list[dict[str, Any]]:
         """Return historical peaks sorted by (year, month) ascending."""
-        return sorted(self._peaks, key=lambda p: (p["year"], p["month"]))
+        if self._peaks_sorted is None:
+            self._peaks_sorted = sorted(
+                self._peaks, key=lambda p: (p["year"], p["month"])
+            )
+        return self._peaks_sorted
 
     def upsert(  # noqa: PLR0913 - explicit args mirror the persisted schema
         self,
@@ -88,9 +94,11 @@ class EngieBePeaksStore:
                 if existing == new_entry:
                     return False
                 self._peaks[index] = new_entry
+                self._peaks_sorted = None
                 self._schedule_save()
                 return True
         self._peaks.append(new_entry)
+        self._peaks_sorted = None
         self._schedule_save()
         return True
 
@@ -154,6 +162,7 @@ class EngieBeHappyHoursStore:
         )
         self._subentry_id = subentry_id
         self._windows: list[dict[str, Any]] = []
+        self._windows_sorted: list[dict[str, Any]] | None = None
         self._loaded: bool = False
 
     async def async_load(self) -> None:
@@ -163,6 +172,7 @@ class EngieBeHappyHoursStore:
             raw = data.get("windows")
             if isinstance(raw, list):
                 self._windows = [w for w in raw if _is_valid_happy_hour(w)]
+                self._windows_sorted = None
         self._loaded = True
         LOGGER.debug(
             "Subentry %s: loaded %d historical Happy Hours windows from store",
@@ -173,7 +183,9 @@ class EngieBeHappyHoursStore:
     @property
     def windows(self) -> list[dict[str, Any]]:
         """Return historical windows sorted by ``start`` ascending."""
-        return sorted(self._windows, key=lambda w: w["start"])
+        if self._windows_sorted is None:
+            self._windows_sorted = sorted(self._windows, key=lambda w: w["start"])
+        return self._windows_sorted
 
     def upsert(self, start: str, end: str) -> bool:
         """
@@ -188,9 +200,11 @@ class EngieBeHappyHoursStore:
                 if existing == new_entry:
                     return False
                 self._windows[index] = new_entry
+                self._windows_sorted = None
                 self._schedule_save()
                 return True
         self._windows.append(new_entry)
+        self._windows_sorted = None
         self._schedule_save()
         return True
 
