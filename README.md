@@ -33,8 +33,8 @@ as sensors, binary sensors, and calendar events.
   - [Electricity: single-rate](#electricity-single-rate)
   - [Electricity: dual-rate (peak / off-peak)](#electricity-dual-rate-peak--off-peak)
   - [Electricity: tri-rate (peak / off-peak / super off-peak)](#electricity-tri-rate-peak--off-peak--super-off-peak)
-  - [Capacity tariff (captar)](#capacity-tariff-captar)
   - [Dynamic tariff (EPEX-indexed)](#dynamic-tariff-epex-indexed)
+  - [Capacity tariff (captar)](#capacity-tariff-captar)
   - [Happy Hours](#happy-hours)
   - [Solar Surplus](#solar-surplus)
   - [Time-of-Use tariff schedules](#time-of-use-tariff-schedules)
@@ -133,29 +133,6 @@ Created when your contract has three time-of-use rates.
 
 > Injection sensors are only created when injection data is present.
 
-### Capacity tariff (captar)
-
-Four sensors expose the monthly peak window used for the Belgian
-capacity-tariff calculation. ENGIE returns one aggregated peak per
-business agreement.
-
-| Sensor | Entity ID | Description |
-|---|---|---|
-| Captar monthly peak power | `sensor.engie_belgium_{BAN}_captar_monthly_peak_power` | Highest 15-minute average power for the month, in kW |
-| Captar monthly peak energy | `sensor.engie_belgium_{BAN}_captar_monthly_peak_energy` | Energy consumed during that 15-minute window, in kWh |
-| Captar monthly peak start | `sensor.engie_belgium_{BAN}_captar_monthly_peak_start` | Start of the 15-minute peak window |
-| Captar monthly peak end | `sensor.engie_belgium_{BAN}_captar_monthly_peak_end` | End of the 15-minute peak window |
-
-ENGIE only publishes a peak after the first 15-minute peak of the month is
-recorded, so the current month is empty for the first day or so. Until then,
-the integration shows the previous month's peak and marks it via the
-`peak_is_fallback` attribute (and `peak_month` shows which month the value
-covers).
-
-A calendar entity (`calendar.engie_belgium_{BAN}`) is also created and shows the
-current monthly peak as a single event, with the peak power and energy in the
-event description.
-
 ### Dynamic tariff (EPEX-indexed)
 
 Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get four
@@ -196,6 +173,29 @@ series:
 A binary sensor `binary_sensor.engie_belgium_{BAN}_epex_negative` turns on
 when the current wholesale slot has a negative price, so you can build simple
 state-based automations without a template.
+
+### Capacity tariff (captar)
+
+Four sensors expose the monthly peak window used for the Belgian
+capacity-tariff calculation. ENGIE returns one aggregated peak per
+business agreement.
+
+| Sensor | Entity ID | Description |
+|---|---|---|
+| Captar monthly peak power | `sensor.engie_belgium_{BAN}_captar_monthly_peak_power` | Highest 15-minute average power for the month, in kW |
+| Captar monthly peak energy | `sensor.engie_belgium_{BAN}_captar_monthly_peak_energy` | Energy consumed during that 15-minute window, in kWh |
+| Captar monthly peak start | `sensor.engie_belgium_{BAN}_captar_monthly_peak_start` | Start of the 15-minute peak window |
+| Captar monthly peak end | `sensor.engie_belgium_{BAN}_captar_monthly_peak_end` | End of the 15-minute peak window |
+
+ENGIE only publishes a peak after the first 15-minute peak of the month is
+recorded, so the current month is empty for the first day or so. Until then,
+the integration shows the previous month's peak and marks it via the
+`peak_is_fallback` attribute (and `peak_month` shows which month the value
+covers).
+
+A calendar entity (`calendar.engie_belgium_{BAN}`) is also created and shows the
+current monthly peak as a single event, with the peak power and energy in the
+event description.
 
 ### Happy Hours
 
