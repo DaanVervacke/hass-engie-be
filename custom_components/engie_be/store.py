@@ -104,13 +104,12 @@ class EngieBePeaksStore:
 
     def summary(self) -> dict[str, Any]:
         """Return a small summary suitable for diagnostics."""
-        if not self._peaks:
+        peaks = self.peaks
+        if not peaks:
             return {"count": 0, "oldest": None, "newest": None, "latest_peakKW": None}
-        sorted_peaks = self.peaks
-        oldest = sorted_peaks[0]
-        newest = sorted_peaks[-1]
+        oldest, newest = peaks[0], peaks[-1]
         return {
-            "count": len(sorted_peaks),
+            "count": len(peaks),
             "oldest": f"{oldest['year']:04d}-{oldest['month']:02d}",
             "newest": f"{newest['year']:04d}-{newest['month']:02d}",
             "latest_peakKW": newest.get("peakKW"),
