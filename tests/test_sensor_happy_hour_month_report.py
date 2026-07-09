@@ -62,8 +62,8 @@ def _make_coordinator(data: object) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-def test_build_creates_three_sensors() -> None:
-    """The factory always returns the three month-report sensors."""
+def test_build_creates_six_sensors() -> None:
+    """The factory always returns the six month-report sensors."""
     coordinator = _make_coordinator(_wrap(_report()))
     subentry = _make_subentry(subentry_id="sub_abc")
     sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
@@ -73,6 +73,9 @@ def test_build_creates_three_sensors() -> None:
         "happy_hours_month_consumption",
         "happy_hours_month_eligible_hours",
         "happy_hours_month_reward",
+        "happy_hours_month_consumption_change",
+        "happy_hours_month_eligible_hours_change",
+        "happy_hours_month_reward_change",
     }
     for sensor in sensors:
         assert sensor.unique_id == (
@@ -85,7 +88,7 @@ def test_build_runs_without_month_report_payload() -> None:
     coordinator = _make_coordinator({"items": []})
     subentry = _make_subentry()
     sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
-    assert len(sensors) == 3
+    assert len(sensors) == 6
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +281,142 @@ def test_sensors_omit_report_month_when_wrapper_absent() -> None:
         attrs = sensor.extra_state_attributes
         assert "report_month" not in attrs
         assert "report_is_fallback" not in attrs
+
+
+# ---------------------------------------------------------------------------
+# entity_id slug
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# comparisonToPreviousMonth sensors
+# ---------------------------------------------------------------------------
+
+
+def test_consumption_change_sensor_happy_path() -> None:
+    """The consumption-change sensor exposes consumptionKWhPercentageChange."""
+    coordinator = _make_coordinator(_wrap(_report()))
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
+    sensor = next(
+        s
+        for s in sensors
+        if s.entity_description.key == "happy_hours_month_consumption_change"
+    )
+    assert sensor.native_value == 10.0
+    assert sensor.entity_description.native_unit_of_measurement == "%"
+
+
+def test_consumption_change_sensor_null_payload() -> None:
+    """The consumption-change sensor returns None when coordinator has no data."""
+    coordinator = _make_coordinator(None)
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
+    sensor = next(
+        s
+        for s in sensors
+        if s.entity_description.key == "happy_hours_month_consumption_change"
+    )
+    assert sensor.native_value is None
+
+
+def test_consumption_change_sensor_missing_comparison_block() -> None:
+    """Consumption-change sensor returns None when comparisonToPreviousMonth missing."""
+    payload = _report()
+    del payload["month"]["happyHour"]["comparisonToPreviousMonth"]
+    coordinator = _make_coordinator(_wrap(payload))
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
+    sensor = next(
+        s
+        for s in sensors
+        if s.entity_description.key == "happy_hours_month_consumption_change"
+    )
+    assert sensor.native_value is None
+
+
+def test_eligible_hours_change_sensor_happy_path() -> None:
+    """Eligible-hours-change sensor exposes the percentage-change field."""
+    coordinator = _make_coordinator(_wrap(_report()))
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
+    sensor = next(
+        s
+        for s in sensors
+        if s.entity_description.key == "happy_hours_month_eligible_hours_change"
+    )
+    assert sensor.native_value == 0.0
+    assert sensor.entity_description.native_unit_of_measurement == "%"
+
+
+def test_eligible_hours_change_sensor_null_payload() -> None:
+    """The eligible-hours-change sensor returns None when coordinator has no data."""
+    coordinator = _make_coordinator(None)
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
+    sensor = next(
+        s
+        for s in sensors
+        if s.entity_description.key == "happy_hours_month_eligible_hours_change"
+    )
+    assert sensor.native_value is None
+
+
+def test_eligible_hours_change_sensor_missing_comparison_block() -> None:
+    """Eligible-hours-change sensor returns None without comparisonToPreviousMonth."""
+    payload = _report()
+    del payload["month"]["happyHour"]["comparisonToPreviousMonth"]
+    coordinator = _make_coordinator(_wrap(payload))
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
+    sensor = next(
+        s
+        for s in sensors
+        if s.entity_description.key == "happy_hours_month_eligible_hours_change"
+    )
+    assert sensor.native_value is None
+
+
+def test_reward_change_sensor_happy_path() -> None:
+    """The reward-change sensor exposes rewardEurosPercentageChange."""
+    coordinator = _make_coordinator(_wrap(_report()))
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
+    sensor = next(
+        s
+        for s in sensors
+        if s.entity_description.key == "happy_hours_month_reward_change"
+    )
+    assert sensor.native_value == 5.0
+    assert sensor.entity_description.native_unit_of_measurement == "%"
+
+
+def test_reward_change_sensor_null_payload() -> None:
+    """The reward-change sensor returns None when coordinator has no data."""
+    coordinator = _make_coordinator(None)
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
+    sensor = next(
+        s
+        for s in sensors
+        if s.entity_description.key == "happy_hours_month_reward_change"
+    )
+    assert sensor.native_value is None
+
+
+def test_reward_change_sensor_missing_comparison_block() -> None:
+    """Reward-change sensor returns None when comparisonToPreviousMonth is absent."""
+    payload = _report()
+    del payload["month"]["happyHour"]["comparisonToPreviousMonth"]
+    coordinator = _make_coordinator(_wrap(payload))
+    subentry = _make_subentry()
+    sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
+    sensor = next(
+        s
+        for s in sensors
+        if s.entity_description.key == "happy_hours_month_reward_change"
+    )
+    assert sensor.native_value is None
 
 
 # ---------------------------------------------------------------------------
