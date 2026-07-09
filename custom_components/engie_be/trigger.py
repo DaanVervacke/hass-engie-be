@@ -51,6 +51,7 @@ Calendar event-class triggers (Phase E):
 from __future__ import annotations
 
 import abc
+import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -59,10 +60,12 @@ from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAI
 from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.const import STATE_OFF, STATE_ON
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.automation import DomainSpec
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.trigger import (
+    ENTITY_STATE_TRIGGER_SCHEMA,
     ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR,
     EntityTargetStateTriggerBase,
     EntityTriggerBase,
@@ -74,9 +77,10 @@ from homeassistant.helpers.trigger import (
 )
 from homeassistant.util import dt as dt_util
 
+from ._automation_helpers import filter_by_translation_key
 from ._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
 from ._peaks import CAPTAR_EVENT_SUMMARY
-from ._tou_calendar import TOU_EVENT_SUMMARY_PREFIX
+from ._tou_calendar import format_tou_event_summary
 from .const import (
     DOMAIN,
     SOLAR_SURPLUS_LEVELS,
@@ -101,11 +105,13 @@ from .const import (
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
+_LOGGER = logging.getLogger(__name__)
+
 _LEVEL = "level"
 _SLOT = "slot"
 
 # ---------------------------------------------------------------------------
-# Shared entity-filter helper
+# Shared entity-filter helper (implementation lives in _automation_helpers)
 # ---------------------------------------------------------------------------
 
 
@@ -115,178 +121,110 @@ def _filter_by_translation_key(
     translation_key: str,
 ) -> set[str]:
     """Return entities owned by this integration with the given translation_key."""
-    reg = er.async_get(hass)
-    result: set[str] = set()
-    for entity_id in entities:
-        entry = reg.async_get(entity_id)
-        if (
-            entry is not None
-            and entry.platform == DOMAIN
-            and entry.translation_key == translation_key
-        ):
-            result.add(entity_id)
-    return result
+    return filter_by_translation_key(hass, entities, translation_key)
 
 
 # ---------------------------------------------------------------------------
 # Phase A - Binary state-transition triggers
 # ---------------------------------------------------------------------------
 
-# Factory-generated base classes. Each call bakes the domain spec and the
-# target state(s) into a new class. We then subclass once more to add the
-# entity_filter override that restricts the trigger to a specific ENGIE
-# translation_key so users cannot accidentally target unrelated binary sensors.
-
-_EpexNegativeBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_ON},
-)
-_EpexNoLongerNegativeBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_OFF},
-)
-_OfftakeOptimalBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_ON},
-)
-_OfftakeNoLongerOptimalBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_OFF},
-)
-_InjectionOptimalBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_ON},
-)
-_InjectionNoLongerOptimalBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_OFF},
-)
-_HappyHoursActiveBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_ON},
-)
-_HappyHoursInactiveBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_OFF},
-)
-_AuthLostBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_OFF},
-)
-_AuthRestoredBase = make_entity_target_state_trigger(
-    {BINARY_SENSOR_DOMAIN: DomainSpec()},
-    {STATE_ON},
-)
+# _BinaryEdgeTrigger provides a single class to inherit from instead of
+# 10 separate factory-generated bases.  Subclasses declare _translation_key
+# and _to_states; entity_filter is provided here.
 
 
-class EpexBecameNegativeTrigger(_EpexNegativeBase):  # type: ignore[valid-type, misc]
+class _BinaryEdgeTrigger(  # type: ignore[valid-type, misc]
+    make_entity_target_state_trigger({BINARY_SENSOR_DOMAIN: DomainSpec()}, set())
+):
+    """
+    Base for binary-sensor edge triggers restricted to a single ENGIE entity.
+
+    Subclasses must declare:
+    - ``_translation_key: ClassVar[str]`` - the entity translation key to match
+    - ``_to_states: ClassVar[set[str]]`` - the target state(s) that trigger firing
+
+    The ``_to_states`` class variable overrides the (empty) set baked into the
+    factory base class.  ``make_entity_target_state_trigger`` stores the
+    target-state set as a class attribute; overriding it here works because the
+    instance-level lookup finds the subclass attribute first.
+    """
+
+    _translation_key: ClassVar[str]
+
+    def entity_filter(self, entities: set[str]) -> set[str]:
+        """Restrict to the matching ENGIE binary sensor."""
+        candidates = super().entity_filter(entities)
+        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
+
+
+class EpexBecameNegativeTrigger(_BinaryEdgeTrigger):
     """Trigger: EPEX price became negative (binary sensor off -> on)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE epex_negative binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_EPEX_NEGATIVE
-        )
+    _translation_key = TRANSLATION_KEY_EPEX_NEGATIVE
+    _to_states: ClassVar[set[str]] = {STATE_ON}
 
 
-class EpexNoLongerNegativeTrigger(_EpexNoLongerNegativeBase):  # type: ignore[valid-type, misc]
+class EpexNoLongerNegativeTrigger(_BinaryEdgeTrigger):
     """Trigger: EPEX price no longer negative (binary sensor on -> off)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE epex_negative binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_EPEX_NEGATIVE
-        )
+    _translation_key = TRANSLATION_KEY_EPEX_NEGATIVE
+    _to_states: ClassVar[set[str]] = {STATE_OFF}
 
 
-class OfftakeBecameOptimalTrigger(_OfftakeOptimalBase):  # type: ignore[valid-type, misc]
+class OfftakeBecameOptimalTrigger(_BinaryEdgeTrigger):
     """Trigger: TOU offtake slot became optimal (binary sensor off -> on)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE tou_offtake_is_optimal binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL
-        )
+    _translation_key = TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL
+    _to_states: ClassVar[set[str]] = {STATE_ON}
 
 
-class OfftakeNoLongerOptimalTrigger(_OfftakeNoLongerOptimalBase):  # type: ignore[valid-type, misc]
+class OfftakeNoLongerOptimalTrigger(_BinaryEdgeTrigger):
     """Trigger: TOU offtake slot no longer optimal (binary sensor on -> off)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE tou_offtake_is_optimal binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL
-        )
+    _translation_key = TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL
+    _to_states: ClassVar[set[str]] = {STATE_OFF}
 
 
-class InjectionBecameOptimalTrigger(_InjectionOptimalBase):  # type: ignore[valid-type, misc]
+class InjectionBecameOptimalTrigger(_BinaryEdgeTrigger):
     """Trigger: TOU injection slot became optimal (binary sensor off -> on)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE tou_injection_is_optimal binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL
-        )
+    _translation_key = TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL
+    _to_states: ClassVar[set[str]] = {STATE_ON}
 
 
-class InjectionNoLongerOptimalTrigger(_InjectionNoLongerOptimalBase):  # type: ignore[valid-type, misc]
+class InjectionNoLongerOptimalTrigger(_BinaryEdgeTrigger):
     """Trigger: TOU injection slot no longer optimal (binary sensor on -> off)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE tou_injection_is_optimal binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL
-        )
+    _translation_key = TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL
+    _to_states: ClassVar[set[str]] = {STATE_OFF}
 
 
-class HappyHoursBecameActiveTrigger(_HappyHoursActiveBase):  # type: ignore[valid-type, misc]
+class HappyHoursBecameActiveTrigger(_BinaryEdgeTrigger):
     """Trigger: Happy Hours window opened (binary sensor off -> on)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE happy_hours_active binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_HAPPY_HOURS_ACTIVE
-        )
+    _translation_key = TRANSLATION_KEY_HAPPY_HOURS_ACTIVE
+    _to_states: ClassVar[set[str]] = {STATE_ON}
 
 
-class HappyHoursBecameInactiveTrigger(_HappyHoursInactiveBase):  # type: ignore[valid-type, misc]
+class HappyHoursBecameInactiveTrigger(_BinaryEdgeTrigger):
     """Trigger: Happy Hours window closed (binary sensor on -> off)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE happy_hours_active binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_HAPPY_HOURS_ACTIVE
-        )
+    _translation_key = TRANSLATION_KEY_HAPPY_HOURS_ACTIVE
+    _to_states: ClassVar[set[str]] = {STATE_OFF}
 
 
-class AuthenticationLostTrigger(_AuthLostBase):  # type: ignore[valid-type, misc]
+class AuthenticationLostTrigger(_BinaryEdgeTrigger):
     """Trigger: ENGIE authentication was lost (binary sensor on -> off)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE authentication binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_AUTHENTICATION
-        )
+    _translation_key = TRANSLATION_KEY_AUTHENTICATION
+    _to_states: ClassVar[set[str]] = {STATE_OFF}
 
 
-class AuthenticationRestoredTrigger(_AuthRestoredBase):  # type: ignore[valid-type, misc]
+class AuthenticationRestoredTrigger(_BinaryEdgeTrigger):
     """Trigger: ENGIE authentication was restored (binary sensor off -> on)."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE authentication binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_AUTHENTICATION
-        )
+    _translation_key = TRANSLATION_KEY_AUTHENTICATION
+    _to_states: ClassVar[set[str]] = {STATE_ON}
 
 
 # ---------------------------------------------------------------------------
@@ -422,86 +360,56 @@ class InjectionSlotBecameTrigger(_OptionBasedStateTrigger):
 # Phase B - Numerical threshold triggers
 # ---------------------------------------------------------------------------
 
-# Each factory call produces an EntityNumericalStateCrossedThresholdTriggerBase
-# subclass bound to the given domain spec. We then subclass once more to add
-# entity_filter. The crossed-threshold variant fires only on the rising edge
-# (from outside the threshold to inside) which is the correct semantics for
-# "value went above X" or "value went below Y".
+# _ThresholdTrigger collapses the 5 numerical threshold trigger classes.
+# Each factory call produced an EntityNumericalStateCrossedThresholdTriggerBase
+# subclass; we now share a single base and override _translation_key.
 
-_EpexCurrentThresholdBase = make_entity_numerical_state_crossed_threshold_trigger(
-    {SENSOR_DOMAIN: DomainSpec()}
-)
-_EpexNextHourThresholdBase = make_entity_numerical_state_crossed_threshold_trigger(
-    {SENSOR_DOMAIN: DomainSpec()}
-)
-_SolarSurplusCurrentThresholdBase = (
+
+class _ThresholdTrigger(  # type: ignore[valid-type, misc]
     make_entity_numerical_state_crossed_threshold_trigger({SENSOR_DOMAIN: DomainSpec()})
-)
-_SolarSurplusNextHourThresholdBase = (
-    make_entity_numerical_state_crossed_threshold_trigger({SENSOR_DOMAIN: DomainSpec()})
-)
-_CaptarPeakThresholdBase = make_entity_numerical_state_crossed_threshold_trigger(
-    {SENSOR_DOMAIN: DomainSpec()}
-)
+):
+    """
+    Base for numerical threshold triggers restricted to a single ENGIE sensor.
+
+    Subclasses declare ``_translation_key`` to restrict entity_filter.
+    """
+
+    _translation_key: ClassVar[str]
+
+    def entity_filter(self, entities: set[str]) -> set[str]:
+        """Restrict to the matching ENGIE sensor."""
+        candidates = super().entity_filter(entities)
+        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
-class EpexCurrentCrossedThresholdTrigger(_EpexCurrentThresholdBase):  # type: ignore[valid-type, misc]
+class EpexCurrentCrossedThresholdTrigger(_ThresholdTrigger):
     """Trigger: EPEX current-hour price crossed a threshold."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE epex_current sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_EPEX_CURRENT
-        )
+    _translation_key = TRANSLATION_KEY_EPEX_CURRENT
 
 
-class EpexNextHourCrossedThresholdTrigger(_EpexNextHourThresholdBase):  # type: ignore[valid-type, misc]
+class EpexNextHourCrossedThresholdTrigger(_ThresholdTrigger):
     """Trigger: EPEX next-hour price crossed a threshold."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE epex_next_hour sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_EPEX_NEXT_HOUR
-        )
+    _translation_key = TRANSLATION_KEY_EPEX_NEXT_HOUR
 
 
-class SolarSurplusCurrentCrossedThresholdTrigger(  # type: ignore[valid-type, misc]
-    _SolarSurplusCurrentThresholdBase
-):
+class SolarSurplusCurrentCrossedThresholdTrigger(_ThresholdTrigger):
     """Trigger: solar surplus current-hour value crossed a threshold."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE solar_surplus_current sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT
-        )
+    _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT
 
 
-class SolarSurplusNextHourCrossedThresholdTrigger(  # type: ignore[valid-type, misc]
-    _SolarSurplusNextHourThresholdBase
-):
+class SolarSurplusNextHourCrossedThresholdTrigger(_ThresholdTrigger):
     """Trigger: solar surplus next-hour value crossed a threshold."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE solar_surplus_next_hour sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_SOLAR_SURPLUS_NEXT_HOUR
-        )
+    _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_NEXT_HOUR
 
 
-class CaptarPeakCrossedThresholdTrigger(_CaptarPeakThresholdBase):  # type: ignore[valid-type, misc]
+class CaptarPeakCrossedThresholdTrigger(_ThresholdTrigger):
     """Trigger: captar monthly peak power crossed a threshold."""
 
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE captar_monthly_peak_power sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER
-        )
+    _translation_key = TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER
 
 
 # ---------------------------------------------------------------------------
@@ -512,16 +420,17 @@ class CaptarPeakCrossedThresholdTrigger(_CaptarPeakThresholdBase):  # type: igno
 # (not the numerical variant) so that non-numeric states are not special-cased.
 # The "any change" semantics come from the base class's default
 # ``is_valid_transition`` (from_state.state != to_state.state).
+# Plain ENTITY_STATE_TRIGGER_SCHEMA is used (no above/below options - those
+# options are not meaningful for "any change" semantics).
 
-_VALUE_CHANGED_SCHEMA = ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR
+_VALUE_CHANGED_SCHEMA = ENTITY_STATE_TRIGGER_SCHEMA
 
 
 class _ValueChangedTrigger(EntityTriggerBase):
     """
     Base for value-changed triggers: fires on any state change.
 
-    Subclasses only need to declare ``_domain_specs`` and ``_translation_key``
-    and override ``entity_filter``.
+    Subclasses only need to declare ``_translation_key``.
     """
 
     _domain_specs: ClassVar[dict[str, DomainSpec]] = {SENSOR_DOMAIN: DomainSpec()}
@@ -607,7 +516,8 @@ async def _get_calendar_events(hass: HomeAssistant, entity_id: str) -> list[Any]
     end = now + timedelta(days=_CAL_LOOKAHEAD_DAYS)
     try:
         return await calendar_entity.async_get_events(hass, now, end)
-    except Exception:  # noqa: BLE001
+    except (HomeAssistantError, TimeoutError) as exc:
+        _LOGGER.debug("Failed to fetch events from %s: %s", entity_id, exc)
         return []
 
 
@@ -642,11 +552,11 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
         """Return True if the calendar event should cause this trigger to fire."""
 
     async def async_attach_runner(self, run_action: TriggerActionRunner) -> Any:
-        """Attach the trigger: schedule the next matching event boundary."""
+        """Attach the trigger: schedule a listener per ENGIE calendar."""
         unsub_refs: list[Any] = []
 
         async def _schedule_next() -> None:
-            """Find the next matching event boundary and schedule a callback."""
+            """Find the next matching event boundary across all ENGIE calendars."""
             for entity_id in _engie_calendar_entity_ids(self._hass):
                 events = await _get_calendar_events(self._hass, entity_id)
                 now = dt_util.utcnow()
@@ -680,8 +590,9 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
                         self._hass, _make_callback(ev, entity_id), fire_at
                     )
                     unsub_refs.append(unsub)
-                    # Only schedule the earliest match across all calendars.
-                    break
+                    # Each calendar gets its own listener; do NOT break here.
+                    # Multi-BAN setups have one calendar per subentry and all
+                    # should fire independently.
 
         await _schedule_next()
 
@@ -743,8 +654,8 @@ class TouSlotStartedTrigger(_CalendarEventTrigger):
         """Return True when the TOU event summary matches direction and slot."""
         direction = self._options.get(_DIRECTION, "")
         slot = self._options.get(_SLOT, "")
-        # Summary format: "TOU: {code} ({direction})"
-        expected = f"{TOU_EVENT_SUMMARY_PREFIX} {slot.upper()} ({direction})"
+        # Summary format: "TOU: {code} ({direction})" - slot code is lowercase.
+        expected = format_tou_event_summary(slot, direction)
         return event.summary == expected
 
 

@@ -1431,8 +1431,8 @@ async def test_tou_slot_started_fires_on_matching_direction_and_slot(
     """TouSlotStartedTrigger fires for the correct direction and slot."""
     entry = _make_entry(hass)
     event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
-    # TOU summary format: "TOU: {CODE} ({direction})"
-    events = [_make_future_event("TOU: PEAK (offtake)", event_start)]
+    # TOU summary format: "TOU: {code} ({direction})" - slot code is lowercase.
+    events = [_make_future_event("TOU: peak (offtake)", event_start)]
     _setup_calendar_component(hass, entry, events)
 
     config = TriggerConfig(
@@ -1454,13 +1454,47 @@ async def test_tou_slot_started_fires_on_matching_direction_and_slot(
     unsub()
 
 
+async def test_tou_slot_started_does_not_fire_for_uppercase_summary(
+    hass: HomeAssistant,
+) -> None:
+    """
+    TouSlotStartedTrigger does not fire for uppercase slot code summaries.
+
+    Regression test for bug where trigger used slot.upper() and never matched
+    the lowercase summaries emitted by _tou_calendar.py.
+    """
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
+    # Uppercase - old buggy trigger matched this; real calendar emits lowercase.
+    events = [_make_future_event("TOU: PEAK (offtake)", event_start)]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(
+        key=f"{DOMAIN}.test",
+        target=None,
+        options={"direction": "offtake", "slot": "peak"},
+    )
+    trigger = TouSlotStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    # Uppercase summary must NOT fire - real summaries are lowercase.
+    assert len(fired) == 0
+    unsub()
+
+
 async def test_tou_slot_started_does_not_fire_for_wrong_direction(
     hass: HomeAssistant,
 ) -> None:
     """TouSlotStartedTrigger does not fire when direction does not match."""
     entry = _make_entry(hass)
     event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
-    events = [_make_future_event("TOU: PEAK (injection)", event_start)]
+    events = [_make_future_event("TOU: peak (injection)", event_start)]
     _setup_calendar_component(hass, entry, events)
 
     config = TriggerConfig(
@@ -1487,7 +1521,7 @@ async def test_tou_slot_started_does_not_fire_for_wrong_slot(
     """TouSlotStartedTrigger does not fire when slot does not match."""
     entry = _make_entry(hass)
     event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
-    events = [_make_future_event("TOU: OFFPEAK (offtake)", event_start)]
+    events = [_make_future_event("TOU: offpeak (offtake)", event_start)]
     _setup_calendar_component(hass, entry, events)
 
     config = TriggerConfig(
@@ -1505,6 +1539,91 @@ async def test_tou_slot_started_does_not_fire_for_wrong_slot(
     await hass.async_block_till_done()
 
     assert len(fired) == 0
+    unsub()
+
+
+async def test_calendar_trigger_fires_for_all_bans(hass: HomeAssistant) -> None:
+    """
+    Calendar triggers fire for every registered ENGIE calendar (multi-BAN).
+
+    Regression test for the bug where a ``break`` after the first calendar
+    caused triggers from subsequent BANs to be silently dropped.
+    """
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
+
+    # Register two separate ENGIE calendar entities (simulating two BANs).
+    ent_reg = er.async_get(hass)
+    entity_ids: list[str] = []
+    for i in range(2):
+        reg_entry = ent_reg.async_get_or_create(
+            CALENDAR_DOMAIN,
+            DOMAIN,
+            f"{entry.entry_id}_ban{i}_calendar",
+            config_entry=entry,
+            suggested_object_id=f"engie_belgium_ban{i}",
+        )
+        entity_ids.append(reg_entry.entity_id)
+
+    events = [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start)]
+
+    # Wire a separate mock entity for each calendar entity_id.
+    mock_component = MagicMock()
+
+    def _get_entity(_eid: str) -> MagicMock:
+        mock_cal = MagicMock()
+        mock_cal.async_get_events = AsyncMock(return_value=events)
+        return mock_cal
+
+    mock_component.get_entity = MagicMock(side_effect=_get_entity)
+    hass.data[CALENDAR_DOMAIN] = mock_component
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    # Both calendars must have scheduled a listener - two fires expected.
+    assert len(fired) == 2
+    unsub()
+
+
+async def test_calendar_trigger_scheduler_fires_at_boundary(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Scheduler fires exactly once when the clock reaches the event boundary.
+
+    Smoke test that async_track_point_in_time integration works end-to-end
+    for the captar_peak_window_started trigger.
+    """
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=30)
+    events = [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start)]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+
+    # Before boundary: must not have fired.
+    assert len(fired) == 0
+
+    # Advance clock to the event boundary.
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    # Exactly one fire at the boundary.
+    assert len(fired) == 1
     unsub()
 
 
@@ -1609,7 +1728,15 @@ async def test_calendar_trigger_no_fires_when_entity_not_in_component(
 async def test_calendar_trigger_no_fires_when_get_events_raises(
     hass: HomeAssistant,
 ) -> None:
-    """Calendar trigger does not raise when async_get_events fails."""
+    """
+    Calendar trigger does not raise when async_get_events raises HomeAssistantError.
+
+    Regression test for bug where bare ``except Exception`` was narrowed to
+    ``(HomeAssistantError, TimeoutError)`` with a debug-log.  Verifies the
+    trigger survives a real HA error without propagating it.
+    """
+    from homeassistant.exceptions import HomeAssistantError  # noqa: PLC0415
+
     entry = _make_entry(hass)
     ent_reg = er.async_get(hass)
     ent_reg.async_get_or_create(
@@ -1621,7 +1748,9 @@ async def test_calendar_trigger_no_fires_when_get_events_raises(
     )
 
     mock_entity = MagicMock()
-    mock_entity.async_get_events = AsyncMock(side_effect=RuntimeError("network error"))
+    mock_entity.async_get_events = AsyncMock(
+        side_effect=HomeAssistantError("calendar unavailable")
+    )
     mock_component = MagicMock()
     mock_component.get_entity = MagicMock(return_value=mock_entity)
     hass.data[CALENDAR_DOMAIN] = mock_component
@@ -1630,7 +1759,7 @@ async def test_calendar_trigger_no_fires_when_get_events_raises(
     trigger = CaptarPeakWindowStartedTrigger(hass, config)
     run_action, fired = _make_run_action()
 
-    # Should not raise even though async_get_events raises.
+    # Should not raise even though async_get_events raises HomeAssistantError.
     unsub = await trigger.async_attach_runner(run_action)
     await hass.async_block_till_done()
     assert len(fired) == 0

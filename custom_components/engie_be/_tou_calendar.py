@@ -29,6 +29,17 @@ _LOOKAHEAD_DAYS = 7
 TOU_EVENT_SUMMARY_PREFIX = "TOU:"
 
 
+def format_tou_event_summary(slot: str, direction: str) -> str:
+    """
+    Return the canonical TOU calendar event summary string.
+
+    Both the calendar emitter (_slots_to_events) and the trigger matcher
+    (TouSlotStartedTrigger._matches_event) use this function so the format
+    contract lives in one place.
+    """
+    return f"{TOU_EVENT_SUMMARY_PREFIX} {slot} ({direction})"
+
+
 def tou_slot_events(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> list[CalendarEvent]:
@@ -120,7 +131,7 @@ def _slots_to_events(
                     CalendarEvent(
                         start=start_dt,
                         end=end_dt,
-                        summary=f"TOU: {code} ({direction})",
+                        summary=format_tou_event_summary(code, direction),
                         description=(f"EAN {ean} - supplier {direction} schedule"),
                     )
                 )

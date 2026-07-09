@@ -27,6 +27,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   `inference_key` attributes, letting automations detect stale/placeholder
   forecasts from ENGIE. [#NN]
 
+### Fixed
+
+- TOU slot trigger (`engie_be.tou_slot_started`) never fired. The trigger matched uppercase slot codes (`PEAK`) but `_tou_calendar.py` emits lowercase (`peak`). Fixed by extracting `format_tou_event_summary()` and using it in both the emitter and the matcher. [#NN]
+- Calendar triggers silently dropped all but the first BAN in multi-BAN accounts. A stray `break` after the first calendar entity caused subsequent calendars to be ignored. Removed the break; all ENGIE calendars are now iterated. [#NN]
+- Calendar fetch errors were swallowed silently. The bare `except Exception` is now `except (HomeAssistantError, TimeoutError)` with a `debug`-level log so errors surface in diagnostics. [#NN]
+- `_ValueChangedTrigger` (captar peak updated, EPEX high/low today updated) accepted `above`/`below` options via `ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR` that had no effect. Swapped to the plain `ENTITY_STATE_TRIGGER_SCHEMA`. [#NN]
+- Internal: extracted `_BinaryEdgeTrigger`, `_ThresholdTrigger`, and `_BinaryOnCondition` base classes to eliminate repeated boilerplate. Extracted `_filter_by_translation_key` into `_automation_helpers.py` so both `trigger.py` and `condition.py` share a single implementation. Removed two dead backward-compat aliases (`_CAPTAR_EVENT_SUMMARY`, `_HAPPY_HOUR_EVENT_SUMMARY`). [#NN]
+
 ### Tests
 
 - API getter, coordinator, sensor and Energy-hook tests for the new solar-surplus feature (`test_api_solar_surplus.py`, `test_coordinator_solar_surplus.py`, `test_sensor_solar_surplus.py`, `test_energy.py`). [#NN]
