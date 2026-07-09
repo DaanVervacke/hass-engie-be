@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 
 # Public: trigger.py uses this to identify captar events in the calendar.
 CAPTAR_EVENT_SUMMARY = "Captar monthly peak"
-_CAPTAR_EVENT_SUMMARY = CAPTAR_EVENT_SUMMARY  # backward-compat alias
 
 
 def peaks_payload(
@@ -131,6 +130,6 @@ def _build_event(
     return CalendarEvent(
         start=start,
         end=end,
-        summary=_CAPTAR_EVENT_SUMMARY,
+        summary=CAPTAR_EVENT_SUMMARY,
         description=description,
     )

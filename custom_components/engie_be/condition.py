@@ -25,7 +25,6 @@ import voluptuous as vol
 from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.const import STATE_ON
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.automation import DomainSpec
 from homeassistant.helpers.condition import (
     ENTITY_STATE_CONDITION_SCHEMA_ANY_ALL,
@@ -36,8 +35,8 @@ from homeassistant.helpers.condition import (
     EntityStateConditionBase,
 )
 
+from ._automation_helpers import filter_by_translation_key
 from .const import (
-    DOMAIN,
     SOLAR_SURPLUS_LEVELS,
     TOU_SLOT_CODES,
     TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,
@@ -58,7 +57,7 @@ _LEVEL = "level"
 _SLOT = "slot"
 
 # ---------------------------------------------------------------------------
-# Shared entity-filter helper
+# Shared entity-filter helper (implementation lives in _automation_helpers)
 # ---------------------------------------------------------------------------
 
 
@@ -68,17 +67,7 @@ def _filter_by_translation_key(
     translation_key: str,
 ) -> set[str]:
     """Return entities owned by this integration with the given translation_key."""
-    reg = er.async_get(hass)
-    result: set[str] = set()
-    for entity_id in entities:
-        entry = reg.async_get(entity_id)
-        if (
-            entry is not None
-            and entry.platform == DOMAIN
-            and entry.translation_key == translation_key
-        ):
-            result.add(entity_id)
-    return result
+    return filter_by_translation_key(hass, entities, translation_key)
 
 
 # ---------------------------------------------------------------------------
@@ -190,64 +179,46 @@ class InjectionSlotIsCondition(_OptionBasedStateCondition):
 # ---------------------------------------------------------------------------
 
 
-class OfftakeIsOptimalCondition(EntityStateConditionBase):
+class _BinaryOnCondition(EntityStateConditionBase):
+    """
+    Base for binary-sensor conditions that check the sensor is ``on``.
+
+    Subclasses declare ``_translation_key`` to restrict entity_filter to
+    a single ENGIE binary sensor per entity class.
+    """
+
+    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
+        BINARY_SENSOR_DOMAIN: DomainSpec()
+    }
+    _translation_key: ClassVar[str]
+
+    def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
+        """Initialise and set the expected state."""
+        super().__init__(hass, config)
+        self._states = {STATE_ON}
+
+    def entity_filter(self, entities: set[str]) -> set[str]:
+        """Restrict to the matching ENGIE binary sensor."""
+        candidates = super().entity_filter(entities)
+        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
+
+
+class OfftakeIsOptimalCondition(_BinaryOnCondition):
     """Condition: TOU offtake slot is currently the optimal slot."""
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
-        BINARY_SENSOR_DOMAIN: DomainSpec()
-    }
-
-    def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
-        """Initialise and set the expected state."""
-        super().__init__(hass, config)
-        self._states = {STATE_ON}
-
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE tou_offtake_is_optimal binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL
-        )
+    _translation_key = TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL
 
 
-class InjectionIsOptimalCondition(EntityStateConditionBase):
+class InjectionIsOptimalCondition(_BinaryOnCondition):
     """Condition: TOU injection slot is currently the optimal slot."""
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
-        BINARY_SENSOR_DOMAIN: DomainSpec()
-    }
-
-    def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
-        """Initialise and set the expected state."""
-        super().__init__(hass, config)
-        self._states = {STATE_ON}
-
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE tou_injection_is_optimal binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL
-        )
+    _translation_key = TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL
 
 
-class HappyHoursIsActiveCondition(EntityStateConditionBase):
+class HappyHoursIsActiveCondition(_BinaryOnCondition):
     """Condition: a Happy Hours window is currently active."""
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
-        BINARY_SENSOR_DOMAIN: DomainSpec()
-    }
-
-    def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
-        """Initialise and set the expected state."""
-        super().__init__(hass, config)
-        self._states = {STATE_ON}
-
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE happy_hours_active binary sensor."""
-        candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_HAPPY_HOURS_ACTIVE
-        )
+    _translation_key = TRANSLATION_KEY_HAPPY_HOURS_ACTIVE
 
 
 # ---------------------------------------------------------------------------
