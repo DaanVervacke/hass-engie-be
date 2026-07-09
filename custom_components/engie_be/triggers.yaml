@@ -1,0 +1,307 @@
+# Shared anchors - reused across trigger entries below.
+
+.trigger_behavior: &trigger_behavior
+  required: true
+  default: each
+  selector:
+    automation_behavior:
+      mode: trigger
+
+.trigger_for: &trigger_for
+  required: true
+  default: 00:00:00
+  selector:
+    duration:
+
+# Entity-target anchors.  The integration: filter narrows the picker to
+# engie_be-owned entities; primary_entities_only: false ensures entities that
+# are disabled-by-default still appear.
+
+.target_engie_binary_sensor: &target_engie_binary_sensor
+  entity:
+    - integration: engie_be
+      domain: binary_sensor
+  primary_entities_only: false
+
+.target_engie_sensor: &target_engie_sensor
+  entity:
+    - integration: engie_be
+      domain: sensor
+  primary_entities_only: false
+
+.target_engie_calendar: &target_engie_calendar
+  entity:
+    - integration: engie_be
+      domain: calendar
+  primary_entities_only: false
+
+# Numerical threshold selectors for each sensor type.
+
+.epex_threshold_entity: &epex_threshold_entity
+  - integration: engie_be
+    domain: sensor
+
+.epex_threshold_number: &epex_threshold_number
+  min: -1
+  max: 1
+  mode: box
+  unit_of_measurement: EUR/kWh
+
+.solar_surplus_threshold_number: &solar_surplus_threshold_number
+  min: 0
+  max: 20
+  mode: box
+  unit_of_measurement: kWh
+
+.captar_threshold_number: &captar_threshold_number
+  min: 0
+  max: 15
+  mode: box
+  unit_of_measurement: kW
+
+# ---------------------------------------------------------------------------
+# Binary transitions - fire on a specific edge of a binary sensor
+# ---------------------------------------------------------------------------
+
+epex_became_negative:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+epex_no_longer_negative:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+offtake_became_optimal:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+offtake_no_longer_optimal:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+injection_became_optimal:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+injection_no_longer_optimal:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+happy_hours_became_active:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+happy_hours_became_inactive:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+authentication_lost:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+authentication_restored:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+# ---------------------------------------------------------------------------
+# Enum "changed" - fire on any state change (no option needed)
+# ---------------------------------------------------------------------------
+
+solar_surplus_level_changed:
+  target: *target_engie_sensor
+
+offtake_slot_changed:
+  target: *target_engie_sensor
+
+injection_slot_changed:
+  target: *target_engie_sensor
+
+# ---------------------------------------------------------------------------
+# Enum "became" - fire when the sensor enters a specific level / slot
+# ---------------------------------------------------------------------------
+
+solar_surplus_became:
+  target: *target_engie_sensor
+  fields:
+    level:
+      required: true
+      selector:
+        select:
+          translation_key: solar_surplus_level
+          options:
+            - no_data
+            - no_surplus
+            - minimal_surplus
+            - low_surplus
+            - high_surplus
+
+offtake_slot_became:
+  target: *target_engie_sensor
+  fields:
+    slot:
+      required: true
+      selector:
+        select:
+          translation_key: tou_slot_code
+          options:
+            - peak
+            - offpeak
+            - superoffpeak
+            - exclusive_night
+            - day
+
+injection_slot_became:
+  target: *target_engie_sensor
+  fields:
+    slot:
+      required: true
+      selector:
+        select:
+          translation_key: tou_slot_code
+          options:
+            - peak
+            - offpeak
+            - superoffpeak
+            - exclusive_night
+            - day
+
+# ---------------------------------------------------------------------------
+# Numerical threshold triggers
+# ---------------------------------------------------------------------------
+
+epex_current_crossed_threshold:
+  target: *target_engie_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: crossed
+          number: *epex_threshold_number
+
+epex_next_hour_crossed_threshold:
+  target: *target_engie_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: crossed
+          number: *epex_threshold_number
+
+solar_surplus_current_crossed_threshold:
+  target: *target_engie_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: crossed
+          number: *solar_surplus_threshold_number
+
+solar_surplus_next_hour_crossed_threshold:
+  target: *target_engie_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: crossed
+          number: *solar_surplus_threshold_number
+
+captar_peak_crossed_threshold:
+  target: *target_engie_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: crossed
+          number: *captar_threshold_number
+
+# ---------------------------------------------------------------------------
+# Value-changed triggers - fire on any numeric state change
+# ---------------------------------------------------------------------------
+
+captar_peak_updated:
+  target: *target_engie_sensor
+
+epex_high_today_updated:
+  target: *target_engie_sensor
+
+epex_low_today_updated:
+  target: *target_engie_sensor
+
+# ---------------------------------------------------------------------------
+# Calendar event-class triggers
+# ---------------------------------------------------------------------------
+
+captar_peak_window_started:
+  target: *target_engie_calendar
+
+captar_peak_window_ended:
+  target: *target_engie_calendar
+
+happy_hours_window_started:
+  target: *target_engie_calendar
+
+happy_hours_window_ended:
+  target: *target_engie_calendar
+
+tou_slot_started:
+  target: *target_engie_calendar
+  fields:
+    direction:
+      required: true
+      selector:
+        select:
+          translation_key: tou_direction
+          options:
+            - offtake
+            - injection
+    slot:
+      required: true
+      selector:
+        select:
+          translation_key: tou_slot_code
+          options:
+            - peak
+            - offpeak
+            - superoffpeak
+            - exclusive_night
+            - day

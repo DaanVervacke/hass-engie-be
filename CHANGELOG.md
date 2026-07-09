@@ -29,6 +29,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- Register purpose-specific triggers and conditions with the HA automation editor via `triggers.yaml` and `conditions.yaml` so they appear in the picker. Without these files all 29 triggers and 10 conditions were defined in Python but never surfaced in the UI. [#NN]
 - TOU slot trigger (`engie_be.tou_slot_started`) never fired. The trigger matched uppercase slot codes (`PEAK`) but `_tou_calendar.py` emits lowercase (`peak`). Fixed by extracting `format_tou_event_summary()` and using it in both the emitter and the matcher. [#NN]
 - Calendar triggers silently dropped all but the first BAN in multi-BAN accounts. A stray `break` after the first calendar entity caused subsequent calendars to be ignored. Removed the break; all ENGIE calendars are now iterated. [#NN]
 - Calendar fetch errors were swallowed silently. The bare `except Exception` is now `except (HomeAssistantError, TimeoutError)` with a `debug`-level log so errors surface in diagnostics. [#NN]
