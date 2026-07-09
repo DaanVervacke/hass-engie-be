@@ -17,6 +17,7 @@ from .const import (
     CONF_CONSUMPTION_ADDRESS,
     CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
+    EPEX_SLOT_DURATION_MINUTES,
     KEY_IS_DYNAMIC,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
@@ -223,7 +224,7 @@ def _summarise_epex(payload: Any) -> dict[str, Any] | None:
     slots = payload.slots
     return {
         "slot_count": len(slots),
-        "slot_duration_minutes": slots[0].duration_minutes if slots else None,
+        "slot_duration_minutes": EPEX_SLOT_DURATION_MINUTES if slots else None,
         "first_slot_start": slots[0].start.isoformat() if slots else None,
         "last_slot_end": slots[-1].end.isoformat() if slots else None,
         "publication_time": (

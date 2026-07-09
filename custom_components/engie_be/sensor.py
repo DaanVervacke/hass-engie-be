@@ -29,6 +29,7 @@ from ._tou import schedule_for_ean, tou_schedules_payload
 from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
+    EPEX_SLOT_DURATION_MINUTES,
     EPEX_TZ,
     LOGGER,
     SOLAR_SURPLUS_LEVELS,
@@ -1013,7 +1014,7 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
                 _serialize_slot(s) for s in _slots_for_date(payload, tomorrow_brussels)
             ],
             "slot_duration_minutes": (
-                payload.slots[0].duration_minutes if payload.slots else None
+                EPEX_SLOT_DURATION_MINUTES if payload.slots else None
             ),
         }
         if payload.publication_time is not None:
@@ -1061,7 +1062,7 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
                 attrs: dict[str, Any] = {
                     "slot_start": slot.start.isoformat(),
                     "slot_end": slot.end.isoformat(),
-                    "slot_duration_minutes": slot.duration_minutes,
+                    "slot_duration_minutes": EPEX_SLOT_DURATION_MINUTES,
                 }
                 if self.coordinator.last_update_success_time is not None:
                     attrs["last_fetched"] = (
@@ -1114,7 +1115,7 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
         attrs = {
             "slot_start": slot.start.isoformat(),
             "slot_end": slot.end.isoformat(),
-            "slot_duration_minutes": slot.duration_minutes,
+            "slot_duration_minutes": EPEX_SLOT_DURATION_MINUTES,
         }
         if self.coordinator.last_update_success_time is not None:
             attrs["last_fetched"] = (

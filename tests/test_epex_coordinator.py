@@ -107,8 +107,6 @@ async def test_fetch_parses_48h_payload_to_brussels_local_slots(
     # Wholesale EUR/MWh divided by 1000 -> EUR/kWh.
     # First slot in fixture: value 110.42 EUR/MWh -> 0.11042 EUR/kWh.
     assert epex.slots[0].value_eur_per_kwh == pytest.approx(0.11042)
-    # Slot duration is exposed for forward-compat with 15-min publication.
-    assert epex.slots[0].duration_minutes == 60
     assert epex.slots[0].end - epex.slots[0].start == timedelta(hours=1)
     # Publication metadata round-trips.
     assert epex.market_date == "2026-05-05"
@@ -202,7 +200,6 @@ async def test_404_keeps_last_known_payload(hass: HomeAssistant) -> None:
         start=datetime(2026, 5, 4, 12, 0, tzinfo=_BRUSSELS),
         end=datetime(2026, 5, 4, 13, 0, tzinfo=_BRUSSELS),
         value_eur_per_kwh=0.12345,
-        duration_minutes=60,
     )
     seeded_payload = EpexPayload(
         slots=(seeded_slot,),
