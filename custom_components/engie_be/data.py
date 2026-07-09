@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from .store import EngieBeHappyHoursStore, EngieBePeaksStore
 
 
-def unwrap_payload(
+def unwrap_dict_payload(
     coordinator: DataUpdateCoordinator[Any],
     key: str,
 ) -> dict[str, Any] | None:

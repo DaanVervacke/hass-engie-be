@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.calendar import CalendarEvent
 
-from .data import unwrap_payload
+from .data import unwrap_dict_payload
 
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
@@ -25,7 +25,7 @@ def peaks_payload(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> dict[str, Any] | None:
     """Return the inner peaks dict from coordinator data, or ``None``."""
-    return unwrap_payload(coordinator, "peaks")
+    return unwrap_dict_payload(coordinator, "peaks")
 
 
 def peaks_meta(

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-from .data import unwrap_payload
+from .data import unwrap_dict_payload
 
 # Brussels timezone used to anchor ``dueDate`` strings (which are dates,
 # not datetimes) to a timezone-aware datetime at midnight local time.
@@ -25,7 +25,7 @@ def overview_open_amount(
     Returns ``None`` when the coordinator has no billing data or the
     payload is malformed.
     """
-    payload = unwrap_payload(coordinator, "billing")
+    payload = unwrap_dict_payload(coordinator, "billing")
     if payload is None:
         return None
     overview = payload.get("overview")
@@ -49,7 +49,7 @@ def overview_due_amount(
     Returns ``None`` when the coordinator has no billing data or the
     payload is malformed.
     """
-    payload = unwrap_payload(coordinator, "billing")
+    payload = unwrap_dict_payload(coordinator, "billing")
     if payload is None:
         return None
     overview = payload.get("overview")
@@ -108,7 +108,7 @@ def billing_status(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> str | None:
     """Return the top-level ``status`` string from the billing payload, or None."""
-    payload = unwrap_payload(coordinator, "billing")
+    payload = unwrap_dict_payload(coordinator, "billing")
     if payload is None:
         return None
     status = payload.get("status")
@@ -124,7 +124,7 @@ def _transactions(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> list[dict[str, Any]]:
     """Return the financialTransactions list, or an empty list."""
-    payload = unwrap_payload(coordinator, "billing")
+    payload = unwrap_dict_payload(coordinator, "billing")
     if payload is None:
         return []
     details = payload.get("details")
