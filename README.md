@@ -32,9 +32,12 @@ as sensors, binary sensors, and calendar events.
 - Import your hourly usage / historic data from ENGIE into the Energy dashboard: electricity consumption, injection, gas consumption, and per-hour costs
 - Creates price sensors per energy type, direction (offtake / injection), and tariff rate
 - Tracks the monthly capacity-tariff (captar) peak window for each electricity meter
+- Time-of-use (TOU) slot sensors per electricity meter, with "is optimal" binary sensors and a full weekly calendar view
 - Surfaces ENGIE's Happy Hours free-energy promotions on each account, both as sensors and as calendar events
 - Exposes ENGIE's Solar Surplus forecasts (3-day hourly injection outlook) for households with solar panels
 - Supports multiple households (business agreements) under a single ENGIE login, including several active addresses under one customer account
+- Billing sensors per account: outstanding balance, overdue amount, and next invoice due date
+- Native automation surface for the automation editor: 29 purpose-specific triggers, 10 conditions, and calendar-slot events. No template YAML required
 - Configurable update interval
 
 ## Sensors
@@ -177,6 +180,9 @@ in the Happy Hours program.
 | Happy Hours monthly consumption | `sensor.engie_belgium_happy_hours_month_consumption` |
 | Happy Hours eligible hours this month | `sensor.engie_belgium_happy_hours_month_eligible_hours` |
 | Happy Hours monthly reward | `sensor.engie_belgium_happy_hours_month_reward` |
+| Happy Hours monthly consumption vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_consumption_change` |
+| Happy Hours eligible hours vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_eligible_hours_change` |
+| Happy Hours monthly reward vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_reward_change` |
 
 The binary sensor is `on` while the current moment falls inside a scheduled
 window, and `off` otherwise. The three monthly-summary sensors show your
@@ -203,7 +209,7 @@ separately through the ENGIE Smart App under "Je producten". See
 eligibility and the latest details.
 
 The integration checks your enrolment status on every refresh (by default every
-60 minutes, and configurable). The three Happy Hours entities and the calendar
+60 minutes, and configurable). The Happy Hours entities and the calendar
 events appear shortly after you enrol an address and disappear shortly
 after you opt out. You do not need to remove and re-add the integration
 when your enrolment changes.
@@ -360,19 +366,41 @@ balance is zero (no open transactions).
 
 ## Automation from the UI
 
-Every ENGIE Belgium device exposes automation conditions directly to
-Home Assistant's automation editor. In **Settings - Automations and Scenes**,
-under a new automation's "Conditions" step, pick your ENGIE device and
-choose from:
+Every ENGIE Belgium device exposes native automation triggers and
+conditions to Home Assistant's automation editor. In **Settings -
+Automations and Scenes**, when adding a new automation, pick your
+ENGIE device under "When" (triggers) or "And if" (conditions).
 
-- Solar surplus is at level (no_data / no_surplus / minimal_surplus / low_surplus / high_surplus)
-- Current offtake slot is (peak / offpeak / superoffpeak / ...)
-- Current injection slot is
-- EPEX price is negative
+### Triggers (29)
 
-No template YAML required. The dropdown options track `SOLAR_SURPLUS_LEVELS`
-and `TOU_SLOT_CODES` in `const.py` automatically, so new codes added by
-ENGIE appear in the editor without any code change.
+- **State transitions (10)**: EPEX became negative / no longer
+  negative, offtake and injection became optimal / no longer
+  optimal, Happy Hours became active / inactive, authentication
+  lost / restored.
+- **Enum changes (6)**: solar surplus level changed, offtake and
+  injection slot changed, plus "became" variants for each.
+- **Thresholds (5)**: EPEX current / next hour crossed threshold,
+  solar surplus current / next hour crossed threshold, captar peak
+  crossed threshold.
+- **Value updates (3)**: captar peak updated, EPEX high / low
+  today updated.
+- **Calendar-slot events (5)**: fires at start / end of captar
+  peak window and Happy Hours window, and at TOU slot boundary
+  start for a chosen direction and slot code.
+
+### Conditions (10)
+
+- **Binary state**: EPEX price is negative, offtake is optimal,
+  injection is optimal, Happy Hours is active.
+- **Enum state**: solar surplus is at level, offtake slot is,
+  injection slot is.
+- **Thresholds**: EPEX price is below / above threshold, captar
+  peak is above threshold.
+
+No template YAML is required for any of the above. Dropdown
+options track `SOLAR_SURPLUS_LEVELS` and `TOU_SLOT_CODES` in
+`const.py` automatically, so new codes added by ENGIE appear in
+the editor without a code change.
 
 ### Authentication
 

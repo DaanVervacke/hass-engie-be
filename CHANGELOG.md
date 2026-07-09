@@ -33,6 +33,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Solar surplus level sensor now exposes `forecast_creation_date` and
   `inference_key` attributes, letting automations detect stale/placeholder
   forecasts from ENGIE. [#NN]
+- Refresh README for v0.13 feature surface: TOU / billing bullets in the overview, three new Happy Hours comparison sensors in the table, full triggers + conditions listing in Automation from the UI. [#NN]
 
 ### Fixed
 
