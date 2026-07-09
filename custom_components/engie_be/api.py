@@ -7,7 +7,6 @@ import hashlib
 import os
 import re
 import socket
-import uuid
 from base64 import urlsafe_b64encode
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -1389,9 +1388,8 @@ class EngieBeApiClient:
         """
         Return the standard authenticated JSON header dict.
 
-        Used by every ENGIE endpoint that requires a Bearer token. ``x-trace-id``
-        is fresh per call so support requests can correlate a single HTTP
-        round-trip. Pass ``extra`` to merge per-endpoint headers (e.g.
+        Used by every ENGIE endpoint that requires a Bearer token. Pass
+        ``extra`` to merge per-endpoint headers (e.g.
         ``Content-Type: application/json`` on POST bodies). Auth-flow methods use
         custom header dicts and do not go through this helper.
         """
@@ -1399,7 +1397,6 @@ class EngieBeApiClient:
             "User-Agent": user_agent,
             "Accept": "application/json, application/problem+json",
             "authorization": f"Bearer {self.access_token}",
-            "x-trace-id": str(uuid.uuid4()),
         }
         if extra:
             headers.update(extra)

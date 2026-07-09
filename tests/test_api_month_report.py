@@ -46,7 +46,6 @@ async def test_async_get_month_report_builds_request() -> None:
     headers = call_kwargs["headers"]
     assert headers["User-Agent"] == USER_AGENT_NATIVE
     assert headers["authorization"] == "Bearer test-access-token"
-    assert "x-trace-id" in headers
 
 
 async def test_async_get_month_report_formats_date_with_leading_zero() -> None:

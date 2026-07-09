@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -55,9 +54,6 @@ async def test_async_get_monthly_peaks_returns_payload() -> None:
     assert call_kwargs["json_response"] is True
     headers = call_kwargs["headers"]
     assert headers["authorization"] == "Bearer test-access-token"
-    assert "x-trace-id" in headers
-    # x-trace-id must be a valid UUID4 string.
-    assert uuid.UUID(headers["x-trace-id"]).version == 4
 
 
 async def test_async_get_monthly_peaks_strips_whitespace_in_customer_number() -> None:
@@ -89,21 +85,3 @@ async def test_async_get_monthly_peaks_propagates_api_errors() -> None:
         await client.async_get_monthly_peaks(_CUSTOMER, _YEAR, _MONTH)
 
     assert exc_info.value is original
-
-
-async def test_async_get_monthly_peaks_sends_unique_trace_id_per_call() -> None:
-    """A fresh ``x-trace-id`` header is generated on every request."""
-    client = _build_client()
-    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
-
-    with patch.object(
-        client,
-        "_api_wrapper",
-        AsyncMock(return_value=payload),
-    ) as mocked:
-        await client.async_get_monthly_peaks(_CUSTOMER, _YEAR, _MONTH)
-        await client.async_get_monthly_peaks(_CUSTOMER, _YEAR, _MONTH)
-
-    first_trace = mocked.await_args_list[0].kwargs["headers"]["x-trace-id"]
-    second_trace = mocked.await_args_list[1].kwargs["headers"]["x-trace-id"]
-    assert first_trace != second_trace
