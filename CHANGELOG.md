@@ -31,6 +31,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- Add selector option translations for solar-surplus level, TOU slot, and TOU direction fields required by hassfest. Without these `selector.*` blocks in `strings.json`, hassfest reported 8 errors and the option labels in the automation editor picker rendered as raw enum keys. [#NN]
 - Register purpose-specific triggers and conditions with the HA automation editor via `triggers.yaml` and `conditions.yaml` so they appear in the picker. Without these files all 29 triggers and 10 conditions were defined in Python but never surfaced in the UI. [#NN]
 - TOU slot trigger (`engie_be.tou_slot_started`) never fired. The trigger matched uppercase slot codes (`PEAK`) but `_tou_calendar.py` emits lowercase (`peak`). Fixed by extracting `format_tou_event_summary()` and using it in both the emitter and the matcher. [#NN]
 - Calendar triggers silently dropped all but the first BAN in multi-BAN accounts. A stray `break` after the first calendar entity caused subsequent calendars to be ignored. Removed the break; all ENGIE calendars are now iterated. [#NN]
