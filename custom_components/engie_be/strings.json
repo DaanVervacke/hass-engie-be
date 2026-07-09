@@ -930,6 +930,194 @@
                     "description": "Expected TOU injection slot code."
                 }
             }
+        },
+        "epex_price_is_below_threshold": {
+            "name": "EPEX price is below threshold",
+            "description": "True when the current EPEX day-ahead price is below the configured threshold.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Price threshold in EUR/kWh."
+                }
+            }
+        },
+        "epex_price_is_above_threshold": {
+            "name": "EPEX price is above threshold",
+            "description": "True when the current EPEX day-ahead price is above the configured threshold.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Price threshold in EUR/kWh."
+                }
+            }
+        },
+        "offtake_is_optimal": {
+            "name": "Offtake is at optimal slot",
+            "description": "True when the current TOU offtake slot is the optimal tariff slot."
+        },
+        "injection_is_optimal": {
+            "name": "Injection is at optimal slot",
+            "description": "True when the current TOU injection slot is the optimal tariff slot."
+        },
+        "happy_hours_is_active": {
+            "name": "Happy Hours is active",
+            "description": "True when a Happy Hours window is currently active."
+        },
+        "captar_peak_is_above_threshold": {
+            "name": "Captar peak is above threshold",
+            "description": "True when the current captar monthly peak power is above the configured threshold.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Power threshold in kW."
+                }
+            }
+        }
+    },
+    "triggers": {
+        "epex_became_negative": {
+            "name": "EPEX price became negative",
+            "description": "Fires when the EPEX day-ahead price turns negative (you are paid to consume)."
+        },
+        "epex_no_longer_negative": {
+            "name": "EPEX price no longer negative",
+            "description": "Fires when the EPEX day-ahead price returns to zero or positive."
+        },
+        "offtake_became_optimal": {
+            "name": "Offtake became optimal",
+            "description": "Fires when the TOU offtake slot enters the optimal tariff slot."
+        },
+        "offtake_no_longer_optimal": {
+            "name": "Offtake no longer optimal",
+            "description": "Fires when the TOU offtake slot leaves the optimal tariff slot."
+        },
+        "injection_became_optimal": {
+            "name": "Injection became optimal",
+            "description": "Fires when the TOU injection slot enters the optimal tariff slot."
+        },
+        "injection_no_longer_optimal": {
+            "name": "Injection no longer optimal",
+            "description": "Fires when the TOU injection slot leaves the optimal tariff slot."
+        },
+        "happy_hours_became_active": {
+            "name": "Happy Hours became active",
+            "description": "Fires when a Happy Hours window opens."
+        },
+        "happy_hours_became_inactive": {
+            "name": "Happy Hours became inactive",
+            "description": "Fires when a Happy Hours window closes."
+        },
+        "authentication_lost": {
+            "name": "Authentication lost",
+            "description": "Fires when the ENGIE Belgium session expires or becomes invalid."
+        },
+        "authentication_restored": {
+            "name": "Authentication restored",
+            "description": "Fires when the ENGIE Belgium session is successfully re-established."
+        },
+        "solar_surplus_level_changed": {
+            "name": "Solar surplus level changed",
+            "description": "Fires when the solar surplus forecast level changes to any new value."
+        },
+        "offtake_slot_changed": {
+            "name": "Offtake slot changed",
+            "description": "Fires when the TOU offtake slot changes to any new value."
+        },
+        "injection_slot_changed": {
+            "name": "Injection slot changed",
+            "description": "Fires when the TOU injection slot changes to any new value."
+        },
+        "solar_surplus_became": {
+            "name": "Solar surplus reached level",
+            "description": "Fires when the solar surplus forecast reaches the chosen level.",
+            "fields": {
+                "level": {
+                    "name": "Surplus level",
+                    "description": "The surplus level to wait for."
+                }
+            }
+        },
+        "offtake_slot_became": {
+            "name": "Offtake slot entered",
+            "description": "Fires when the TOU offtake slot enters the chosen slot.",
+            "fields": {
+                "slot": {
+                    "name": "Slot code",
+                    "description": "The TOU slot code to wait for."
+                }
+            }
+        },
+        "injection_slot_became": {
+            "name": "Injection slot entered",
+            "description": "Fires when the TOU injection slot enters the chosen slot.",
+            "fields": {
+                "slot": {
+                    "name": "Slot code",
+                    "description": "The TOU slot code to wait for."
+                }
+            }
+        },
+        "epex_current_crossed_threshold": {
+            "name": "EPEX current price crossed threshold",
+            "description": "Fires when the current-hour EPEX price crosses into the configured threshold range.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Price threshold in EUR/kWh."
+                }
+            }
+        },
+        "epex_next_hour_crossed_threshold": {
+            "name": "EPEX next-hour price crossed threshold",
+            "description": "Fires when the next-hour EPEX price crosses into the configured threshold range.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Price threshold in EUR/kWh."
+                }
+            }
+        },
+        "solar_surplus_current_crossed_threshold": {
+            "name": "Solar surplus current hour crossed threshold",
+            "description": "Fires when the current-hour solar surplus value crosses into the configured threshold range.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Solar surplus threshold in kWh."
+                }
+            }
+        },
+        "solar_surplus_next_hour_crossed_threshold": {
+            "name": "Solar surplus next hour crossed threshold",
+            "description": "Fires when the next-hour solar surplus value crosses into the configured threshold range.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Solar surplus threshold in kWh."
+                }
+            }
+        },
+        "captar_peak_crossed_threshold": {
+            "name": "Captar monthly peak crossed threshold",
+            "description": "Fires when the captar monthly peak power crosses into the configured threshold range.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Power threshold in kW."
+                }
+            }
+        },
+        "captar_peak_updated": {
+            "name": "Captar monthly peak updated",
+            "description": "Fires when the captar monthly peak power value changes."
+        },
+        "epex_high_today_updated": {
+            "name": "EPEX highest price today updated",
+            "description": "Fires when today's EPEX highest price changes."
+        },
+        "epex_low_today_updated": {
+            "name": "EPEX lowest price today updated",
+            "description": "Fires when today's EPEX lowest price changes."
         }
     }
 }

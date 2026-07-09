@@ -120,11 +120,27 @@ CONF_CONSUMPTION_ADDRESS = "consumption_address"
 # Subentry picker key
 CONF_SELECTED_ACCOUNTS = "selected_accounts"
 
-# Translation keys used by condition.py (and referenced on the matching entities)
+# Translation keys used by condition.py, trigger.py, and referenced on the
+# matching entities. Keep in sync with the entity platform definitions.
 TRANSLATION_KEY_EPEX_NEGATIVE = "epex_negative"
 TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST = "solar_surplus_forecast"
 TRANSLATION_KEY_TOU_OFFTAKE_SLOT = "tou_offtake_slot"
 TRANSLATION_KEY_TOU_INJECTION_SLOT = "tou_injection_slot"
+
+# Binary-sensor keys referenced by trigger.py
+TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL = "tou_offtake_is_optimal"
+TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL = "tou_injection_is_optimal"
+TRANSLATION_KEY_HAPPY_HOURS_ACTIVE = "happy_hours_active"
+TRANSLATION_KEY_AUTHENTICATION = "authentication"
+
+# Sensor keys referenced by trigger.py (numerical / value-changed)
+TRANSLATION_KEY_EPEX_CURRENT = "epex_current"
+TRANSLATION_KEY_EPEX_NEXT_HOUR = "epex_next_hour"
+TRANSLATION_KEY_EPEX_HIGH_TODAY = "epex_high_today"
+TRANSLATION_KEY_EPEX_LOW_TODAY = "epex_low_today"
+TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT = "solar_surplus_current"
+TRANSLATION_KEY_SOLAR_SURPLUS_NEXT_HOUR = "solar_surplus_next_hour"
+TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER = "captar_monthly_peak_power"
 
 # Setup-time historical import options (stored per subentry)
 CONF_IMPORT_HISTORY = "import_history"
