@@ -16,8 +16,14 @@ from custom_components.engie_be.condition import (
     _SOLAR_SURPLUS_SCHEMA,
     _TOU_SLOT_SCHEMA,
     CONDITIONS,
+    CaptarPeakIsAboveThresholdCondition,
+    EpexPriceIsAboveThresholdCondition,
+    EpexPriceIsBelowThresholdCondition,
     EpexPriceIsNegativeCondition,
+    HappyHoursIsActiveCondition,
+    InjectionIsOptimalCondition,
     InjectionSlotIsCondition,
+    OfftakeIsOptimalCondition,
     OfftakeSlotIsCondition,
     SolarSurplusIsAtLevelCondition,
     async_get_conditions,
@@ -28,9 +34,15 @@ from custom_components.engie_be.const import (
     DOMAIN,
     SOLAR_SURPLUS_LEVELS,
     TOU_SLOT_CODES,
+    TRANSLATION_KEY_AUTHENTICATION,
+    TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,
+    TRANSLATION_KEY_EPEX_CURRENT,
     TRANSLATION_KEY_EPEX_NEGATIVE,
+    TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
+    TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
     TRANSLATION_KEY_TOU_INJECTION_SLOT,
+    TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL,
     TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
 )
 
@@ -138,15 +150,23 @@ def test_abcs_importable() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_async_get_conditions_returns_all_four(hass: HomeAssistant) -> None:
-    """async_get_conditions returns all four condition names."""
+async def test_async_get_conditions_returns_all_ten(hass: HomeAssistant) -> None:
+    """async_get_conditions returns all ten condition names (4 original + 6 Phase D)."""
     conditions = await async_get_conditions(hass)
 
     assert set(conditions.keys()) == {
+        # Original four
         "epex_price_is_negative",
         "solar_surplus_is_at_level",
         "offtake_slot_is",
         "injection_slot_is",
+        # Phase D additions
+        "epex_price_is_below_threshold",
+        "epex_price_is_above_threshold",
+        "offtake_is_optimal",
+        "injection_is_optimal",
+        "happy_hours_is_active",
+        "captar_peak_is_above_threshold",
     }
 
 
@@ -556,3 +576,354 @@ def test_schema_rejects_invalid_option(
                 "options": options,
             }
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase D - offtake_is_optimal
+# ---------------------------------------------------------------------------
+
+
+async def test_offtake_is_optimal_true_when_on(hass: HomeAssistant) -> None:
+    """OfftakeIsOptimalCondition is True when the binary sensor is on."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL,
+        entity_suffix="tou_offtake_is_optimal",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_offtake_optimal",
+    )
+    hass.states.async_set(entity_id, "on")
+    await _run_condition(
+        hass, OfftakeIsOptimalCondition, entity_id, None, expected=True
+    )
+
+
+async def test_offtake_is_optimal_false_when_off(hass: HomeAssistant) -> None:
+    """OfftakeIsOptimalCondition is False when the binary sensor is off."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL,
+        entity_suffix="tou_offtake_is_optimal",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_offtake_optimal",
+    )
+    hass.states.async_set(entity_id, "off")
+    await _run_condition(
+        hass, OfftakeIsOptimalCondition, entity_id, None, expected=False
+    )
+
+
+async def test_offtake_is_optimal_rejects_wrong_translation_key(
+    hass: HomeAssistant,
+) -> None:
+    """OfftakeIsOptimalCondition rejects entities with wrong translation_key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
+        entity_suffix="tou_injection_is_optimal",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_injection_optimal",
+    )
+    hass.states.async_set(entity_id, "on")
+    await _run_condition(
+        hass, OfftakeIsOptimalCondition, entity_id, None, expected=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase D - injection_is_optimal
+# ---------------------------------------------------------------------------
+
+
+async def test_injection_is_optimal_true_when_on(hass: HomeAssistant) -> None:
+    """InjectionIsOptimalCondition is True when the binary sensor is on."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
+        entity_suffix="tou_injection_is_optimal",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_injection_optimal",
+    )
+    hass.states.async_set(entity_id, "on")
+    await _run_condition(
+        hass, InjectionIsOptimalCondition, entity_id, None, expected=True
+    )
+
+
+async def test_injection_is_optimal_false_when_off(hass: HomeAssistant) -> None:
+    """InjectionIsOptimalCondition is False when the binary sensor is off."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
+        entity_suffix="tou_injection_is_optimal",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_injection_optimal",
+    )
+    hass.states.async_set(entity_id, "off")
+    await _run_condition(
+        hass, InjectionIsOptimalCondition, entity_id, None, expected=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase D - happy_hours_is_active
+# ---------------------------------------------------------------------------
+
+
+async def test_happy_hours_is_active_true_when_on(hass: HomeAssistant) -> None:
+    """HappyHoursIsActiveCondition is True when the binary sensor is on."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
+        entity_suffix="happy_hours_active",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_hh_active",
+    )
+    hass.states.async_set(entity_id, "on")
+    await _run_condition(
+        hass, HappyHoursIsActiveCondition, entity_id, None, expected=True
+    )
+
+
+async def test_happy_hours_is_active_false_when_off(hass: HomeAssistant) -> None:
+    """HappyHoursIsActiveCondition is False when the binary sensor is off."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
+        entity_suffix="happy_hours_active",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_hh_active",
+    )
+    hass.states.async_set(entity_id, "off")
+    await _run_condition(
+        hass, HappyHoursIsActiveCondition, entity_id, None, expected=False
+    )
+
+
+async def test_happy_hours_is_active_rejects_authentication_entity(
+    hass: HomeAssistant,
+) -> None:
+    """HappyHoursIsActiveCondition rejects entities with wrong translation_key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_AUTHENTICATION,
+        entity_suffix="authentication",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_auth",
+    )
+    hass.states.async_set(entity_id, "on")
+    await _run_condition(
+        hass, HappyHoursIsActiveCondition, entity_id, None, expected=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase D - epex_price_is_below_threshold / epex_price_is_above_threshold
+# ---------------------------------------------------------------------------
+
+
+def _make_numerical_condition_config(
+    entity_id: str,
+    threshold_type: str,
+    value: float,
+) -> ConditionConfig:
+    """Build a numerical condition ConditionConfig."""
+    return ConditionConfig(
+        target={"entity_id": entity_id},
+        options={
+            "behavior": "any",
+            "threshold": {
+                "type": threshold_type,
+                "value": {"number": value},
+            },
+        },
+    )
+
+
+async def test_epex_price_is_below_threshold_true_when_below(
+    hass: HomeAssistant,
+) -> None:
+    """EpexPriceIsBelowThresholdCondition is True when price is below threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    config = _make_numerical_condition_config(entity_id, "below", 0.10)
+    condition = EpexPriceIsBelowThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is True
+    condition.async_unload()
+
+
+async def test_epex_price_is_below_threshold_false_when_above(
+    hass: HomeAssistant,
+) -> None:
+    """EpexPriceIsBelowThresholdCondition is False when price is above threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "0.15")
+    config = _make_numerical_condition_config(entity_id, "below", 0.10)
+    condition = EpexPriceIsBelowThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_epex_price_is_above_threshold_true_when_above(
+    hass: HomeAssistant,
+) -> None:
+    """EpexPriceIsAboveThresholdCondition is True when price is above threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "0.20")
+    config = _make_numerical_condition_config(entity_id, "above", 0.10)
+    condition = EpexPriceIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is True
+    condition.async_unload()
+
+
+async def test_epex_price_is_above_threshold_false_when_below(
+    hass: HomeAssistant,
+) -> None:
+    """EpexPriceIsAboveThresholdCondition is False when price is below threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    config = _make_numerical_condition_config(entity_id, "above", 0.10)
+    condition = EpexPriceIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_epex_threshold_rejects_wrong_translation_key(
+    hass: HomeAssistant,
+) -> None:
+    """EpexPriceIsBelowThresholdCondition rejects sensors with wrong key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,
+        entity_suffix="captar_monthly_peak_power",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_captar_peak",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    config = _make_numerical_condition_config(entity_id, "below", 0.10)
+    condition = EpexPriceIsBelowThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+# ---------------------------------------------------------------------------
+# Phase D - captar_peak_is_above_threshold
+# ---------------------------------------------------------------------------
+
+
+async def test_captar_peak_is_above_threshold_true_when_above(
+    hass: HomeAssistant,
+) -> None:
+    """CaptarPeakIsAboveThresholdCondition is True when peak is above threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,
+        entity_suffix="captar_monthly_peak_power",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_captar_peak",
+    )
+    hass.states.async_set(entity_id, "7.5")
+    config = _make_numerical_condition_config(entity_id, "above", 5.0)
+    condition = CaptarPeakIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is True
+    condition.async_unload()
+
+
+async def test_captar_peak_is_above_threshold_false_when_below(
+    hass: HomeAssistant,
+) -> None:
+    """CaptarPeakIsAboveThresholdCondition is False when peak is below threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,
+        entity_suffix="captar_monthly_peak_power",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_captar_peak",
+    )
+    hass.states.async_set(entity_id, "3.0")
+    config = _make_numerical_condition_config(entity_id, "above", 5.0)
+    condition = CaptarPeakIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_captar_peak_is_above_threshold_rejects_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """CaptarPeakIsAboveThresholdCondition rejects sensors with wrong key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "7.5")
+    config = _make_numerical_condition_config(entity_id, "above", 5.0)
+    condition = CaptarPeakIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
