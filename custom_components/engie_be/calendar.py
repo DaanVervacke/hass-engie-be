@@ -162,21 +162,26 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
         Return the current or next upcoming event across all providers.
 
         Active events (``start <= now < end``) win over future ones; among
-        future events the soonest ``start`` wins.
+        future events the soonest ``start`` wins. Falls back to the most
+        recent past event so card-style frontends still show the last window.
         """
         events = self._all_events()
         if not events:
             return None
         now = dt_util.utcnow()
-        active = [e for e in events if e.start <= now < e.end]
-        if active:
-            return min(active, key=lambda e: e.start)
-        upcoming = [e for e in events if e.start >= now]
-        if upcoming:
-            return min(upcoming, key=lambda e: e.start)
-        # Otherwise return the most recent past event so users can still see
-        # the last billable peak in card-style frontends.
-        return max(events, key=lambda e: e.end)
+        best_active: CalendarEvent | None = None
+        best_upcoming: CalendarEvent | None = None
+        best_past: CalendarEvent | None = None
+        for e in events:
+            if e.start <= now < e.end:
+                if best_active is None or e.start < best_active.start:
+                    best_active = e
+            elif e.start >= now:
+                if best_upcoming is None or e.start < best_upcoming.start:
+                    best_upcoming = e
+            elif best_past is None or e.end > best_past.end:
+                best_past = e
+        return best_active or best_upcoming or best_past
 
     async def async_get_events(
         self,
