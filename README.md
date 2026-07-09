@@ -161,7 +161,7 @@ event description.
 ### Dynamic tariff (EPEX-indexed)
 
 Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get four
-extra sensors that surface day-ahead wholesale prices from the public EPEX
+sensors that surface day-ahead wholesale prices from the public EPEX
 endpoint.
 
 | Sensor | Entity ID | Description |
