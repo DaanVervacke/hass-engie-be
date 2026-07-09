@@ -9,49 +9,51 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 > PR-number links will be substituted at release-tagging.
 
+## [0.13.0b1] - 2026-07-09
+
 ### Added
 
-- Three Happy Hours "vs last month" percentage sensors (consumption, eligible hours, reward) sourced from the month-report endpoint's comparisonToPreviousMonth block. [#NN]
-- Time-of-use (TOU) tariff schedules per electricity meter. Two enum sensors per EAN (current offtake slot, current injection slot) plus two binary sensors ("at optimal offtake slot", "at optimal injection slot") when the schedule has more than one slot code. Uses hour-boundary scheduling so state flips exactly on the slot transition, not on the next coordinator refresh. Gated on the `dgo-tou-is-active` feature flag: when off, the `/tou-schedules` endpoint is not called and no sensors are created (matches the solar-surplus feature-flag pattern). [#NN]
-- TOU weekly schedule as calendar events: accounts where `dgo-tou-is-active` is `true` now emit one CalendarEvent per EAN, per direction, per slot for the next 7 days on the existing per-account calendar entity. No new entity or API call required. [#NN]
-- Solar surplus sensors per electricity delivery point (five per EAN). The level sensor exposes today's aggregate `no_data` / `no_surplus` / `minimal_surplus` / `low_surplus` / `high_surplus` with the full 3-day hourly outlook in its `forecast` attribute. Four numeric kWh sensors report the current-hour, next-hour, today-total and today-peak expected surplus. Current and next-hour sensors are hour-boundary-scheduled so state rolls over exactly on the hour. Only created for accounts where ENGIE actually returns forecast data. [#NN]
-- Energy dashboard integration for solar production forecast via `async_get_solar_forecast`. The integration's forecast now appears automatically in the Energy dashboard's solar-production configuration, aggregated across every electricity delivery point in Wh. [#NN]
-- The `solar-surplus-shown-dashboard` feature flag is now probed before every per-EAN fan-out. Accounts where ENGIE has the flag off skip the forecasts endpoint entirely, saving one GET per electricity meter per refresh. Auth errors on the flag probe escalate to reauth. [#NN]
-- Purpose-specific conditions for the automation editor. Four integration-scoped conditions are now registered: "EPEX price is negative", "Solar surplus is at level", "Offtake slot is", and "Injection slot is". Uses the HA 2026.7+ `EntityStateConditionBase` API instead of the deprecated device-condition pattern. [#NN]
-- Purpose-specific triggers for the automation editor: 29 triggers across five categories. Phase A (state transitions): binary edge triggers for EPEX becoming negative, TOU offtake/injection becoming optimal, Happy Hours becoming active, and authentication loss/restore. Enum-changed triggers for surplus level and slot changes. Enum-became triggers for "surplus reached level X" and "slot entered code Y". Phase B (numerical): threshold-crossing triggers for EPEX current, EPEX next hour, solar surplus current/next hour, and captar monthly peak. Phase C (value-changed): captar peak updated, EPEX high/low today updated. Phase E (calendar): fires at start/end of captar peak and Happy Hours windows, and at TOU slot boundary start for a chosen direction and slot code. [#NN]
-- Expanded conditions: six new conditions added alongside the original four. Three binary "is" conditions (offtake is optimal, injection is optimal, Happy Hours is active) and three numerical threshold conditions (EPEX price is below threshold, EPEX price is above threshold, captar peak is above threshold). [#NN]
-- Outstanding balance and overdue amount sensors per business agreement: outstanding balance owed to ENGIE (EUR), overdue amount (portion past its due date, EUR), and next invoice due date (timestamp). Fetched unconditionally on every coordinator refresh. Only created when the billing endpoint returns data. [#NN]
+- Three Happy Hours "vs last month" percentage sensors (consumption, eligible hours, reward) sourced from the month-report endpoint's comparisonToPreviousMonth block.
+- Time-of-use (TOU) tariff schedules per electricity meter. Two enum sensors per EAN (current offtake slot, current injection slot) plus two binary sensors ("at optimal offtake slot", "at optimal injection slot") when the schedule has more than one slot code. Uses hour-boundary scheduling so state flips exactly on the slot transition, not on the next coordinator refresh. Gated on the `dgo-tou-is-active` feature flag: when off, the `/tou-schedules` endpoint is not called and no sensors are created (matches the solar-surplus feature-flag pattern).
+- TOU weekly schedule as calendar events: accounts where `dgo-tou-is-active` is `true` now emit one CalendarEvent per EAN, per direction, per slot for the next 7 days on the existing per-account calendar entity. No new entity or API call required.
+- Solar surplus sensors per electricity delivery point (five per EAN). The level sensor exposes today's aggregate `no_data` / `no_surplus` / `minimal_surplus` / `low_surplus` / `high_surplus` with the full 3-day hourly outlook in its `forecast` attribute. Four numeric kWh sensors report the current-hour, next-hour, today-total and today-peak expected surplus. Current and next-hour sensors are hour-boundary-scheduled so state rolls over exactly on the hour. Only created for accounts where ENGIE actually returns forecast data.
+- Energy dashboard integration for solar production forecast via `async_get_solar_forecast`. The integration's forecast now appears automatically in the Energy dashboard's solar-production configuration, aggregated across every electricity delivery point in Wh.
+- The `solar-surplus-shown-dashboard` feature flag is now probed before every per-EAN fan-out. Accounts where ENGIE has the flag off skip the forecasts endpoint entirely, saving one GET per electricity meter per refresh. Auth errors on the flag probe escalate to reauth.
+- Purpose-specific conditions for the automation editor. Four integration-scoped conditions are now registered: "EPEX price is negative", "Solar surplus is at level", "Offtake slot is", and "Injection slot is". Uses the HA 2026.7+ `EntityStateConditionBase` API instead of the deprecated device-condition pattern.
+- Purpose-specific triggers for the automation editor: 29 triggers across five categories. Phase A (state transitions): binary edge triggers for EPEX becoming negative, TOU offtake/injection becoming optimal, Happy Hours becoming active, and authentication loss/restore. Enum-changed triggers for surplus level and slot changes. Enum-became triggers for "surplus reached level X" and "slot entered code Y". Phase B (numerical): threshold-crossing triggers for EPEX current, EPEX next hour, solar surplus current/next hour, and captar monthly peak. Phase C (value-changed): captar peak updated, EPEX high/low today updated. Phase E (calendar): fires at start/end of captar peak and Happy Hours windows, and at TOU slot boundary start for a chosen direction and slot code.
+- Expanded conditions: six new conditions added alongside the original four. Three binary "is" conditions (offtake is optimal, injection is optimal, Happy Hours is active) and three numerical threshold conditions (EPEX price is below threshold, EPEX price is above threshold, captar peak is above threshold).
+- Outstanding balance and overdue amount sensors per business agreement: outstanding balance owed to ENGIE (EUR), overdue amount (portion past its due date, EUR), and next invoice due date (timestamp). Fetched unconditionally on every coordinator refresh. Only created when the billing endpoint returns data.
 
 ### Changed
 
-- Inline pass-through wrappers around filter_by_translation_key. [#NN]
-- Inline solar_surplus_payload helper. Use unwrap_dict_payload directly. [#NN]
-- EPEX slot duration sourced from a module constant instead of a per-slot field. slot_duration_minutes attribute unchanged. [#NN]
-- Audited `primary_entities_only` on trigger and condition target anchors: only the authentication triggers now set `false`. All other binary-sensor, sensor, and calendar anchors use the default `true`. Consolidated repeated `threshold` and `slot` field name strings into a `common:` block in `strings.json` / `translations/en.json` to reduce duplication. [#NN]
-- Deduplicate TOU slot options in trigger/condition YAML and distinguish icon collisions for related triggers. [#NN]
-- Drop the x-trace-id request header. It was unused by ENGIE and inconsistently applied across endpoints. [#NN]
+- Inline pass-through wrappers around filter_by_translation_key.
+- Inline solar_surplus_payload helper. Use unwrap_dict_payload directly.
+- EPEX slot duration sourced from a module constant instead of a per-slot field. slot_duration_minutes attribute unchanged.
+- Audited `primary_entities_only` on trigger and condition target anchors: only the authentication triggers now set `false`. All other binary-sensor, sensor, and calendar anchors use the default `true`. Consolidated repeated `threshold` and `slot` field name strings into a `common:` block in `strings.json` / `translations/en.json` to reduce duplication.
+- Deduplicate TOU slot options in trigger/condition YAML and distinguish icon collisions for related triggers.
+- Drop the x-trace-id request header. It was unused by ENGIE and inconsistently applied across endpoints.
 - Solar surplus level sensor now exposes `forecast_creation_date` and
   `inference_key` attributes, letting automations detect stale/placeholder
-  forecasts from ENGIE. [#NN]
-- Refresh README for v0.13 feature surface: TOU / billing bullets in the overview, three new Happy Hours comparison sensors in the table, full triggers + conditions listing in Automation from the UI. [#NN]
+  forecasts from ENGIE.
+- Refresh README for v0.13 feature surface: TOU / billing bullets in the overview, three new Happy Hours comparison sensors in the table, full triggers + conditions listing in Automation from the UI.
 
 ### Fixed
 
-- Correct Smart App tab label ("Je producten"), stop labelling Belgian P1 meters as DSMR, and note the June 2026 Happy Hours enrolment pause plus the public archive of past windows. [#NN]
-- Correct TOU section: the schedule reflects a TOU supplier product, not a Fluvius network-tariff rollout. Flemish distribution tariff since 2023 is the capacity tariff (kW peak based), not time-of-use. [#NN]
-- Replace Python-2 legacy except A, B: syntax at 13 sites so the integration loads on Python 3.13 (previously worked only on 3.14). [#NN]
-- Add selector option translations for solar-surplus level, TOU slot, and TOU direction fields required by hassfest. Without these `selector.*` blocks in `strings.json`, hassfest reported 8 errors and the option labels in the automation editor picker rendered as raw enum keys. [#NN]
-- Register purpose-specific triggers and conditions with the HA automation editor via `triggers.yaml` and `conditions.yaml` so they appear in the picker. Without these files all 29 triggers and 10 conditions were defined in Python but never surfaced in the UI. [#NN]
-- TOU slot trigger (`engie_be.tou_slot_started`) never fired. The trigger matched uppercase slot codes (`PEAK`) but `_tou_calendar.py` emits lowercase (`peak`). Fixed by extracting `format_tou_event_summary()` and using it in both the emitter and the matcher. [#NN]
-- Calendar triggers silently dropped all but the first BAN in multi-BAN accounts. A stray `break` after the first calendar entity caused subsequent calendars to be ignored. Removed the break. All ENGIE calendars are now iterated. [#NN]
-- Calendar fetch errors were swallowed silently. The bare `except Exception` is now `except (HomeAssistantError, TimeoutError)` with a `debug`-level log so errors surface in diagnostics. [#NN]
-- `_ValueChangedTrigger` (captar peak updated, EPEX high/low today updated) accepted `above`/`below` options via `ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR` that had no effect. Swapped to the plain `ENTITY_STATE_TRIGGER_SCHEMA`. [#NN]
-- Internal: extracted `_BinaryEdgeTrigger`, `_ThresholdTrigger`, and `_BinaryOnCondition` base classes to eliminate repeated boilerplate. Extracted `_filter_by_translation_key` into `_automation_helpers.py` so both `trigger.py` and `condition.py` share a single implementation. Removed two dead backward-compat aliases (`_CAPTAR_EVENT_SUMMARY`, `_HAPPY_HOUR_EVENT_SUMMARY`). [#NN]
+- Correct Smart App tab label ("Je producten"), stop labelling Belgian P1 meters as DSMR, and note the June 2026 Happy Hours enrolment pause plus the public archive of past windows.
+- Correct TOU section: the schedule reflects a TOU supplier product, not a Fluvius network-tariff rollout. Flemish distribution tariff since 2023 is the capacity tariff (kW peak based), not time-of-use.
+- Replace Python-2 legacy except A, B: syntax at 13 sites so the integration loads on Python 3.13 (previously worked only on 3.14).
+- Add selector option translations for solar-surplus level, TOU slot, and TOU direction fields required by hassfest. Without these `selector.*` blocks in `strings.json`, hassfest reported 8 errors and the option labels in the automation editor picker rendered as raw enum keys.
+- Register purpose-specific triggers and conditions with the HA automation editor via `triggers.yaml` and `conditions.yaml` so they appear in the picker. Without these files all 29 triggers and 10 conditions were defined in Python but never surfaced in the UI.
+- TOU slot trigger (`engie_be.tou_slot_started`) never fired. The trigger matched uppercase slot codes (`PEAK`) but `_tou_calendar.py` emits lowercase (`peak`). Fixed by extracting `format_tou_event_summary()` and using it in both the emitter and the matcher.
+- Calendar triggers silently dropped all but the first BAN in multi-BAN accounts. A stray `break` after the first calendar entity caused subsequent calendars to be ignored. Removed the break. All ENGIE calendars are now iterated.
+- Calendar fetch errors were swallowed silently. The bare `except Exception` is now `except (HomeAssistantError, TimeoutError)` with a `debug`-level log so errors surface in diagnostics.
+- `_ValueChangedTrigger` (captar peak updated, EPEX high/low today updated) accepted `above`/`below` options via `ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR` that had no effect. Swapped to the plain `ENTITY_STATE_TRIGGER_SCHEMA`.
+- Internal: extracted `_BinaryEdgeTrigger`, `_ThresholdTrigger`, and `_BinaryOnCondition` base classes to eliminate repeated boilerplate. Extracted `_filter_by_translation_key` into `_automation_helpers.py` so both `trigger.py` and `condition.py` share a single implementation. Removed two dead backward-compat aliases (`_CAPTAR_EVENT_SUMMARY`, `_HAPPY_HOUR_EVENT_SUMMARY`).
 
 ### Tests
 
-- API getter, coordinator, sensor and Energy-hook tests for the new solar-surplus feature (`test_api_solar_surplus.py`, `test_coordinator_solar_surplus.py`, `test_sensor_solar_surplus.py`, `test_energy.py`). [#NN]
-- Billing tests across four files: `test_api_billing.py`, `test_billing_helpers.py`, `test_coordinator_billing.py`, `test_sensor_billing.py`, and extended `test_diagnostics.py`. [#NN]
+- API getter, coordinator, sensor and Energy-hook tests for the new solar-surplus feature (`test_api_solar_surplus.py`, `test_coordinator_solar_surplus.py`, `test_sensor_solar_surplus.py`, `test_energy.py`).
+- Billing tests across four files: `test_api_billing.py`, `test_billing_helpers.py`, `test_coordinator_billing.py`, `test_sensor_billing.py`, and extended `test_diagnostics.py`.
 
 ## [0.12.0] - 2026-07-08
 
