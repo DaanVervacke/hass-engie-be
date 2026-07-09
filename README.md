@@ -138,8 +138,7 @@ Created when your contract has three time-of-use rates.
 
 Four sensors expose the monthly peak window used for the Belgian
 capacity-tariff calculation. ENGIE returns one aggregated peak per
-business agreement, so the sensors are created per BAN (not per
-meter) when peaks data is available.
+business agreement.
 
 | Sensor | Entity ID | Description |
 |---|---|---|
