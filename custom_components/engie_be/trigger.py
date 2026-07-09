@@ -1,9 +1,8 @@
 """
 Purpose-specific triggers for the ENGIE Belgium integration.
 
-Exposes ENGIE state transitions as first-class triggers in the HA automation
-editor. Phase A covers state-transition triggers (binary on/off and enum
-level/slot changes).
+Exposes ENGIE state transitions and calendar-event boundaries as first-class
+triggers in the HA automation editor.
 
 Supported trigger keys:
 
@@ -40,27 +39,44 @@ Value-changed triggers (Phase C):
 - ``engie_be.captar_peak_updated``
 - ``engie_be.epex_high_today_updated``
 - ``engie_be.epex_low_today_updated``
+
+Calendar event-class triggers (Phase E):
+- ``engie_be.captar_peak_window_started``    fires at start of captar peak window
+- ``engie_be.captar_peak_window_ended``      fires at end of captar peak window
+- ``engie_be.happy_hours_window_started``    fires at start of Happy Hours window
+- ``engie_be.happy_hours_window_ended``      fires at end of Happy Hours window
+- ``engie_be.tou_slot_started``              fires when a TOU slot boundary begins
 """
 
 from __future__ import annotations
 
+import abc
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import voluptuous as vol
 from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
+from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.automation import DomainSpec
+from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.helpers.trigger import (
     ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR,
     EntityTargetStateTriggerBase,
     EntityTriggerBase,
+    Trigger,
+    TriggerActionRunner,
     TriggerConfig,
     make_entity_numerical_state_crossed_threshold_trigger,
     make_entity_target_state_trigger,
 )
+from homeassistant.util import dt as dt_util
 
+from ._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
+from ._peaks import CAPTAR_EVENT_SUMMARY
+from ._tou_calendar import TOU_EVENT_SUMMARY_PREFIX
 from .const import (
     DOMAIN,
     SOLAR_SURPLUS_LEVELS,
@@ -84,7 +100,6 @@ from .const import (
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.trigger import Trigger
 
 _LEVEL = "level"
 _SLOT = "slot"
@@ -538,6 +553,202 @@ class EpexLowTodayUpdatedTrigger(_ValueChangedTrigger):
 
 
 # ---------------------------------------------------------------------------
+# Phase E - Calendar event-class triggers
+# ---------------------------------------------------------------------------
+
+# These triggers watch the ENGIE Belgium calendar entity. At attach time they
+# find all calendar entities registered by this integration, fetch events for
+# the next 7 days, and schedule async_track_point_in_time for each matching
+# event start or end. After firing they re-schedule for the next occurrence.
+#
+# Unlike Phases A-D these are NOT entity-state triggers. They subclass Trigger
+# directly and implement async_attach_runner with a time-based scheduler.
+
+_CAL_LOOKAHEAD_DAYS = 7
+_DIRECTION = "direction"
+
+_TOU_SLOT_CALENDAR_SCHEMA: vol.Schema = vol.Schema(
+    {
+        vol.Required("options"): {
+            vol.Required(_DIRECTION): vol.In(["offtake", "injection"]),
+            vol.Required(_SLOT): vol.In(TOU_SLOT_CODES),
+        },
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+_SIMPLE_CAL_SCHEMA: vol.Schema = vol.Schema({}, extra=vol.ALLOW_EXTRA)
+
+
+def _engie_calendar_entity_ids(hass: HomeAssistant) -> list[str]:
+    """Return entity_ids of all ENGIE Belgium calendar entities."""
+    reg = er.async_get(hass)
+    return [
+        entry.entity_id
+        for entry in reg.entities.values()
+        if entry.platform == DOMAIN and entry.domain == CALENDAR_DOMAIN
+    ]
+
+
+async def _get_calendar_events(hass: HomeAssistant, entity_id: str) -> list[Any]:
+    """
+    Fetch upcoming calendar events from the entity object, if available.
+
+    Returns an empty list if the calendar entity is not loaded or the
+    EntityComponent is not registered.
+    """
+    component = hass.data.get(CALENDAR_DOMAIN)
+    if component is None:
+        return []
+    calendar_entity = component.get_entity(entity_id)
+    if calendar_entity is None:
+        return []
+    now = dt_util.utcnow()
+    end = now + timedelta(days=_CAL_LOOKAHEAD_DAYS)
+    try:
+        return await calendar_entity.async_get_events(hass, now, end)
+    except Exception:  # noqa: BLE001
+        return []
+
+
+class _CalendarEventTrigger(Trigger, abc.ABC):
+    """
+    Base for calendar-event triggers that fire at event boundaries.
+
+    Subclasses must implement ``_matches_event`` and declare ``_is_start``
+    (True -> fire at event start, False -> fire at event end).
+    Subclasses may also override ``_schema`` for option-bearing triggers.
+    """
+
+    _schema: ClassVar[vol.Schema] = _SIMPLE_CAL_SCHEMA
+    _is_start: ClassVar[bool]
+
+    @classmethod
+    async def async_validate_config(
+        cls,
+        hass: HomeAssistant,  # noqa: ARG003
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Validate config against the trigger schema."""
+        return cls._schema(config)
+
+    def __init__(self, hass: HomeAssistant, config: TriggerConfig) -> None:
+        """Initialise the calendar trigger."""
+        super().__init__(hass, config)
+        self._options: dict[str, Any] = config.options or {}
+
+    @abc.abstractmethod
+    def _matches_event(self, event: Any) -> bool:
+        """Return True if the calendar event should cause this trigger to fire."""
+
+    async def async_attach_runner(self, run_action: TriggerActionRunner) -> Any:
+        """Attach the trigger: schedule the next matching event boundary."""
+        unsub_refs: list[Any] = []
+
+        async def _schedule_next() -> None:
+            """Find the next matching event boundary and schedule a callback."""
+            for entity_id in _engie_calendar_entity_ids(self._hass):
+                events = await _get_calendar_events(self._hass, entity_id)
+                now = dt_util.utcnow()
+                candidates: list[tuple[datetime, Any]] = []
+                for ev in events:
+                    boundary = ev.start if self._is_start else ev.end
+                    if boundary > now and self._matches_event(ev):
+                        candidates.append((boundary, ev))
+                if candidates:
+                    candidates.sort(key=lambda t: t[0])
+                    fire_at, ev = candidates[0]
+
+                    def _make_callback(
+                        fire_event: Any,
+                        cal_entity_id: str,
+                    ) -> Any:
+                        async def _on_time(_now: datetime) -> None:
+                            run_action(
+                                {
+                                    "event": fire_event,
+                                    "entity_id": cal_entity_id,
+                                },
+                                f"calendar event {fire_event.summary}",
+                                None,
+                            )
+                            await _schedule_next()
+
+                        return _on_time
+
+                    unsub = async_track_point_in_time(
+                        self._hass, _make_callback(ev, entity_id), fire_at
+                    )
+                    unsub_refs.append(unsub)
+                    # Only schedule the earliest match across all calendars.
+                    break
+
+        await _schedule_next()
+
+        def _cancel() -> None:
+            for unsub in unsub_refs:
+                unsub()
+            unsub_refs.clear()
+
+        return _cancel
+
+
+class CaptarPeakWindowStartedTrigger(_CalendarEventTrigger):
+    """Trigger: fires at the start of a captar monthly peak window."""
+
+    _is_start = True
+
+    def _matches_event(self, event: Any) -> bool:
+        """Return True for captar peak events."""
+        return event.summary == CAPTAR_EVENT_SUMMARY
+
+
+class CaptarPeakWindowEndedTrigger(_CalendarEventTrigger):
+    """Trigger: fires at the end of a captar monthly peak window."""
+
+    _is_start = False
+
+    def _matches_event(self, event: Any) -> bool:
+        """Return True for captar peak events."""
+        return event.summary == CAPTAR_EVENT_SUMMARY
+
+
+class HappyHoursWindowStartedTrigger(_CalendarEventTrigger):
+    """Trigger: fires at the start of a Happy Hours window."""
+
+    _is_start = True
+
+    def _matches_event(self, event: Any) -> bool:
+        """Return True for Happy Hours events."""
+        return event.summary == HAPPY_HOUR_EVENT_SUMMARY
+
+
+class HappyHoursWindowEndedTrigger(_CalendarEventTrigger):
+    """Trigger: fires at the end of a Happy Hours window."""
+
+    _is_start = False
+
+    def _matches_event(self, event: Any) -> bool:
+        """Return True for Happy Hours events."""
+        return event.summary == HAPPY_HOUR_EVENT_SUMMARY
+
+
+class TouSlotStartedTrigger(_CalendarEventTrigger):
+    """Trigger: fires when a TOU slot boundary begins (direction + slot match)."""
+
+    _schema = _TOU_SLOT_CALENDAR_SCHEMA
+    _is_start = True
+
+    def _matches_event(self, event: Any) -> bool:
+        """Return True when the TOU event summary matches direction and slot."""
+        direction = self._options.get(_DIRECTION, "")
+        slot = self._options.get(_SLOT, "")
+        # Summary format: "TOU: {code} ({direction})"
+        expected = f"{TOU_EVENT_SUMMARY_PREFIX} {slot.upper()} ({direction})"
+        return event.summary == expected
+
+
+# ---------------------------------------------------------------------------
 # Public registry
 # ---------------------------------------------------------------------------
 
@@ -575,6 +786,12 @@ TRIGGERS: dict[str, type[Trigger]] = {
     "captar_peak_updated": CaptarPeakUpdatedTrigger,
     "epex_high_today_updated": EpexHighTodayUpdatedTrigger,
     "epex_low_today_updated": EpexLowTodayUpdatedTrigger,
+    # Phase E - calendar event-class triggers
+    "captar_peak_window_started": CaptarPeakWindowStartedTrigger,
+    "captar_peak_window_ended": CaptarPeakWindowEndedTrigger,
+    "happy_hours_window_started": HappyHoursWindowStartedTrigger,
+    "happy_hours_window_ended": HappyHoursWindowEndedTrigger,
+    "tou_slot_started": TouSlotStartedTrigger,
 }
 
 

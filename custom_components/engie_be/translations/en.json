@@ -1118,6 +1118,36 @@
         "epex_low_today_updated": {
             "name": "EPEX lowest price today updated",
             "description": "Fires when today's EPEX lowest price changes."
+        },
+        "captar_peak_window_started": {
+            "name": "Captar peak window started",
+            "description": "Fires at the start of a captar monthly peak window."
+        },
+        "captar_peak_window_ended": {
+            "name": "Captar peak window ended",
+            "description": "Fires at the end of a captar monthly peak window."
+        },
+        "happy_hours_window_started": {
+            "name": "Happy Hours window started",
+            "description": "Fires at the start of a Happy Hours free-energy window."
+        },
+        "happy_hours_window_ended": {
+            "name": "Happy Hours window ended",
+            "description": "Fires at the end of a Happy Hours free-energy window."
+        },
+        "tou_slot_started": {
+            "name": "TOU slot started",
+            "description": "Fires when a TOU slot boundary begins for the chosen direction and slot.",
+            "fields": {
+                "direction": {
+                    "name": "Direction",
+                    "description": "Energy flow direction (offtake or injection)."
+                },
+                "slot": {
+                    "name": "Slot code",
+                    "description": "The TOU slot code to wait for."
+                }
+            }
         }
     }
 }

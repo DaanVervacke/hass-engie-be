@@ -27,7 +27,9 @@ from .data import unwrap_dict_payload
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
 
-_HAPPY_HOUR_EVENT_SUMMARY = "Happy Hours"
+# Public: trigger.py uses this to identify Happy Hours events in the calendar.
+HAPPY_HOUR_EVENT_SUMMARY = "Happy Hours"
+_HAPPY_HOUR_EVENT_SUMMARY = HAPPY_HOUR_EVENT_SUMMARY  # backward-compat alias
 _HAPPY_HOUR_EVENT_DESCRIPTION = "Free energy window"
 
 
