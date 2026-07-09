@@ -37,6 +37,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- Correct TOU section: the schedule reflects a TOU supplier product, not a Fluvius network-tariff rollout. Flemish distribution tariff since 2023 is the capacity tariff (kW peak based), not time-of-use. [#NN]
 - Replace Python-2 legacy except A, B: syntax at 13 sites so the integration loads on Python 3.13 (previously worked only on 3.14). [#NN]
 - Add selector option translations for solar-surplus level, TOU slot, and TOU direction fields required by hassfest. Without these `selector.*` blocks in `strings.json`, hassfest reported 8 errors and the option labels in the automation editor picker rendered as raw enum keys. [#NN]
 - Register purpose-specific triggers and conditions with the HA automation editor via `triggers.yaml` and `conditions.yaml` so they appear in the picker. Without these files all 29 triggers and 10 conditions were defined in Python but never surfaced in the UI. [#NN]

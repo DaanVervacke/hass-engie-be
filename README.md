@@ -290,14 +290,12 @@ forecast tags as `high_surplus`.
 
 ### Time-of-Use tariff schedules
 
-Fluvius is rolling out time-of-use (TOU) billing for Belgian
-digital-meter customers. Even when your supplier contract is
-flat-rate, the DGO (Distribution Grid Operator) part of your bill
-is already TOU-based for most accounts.
-
-ENGIE returns the full weekly PEAK / OFFPEAK layout per meter for
-both directions (offtake and injection). Two enum sensors and two
-binary sensors surface it:
+Time-of-use (TOU) is a supplier-product pricing model: the price
+per kWh depends on the time of day, split into peak, off-peak, and
+sometimes super-off-peak or exclusive-night slots. When your ENGIE
+product is TOU-billed, ENGIE publishes the full weekly slot layout
+per meter and per direction (offtake and injection). Two enum
+sensors and two binary sensors surface it:
 
 | Entity | Entity ID | Description |
 |---|---|---|
