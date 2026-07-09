@@ -57,20 +57,6 @@ _LEVEL = "level"
 _SLOT = "slot"
 
 # ---------------------------------------------------------------------------
-# Shared entity-filter helper (implementation lives in _automation_helpers)
-# ---------------------------------------------------------------------------
-
-
-def _filter_by_translation_key(
-    hass: HomeAssistant,
-    entities: set[str],
-    translation_key: str,
-) -> set[str]:
-    """Return entities owned by this integration with the given translation_key."""
-    return filter_by_translation_key(hass, entities, translation_key)
-
-
-# ---------------------------------------------------------------------------
 # epex_price_is_negative - direct EntityStateConditionBase subclass
 # ---------------------------------------------------------------------------
 
@@ -90,7 +76,7 @@ class EpexPriceIsNegativeCondition(EntityStateConditionBase):
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to the ENGIE epex_negative binary sensor."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
+        return filter_by_translation_key(
             self._hass, candidates, TRANSLATION_KEY_EPEX_NEGATIVE
         )
 
@@ -116,7 +102,7 @@ class _OptionBasedStateCondition(EntityStateConditionBase):
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to ENGIE entities with the correct translation_key."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
+        return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +186,7 @@ class _BinaryOnCondition(EntityStateConditionBase):
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to the matching ENGIE binary sensor."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
+        return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
 class OfftakeIsOptimalCondition(_BinaryOnCondition):
@@ -241,7 +227,7 @@ class _NumericalThresholdCondition(EntityNumericalConditionBase):
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to the matching ENGIE sensor."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
+        return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
 class EpexPriceIsBelowThresholdCondition(_NumericalThresholdCondition):
