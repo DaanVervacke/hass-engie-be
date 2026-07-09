@@ -284,9 +284,6 @@ Prerequisites (per ENGIE, see
 - An Easy, Direct, Empower, or Flow electricity contract (Basic and
   vacancy contracts do not qualify)
 
-Older meters on net metering ("terugdraaiende teller") work too, at
-reduced financial benefit.
-
 The sensors appear automatically once ENGIE returns a forecast and
 disappear when they stop. Typical use: shift heavy loads (washing
 machine, dryer, dishwasher, boiler, EV charging) to hours the
