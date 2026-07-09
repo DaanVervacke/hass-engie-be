@@ -39,7 +39,7 @@ as sensors, binary sensors, and calendar events.
   - [Solar Surplus](#solar-surplus)
   - [Time-of-Use tariff schedules](#time-of-use-tariff-schedules)
   - [Billing](#billing)
-- [Automation from the UI](#automation-from-the-ui)
+- [Automations](#automations)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -397,12 +397,20 @@ The next-invoice-due sensor is a timestamp at midnight Brussels-local time
 on the earliest open invoice due date. It returns `unknown` when the
 balance is zero (no open transactions).
 
-## Automation from the UI
+## Automations
 
-Every ENGIE Belgium device exposes native automation triggers and
-conditions to Home Assistant's automation editor. In **Settings -
-Automations and Scenes**, when adding a new automation, pick your
-ENGIE device under "When" (triggers) or "And if" (conditions).
+The integration ships **purpose-based triggers and conditions** that
+appear directly in the Home Assistant automation editor. Instead of
+writing generic entity-state triggers by hand, you pick from a
+labelled list of events specific to ENGIE (EPEX became negative,
+Happy Hours became active, captar peak crossed threshold, and so on).
+
+Open **Settings** > **Automations & scenes**, add a new automation,
+and pick your ENGIE device under "When" (triggers) or "And if"
+(conditions). See the Home Assistant docs on
+[triggers](https://www.home-assistant.io/docs/automation/trigger/) and
+[conditions](https://www.home-assistant.io/docs/automation/condition/)
+for the general automation model.
 
 ### Triggers (29)
 
