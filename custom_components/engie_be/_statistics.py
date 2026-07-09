@@ -273,7 +273,7 @@ def _dig(payload: dict[str, Any] | None, path: tuple[str, ...]) -> float:
         node = node.get(key)
     try:
         return float(node) if node is not None else 0.0
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return 0.0
 
 

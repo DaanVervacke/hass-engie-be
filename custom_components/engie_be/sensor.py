@@ -697,7 +697,7 @@ class EngieBeHappyHourMonthSensor(EngieBeEntity, SensorEntity):
             return None
         try:
             return float(raw)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
 
     @property
@@ -1458,7 +1458,7 @@ class EngieBeSolarSurplusCurrentSensor(_EngieBeSolarSurplusHourlySensorBase):
         value = slot.get("value")
         try:
             return float(value) if value is not None else None
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
 
 
@@ -1487,7 +1487,7 @@ class EngieBeSolarSurplusNextHourSensor(_EngieBeSolarSurplusHourlySensorBase):
         value = slot.get("value")
         try:
             return float(value) if value is not None else None
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
 
 
@@ -1516,7 +1516,7 @@ class EngieBeSolarSurplusTodayTotalSensor(_EngieBeSolarSurplusBase):
             value = slot.get("value")
             try:
                 total += float(value) if value is not None else 0.0
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 continue
             seen = True
         return round(total, 3) if seen else None
@@ -1550,7 +1550,7 @@ class EngieBeSolarSurplusTodayPeakSensor(_EngieBeSolarSurplusBase):
                 continue
             try:
                 parsed.append((start, float(value)))
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 continue
         return parsed
 

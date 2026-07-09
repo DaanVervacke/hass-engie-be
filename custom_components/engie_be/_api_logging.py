@@ -250,7 +250,7 @@ def _redact_body(body: Any, content_type: str | None) -> str:  # noqa: PLR0911, 
                     default=str,
                 )
             )
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return repr(body)
 
     if isinstance(body, bytes):
