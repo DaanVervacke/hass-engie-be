@@ -51,7 +51,6 @@ Calendar event-class triggers (Phase E):
 from __future__ import annotations
 
 import abc
-import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -83,6 +82,7 @@ from ._peaks import CAPTAR_EVENT_SUMMARY
 from ._tou_calendar import format_tou_event_summary
 from .const import (
     DOMAIN,
+    LOGGER,
     SOLAR_SURPLUS_LEVELS,
     TOU_SLOT_CODES,
     TRANSLATION_KEY_AUTHENTICATION,
@@ -104,8 +104,6 @@ from .const import (
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-
-_LOGGER = logging.getLogger(__name__)
 
 _LEVEL = "level"
 _SLOT = "slot"
@@ -517,7 +515,7 @@ async def _get_calendar_events(hass: HomeAssistant, entity_id: str) -> list[Any]
     try:
         return await calendar_entity.async_get_events(hass, now, end)
     except (HomeAssistantError, TimeoutError) as exc:
-        _LOGGER.debug("Failed to fetch events from %s: %s", entity_id, exc)
+        LOGGER.debug("Failed to fetch events from %s: %s", entity_id, exc)
         return []
 
 
