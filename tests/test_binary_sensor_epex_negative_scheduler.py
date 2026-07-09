@@ -36,7 +36,6 @@ def _make_slot(*, hour: int, value_eur_per_kwh: float) -> EpexSlot:
         start=start,
         end=start + timedelta(hours=1),
         value_eur_per_kwh=value_eur_per_kwh,
-        duration_minutes=60,
     )
 
 

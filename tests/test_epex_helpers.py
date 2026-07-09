@@ -16,7 +16,6 @@ def _slot(
         start=start,
         end=start + timedelta(minutes=duration_minutes),
         value_eur_per_kwh=value,
-        duration_minutes=duration_minutes,
     )
 
 

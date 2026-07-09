@@ -1621,7 +1621,6 @@ def _parse_epex_response(raw: Any) -> EpexPayload:
                 start=start_dt,
                 end=start_dt + duration,
                 value_eur_per_kwh=value / EPEX_MWH_TO_KWH,
-                duration_minutes=EPEX_SLOT_DURATION_MINUTES,
             )
         )
 

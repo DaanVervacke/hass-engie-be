@@ -464,13 +464,11 @@ def test_summarise_epex_with_slots_returns_full_summary() -> None:
         start=start,
         end=start + timedelta(minutes=15),
         value_eur_per_kwh=0.05,
-        duration_minutes=15,
     )
     slot_b = EpexSlot(
         start=start + timedelta(minutes=15),
         end=start + timedelta(minutes=30),
         value_eur_per_kwh=0.06,
-        duration_minutes=15,
     )
     publication = datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
     payload = EpexPayload(
@@ -483,7 +481,7 @@ def test_summarise_epex_with_slots_returns_full_summary() -> None:
 
     assert summary == {
         "slot_count": 2,
-        "slot_duration_minutes": 15,
+        "slot_duration_minutes": 60,
         "first_slot_start": slot_a.start.isoformat(),
         "last_slot_end": slot_b.end.isoformat(),
         "publication_time": publication.isoformat(),

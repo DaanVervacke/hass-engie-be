@@ -59,15 +59,11 @@ class EpexSlot:
     ``start``/``end`` are timezone-aware datetimes (Europe/Brussels).
     ``value_eur_per_kwh`` is the wholesale market price in EUR/kWh
     (raw API value is EUR/MWh and divided by 1000 on ingest).
-    ``duration_minutes`` is carried explicitly so a future move from
-    hourly to 15-minute publication does not require touching the
-    payload shape.
     """
 
     start: datetime
     end: datetime
     value_eur_per_kwh: float
-    duration_minutes: int
 
 
 @dataclass(slots=True, frozen=True)
