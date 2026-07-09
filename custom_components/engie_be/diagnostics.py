@@ -21,7 +21,7 @@ from .const import (
     KEY_IS_DYNAMIC,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
-from .data import EpexPayload, unwrap_payload
+from .data import EpexPayload, unwrap_dict_payload
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -124,7 +124,7 @@ def _summarise_solar_surplus(
     per_ean = solar_surplus_payload(coordinator)
     if per_ean is None:
         return None
-    # Read fetched_at from the raw wrapper since unwrap_payload strips it.
+    # Read fetched_at from the raw wrapper since unwrap_dict_payload strips it.
     raw_wrapper = (
         coordinator.data.get("solar_surplus")
         if isinstance(coordinator.data, dict)
@@ -192,7 +192,7 @@ def _summarise_billing(
         return None
     fetched_at = raw_wrapper.get("fetched_at")
 
-    payload = unwrap_payload(coordinator, "billing")
+    payload = unwrap_dict_payload(coordinator, "billing")
     has_data = payload is not None
 
     if not has_data:
