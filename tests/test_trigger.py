@@ -1770,3 +1770,79 @@ async def test_calendar_trigger_async_validate_config(hass: HomeAssistant) -> No
     """async_validate_config is callable and returns valid config dict."""
     result = await CaptarPeakWindowStartedTrigger.async_validate_config(hass, {})
     assert isinstance(result, dict)
+
+
+async def test_calendar_trigger_cancel_during_fetch_drops_new_listener(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Cancel during recursive _schedule_next does not leak an orphan listener.
+
+    The race: the trigger fires, _on_time calls _schedule_next which awaits
+    _get_calendar_events; _cancel() runs during that await and clears
+    unsub_refs; the resumed coroutine then registers a new listener that
+    would never be unsubscribed. The fix sets a cancelled flag first so the
+    resumed coroutine short-circuits or drains its own listener.
+
+    Test strategy: replace _get_calendar_events with a slow async that
+    yields control so we can interleave the _cancel() call, fire the
+    trigger to invoke _on_time (which calls the recursive _schedule_next),
+    call _cancel() while the fetch is suspended, then release the fetch and
+    advance time past the second event to assert no second fire occurs.
+    """
+    from unittest.mock import patch  # noqa: PLC0415
+
+    entry = _make_entry(hass)
+    # First event fires in 60 seconds; second event would fire in 2 hours.
+    event_start_1 = datetime.now(tz=UTC) + timedelta(seconds=60)
+    event_start_2 = datetime.now(tz=UTC) + timedelta(hours=2)
+    events_initial = [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start_1)]
+    _setup_calendar_component(hass, entry, events_initial)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger_obj = CaptarPeakWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    # Attach normally using the real calendar component set up above.
+    unsub = await trigger_obj.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+
+    # Prepare a slow fetch for the recursive call triggered by _on_time.
+    # It signals when it starts, then waits for permission to proceed.
+    fetch_started = asyncio.Event()
+    fetch_proceed = asyncio.Event()
+
+    async def _slow_get_events(_hass: object, _entity_id: str) -> list:
+        fetch_started.set()
+        await fetch_proceed.wait()
+        return [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start_2)]
+
+    with patch(
+        "custom_components.engie_be.trigger._get_calendar_events",
+        side_effect=_slow_get_events,
+    ):
+        # Fire the first event - _on_time runs and kicks off the recursive
+        # _schedule_next, which blocks inside _slow_get_events.
+        async_fire_time_changed(hass, event_start_1)
+        # Yield so _on_time can start and reach the fetch await.
+        await asyncio.sleep(0)
+        await fetch_started.wait()
+
+        # _schedule_next is now suspended. Call _cancel() to set the flag.
+        unsub()
+
+        # Release the slow fetch so the coroutine resumes with cancelled=True.
+        fetch_proceed.set()
+        await hass.async_block_till_done()
+
+    # The first event fired once (by _on_time before the cancel check).
+    assert len(fired) == 1
+
+    # Advance time past the second event. A leaked listener would fire here.
+    async_fire_time_changed(hass, event_start_2 + timedelta(seconds=1))
+    await hass.async_block_till_done()
+
+    assert len(fired) == 1, (
+        "Cancelled trigger leaked a listener that fired a second time"
+    )

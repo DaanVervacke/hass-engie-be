@@ -538,11 +538,16 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
     async def async_attach_runner(self, run_action: TriggerActionRunner) -> Any:
         """Attach the trigger: schedule a listener per ENGIE calendar."""
         unsub_refs: list[Any] = []
+        cancelled = False
+        calendar_entity_ids = _engie_calendar_entity_ids(self._hass)
 
         async def _schedule_next() -> None:
             """Find the next matching event boundary across all ENGIE calendars."""
-            for entity_id in _engie_calendar_entity_ids(self._hass):
+            nonlocal cancelled
+            for entity_id in calendar_entity_ids:
                 events = await _get_calendar_events(self._hass, entity_id)
+                if cancelled:
+                    return
                 now = dt_util.utcnow()
                 candidates: list[tuple[datetime, Any]] = []
                 for ev in events:
@@ -558,6 +563,8 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
                         cal_entity_id: str,
                     ) -> Any:
                         async def _on_time(_now: datetime) -> None:
+                            if cancelled:
+                                return
                             run_action(
                                 {
                                     "event": fire_event,
@@ -581,6 +588,8 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
         await _schedule_next()
 
         def _cancel() -> None:
+            nonlocal cancelled
+            cancelled = True
             for unsub in unsub_refs:
                 unsub()
             unsub_refs.clear()
