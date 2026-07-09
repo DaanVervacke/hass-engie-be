@@ -46,7 +46,6 @@ as sensors, binary sensors, and calendar events.
 - [Multiple households](#multiple-households)
 - [Historical usage import (Energy dashboard)](#historical-usage-import-energy-dashboard)
 - [Re-authentication](#re-authentication)
-- [Automation examples](#automation-examples)
 - [Known limitations](#known-limitations)
 - [Removing the integration](#removing-the-integration)
 - [Troubleshooting](#troubleshooting)
@@ -161,7 +160,7 @@ event description.
 
 Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get four
 sensors that surface day-ahead wholesale prices from the public EPEX
-endpoint.
+day-ahead auction.
 
 | Sensor | Entity ID | Description |
 |---|---|---|
@@ -291,15 +290,14 @@ forecast tags as `high_surplus`.
 
 ### Time-of-Use tariff schedules
 
-Fluvius is rolling out time-of-use (TOU) billing for Belgian digital-meter
-customers. The DGO (Distribution Grid Operator) / network distribution charges are already TOU-based for
-most accounts, even when the supplier contract is flat-rate. ENGIE exposes a
-per-EAN schedule endpoint that returns the full weekly PEAK/OFFPEAK layout for
-both the supplier's product and the Fluvius network tariff, in both
-directions (offtake and injection).
+Fluvius is rolling out time-of-use (TOU) billing for Belgian
+digital-meter customers. Even when your supplier contract is
+flat-rate, the DGO (Distribution Grid Operator) part of your bill
+is already TOU-based for most accounts.
 
-Two enum sensors and two binary sensors are created per electricity meter
-(EAN) whenever the endpoint returns schedule data:
+ENGIE returns the full weekly PEAK / OFFPEAK layout per meter for
+both directions (offtake and injection). Two enum sensors and two
+binary sensors surface it:
 
 | Entity | Entity ID | Description |
 |---|---|---|
@@ -308,9 +306,9 @@ Two enum sensors and two binary sensors are created per electricity meter
 | Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` | On when the current offtake slot matches the schedule's optimal code |
 | Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` | On when the current injection slot matches the schedule's optimal code |
 
-The slot sensors are ENUM sensors whose state is one of `peak`, `offpeak`,
-`superoffpeak`, `exclusive_night`, or `day`. The state flips exactly at the
-slot boundary (boundary-scheduled, not on the next coordinator refresh).
+The slot sensors flip exactly on the slot boundary. Their state is
+one of `peak`, `offpeak`, `superoffpeak`, `exclusive_night`, or
+`day`.
 
 Each slot sensor exposes these attributes:
 
@@ -321,24 +319,18 @@ Each slot sensor exposes these attributes:
 | `weekday_slots` | Full weekly schedule as a dict of day-name to slot list |
 | `dgo_tgo_slot` | Current slot code from the Fluvius DGO / TGO (Transmission Grid Operator) schedule |
 
-The binary "is optimal" sensors turn `on` when the current slot matches the
-schedule's `optimalTimeslotCode`. For a typical offtake schedule, this means
-`on` during OFFPEAK hours (lower network cost). For injection it means `on`
-during PEAK hours (best sell price).
+The "is optimal" binary sensors turn `on` when the current slot
+matches the optimal slot for the schedule direction. For offtake
+that usually means `on` during OFFPEAK hours (cheapest network
+cost). For injection it usually means `on` during PEAK hours (best
+sell price). Flat schedules with only one slot code across the week
+do not get an "is optimal" sensor, since the answer would be
+constantly on.
 
-The "is optimal" binary sensors are created when the schedule is non-trivial
-(has more than one distinct slot code across the week) or when the
-`dgo-tou-is-active` feature flag is `true` (supplier contract is TOU-billed).
-Flat all-OFFPEAK schedules on non-TOU accounts do not get these sensors
-because the answer would always be `on`.
-
-The endpoint responds regardless of the `dgo-tou-is-active` flag state
-because the DGO/network schedule applies to all digital-meter customers.
-
-When the `dgo-tou-is-active` flag is `true` (supplier contract is TOU-billed),
-the per-account calendar entity also emits one event per slot per direction for
-the next 7 days, so you can see the full week's PEAK/OFFPEAK schedule in any
-Home Assistant calendar card without opening the Smart App.
+Accounts whose supplier contract is TOU-billed also see one calendar
+event per slot per direction for the next seven days on the
+per-account calendar, so the whole week is visible in any Home
+Assistant calendar card without opening the ENGIE Smart App.
 
 Example automation: run the dishwasher when it is optimal to consume:
 
@@ -356,9 +348,9 @@ automation:
 
 ### Billing
 
-Three entities per business agreement reflect the current billing state
-as returned by the ENGIE billing API. They are created automatically on
-every coordinator refresh when the billing endpoint returns data.
+Three entities per business agreement reflect the current billing
+state. They appear automatically once ENGIE returns billing data
+for the account.
 
 | Entity | Entity ID | Description |
 |---|---|---|
@@ -463,6 +455,58 @@ No template YAML is required for any of the above. Dropdown
 options track `SOLAR_SURPLUS_LEVELS` and `TOU_SLOT_CODES` in
 `const.py` automatically, so new codes added by ENGIE appear in
 the editor without a code change.
+
+### Examples
+
+#### Run the dishwasher during Happy Hours
+
+```yaml
+automation:
+  alias: "Start dishwasher on Happy Hours"
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.engie_belgium_{BAN}_happy_hours_active
+      to: "on"
+  actions:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.dishwasher
+```
+
+#### Charge an EV when EPEX price is negative
+
+```yaml
+automation:
+  alias: "Charge car when electricity price is negative"
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.engie_belgium_{BAN}_epex_negative
+      to: "on"
+  actions:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.ev_charger
+  mode: single
+```
+
+#### Notify when tomorrow's EPEX prices are available
+
+```yaml
+automation:
+  alias: "EPEX tomorrow prices published"
+  triggers:
+    - trigger: template
+      value_template: >
+        {{ state_attr('sensor.engie_belgium_{BAN}_epex_current', 'tomorrow') | length > 0 }}
+  actions:
+    - action: notify.mobile_app
+      data:
+        title: "Tomorrow's electricity prices available"
+        message: >
+          Cheapest slot tomorrow:
+          {{ state_attr('sensor.engie_belgium_{BAN}_epex_current', 'tomorrow')
+             | sort(attribute='value') | first | to_json }}
+```
 
 ### Authentication
 
@@ -676,58 +720,6 @@ To complete re-authentication:
 
 Your stored email and password are reused. No sensors are
 removed and no history is lost.
-
-## Automation examples
-
-### Run the dishwasher during Happy Hours
-
-```yaml
-automation:
-  alias: "Start dishwasher on Happy Hours"
-  triggers:
-    - trigger: state
-      entity_id: binary_sensor.engie_belgium_{BAN}_happy_hours_active
-      to: "on"
-  actions:
-    - action: switch.turn_on
-      target:
-        entity_id: switch.dishwasher
-```
-
-### Charge an EV when EPEX price is negative
-
-```yaml
-automation:
-  alias: "Charge car when electricity price is negative"
-  triggers:
-    - trigger: state
-      entity_id: binary_sensor.engie_belgium_{BAN}_epex_negative
-      to: "on"
-  actions:
-    - action: switch.turn_on
-      target:
-        entity_id: switch.ev_charger
-  mode: single
-```
-
-### Notify when tomorrow's EPEX prices are available
-
-```yaml
-automation:
-  alias: "EPEX tomorrow prices published"
-  triggers:
-    - trigger: template
-      value_template: >
-        {{ state_attr('sensor.engie_belgium_{BAN}_epex_current', 'tomorrow') | length > 0 }}
-  actions:
-    - action: notify.mobile_app
-      data:
-        title: "Tomorrow's electricity prices available"
-        message: >
-          Cheapest slot tomorrow:
-          {{ state_attr('sensor.engie_belgium_{BAN}_epex_current', 'tomorrow')
-             | sort(attribute='value') | first | to_json }}
-```
 
 ## Known limitations
 
