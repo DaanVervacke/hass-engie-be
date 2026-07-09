@@ -97,7 +97,7 @@ def _accumulate_slots(
                 continue
             try:
                 value_kwh = float(raw_value) if raw_value is not None else 0.0
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 continue
             if value_kwh <= 0.0:
                 # HA renders the forecast as a positive area; slots ENGIE

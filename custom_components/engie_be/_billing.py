@@ -36,7 +36,7 @@ def overview_open_amount(
         return None
     try:
         return float(raw)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
 
 
@@ -60,7 +60,7 @@ def overview_due_amount(
         return None
     try:
         return float(raw)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
 
 
@@ -85,7 +85,7 @@ def next_due_date(
         open_amt = tx.get("openAmount")
         try:
             open_float = float(open_amt) if open_amt is not None else 0.0
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             open_float = 0.0
         if open_float <= 0:
             continue
