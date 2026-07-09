@@ -22,7 +22,7 @@
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
 [ENGIE Belgium](https://www.engie.be/). Retrieves your personal energy price
 data, monthly capacity-tariff peaks, Happy Hours free-energy windows, and
-EPEX (European Power Exchange) day-ahead wholesale prices from the ENGIE Belgium API and exposes them
+EPEX (European Power Exchange) day-ahead wholesale prices from the ENGIE API and exposes them
 as sensors, binary sensors, and calendar events.
 
 ## Table of contents
@@ -56,7 +56,7 @@ as sensors, binary sensors, and calendar events.
 
 ## Features
 
-- Authenticates with your ENGIE Belgium account using two-factor authentication (MFA)
+- Authenticates with your ENGIE account using two-factor authentication (MFA)
 - Auto-detects gas and electricity contracts, including dynamic (EPEX-indexed) tariffs
 - Import your hourly usage / historic data from ENGIE into the Energy dashboard: electricity consumption, injection, gas consumption, and per-hour costs
 - Creates price sensors per energy type, direction (offtake / injection), and tariff rate
@@ -200,7 +200,7 @@ state-based automations without a template.
 
 ### Happy Hours
 
-ENGIE Belgium occasionally schedules "Happy Hours" windows during which the
+ENGIE occasionally schedules "Happy Hours" windows during which the
 energy consumed at your address is free. These are announced the day
 before and are exposed by the integration for every account enrolled
 in the Happy Hours program.
@@ -555,8 +555,8 @@ badge in [Installation](#hacs-recommended) or open
 **ENGIE Belgium**.
 
 1. Enter your credentials:
-   - **Email address**: your ENGIE Belgium email.
-   - **Password**: your ENGIE Belgium password.
+   - **Email address**: your ENGIE email.
+   - **Password**: your ENGIE password.
    - **Two-factor authentication method**: choose SMS or Email.
 2. Click **Submit**. You will receive a verification code via your chosen method.
 3. Enter the 6-digit code and click **Submit**.
