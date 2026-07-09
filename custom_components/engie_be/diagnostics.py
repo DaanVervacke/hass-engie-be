@@ -10,7 +10,6 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
 from ._billing import billing_status
 from ._contracts import energy_products_by_ean
-from ._solar_surplus import solar_surplus_payload
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_HOLDER_NAME,
@@ -121,7 +120,7 @@ def _summarise_solar_surplus(
     level values seen (as a sorted list). Never emits raw startTime,
     value, or full EAN strings.
     """
-    per_ean = solar_surplus_payload(coordinator)
+    per_ean = unwrap_dict_payload(coordinator, "solar_surplus")
     if per_ean is None:
         return None
     # Read fetched_at from the raw wrapper since unwrap_dict_payload strips it.

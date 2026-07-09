@@ -24,7 +24,6 @@ from ._billing import next_due_date, overview_due_amount, overview_open_amount
 from ._epex import epex_payload, next_epex_slot_boundary
 from ._happy_hour import happy_hour_window
 from ._peaks import peaks_meta, peaks_payload
-from ._solar_surplus import solar_surplus_payload
 from ._tou import current_slot as tou_current_slot
 from ._tou import schedule_for_ean, tou_schedules_payload
 from .api import mask_identifier
@@ -40,6 +39,7 @@ from .const import (
     TRANSLATION_KEY_TOU_INJECTION_SLOT,
     TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
 )
+from .data import unwrap_dict_payload
 from .entity import EngieBeEntity, EngieBeEpexEntity, _BoundaryScheduleMixin
 
 # Coordinator centralises updates; entities never poll individually.
@@ -1334,7 +1334,7 @@ class _EngieBeSolarSurplusBase(_EngieBePerEanBase):
 
     def _forecasts_for_ean(self) -> list[dict[str, Any]] | None:
         """Return the raw ``forecasts`` list for this EAN, or ``None``."""
-        per_ean = solar_surplus_payload(self.coordinator)
+        per_ean = unwrap_dict_payload(self.coordinator, "solar_surplus")
         if per_ean is None:
             return None
         forecasts = per_ean.get(self._ean)
