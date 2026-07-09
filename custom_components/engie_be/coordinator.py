@@ -450,7 +450,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Auth failures escalate via ``ConfigEntryAuthFailed``. Any other
         API error logs a warning at ``log_prefix`` and soft-fails to
-        ``True`` (the "keep trying" side) — matching the fail-open
+        ``True`` (the "keep trying" side) - matching the fail-open
         discipline where a transient flag-endpoint outage should not
         strip entities from accounts that are legitimately enrolled.
 

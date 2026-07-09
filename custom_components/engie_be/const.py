@@ -54,11 +54,11 @@ TOU_FLAG_KEY = "dgo-tou-is-active"
 # TOU_SLOT_CODES: union of every slot code the Smart App can display, so a
 # new code from ENGIE never lands the sensor in ``unknown``.
 #
-# - ``peak`` / ``offpeak`` / ``exclusive_night`` — Dart ``TimeSlotCategory``
+# - ``peak`` / ``offpeak`` / ``exclusive_night`` - Dart ``TimeSlotCategory``
 #   enum. ``PEAK`` and ``OFFPEAK`` observed on the wire (BAN 002209795515,
 #   2026-07-08). ``EXCLUSIVE_NIGHT`` documented for the Fluvius rollout.
-# - ``day`` — Dart enum, not yet observed.
-# - ``superoffpeak`` — the app carries a ``"Super Offpeak"`` display label,
+# - ``day`` - Dart enum, not yet observed.
+# - ``superoffpeak`` - the app carries a ``"Super Offpeak"`` display label,
 #   and the integration already maps ``SUPEROFFPEAK`` for tri-rate PRICE
 #   sensors at ``sensor.py:81``. Tri-rate Belgian contracts extend the
 #   binary peak/offpeak split; the same code is expected on the TOU
