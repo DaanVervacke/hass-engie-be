@@ -14,20 +14,23 @@
     duration:
 
 # Entity-target anchors.  The integration: filter narrows the picker to
-# engie_be-owned entities; primary_entities_only: false ensures entities that
-# are disabled-by-default still appear.
+# engie_be-owned entities.
+#
+# Both anchors omit primary_entities_only (HA defaults to True) because
+# none of the conditions today target a diagnostic entity.  There is no
+# _diagnostic variant here - if a diagnostic condition is added in the
+# future, add a separate anchor with primary_entities_only: false at
+# that point.
 
 .target_engie_binary_sensor: &target_engie_binary_sensor
   entity:
     - integration: engie_be
       domain: binary_sensor
-  primary_entities_only: false
 
 .target_engie_sensor: &target_engie_sensor
   entity:
     - integration: engie_be
       domain: sensor
-  primary_entities_only: false
 
 # Numerical threshold selector helpers.
 
