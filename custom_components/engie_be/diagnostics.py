@@ -10,6 +10,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
 from ._billing import billing_status
 from ._contracts import energy_products_by_ean
+from ._solar_surplus import solar_surplus_payload
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_HOLDER_NAME,
@@ -97,7 +98,6 @@ def _summarise_coordinator_data(
     else:
         peaks_month = None
         peaks_is_fallback = None
-    solar_wrapper = data.get("solar_surplus")
     return {
         "item_count": len(items),
         "ean_hashes": ean_hashes,
@@ -106,25 +106,33 @@ def _summarise_coordinator_data(
         "peaks_month": peaks_month,
         "peaks_is_fallback": peaks_is_fallback,
         "is_dynamic": bool(data.get(KEY_IS_DYNAMIC, False)),
-        "solar_surplus": _summarise_solar_surplus(solar_wrapper),
+        "solar_surplus": _summarise_solar_surplus(coordinator),
         "billing": _summarise_billing(coordinator),
     }
 
 
-def _summarise_solar_surplus(wrapper: Any) -> dict[str, Any] | None:
+def _summarise_solar_surplus(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any] | None:
     """
-    Return a privacy-safe summary of the cached solar_surplus wrapper.
+    Return a privacy-safe summary of the cached solar-surplus payload.
 
-    Wrapper shape: ``{"data": {ean: forecasts_list}, "fetched_at": ISO}``.
     Emits per-EAN hashes, day count, hourly-slot count, and the mix of
     level values seen (as a sorted list). Never emits raw startTime,
     value, or full EAN strings.
     """
-    if not isinstance(wrapper, dict):
+    per_ean = solar_surplus_payload(coordinator)
+    if per_ean is None:
         return None
-    per_ean = wrapper.get("data")
-    if not isinstance(per_ean, dict):
-        return None
+    # Read fetched_at from the raw wrapper since unwrap_payload strips it.
+    raw_wrapper = (
+        coordinator.data.get("solar_surplus")
+        if isinstance(coordinator.data, dict)
+        else None
+    )
+    fetched_at = (
+        raw_wrapper.get("fetched_at") if isinstance(raw_wrapper, dict) else None
+    )
 
     per_ean_summary: dict[str, dict[str, Any]] = {}
     for ean, forecasts in per_ean.items():
@@ -156,7 +164,6 @@ def _summarise_solar_surplus(wrapper: Any) -> dict[str, Any] | None:
             "levels_present": sorted(levels),
         }
 
-    fetched_at = wrapper.get("fetched_at")
     return {
         "ean_count": len(per_ean_summary),
         "per_ean": per_ean_summary,

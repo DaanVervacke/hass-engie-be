@@ -544,12 +544,29 @@ async def test_diagnostics_skips_non_business_agreement_subentries(
 # ---------------------------------------------------------------------------
 
 
+def _solar_coord_from_wrapper(wrapper: object) -> MagicMock:
+    """Build a mock coordinator whose solar_surplus wrapper is the given object."""
+    coord = MagicMock()
+    coord.data = {"solar_surplus": wrapper}
+    return coord
+
+
 def test_summarise_solar_surplus_returns_none_for_missing_wrapper() -> None:
     """No wrapper -> None (so top-level key is present but empty)."""
-    assert _summarise_solar_surplus(None) is None
-    assert _summarise_solar_surplus("not a dict") is None
-    assert _summarise_solar_surplus({}) is None
-    assert _summarise_solar_surplus({"data": "not a dict"}) is None
+    # coordinator.data is not a dict - solar_surplus_payload returns None
+    coord_no_data = MagicMock()
+    coord_no_data.data = None
+    assert _summarise_solar_surplus(coord_no_data) is None
+    coord_str_data = MagicMock()
+    coord_str_data.data = "not a dict"
+    assert _summarise_solar_surplus(coord_str_data) is None
+    # solar_surplus key present but wrapper is empty dict - inner "data" missing
+    assert _summarise_solar_surplus(_solar_coord_from_wrapper({})) is None
+    # solar_surplus wrapper present but inner "data" is not a dict
+    assert (
+        _summarise_solar_surplus(_solar_coord_from_wrapper({"data": "not a dict"}))
+        is None
+    )
 
 
 def test_summarise_solar_surplus_hashes_eans_and_counts_slots() -> None:
@@ -589,7 +606,7 @@ def test_summarise_solar_surplus_hashes_eans_and_counts_slots() -> None:
         },
         "fetched_at": "2026-07-08T10:00:00+00:00",
     }
-    result = _summarise_solar_surplus(wrapper)
+    result = _summarise_solar_surplus(_solar_coord_from_wrapper(wrapper))
     assert result is not None
     assert result["ean_count"] == 1
     assert result["fetched_at"] == "2026-07-08T10:00:00+00:00"
@@ -614,7 +631,7 @@ def test_summarise_solar_surplus_survives_malformed_shape() -> None:
         },
         "fetched_at": None,
     }
-    result = _summarise_solar_surplus(wrapper)
+    result = _summarise_solar_surplus(_solar_coord_from_wrapper(wrapper))
     assert result is not None
     assert result["ean_count"] == 1
     assert result["fetched_at"] is None

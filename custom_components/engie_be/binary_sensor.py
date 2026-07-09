@@ -16,7 +16,7 @@ from homeassistant.util import dt as dt_util
 from ._epex import epex_payload, next_epex_slot_boundary
 from ._happy_hour import happy_hour_window, is_happy_hour_active
 from ._tou import current_slot as tou_current_slot
-from ._tou import has_multiple_slot_codes, schedule_for_ean
+from ._tou import has_multiple_slot_codes, schedule_for_ean, tou_schedules_payload
 from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
@@ -435,7 +435,7 @@ def _build_tou_binary_sensors(
         if division != "ELECTRICITY":
             continue
         ean_suffix = f"{ean}_ID1"
-        tou_data = _tou_wrapper_data(coordinator)
+        tou_data = tou_schedules_payload(coordinator)
         item = schedule_for_ean(tou_data, ean_suffix) if tou_data is not None else None
         offtake_sched = (
             item.get("supplierSchedule", {}).get("offtake", {})
@@ -472,20 +472,6 @@ def _build_tou_binary_sensors(
                 )
             )
     return entities
-
-
-def _tou_wrapper_data(
-    coordinator: EngieBeDataUpdateCoordinator,
-) -> dict | None:
-    """Return the raw TOU payload dict from the coordinator wrapper, or None."""
-    data = coordinator.data
-    if not isinstance(data, dict):
-        return None
-    wrapper = data.get("tou_schedules")
-    if not isinstance(wrapper, dict):
-        return None
-    payload = wrapper.get("data")
-    return payload if isinstance(payload, dict) else None
 
 
 class EngieBeTouIsOptimalSensor(
@@ -529,7 +515,7 @@ class EngieBeTouIsOptimalSensor(
 
     def _supplier_schedule(self) -> dict | None:
         """Return the supplier direction schedule, or None."""
-        tou_data = _tou_wrapper_data(self.coordinator)
+        tou_data = tou_schedules_payload(self.coordinator)
         if tou_data is None:
             return None
         ean_suffix = f"{self._ean}_ID1"

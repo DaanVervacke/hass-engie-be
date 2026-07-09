@@ -24,8 +24,9 @@ from ._billing import next_due_date, overview_due_amount, overview_open_amount
 from ._epex import epex_payload, next_epex_slot_boundary
 from ._happy_hour import happy_hour_window
 from ._peaks import peaks_meta, peaks_payload
+from ._solar_surplus import solar_surplus_payload
 from ._tou import current_slot as tou_current_slot
-from ._tou import schedule_for_ean
+from ._tou import schedule_for_ean, tou_schedules_payload
 from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
@@ -1330,14 +1331,8 @@ class _EngieBeSolarSurplusBase(_EngieBePerEanBase):
 
     def _forecasts_for_ean(self) -> list[dict[str, Any]] | None:
         """Return the raw ``forecasts`` list for this EAN, or ``None``."""
-        data = self.coordinator.data
-        if not isinstance(data, dict):
-            return None
-        wrapper = data.get("solar_surplus")
-        if not isinstance(wrapper, dict):
-            return None
-        per_ean = wrapper.get("data")
-        if not isinstance(per_ean, dict):
+        per_ean = solar_surplus_payload(self.coordinator)
+        if per_ean is None:
             return None
         forecasts = per_ean.get(self._ean)
         return forecasts if isinstance(forecasts, list) else None
@@ -1642,14 +1637,8 @@ class _EngieBeTouSlotBase(_BoundaryScheduleMixin, _EngieBePerEanBase):
 
     def _tou_item(self) -> dict[str, Any] | None:
         """Return the per-EAN TOU item dict from the coordinator wrapper, or None."""
-        data = self.coordinator.data
-        if not isinstance(data, dict):
-            return None
-        wrapper = data.get("tou_schedules")
-        if not isinstance(wrapper, dict):
-            return None
-        payload = wrapper.get("data")
-        if not isinstance(payload, dict):
+        payload = tou_schedules_payload(self.coordinator)
+        if payload is None:
             return None
         ean_suffix = f"{self._ean}_ID1"
         return schedule_for_ean(payload, ean_suffix)
