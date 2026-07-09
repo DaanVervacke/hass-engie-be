@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from homeassistant.config_entries import ConfigSubentryData
@@ -38,6 +38,8 @@ from custom_components.engie_be.coordinator import EngieBeDataUpdateCoordinator
 from custom_components.engie_be.data import EngieBeData
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
 
@@ -94,30 +96,6 @@ def _only_subentry(entry: MockConfigEntry) -> ConfigSubentry:
     return next(iter(entry.subentries.values()))
 
 
-def _make_client(
-    *,
-    relations_return: dict[str, Any] | None = None,
-    relations_side_effect: Exception | None = None,
-) -> MagicMock:
-    """Build a MagicMock API client for the coordinator under test."""
-    client = MagicMock()
-    client.async_get_prices = AsyncMock(return_value={"items": []})
-    client.async_get_monthly_peaks = AsyncMock(
-        return_value={"peakOfTheMonth": None, "dailyPeaks": []},
-    )
-    client.async_get_happy_hour_event = AsyncMock(return_value={})
-    client.async_get_happy_hours_service_enabled_flag = AsyncMock(return_value={})
-    if relations_side_effect is not None:
-        client.async_get_customer_account_relations = AsyncMock(
-            side_effect=relations_side_effect,
-        )
-    else:
-        client.async_get_customer_account_relations = AsyncMock(
-            return_value=relations_return or {"items": []},
-        )
-    return client
-
-
 def _attach_runtime(entry: MockConfigEntry, client: MagicMock) -> None:
     """Attach a minimal EngieBeData runtime onto the test entry."""
     entry.runtime_data = EngieBeData(
@@ -131,6 +109,7 @@ def _attach_runtime(entry: MockConfigEntry, client: MagicMock) -> None:
 
 async def test_backfill_populates_missing_fields_on_first_refresh(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """First refresh must fill empty subentry fields from relations data."""
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
@@ -140,7 +119,7 @@ async def test_backfill_populates_missing_fields_on_first_refresh(
         subentry_data={},  # no display fields yet
     )
     subentry = _only_subentry(entry)
-    client = _make_client(relations_return=relations)
+    client = engie_client_baseline(customer_account_relations=relations)
     _attach_runtime(entry, client)
 
     coordinator = EngieBeDataUpdateCoordinator(
@@ -169,6 +148,7 @@ async def test_backfill_populates_missing_fields_on_first_refresh(
 
 async def test_backfill_skipped_when_all_fields_already_present(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """Coordinator must not call relations when nothing is missing."""
     entry = _build_entry_with_subentry(
@@ -181,8 +161,8 @@ async def test_backfill_skipped_when_all_fields_already_present(
         },
     )
     subentry = _only_subentry(entry)
-    client = _make_client(
-        relations_return=json.loads(_RELATIONS_FIXTURE.read_text()),
+    client = engie_client_baseline(
+        customer_account_relations=json.loads(_RELATIONS_FIXTURE.read_text()),
     )
     _attach_runtime(entry, client)
 
@@ -204,6 +184,7 @@ async def test_backfill_skipped_when_all_fields_already_present(
 
 async def test_backfill_runs_only_once_even_across_multiple_refreshes(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """The flag must be cleared after the first attempt."""
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
@@ -213,7 +194,7 @@ async def test_backfill_runs_only_once_even_across_multiple_refreshes(
         subentry_data={},
     )
     subentry = _only_subentry(entry)
-    client = _make_client(relations_return=relations)
+    client = engie_client_baseline(customer_account_relations=relations)
     _attach_runtime(entry, client)
 
     coordinator = EngieBeDataUpdateCoordinator(
@@ -232,6 +213,7 @@ async def test_backfill_runs_only_once_even_across_multiple_refreshes(
 
 async def test_backfill_failure_is_swallowed_and_flag_cleared(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """A failing relations call must not raise and must clear the flag."""
     entry = _build_entry_with_subentry(
@@ -241,8 +223,8 @@ async def test_backfill_failure_is_swallowed_and_flag_cleared(
     )
     subentry = _only_subentry(entry)
     original_data = dict(subentry.data)
-    client = _make_client(
-        relations_side_effect=EngieBeApiClientError("relations 502"),
+    client = engie_client_baseline(
+        customer_account_relations=EngieBeApiClientError("relations 502"),
     )
     _attach_runtime(entry, client)
 
@@ -263,6 +245,7 @@ async def test_backfill_failure_is_swallowed_and_flag_cleared(
 
 async def test_backfill_no_match_for_ban_leaves_subentry_untouched(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """When relations has no entry for our BAN, do nothing."""
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
@@ -273,7 +256,7 @@ async def test_backfill_no_match_for_ban_leaves_subentry_untouched(
     )
     subentry = _only_subentry(entry)
     original_data = dict(subentry.data)
-    client = _make_client(relations_return=relations)
+    client = engie_client_baseline(customer_account_relations=relations)
     _attach_runtime(entry, client)
 
     coordinator = EngieBeDataUpdateCoordinator(
@@ -292,6 +275,7 @@ async def test_backfill_no_match_for_ban_leaves_subentry_untouched(
 
 async def test_backfill_only_fills_missing_keys(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """Existing user-edited fields must not be overwritten by relations data."""
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
@@ -304,7 +288,7 @@ async def test_backfill_only_fills_missing_keys(
         },
     )
     subentry = _only_subentry(entry)
-    client = _make_client(relations_return=relations)
+    client = engie_client_baseline(customer_account_relations=relations)
     _attach_runtime(entry, client)
 
     coordinator = EngieBeDataUpdateCoordinator(
@@ -325,6 +309,7 @@ async def test_backfill_only_fills_missing_keys(
 
 async def test_backfill_refreshes_subentry_title_and_device_name(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """
     Successful backfill must update the subentry title and rename the device.
@@ -342,7 +327,7 @@ async def test_backfill_refreshes_subentry_title_and_device_name(
         subentry_data={},
     )
     subentry = _only_subentry(entry)
-    client = _make_client(relations_return=relations)
+    client = engie_client_baseline(customer_account_relations=relations)
     _attach_runtime(entry, client)
 
     # Pre-create the device the way the entity platform would, so the
@@ -378,6 +363,7 @@ async def test_backfill_refreshes_subentry_title_and_device_name(
 
 async def test_backfill_preserves_user_named_device(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """A user-customised device name must not be clobbered by backfill."""
     relations = json.loads(_RELATIONS_FIXTURE.read_text())
@@ -387,7 +373,7 @@ async def test_backfill_preserves_user_named_device(
         subentry_data={},
     )
     subentry = _only_subentry(entry)
-    client = _make_client(relations_return=relations)
+    client = engie_client_baseline(customer_account_relations=relations)
     _attach_runtime(entry, client)
 
     device_reg = dr.async_get(hass)

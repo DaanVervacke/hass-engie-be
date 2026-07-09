@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.components.binary_sensor import BinarySensorEntity
@@ -277,6 +277,90 @@ def wire_engie_runtime() -> Callable[
             authenticated=True,
             last_options=dict(entry.options),
         )
+
+    return _factory
+
+
+@pytest.fixture
+def engie_client_baseline() -> Callable[..., MagicMock]:
+    """
+    Return a factory that builds a mock API client with all endpoints stubbed.
+
+    Each endpoint accepts an override kwarg. Pass a payload dict / list
+    to change the return value, or pass an ``Exception`` instance to set
+    ``side_effect``. Endpoints not explicitly overridden keep their
+    defaults. Extra stubs on unused endpoints are inert.
+    """
+
+    def _stub(mock_method: AsyncMock, value: Any) -> None:
+        if isinstance(value, Exception):
+            mock_method.side_effect = value
+        else:
+            mock_method.return_value = value
+
+    def _factory(  # noqa: PLR0913
+        *,
+        prices: Any = None,
+        peaks: Any = None,
+        happy_hours_flag: Any = None,
+        happy_hour_event: Any = None,
+        month_report: Any = None,
+        solar_flag: Any = None,
+        solar_forecasts: Any = None,
+        tou_flag: Any = None,
+        tou_schedules: Any = None,
+        account_balance: Any = None,
+        customer_account_relations: Any = None,
+    ) -> MagicMock:
+        defaults: dict[str, Any] = {
+            "prices": {"items": []},
+            "peaks": {"peakOfTheMonth": None, "dailyPeaks": []},
+            "happy_hours_flag": {"value": False},
+            "happy_hour_event": {},
+            "month_report": {},
+            "solar_flag": {"value": False},
+            "solar_forecasts": {"forecasts": []},
+            "tou_flag": {"value": False},
+            "tou_schedules": {"items": []},
+            "account_balance": {},
+            "customer_account_relations": {"items": []},
+        }
+
+        overrides: dict[str, Any] = {
+            "prices": prices,
+            "peaks": peaks,
+            "happy_hours_flag": happy_hours_flag,
+            "happy_hour_event": happy_hour_event,
+            "month_report": month_report,
+            "solar_flag": solar_flag,
+            "solar_forecasts": solar_forecasts,
+            "tou_flag": tou_flag,
+            "tou_schedules": tou_schedules,
+            "account_balance": account_balance,
+            "customer_account_relations": customer_account_relations,
+        }
+
+        endpoint_map: dict[str, str] = {
+            "prices": "async_get_prices",
+            "peaks": "async_get_monthly_peaks",
+            "happy_hours_flag": "async_get_happy_hours_service_enabled_flag",
+            "happy_hour_event": "async_get_happy_hour_event",
+            "month_report": "async_get_month_report",
+            "solar_flag": "async_get_solar_surplus_shown_dashboard_flag",
+            "solar_forecasts": "async_get_solar_surplus_forecasts",
+            "tou_flag": "async_get_dgo_tou_is_active_flag",
+            "tou_schedules": "async_get_tou_schedules",
+            "account_balance": "async_get_account_balance",
+            "customer_account_relations": "async_get_customer_account_relations",
+        }
+
+        client = MagicMock()
+        for key, method_name in endpoint_map.items():
+            mock_method = AsyncMock()
+            value = overrides[key] if overrides[key] is not None else defaults[key]
+            _stub(mock_method, value)
+            setattr(client, method_name, mock_method)
+        return client
 
     return _factory
 

@@ -38,6 +38,8 @@ from custom_components.engie_be.coordinator import EngieBeDataUpdateCoordinator
 from custom_components.engie_be.data import EngieBeData, EngieBeSubentryData
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
 
@@ -136,39 +138,6 @@ def _wire_runtime(
     )
 
 
-def _make_client(
-    *,
-    flags: dict | Exception,
-    happy_hour_payload: dict | Exception | None = None,
-) -> MagicMock:
-    """
-    Build a mock API client primed for the coordinator refresh path.
-
-    Prices/peaks are stubbed with the canonical fixtures so the refresh
-    completes; only ``async_get_happy_hours_service_enabled_flag`` and
-    ``async_get_happy_hour_event`` carry per-test semantics.
-    """
-    client = MagicMock()
-    client.async_get_prices = AsyncMock(return_value=_load(_PRICES_FIXTURE))
-    client.async_get_monthly_peaks = AsyncMock(return_value=_load(_PEAKS_FIXTURE))
-
-    if isinstance(flags, Exception):
-        client.async_get_happy_hours_service_enabled_flag = AsyncMock(side_effect=flags)
-    else:
-        client.async_get_happy_hours_service_enabled_flag = AsyncMock(
-            return_value=flags
-        )
-
-    if isinstance(happy_hour_payload, Exception):
-        client.async_get_happy_hour_event = AsyncMock(side_effect=happy_hour_payload)
-    else:
-        client.async_get_happy_hour_event = AsyncMock(
-            return_value=happy_hour_payload if happy_hour_payload is not None else {},
-        )
-    client.async_get_month_report = AsyncMock(return_value={})
-    return client
-
-
 # ---------------------------------------------------------------------------
 # Enrolment cache + skip behaviour
 # ---------------------------------------------------------------------------
@@ -176,11 +145,12 @@ def _make_client(
 
 async def test_un_enrolled_ban_skips_happy_hour_event_fetch(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """A False enrolment must skip the Happy Hours event endpoint entirely."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(flags=_load(_FLAGS_NOT_ENROLLED))
+    client = engie_client_baseline(happy_hours_flag=_load(_FLAGS_NOT_ENROLLED))
     coord = _coordinator(hass, entry, subentry)
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
@@ -196,13 +166,16 @@ async def test_un_enrolled_ban_skips_happy_hour_event_fetch(
     )
 
 
-async def test_enrolled_ban_polls_happy_hour_event(hass: HomeAssistant) -> None:
+async def test_enrolled_ban_polls_happy_hour_event(
+    hass: HomeAssistant,
+    engie_client_baseline: Callable,
+) -> None:
     """A True enrolment must poll the Happy Hours event endpoint."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(
-        flags=_load(_FLAGS_ENROLLED),
-        happy_hour_payload={"tomorrow": {"startTime": "x", "endTime": "y"}},
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        happy_hour_event={"tomorrow": {"startTime": "x", "endTime": "y"}},
     )
     coord = _coordinator(hass, entry, subentry)
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
@@ -228,11 +201,12 @@ async def test_enrolled_ban_polls_happy_hour_event(hass: HomeAssistant) -> None:
 
 async def test_first_refresh_sets_cache_without_scheduling_reload(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """The very first observation must set the cache but not schedule a reload."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(flags=_load(_FLAGS_ENROLLED))
+    client = engie_client_baseline(happy_hours_flag=_load(_FLAGS_ENROLLED))
     coord = _coordinator(hass, entry, subentry)
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
@@ -265,11 +239,12 @@ async def test_first_refresh_sets_cache_without_scheduling_reload(
 async def test_enrolment_flip_schedules_reload(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
+    engie_client_baseline: Callable,
 ) -> None:
     """A True -> False flip must mark reload_pending and call async_reload."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(flags=_load(_FLAGS_NOT_ENROLLED))
+    client = engie_client_baseline(happy_hours_flag=_load(_FLAGS_NOT_ENROLLED))
     coord = _coordinator(hass, entry, subentry)
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
@@ -297,6 +272,7 @@ async def test_enrolment_flip_schedules_reload(
 async def test_multi_subentry_flip_debounces_to_single_reload(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
+    engie_client_baseline: Callable,
 ) -> None:
     """
     Two subentries flipping in the same tick must schedule exactly one reload.
@@ -307,7 +283,7 @@ async def test_multi_subentry_flip_debounces_to_single_reload(
     """
     entry = _build_entry(hass, business_agreement_numbers=["B-0001", "B-0002"])
     sub_a, sub_b = _subentries(entry)
-    client = _make_client(flags=_load(_FLAGS_ENROLLED))
+    client = engie_client_baseline(happy_hours_flag=_load(_FLAGS_ENROLLED))
     coord_a = _coordinator(hass, entry, sub_a)
     coord_b = _coordinator(hass, entry, sub_b)
     _wire_runtime(
@@ -336,11 +312,12 @@ async def test_multi_subentry_flip_debounces_to_single_reload(
 async def test_no_flip_does_not_schedule_reload(
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
+    engie_client_baseline: Callable,
 ) -> None:
     """Steady-state (cached == new) must never schedule a reload."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(flags=_load(_FLAGS_ENROLLED))
+    client = engie_client_baseline(happy_hours_flag=_load(_FLAGS_ENROLLED))
     coord = _coordinator(hass, entry, subentry)
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
@@ -365,11 +342,14 @@ async def test_no_flip_does_not_schedule_reload(
 
 async def test_feature_flags_generic_error_soft_fails_to_cached(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """A non-auth API error must keep the previous enrolment value."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(flags=EngieBeApiClientError("upstream 500"))
+    client = engie_client_baseline(
+        happy_hours_flag=EngieBeApiClientError("upstream 500"),
+    )
     coord = _coordinator(hass, entry, subentry)
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
@@ -387,11 +367,14 @@ async def test_feature_flags_generic_error_soft_fails_to_cached(
 
 async def test_feature_flags_generic_error_with_no_cache_defaults_false(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """A non-auth error on the very first refresh must default to un-enrolled."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(flags=EngieBeApiClientError("upstream 500"))
+    client = engie_client_baseline(
+        happy_hours_flag=EngieBeApiClientError("upstream 500"),
+    )
     coord = _coordinator(hass, entry, subentry)
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
@@ -408,12 +391,13 @@ async def test_feature_flags_generic_error_with_no_cache_defaults_false(
 
 async def test_feature_flags_auth_error_raises_config_entry_auth_failed(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """Auth failures from the feature-flags endpoint must surface reauth."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
     original = EngieBeApiClientAuthenticationError("token rejected")
-    client = _make_client(flags=original)
+    client = engie_client_baseline(happy_hours_flag=original)
     coord = _coordinator(hass, entry, subentry)
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
 
@@ -430,13 +414,14 @@ async def test_feature_flags_auth_error_raises_config_entry_auth_failed(
 
 async def test_enrolled_refresh_upserts_happy_hour_into_store(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """A populated ``tomorrow`` window is persisted to the per-subentry store."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(
-        flags=_load(_FLAGS_ENROLLED),
-        happy_hour_payload={
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        happy_hour_event={
             "tomorrow": {
                 "startTime": "2026-05-23T12:00:00+02:00",
                 "endTime": "2026-05-23T15:00:00+02:00",
@@ -460,13 +445,14 @@ async def test_enrolled_refresh_upserts_happy_hour_into_store(
 
 async def test_enrolled_refresh_with_empty_payload_does_not_upsert(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """An empty ``{}`` Happy Hours payload never reaches the store."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(
-        flags=_load(_FLAGS_ENROLLED),
-        happy_hour_payload={},
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        happy_hour_event={},
     )
     coord = _coordinator(hass, entry, subentry)
     _wire_runtime(entry, client, {subentry.subentry_id: coord})
@@ -482,13 +468,14 @@ async def test_enrolled_refresh_with_empty_payload_does_not_upsert(
 
 async def test_history_record_tolerates_missing_store(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """A subentry without a happy_hours_store falls back to a no-op record."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(
-        flags=_load(_FLAGS_ENROLLED),
-        happy_hour_payload={
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        happy_hour_event={
             "tomorrow": {
                 "startTime": "2026-05-23T12:00:00+02:00",
                 "endTime": "2026-05-23T15:00:00+02:00",
@@ -508,13 +495,14 @@ async def test_history_record_tolerates_missing_store(
 
 async def test_enrolled_refresh_upserts_today_key_window(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """A post-midnight ``today``-only window is persisted (regression)."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(
-        flags=_load(_FLAGS_ENROLLED),
-        happy_hour_payload={
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        happy_hour_event={
             "today": {
                 "startTime": "2026-05-23T12:00:00+02:00",
                 "endTime": "2026-05-23T15:00:00+02:00",
@@ -538,13 +526,14 @@ async def test_enrolled_refresh_upserts_today_key_window(
 
 async def test_enrolled_refresh_upserts_both_today_and_tomorrow_windows(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """Both keys in one payload are each persisted (order-independent)."""
     entry = _build_entry(hass)
     subentry = _subentries(entry)[0]
-    client = _make_client(
-        flags=_load(_FLAGS_ENROLLED),
-        happy_hour_payload={
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        happy_hour_event={
             "today": {
                 "startTime": "2026-05-23T12:00:00+02:00",
                 "endTime": "2026-05-23T15:00:00+02:00",
