@@ -171,7 +171,7 @@ endpoint.
 | EPEX highest price today | `sensor.engie_belgium_{BAN}_epex_high_today` | Highest EPEX hourly price of today (EUR/kWh) |
 
 All four sensors are in **EUR/kWh** (4 decimals). Tomorrow's prices appear
-once ENGIE publishes them, typically shortly after 13:15 Europe/Brussels.
+once ENGIE publishes them, typically around 14:00 Europe/Brussels.
 
 The current-price sensor exposes the full today / tomorrow slate as
 attributes, which is convenient for plotting:
@@ -756,7 +756,7 @@ automation:
 - **Historical usage data lags a few days.** ENGIE only publishes hourly usage once a day is finalised, so today and yesterday are not available yet. For real-time consumption you need a P1 / DSMR (Dutch Smart Meter Requirements) meter.
 - **No historical price retrieval.** ENGIE does not expose historical energy prices through the API. The integration can only report the currently active price period. Historical sensor data is what Home Assistant's own recorder stores.
 - **Happy Hours history starts when the integration is installed.** ENGIE does not provide a historical list of past Happy Hours windows. The integration records each window it observes locally, so windows that ran before the integration was set up cannot be recovered.
-- **EPEX prices available from ~13:15 Brussels time.** ENGIE publishes the next day's EPEX day-ahead prices after the daily auction closes. Before that time, only today's prices are available and tomorrow's sensors will show `unknown`.
+- **EPEX prices published around 14:00 Brussels time.** ENGIE publishes the next day's dynamic prices each afternoon after the EPEX day-ahead auction settles. Before that time, only today's prices are available and tomorrow's sensors show `unknown`. See [engie.be/nl/dynamic-tarief/dagelijks-gebruik](https://www.engie.be/nl/dynamic-tarief/dagelijks-gebruik/).
 - **Dedicated account required.** The same ENGIE credentials cannot be shared with engie.be or the ENGIE Smart App without triggering frequent re-authentication prompts. This is an ENGIE platform constraint, not a Home Assistant limitation. See [Prerequisites](#prerequisites).
 - **Two-factor authentication required.** The integration requires MFA to be enabled on the ENGIE account. Accounts without MFA (e.g. older sub-accounts) are not supported.
 - **Read-only.** The integration only reads data from the ENGIE API and never modifies your account, contracts, or settings.
