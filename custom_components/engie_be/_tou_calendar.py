@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.util import dt as dt_util
 
-from ._tou import _WEEKDAY_KEYS, _parse_hhmm
+from ._tou import _WEEKDAY_KEYS, _parse_hhmm, tou_schedules_payload
 from .const import EPEX_TZ
 
 if TYPE_CHECKING:
@@ -39,14 +39,8 @@ def tou_slot_events(
     Returns an empty list when the coordinator has no ``tou_schedules``
     wrapper (feature flag off) or when no items are present.
     """
-    data = getattr(coordinator, "data", None)
-    if not isinstance(data, dict):
-        return []
-    wrapper = data.get("tou_schedules")
-    if not isinstance(wrapper, dict):
-        return []
-    payload = wrapper.get("data")
-    if not isinstance(payload, dict):
+    payload = tou_schedules_payload(coordinator)
+    if payload is None:
         return []
     items = payload.get("items")
     if not isinstance(items, list):

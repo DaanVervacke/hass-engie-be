@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
+
+from .data import unwrap_payload
+
+if TYPE_CHECKING:
+    from .coordinator import EngieBeDataUpdateCoordinator
 
 _BRUSSELS = ZoneInfo("Europe/Brussels")
 _WEEKDAY_KEYS = (
@@ -20,6 +25,13 @@ _WEEKDAY_KEYS = (
 _MAX_HOUR = 23
 _MAX_MINUTE = 59
 _EXPECTED_PARTS = 2
+
+
+def tou_schedules_payload(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any] | None:
+    """Return the inner TOU schedules dict from coordinator data, or ``None``."""
+    return unwrap_payload(coordinator, "tou_schedules")
 
 
 def _parse_hhmm(raw: Any) -> time | None:

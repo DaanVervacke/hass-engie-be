@@ -19,6 +19,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from ._solar_surplus import solar_surplus_payload
+
 if TYPE_CHECKING:
     from homeassistant.components.energy.types import SolarForecastType
     from homeassistant.core import HomeAssistant
@@ -52,14 +54,8 @@ async def async_get_solar_forecast(
         if not sub_data.feature_flags.solar:
             continue
         coordinator = sub_data.coordinator
-        data = coordinator.data
-        if not isinstance(data, dict):
-            continue
-        wrapper = data.get("solar_surplus")
-        if not isinstance(wrapper, dict):
-            continue
-        per_ean = wrapper.get("data")
-        if not isinstance(per_ean, dict):
+        per_ean = solar_surplus_payload(coordinator)
+        if per_ean is None:
             continue
         for forecasts in per_ean.values():
             if not isinstance(forecasts, list):
