@@ -896,12 +896,40 @@
             }
         }
     },
-    "device_automation": {
-        "condition_type": {
-            "solar_surplus_is_at_level": "Solar surplus is at level",
-            "offtake_slot_is": "Current offtake slot is",
-            "injection_slot_is": "Current injection slot is",
-            "epex_price_is_negative": "EPEX price is negative"
+    "conditions": {
+        "epex_price_is_negative": {
+            "name": "EPEX price is negative",
+            "description": "True when the current EPEX day-ahead price is negative (you are paid to consume)."
+        },
+        "solar_surplus_is_at_level": {
+            "name": "Solar surplus is at level",
+            "description": "True when the solar surplus forecast for the current hour matches the chosen level.",
+            "fields": {
+                "level": {
+                    "name": "Surplus level",
+                    "description": "Expected solar surplus level."
+                }
+            }
+        },
+        "offtake_slot_is": {
+            "name": "Offtake slot is",
+            "description": "True when the current TOU offtake tariff slot matches the chosen code.",
+            "fields": {
+                "slot": {
+                    "name": "Slot code",
+                    "description": "Expected TOU offtake slot code."
+                }
+            }
+        },
+        "injection_slot_is": {
+            "name": "Injection slot is",
+            "description": "True when the current TOU injection tariff slot matches the chosen code.",
+            "fields": {
+                "slot": {
+                    "name": "Slot code",
+                    "description": "Expected TOU injection slot code."
+                }
+            }
         }
     }
 }

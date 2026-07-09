@@ -36,6 +36,9 @@ from .const import (
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
     TOU_SLOT_CODES,
     TOU_WEEKDAY_KEYS,
+    TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
+    TRANSLATION_KEY_TOU_INJECTION_SLOT,
+    TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
 )
 from .entity import EngieBeEntity, EngieBeEpexEntity, _BoundaryScheduleMixin
 
@@ -1135,8 +1138,8 @@ def _serialize_slot(slot: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 _SOLAR_SURPLUS_FORECAST = SensorEntityDescription(
-    key="solar_surplus_forecast",
-    translation_key="solar_surplus_forecast",
+    key=TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
+    translation_key=TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     icon="mdi:solar-power-variant",
     device_class=SensorDeviceClass.ENUM,
     options=list(SOLAR_SURPLUS_LEVELS),
@@ -1575,14 +1578,14 @@ class EngieBeSolarSurplusTodayPeakSensor(_EngieBeSolarSurplusBase):
 
 _TOU_OFFTAKE_SLOT = SensorEntityDescription(
     key="offtake_slot",
-    translation_key="tou_offtake_slot",
+    translation_key=TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
     device_class=SensorDeviceClass.ENUM,
     options=list(TOU_SLOT_CODES),
     icon="mdi:transmission-tower-import",
 )
 _TOU_INJECTION_SLOT = SensorEntityDescription(
     key="injection_slot",
-    translation_key="tou_injection_slot",
+    translation_key=TRANSLATION_KEY_TOU_INJECTION_SLOT,
     device_class=SensorDeviceClass.ENUM,
     options=list(TOU_SLOT_CODES),
     icon="mdi:transmission-tower-export",

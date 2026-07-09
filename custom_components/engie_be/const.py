@@ -120,6 +120,12 @@ CONF_CONSUMPTION_ADDRESS = "consumption_address"
 # Subentry picker key
 CONF_SELECTED_ACCOUNTS = "selected_accounts"
 
+# Translation keys used by condition.py (and referenced on the matching entities)
+TRANSLATION_KEY_EPEX_NEGATIVE = "epex_negative"
+TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST = "solar_surplus_forecast"
+TRANSLATION_KEY_TOU_OFFTAKE_SLOT = "tou_offtake_slot"
+TRANSLATION_KEY_TOU_INJECTION_SLOT = "tou_injection_slot"
+
 # Setup-time historical import options (stored per subentry)
 CONF_IMPORT_HISTORY = "import_history"
 CONF_IMPORT_ENERGY_TYPES = "import_energy_types"
