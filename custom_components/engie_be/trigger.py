@@ -109,20 +109,6 @@ _LEVEL = "level"
 _SLOT = "slot"
 
 # ---------------------------------------------------------------------------
-# Shared entity-filter helper (implementation lives in _automation_helpers)
-# ---------------------------------------------------------------------------
-
-
-def _filter_by_translation_key(
-    hass: HomeAssistant,
-    entities: set[str],
-    translation_key: str,
-) -> set[str]:
-    """Return entities owned by this integration with the given translation_key."""
-    return filter_by_translation_key(hass, entities, translation_key)
-
-
-# ---------------------------------------------------------------------------
 # Phase A - Binary state-transition triggers
 # ---------------------------------------------------------------------------
 
@@ -152,7 +138,7 @@ class _BinaryEdgeTrigger(  # type: ignore[valid-type, misc]
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to the matching ENGIE binary sensor."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
+        return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
 class EpexBecameNegativeTrigger(_BinaryEdgeTrigger):
@@ -245,7 +231,7 @@ class SolarSurplusLevelChangedTrigger(EntityTriggerBase):
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to the ENGIE solar_surplus_forecast sensor."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
+        return filter_by_translation_key(
             self._hass, candidates, TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST
         )
 
@@ -259,7 +245,7 @@ class OfftakeSlotChangedTrigger(EntityTriggerBase):
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to the ENGIE tou_offtake_slot sensor."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
+        return filter_by_translation_key(
             self._hass, candidates, TRANSLATION_KEY_TOU_OFFTAKE_SLOT
         )
 
@@ -273,7 +259,7 @@ class InjectionSlotChangedTrigger(EntityTriggerBase):
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to the ENGIE tou_injection_slot sensor."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(
+        return filter_by_translation_key(
             self._hass, candidates, TRANSLATION_KEY_TOU_INJECTION_SLOT
         )
 
@@ -327,7 +313,7 @@ class _OptionBasedStateTrigger(EntityTargetStateTriggerBase):
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to ENGIE entities with the correct translation_key."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
+        return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
 class SolarSurplusBecameTrigger(_OptionBasedStateTrigger):
@@ -377,7 +363,7 @@ class _ThresholdTrigger(  # type: ignore[valid-type, misc]
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to the matching ENGIE sensor."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
+        return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
 class EpexCurrentCrossedThresholdTrigger(_ThresholdTrigger):
@@ -438,7 +424,7 @@ class _ValueChangedTrigger(EntityTriggerBase):
     def entity_filter(self, entities: set[str]) -> set[str]:
         """Restrict to the matching ENGIE sensor."""
         candidates = super().entity_filter(entities)
-        return _filter_by_translation_key(self._hass, candidates, self._translation_key)
+        return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
 class CaptarPeakUpdatedTrigger(_ValueChangedTrigger):

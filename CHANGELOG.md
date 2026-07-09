@@ -23,6 +23,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+- Inline pass-through wrappers around filter_by_translation_key. [#NN]
 - Audited `primary_entities_only` on trigger and condition target anchors: only the authentication triggers now set `false`; all other binary-sensor, sensor, and calendar anchors use the default `true`. Consolidated repeated `threshold` and `slot` field name strings into a `common:` block in `strings.json` / `translations/en.json` to reduce duplication. [#NN]
 - Deduplicate TOU slot options in trigger/condition YAML and distinguish icon collisions for related triggers. [#NN]
 - Solar surplus level sensor now exposes `forecast_creation_date` and
