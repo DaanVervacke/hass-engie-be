@@ -150,5 +150,48 @@
                 "default": "mdi:sun-clock"
             }
         }
+    },
+    "triggers": {
+        "epex_became_negative": {"trigger": "mdi:cash-minus"},
+        "epex_no_longer_negative": {"trigger": "mdi:cash-refund"},
+        "offtake_became_optimal": {"trigger": "mdi:transmission-tower-import"},
+        "offtake_no_longer_optimal": {"trigger": "mdi:transmission-tower-off"},
+        "injection_became_optimal": {"trigger": "mdi:transmission-tower-export"},
+        "injection_no_longer_optimal": {"trigger": "mdi:transmission-tower"},
+        "happy_hours_became_active": {"trigger": "mdi:sun-clock"},
+        "happy_hours_became_inactive": {"trigger": "mdi:sun-clock-outline"},
+        "authentication_lost": {"trigger": "mdi:shield-alert"},
+        "authentication_restored": {"trigger": "mdi:shield-check"},
+        "solar_surplus_level_changed": {"trigger": "mdi:solar-power-variant"},
+        "offtake_slot_changed": {"trigger": "mdi:clock-time-eight"},
+        "injection_slot_changed": {"trigger": "mdi:clock-time-eight-outline"},
+        "solar_surplus_became": {"trigger": "mdi:solar-power"},
+        "offtake_slot_became": {"trigger": "mdi:clock-check"},
+        "injection_slot_became": {"trigger": "mdi:clock-check-outline"},
+        "epex_current_crossed_threshold": {"trigger": "mdi:cash-clock"},
+        "epex_next_hour_crossed_threshold": {"trigger": "mdi:cash-clock"},
+        "solar_surplus_current_crossed_threshold": {"trigger": "mdi:solar-power"},
+        "solar_surplus_next_hour_crossed_threshold": {"trigger": "mdi:solar-power-variant"},
+        "captar_peak_crossed_threshold": {"trigger": "mdi:flash-alert"},
+        "captar_peak_updated": {"trigger": "mdi:flash"},
+        "epex_high_today_updated": {"trigger": "mdi:cash-plus"},
+        "epex_low_today_updated": {"trigger": "mdi:cash-100"},
+        "captar_peak_window_started": {"trigger": "mdi:flash-alert"},
+        "captar_peak_window_ended": {"trigger": "mdi:flash-off"},
+        "happy_hours_window_started": {"trigger": "mdi:weather-sunset-up"},
+        "happy_hours_window_ended": {"trigger": "mdi:weather-sunset-down"},
+        "tou_slot_started": {"trigger": "mdi:clock-start"}
+    },
+    "conditions": {
+        "epex_price_is_negative": {"condition": "mdi:cash-minus"},
+        "solar_surplus_is_at_level": {"condition": "mdi:solar-power"},
+        "offtake_slot_is": {"condition": "mdi:clock-time-eight"},
+        "injection_slot_is": {"condition": "mdi:clock-time-eight-outline"},
+        "offtake_is_optimal": {"condition": "mdi:transmission-tower-import"},
+        "injection_is_optimal": {"condition": "mdi:transmission-tower-export"},
+        "happy_hours_is_active": {"condition": "mdi:sun-clock"},
+        "epex_price_is_below_threshold": {"condition": "mdi:cash-remove"},
+        "epex_price_is_above_threshold": {"condition": "mdi:cash-plus"},
+        "captar_peak_is_above_threshold": {"condition": "mdi:flash-alert"}
     }
 }

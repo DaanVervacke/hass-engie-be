@@ -50,6 +50,13 @@
   mode: box
   unit_of_measurement: kW
 
+.tou_slot_options: &tou_slot_options
+  - peak
+  - offpeak
+  - superoffpeak
+  - exclusive_night
+  - day
+
 # ---------------------------------------------------------------------------
 # Binary "is" conditions - check a binary sensor is on
 # ---------------------------------------------------------------------------
@@ -105,12 +112,7 @@ offtake_slot_is:
       selector:
         select:
           translation_key: tou_slot_code
-          options:
-            - peak
-            - offpeak
-            - superoffpeak
-            - exclusive_night
-            - day
+          options: *tou_slot_options
 
 injection_slot_is:
   target: *target_engie_sensor
@@ -120,12 +122,7 @@ injection_slot_is:
       selector:
         select:
           translation_key: tou_slot_code
-          options:
-            - peak
-            - offpeak
-            - superoffpeak
-            - exclusive_night
-            - day
+          options: *tou_slot_options
 
 # ---------------------------------------------------------------------------
 # Numerical threshold conditions
