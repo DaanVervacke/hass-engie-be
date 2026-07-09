@@ -18,7 +18,9 @@ from .data import unwrap_dict_payload
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
 
-_CAPTAR_EVENT_SUMMARY = "Captar monthly peak"
+# Public: trigger.py uses this to identify captar events in the calendar.
+CAPTAR_EVENT_SUMMARY = "Captar monthly peak"
+_CAPTAR_EVENT_SUMMARY = CAPTAR_EVENT_SUMMARY  # backward-compat alias
 
 
 def peaks_payload(

@@ -3,17 +3,25 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import voluptuous as vol
 from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
+from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
+from homeassistant.components.calendar import CalendarEvent
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.trigger import TriggerConfig
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
+from custom_components.engie_be._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
+from custom_components.engie_be._peaks import CAPTAR_EVENT_SUMMARY
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
     CONF_REFRESH_TOKEN,
@@ -39,11 +47,14 @@ from custom_components.engie_be.const import (
 from custom_components.engie_be.trigger import (
     _SOLAR_SURPLUS_BECAME_SCHEMA,
     _TOU_SLOT_BECAME_SCHEMA,
+    _TOU_SLOT_CALENDAR_SCHEMA,
     TRIGGERS,
     AuthenticationLostTrigger,
     AuthenticationRestoredTrigger,
     CaptarPeakCrossedThresholdTrigger,
     CaptarPeakUpdatedTrigger,
+    CaptarPeakWindowEndedTrigger,
+    CaptarPeakWindowStartedTrigger,
     EpexBecameNegativeTrigger,
     EpexCurrentCrossedThresholdTrigger,
     EpexHighTodayUpdatedTrigger,
@@ -52,6 +63,8 @@ from custom_components.engie_be.trigger import (
     EpexNoLongerNegativeTrigger,
     HappyHoursBecameActiveTrigger,
     HappyHoursBecameInactiveTrigger,
+    HappyHoursWindowEndedTrigger,
+    HappyHoursWindowStartedTrigger,
     InjectionBecameOptimalTrigger,
     InjectionNoLongerOptimalTrigger,
     InjectionSlotBecameTrigger,
@@ -64,6 +77,7 @@ from custom_components.engie_be.trigger import (
     SolarSurplusCurrentCrossedThresholdTrigger,
     SolarSurplusLevelChangedTrigger,
     SolarSurplusNextHourCrossedThresholdTrigger,
+    TouSlotStartedTrigger,
     async_get_triggers,
 )
 
@@ -260,6 +274,12 @@ async def test_async_get_triggers_returns_all(hass: HomeAssistant) -> None:
         "captar_peak_updated",
         "epex_high_today_updated",
         "epex_low_today_updated",
+        # Phase E calendar event-class
+        "captar_peak_window_started",
+        "captar_peak_window_ended",
+        "happy_hours_window_started",
+        "happy_hours_window_ended",
+        "tou_slot_started",
     }
     assert set(triggers.keys()) == expected
 
@@ -272,7 +292,7 @@ async def test_async_get_triggers_matches_dict(hass: HomeAssistant) -> None:
 
 def test_trigger_count_at_least_20() -> None:
     """TRIGGERS dict has at least 20 entries (plan done criteria)."""
-    assert len(TRIGGERS) >= 20
+    assert len(TRIGGERS) >= 29
 
 
 # ---------------------------------------------------------------------------
@@ -1232,3 +1252,392 @@ async def test_epex_low_today_updated_filters_wrong_key(
         "4.5",
         expected_fires=0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase E - Calendar event-class triggers
+# ---------------------------------------------------------------------------
+
+
+def _make_future_event(
+    summary: str,
+    start: datetime,
+    duration_seconds: int = 1800,
+) -> CalendarEvent:
+    """Return a CalendarEvent with an explicit start time."""
+    end = start + timedelta(seconds=duration_seconds)
+    return CalendarEvent(start=start, end=end, summary=summary)
+
+
+def _setup_calendar_component(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    events: list[CalendarEvent],
+) -> str:
+    """
+    Register a mock ENGIE calendar entity and wire up hass.data.
+
+    Returns the registered entity_id.
+    """
+    ent_reg = er.async_get(hass)
+    reg_entry = ent_reg.async_get_or_create(
+        CALENDAR_DOMAIN,
+        DOMAIN,
+        f"{entry.entry_id}_sub_calendar",
+        config_entry=entry,
+        suggested_object_id=f"engie_belgium_{_BAN}",
+    )
+    entity_id = reg_entry.entity_id
+
+    # Build a minimal mock EntityComponent that returns our calendar entity.
+    mock_calendar_entity = MagicMock()
+    mock_calendar_entity.async_get_events = AsyncMock(return_value=events)
+
+    mock_component = MagicMock()
+    mock_component.get_entity = MagicMock(return_value=mock_calendar_entity)
+
+    hass.data[CALENDAR_DOMAIN] = mock_component
+    return entity_id
+
+
+async def test_captar_peak_window_started_fires_at_event_start(
+    hass: HomeAssistant,
+) -> None:
+    """CaptarPeakWindowStartedTrigger fires when a captar peak window begins."""
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
+    events = [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start)]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    assert len(fired) == 1
+    unsub()
+
+
+async def test_captar_peak_window_started_does_not_fire_for_hh_event(
+    hass: HomeAssistant,
+) -> None:
+    """CaptarPeakWindowStartedTrigger does not fire for Happy Hours events."""
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
+    events = [_make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_start)]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    # Wrong event class: should not fire.
+    assert len(fired) == 0
+    unsub()
+
+
+async def test_captar_peak_window_ended_fires_at_event_end(
+    hass: HomeAssistant,
+) -> None:
+    """CaptarPeakWindowEndedTrigger fires when a captar peak window ends."""
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=10)
+    events = [
+        _make_future_event(CAPTAR_EVENT_SUMMARY, event_start, duration_seconds=60)
+    ]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = CaptarPeakWindowEndedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+
+    # Fire at event end.
+    async_fire_time_changed(hass, event_start + timedelta(seconds=60))
+    await hass.async_block_till_done()
+
+    assert len(fired) == 1
+    unsub()
+
+
+async def test_happy_hours_window_started_fires_at_event_start(
+    hass: HomeAssistant,
+) -> None:
+    """HappyHoursWindowStartedTrigger fires when a Happy Hours window begins."""
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
+    events = [_make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_start)]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    assert len(fired) == 1
+    unsub()
+
+
+async def test_happy_hours_window_ended_fires_at_event_end(
+    hass: HomeAssistant,
+) -> None:
+    """HappyHoursWindowEndedTrigger fires when a Happy Hours window ends."""
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=10)
+    events = [
+        _make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_start, duration_seconds=60)
+    ]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = HappyHoursWindowEndedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+
+    async_fire_time_changed(hass, event_start + timedelta(seconds=60))
+    await hass.async_block_till_done()
+
+    assert len(fired) == 1
+    unsub()
+
+
+async def test_tou_slot_started_fires_on_matching_direction_and_slot(
+    hass: HomeAssistant,
+) -> None:
+    """TouSlotStartedTrigger fires for the correct direction and slot."""
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
+    # TOU summary format: "TOU: {CODE} ({direction})"
+    events = [_make_future_event("TOU: PEAK (offtake)", event_start)]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(
+        key=f"{DOMAIN}.test",
+        target=None,
+        options={"direction": "offtake", "slot": "peak"},
+    )
+    trigger = TouSlotStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    assert len(fired) == 1
+    unsub()
+
+
+async def test_tou_slot_started_does_not_fire_for_wrong_direction(
+    hass: HomeAssistant,
+) -> None:
+    """TouSlotStartedTrigger does not fire when direction does not match."""
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
+    events = [_make_future_event("TOU: PEAK (injection)", event_start)]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(
+        key=f"{DOMAIN}.test",
+        target=None,
+        options={"direction": "offtake", "slot": "peak"},
+    )
+    trigger = TouSlotStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    assert len(fired) == 0
+    unsub()
+
+
+async def test_tou_slot_started_does_not_fire_for_wrong_slot(
+    hass: HomeAssistant,
+) -> None:
+    """TouSlotStartedTrigger does not fire when slot does not match."""
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
+    events = [_make_future_event("TOU: OFFPEAK (offtake)", event_start)]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(
+        key=f"{DOMAIN}.test",
+        target=None,
+        options={"direction": "offtake", "slot": "peak"},
+    )
+    trigger = TouSlotStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    assert len(fired) == 0
+    unsub()
+
+
+async def test_calendar_trigger_no_fires_when_no_calendar_component(
+    hass: HomeAssistant,
+) -> None:
+    """Calendar triggers do not fire (or raise) when no calendar component is loaded."""
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+    unsub()
+
+
+async def test_calendar_trigger_no_fires_when_no_matching_calendar_entity(
+    hass: HomeAssistant,
+) -> None:
+    """Calendar triggers do not fire when no ENGIE calendar entities are registered."""
+    # No ENGIE calendar entity registered => _engie_calendar_entity_ids returns [].
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+    unsub()
+
+
+def test_tou_slot_calendar_schema_rejects_invalid_direction() -> None:
+    """_TOU_SLOT_CALENDAR_SCHEMA rejects invalid direction values."""
+    with pytest.raises(vol.Invalid):
+        _TOU_SLOT_CALENDAR_SCHEMA({"options": {"direction": "wrong", "slot": "peak"}})
+
+
+def test_tou_slot_calendar_schema_rejects_invalid_slot() -> None:
+    """_TOU_SLOT_CALENDAR_SCHEMA rejects invalid slot values."""
+    with pytest.raises(vol.Invalid):
+        _TOU_SLOT_CALENDAR_SCHEMA(
+            {"options": {"direction": "offtake", "slot": "not_a_slot"}}
+        )
+
+
+async def test_calendar_trigger_no_fires_when_entity_registered_but_no_component(
+    hass: HomeAssistant,
+) -> None:
+    """Calendar trigger does not fire when component is absent from hass.data."""
+    # Register entity but omit hass.data[CALENDAR_DOMAIN]: _get_calendar_events
+    # hits the ``component is None`` guard and returns [].
+    entry = _make_entry(hass)
+    ent_reg = er.async_get(hass)
+    ent_reg.async_get_or_create(
+        CALENDAR_DOMAIN,
+        DOMAIN,
+        f"{entry.entry_id}_sub_cal_nocomp",
+        config_entry=entry,
+        suggested_object_id=f"engie_belgium_{_BAN}_nocomp",
+    )
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+    unsub()
+
+
+async def test_calendar_trigger_no_fires_when_entity_not_in_component(
+    hass: HomeAssistant,
+) -> None:
+    """Calendar trigger does not fire when component returns None for get_entity."""
+    entry = _make_entry(hass)
+    ent_reg = er.async_get(hass)
+    ent_reg.async_get_or_create(
+        CALENDAR_DOMAIN,
+        DOMAIN,
+        f"{entry.entry_id}_sub_cal_ghost",
+        config_entry=entry,
+        suggested_object_id=f"engie_belgium_{_BAN}_ghost",
+    )
+
+    # Component is present but get_entity returns None (entity not loaded).
+    mock_component = MagicMock()
+    mock_component.get_entity = MagicMock(return_value=None)
+    hass.data[CALENDAR_DOMAIN] = mock_component
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+    unsub()
+
+
+async def test_calendar_trigger_no_fires_when_get_events_raises(
+    hass: HomeAssistant,
+) -> None:
+    """Calendar trigger does not raise when async_get_events fails."""
+    entry = _make_entry(hass)
+    ent_reg = er.async_get(hass)
+    ent_reg.async_get_or_create(
+        CALENDAR_DOMAIN,
+        DOMAIN,
+        f"{entry.entry_id}_sub_cal_err",
+        config_entry=entry,
+        suggested_object_id=f"engie_belgium_{_BAN}_err",
+    )
+
+    mock_entity = MagicMock()
+    mock_entity.async_get_events = AsyncMock(side_effect=RuntimeError("network error"))
+    mock_component = MagicMock()
+    mock_component.get_entity = MagicMock(return_value=mock_entity)
+    hass.data[CALENDAR_DOMAIN] = mock_component
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    # Should not raise even though async_get_events raises.
+    unsub = await trigger.async_attach_runner(run_action)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+    unsub()
+
+
+async def test_calendar_trigger_async_validate_config(hass: HomeAssistant) -> None:
+    """async_validate_config is callable and returns valid config dict."""
+    result = await CaptarPeakWindowStartedTrigger.async_validate_config(hass, {})
+    assert isinstance(result, dict)

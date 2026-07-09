@@ -24,6 +24,10 @@ if TYPE_CHECKING:
 _BRUSSELS = ZoneInfo(EPEX_TZ)
 _LOOKAHEAD_DAYS = 7
 
+# Public: trigger.py uses this prefix to identify TOU events in the calendar.
+# Full summary format: "TOU: {code} ({direction})" - see _slots_to_events.
+TOU_EVENT_SUMMARY_PREFIX = "TOU:"
+
 
 def tou_slot_events(
     coordinator: EngieBeDataUpdateCoordinator,
