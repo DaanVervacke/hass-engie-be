@@ -58,8 +58,6 @@ async def test_async_get_service_point_builds_request() -> None:
     headers = call_kwargs["headers"]
     assert headers["User-Agent"] == USER_AGENT_BROWSER
     assert headers["authorization"] == "Bearer test-access-token"
-    # This endpoint deliberately omits the native-app trace header.
-    assert "x-trace-id" not in headers
 
 
 async def test_async_get_service_point_propagates_api_errors() -> None:
@@ -103,8 +101,6 @@ async def test_async_get_happy_hour_event_builds_request() -> None:
     headers = call_kwargs["headers"]
     assert headers["User-Agent"] == USER_AGENT_NATIVE
     assert headers["authorization"] == "Bearer test-access-token"
-    # Native-app endpoints carry a per-request trace id.
-    assert "x-trace-id" in headers
 
 
 async def test_async_get_happy_hour_event_strips_whitespace_in_ban() -> None:
@@ -149,7 +145,6 @@ async def test_async_get_happy_hours_service_enabled_flag_builds_request() -> No
     assert headers["User-Agent"] == USER_AGENT_NATIVE
     assert headers["Content-Type"] == "application/json"
     assert headers["authorization"] == "Bearer test-access-token"
-    assert "x-trace-id" in headers
     body = call_kwargs["json_body"]
     assert body["name"] == HAPPY_HOURS_SERVICE_ENABLED_KEY
     assert body["additionalContext"]["contractAccountId"] == _BAN

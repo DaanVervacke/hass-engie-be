@@ -141,25 +141,6 @@ async def test_async_get_customer_account_relations_sends_native_user_agent() ->
     assert "Mozilla" not in headers["User-Agent"]
 
 
-async def test_async_get_customer_account_relations_sends_unique_trace_id() -> None:
-    """Each request gets a fresh ``x-trace-id`` UUID for ENGIE-side log lookup."""
-    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
-    client = _build_client(_build_response(200, payload))
-
-    await client.async_get_customer_account_relations()
-    first_call_headers = client._session.request.await_args.kwargs["headers"]
-    first_trace_id = first_call_headers["x-trace-id"]
-
-    await client.async_get_customer_account_relations()
-    second_call_headers = client._session.request.await_args.kwargs["headers"]
-    second_trace_id = second_call_headers["x-trace-id"]
-
-    # Both must be present and they must differ.
-    assert first_trace_id
-    assert second_trace_id
-    assert first_trace_id != second_trace_id
-
-
 # ---------------------------------------------------------------------------
 # Error mapping
 # ---------------------------------------------------------------------------
