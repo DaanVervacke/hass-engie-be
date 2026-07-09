@@ -1,0 +1,162 @@
+# Shared anchors - reused across condition entries below.
+
+.condition_behavior: &condition_behavior
+  required: true
+  default: any
+  selector:
+    automation_behavior:
+      mode: condition
+
+.condition_for: &condition_for
+  required: true
+  default: 00:00:00
+  selector:
+    duration:
+
+# Entity-target anchors.  The integration: filter narrows the picker to
+# engie_be-owned entities; primary_entities_only: false ensures entities that
+# are disabled-by-default still appear.
+
+.target_engie_binary_sensor: &target_engie_binary_sensor
+  entity:
+    - integration: engie_be
+      domain: binary_sensor
+  primary_entities_only: false
+
+.target_engie_sensor: &target_engie_sensor
+  entity:
+    - integration: engie_be
+      domain: sensor
+  primary_entities_only: false
+
+# Numerical threshold selector helpers.
+
+.epex_threshold_entity: &epex_threshold_entity
+  - integration: engie_be
+    domain: sensor
+
+.epex_threshold_number: &epex_threshold_number
+  min: -1
+  max: 1
+  mode: box
+  unit_of_measurement: EUR/kWh
+
+.captar_threshold_number: &captar_threshold_number
+  min: 0
+  max: 15
+  mode: box
+  unit_of_measurement: kW
+
+# ---------------------------------------------------------------------------
+# Binary "is" conditions - check a binary sensor is on
+# ---------------------------------------------------------------------------
+
+epex_price_is_negative:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *condition_behavior
+    for: *condition_for
+
+offtake_is_optimal:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *condition_behavior
+    for: *condition_for
+
+injection_is_optimal:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *condition_behavior
+    for: *condition_for
+
+happy_hours_is_active:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *condition_behavior
+    for: *condition_for
+
+# ---------------------------------------------------------------------------
+# Enum "is at" conditions - check a sensor matches a chosen option
+# ---------------------------------------------------------------------------
+
+solar_surplus_is_at_level:
+  target: *target_engie_sensor
+  fields:
+    level:
+      required: true
+      selector:
+        select:
+          translation_key: solar_surplus_level
+          options:
+            - no_data
+            - no_surplus
+            - minimal_surplus
+            - low_surplus
+            - high_surplus
+
+offtake_slot_is:
+  target: *target_engie_sensor
+  fields:
+    slot:
+      required: true
+      selector:
+        select:
+          translation_key: tou_slot_code
+          options:
+            - peak
+            - offpeak
+            - superoffpeak
+            - exclusive_night
+            - day
+
+injection_slot_is:
+  target: *target_engie_sensor
+  fields:
+    slot:
+      required: true
+      selector:
+        select:
+          translation_key: tou_slot_code
+          options:
+            - peak
+            - offpeak
+            - superoffpeak
+            - exclusive_night
+            - day
+
+# ---------------------------------------------------------------------------
+# Numerical threshold conditions
+# ---------------------------------------------------------------------------
+
+epex_price_is_below_threshold:
+  target: *target_engie_sensor
+  fields:
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: is
+          number: *epex_threshold_number
+
+epex_price_is_above_threshold:
+  target: *target_engie_sensor
+  fields:
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: is
+          number: *epex_threshold_number
+
+captar_peak_is_above_threshold:
+  target: *target_engie_sensor
+  fields:
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: is
+          number: *captar_threshold_number
