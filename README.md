@@ -48,12 +48,11 @@ exposes its EAN, the validity window, and the applicable VAT rate as
 attributes. Every sensor below is also available as an `_excl_vat` variant
 (same name, `_excl_vat` suffix on both the entity ID and the friendly name).
 
-> Every entity ID created by the integration is prefixed with the
-> business-agreement number (BAN) of the business agreement it belongs
-> to. For example: `sensor.engie_belgium_002200001234_gas_offtake_price`.
-> The bare `sensor.engie_belgium_*` IDs shown in the tables below are
-> illustrative. Replace `engie_belgium_` with `engie_belgium_{your_business_agreement_number}_`
-> when referencing a sensor in automations or dashboards. The BAN is
+> Entity IDs shown in the tables and examples below use two
+> placeholders: `{BAN}` for the 12-digit business-agreement number and
+> `{EAN}` for the 18-digit meter identifier (used by per-meter sensors
+> like solar surplus and TOU slots). Substitute your own values when
+> referencing a sensor in automations or dashboards. Both values are
 > visible in **Developer tools** > **States** and in the device name
 > in **Settings** > **Devices & services**.
 
@@ -63,7 +62,7 @@ Gas contracts are always single-rate.
 
 | Sensor | Entity ID |
 |---|---|
-| Gas offtake price | `sensor.engie_belgium_gas_offtake_price` |
+| Gas offtake price | `sensor.engie_belgium_{BAN}_gas_offtake_price` |
 
 ### Electricity: single-rate
 
@@ -71,8 +70,8 @@ Created when your contract has a single electricity rate.
 
 | Sensor | Entity ID |
 |---|---|
-| Electricity offtake price | `sensor.engie_belgium_electricity_offtake_price` |
-| Electricity injection price | `sensor.engie_belgium_electricity_injection_price` |
+| Electricity offtake price | `sensor.engie_belgium_{BAN}_electricity_offtake_price` |
+| Electricity injection price | `sensor.engie_belgium_{BAN}_electricity_injection_price` |
 
 ### Electricity: dual-rate (peak / off-peak)
 
@@ -81,10 +80,10 @@ the single-rate sensors above for that meter.
 
 | Sensor | Entity ID |
 |---|---|
-| Electricity peak offtake price | `sensor.engie_belgium_electricity_peak_offtake_price` |
-| Electricity off-peak offtake price | `sensor.engie_belgium_electricity_off_peak_offtake_price` |
-| Electricity peak injection price | `sensor.engie_belgium_electricity_peak_injection_price` |
-| Electricity off-peak injection price | `sensor.engie_belgium_electricity_off_peak_injection_price` |
+| Electricity peak offtake price | `sensor.engie_belgium_{BAN}_electricity_peak_offtake_price` |
+| Electricity off-peak offtake price | `sensor.engie_belgium_{BAN}_electricity_off_peak_offtake_price` |
+| Electricity peak injection price | `sensor.engie_belgium_{BAN}_electricity_peak_injection_price` |
+| Electricity off-peak injection price | `sensor.engie_belgium_{BAN}_electricity_off_peak_injection_price` |
 
 ### Electricity: tri-rate (peak / off-peak / super off-peak)
 
@@ -92,12 +91,12 @@ Created when your contract has three time-of-use rates.
 
 | Sensor | Entity ID |
 |---|---|
-| Electricity peak offtake price | `sensor.engie_belgium_electricity_peak_offtake_price` |
-| Electricity off-peak offtake price | `sensor.engie_belgium_electricity_off_peak_offtake_price` |
-| Electricity super off-peak offtake price | `sensor.engie_belgium_electricity_super_off_peak_offtake_price` |
-| Electricity peak injection price | `sensor.engie_belgium_electricity_peak_injection_price` |
-| Electricity off-peak injection price | `sensor.engie_belgium_electricity_off_peak_injection_price` |
-| Electricity super off-peak injection price | `sensor.engie_belgium_electricity_super_off_peak_injection_price` |
+| Electricity peak offtake price | `sensor.engie_belgium_{BAN}_electricity_peak_offtake_price` |
+| Electricity off-peak offtake price | `sensor.engie_belgium_{BAN}_electricity_off_peak_offtake_price` |
+| Electricity super off-peak offtake price | `sensor.engie_belgium_{BAN}_electricity_super_off_peak_offtake_price` |
+| Electricity peak injection price | `sensor.engie_belgium_{BAN}_electricity_peak_injection_price` |
+| Electricity off-peak injection price | `sensor.engie_belgium_{BAN}_electricity_off_peak_injection_price` |
+| Electricity super off-peak injection price | `sensor.engie_belgium_{BAN}_electricity_super_off_peak_injection_price` |
 
 > Injection sensors are only created when injection data is present.
 
@@ -109,10 +108,10 @@ data is available.
 
 | Sensor | Entity ID | Description |
 |---|---|---|
-| Captar monthly peak power | `sensor.engie_belgium_captar_monthly_peak_power` | Highest 15-minute average power for the month, in kW |
-| Captar monthly peak energy | `sensor.engie_belgium_captar_monthly_peak_energy` | Energy consumed during that 15-minute window, in kWh |
-| Captar monthly peak start | `sensor.engie_belgium_captar_monthly_peak_start` | Start of the 15-minute peak window |
-| Captar monthly peak end | `sensor.engie_belgium_captar_monthly_peak_end` | End of the 15-minute peak window |
+| Captar monthly peak power | `sensor.engie_belgium_{BAN}_captar_monthly_peak_power` | Highest 15-minute average power for the month, in kW |
+| Captar monthly peak energy | `sensor.engie_belgium_{BAN}_captar_monthly_peak_energy` | Energy consumed during that 15-minute window, in kWh |
+| Captar monthly peak start | `sensor.engie_belgium_{BAN}_captar_monthly_peak_start` | Start of the 15-minute peak window |
+| Captar monthly peak end | `sensor.engie_belgium_{BAN}_captar_monthly_peak_end` | End of the 15-minute peak window |
 
 ENGIE only publishes a peak after the first 15-minute peak of the month is
 recorded, so the current month is empty for the first day or so. Until then,
@@ -132,10 +131,10 @@ endpoint.
 
 | Sensor | Entity ID |
 |---|---|
-| EPEX current price | `sensor.engie_belgium_epex_current_price` |
-| EPEX next hour price | `sensor.engie_belgium_epex_next_hour_price` |
-| EPEX lowest price today | `sensor.engie_belgium_epex_lowest_price_today` |
-| EPEX highest price today | `sensor.engie_belgium_epex_highest_price_today` |
+| EPEX current price | `sensor.engie_belgium_{BAN}_epex_current_price` |
+| EPEX next hour price | `sensor.engie_belgium_{BAN}_epex_next_hour_price` |
+| EPEX lowest price today | `sensor.engie_belgium_{BAN}_epex_lowest_price_today` |
+| EPEX highest price today | `sensor.engie_belgium_{BAN}_epex_highest_price_today` |
 
 All four sensors are in **EUR/kWh** (4 decimals). Tomorrow's prices appear
 once ENGIE publishes them, typically shortly after 13:15 Europe/Brussels.
@@ -152,7 +151,7 @@ header:
   show: true
   title: EPEX day-ahead (today)
 series:
-  - entity: sensor.engie_belgium_epex_current_price
+  - entity: sensor.engie_belgium_{BAN}_epex_current_price
     type: column
     data_generator: |
       return entity.attributes.today.map(s => [new Date(s.start).getTime(), s.value]);
@@ -161,7 +160,7 @@ series:
 > Wholesale prices can be **negative** during periods of oversupply. This is
 > reported faithfully.
 
-A binary sensor `binary_sensor.engie_belgium_epex_price_is_negative` turns on
+A binary sensor `binary_sensor.engie_belgium_{BAN}_epex_price_is_negative` turns on
 when the current wholesale slot has a negative price, so you can build simple
 state-based automations without a template.
 
@@ -174,15 +173,15 @@ in the Happy Hours program.
 
 | Entity | Entity ID |
 |---|---|
-| Happy Hours is active | `binary_sensor.engie_belgium_happy_hours_active` |
-| Happy Hours next start | `sensor.engie_belgium_happy_hours_next_start` |
-| Happy Hours next end | `sensor.engie_belgium_happy_hours_next_end` |
-| Happy Hours monthly consumption | `sensor.engie_belgium_happy_hours_month_consumption` |
-| Happy Hours eligible hours this month | `sensor.engie_belgium_happy_hours_month_eligible_hours` |
-| Happy Hours monthly reward | `sensor.engie_belgium_happy_hours_month_reward` |
-| Happy Hours monthly consumption vs last month | `sensor.engie_belgium_happy_hours_month_consumption_change` |
-| Happy Hours eligible hours vs last month | `sensor.engie_belgium_happy_hours_month_eligible_hours_change` |
-| Happy Hours monthly reward vs last month | `sensor.engie_belgium_happy_hours_month_reward_change` |
+| Happy Hours is active | `binary_sensor.engie_belgium_{BAN}_happy_hours_active` |
+| Happy Hours next start | `sensor.engie_belgium_{BAN}_happy_hours_next_start` |
+| Happy Hours next end | `sensor.engie_belgium_{BAN}_happy_hours_next_end` |
+| Happy Hours monthly consumption | `sensor.engie_belgium_{BAN}_happy_hours_month_consumption` |
+| Happy Hours eligible hours this month | `sensor.engie_belgium_{BAN}_happy_hours_month_eligible_hours` |
+| Happy Hours monthly reward | `sensor.engie_belgium_{BAN}_happy_hours_month_reward` |
+| Happy Hours monthly consumption vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_consumption_change` |
+| Happy Hours eligible hours vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_eligible_hours_change` |
+| Happy Hours monthly reward vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_reward_change` |
 
 The binary sensor is `on` while the current moment falls inside a scheduled
 window, and `off` otherwise. The three monthly-summary sensors show your
@@ -227,11 +226,11 @@ ENGIE returns forecast data:
 
 | Sensor | Entity ID |
 |---|---|
-| Solar surplus forecast (today's level) | `sensor.engie_belgium_{EAN}_solar_surplus_forecast` |
-| Solar surplus current hour (kWh) | `sensor.engie_belgium_{EAN}_solar_surplus_current` |
-| Solar surplus next hour (kWh) | `sensor.engie_belgium_{EAN}_solar_surplus_next_hour` |
-| Solar surplus total today (kWh) | `sensor.engie_belgium_{EAN}_solar_surplus_today_total` |
-| Solar surplus peak today (kWh) | `sensor.engie_belgium_{EAN}_solar_surplus_today_peak` |
+| Solar surplus forecast (today's level) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_forecast` |
+| Solar surplus current hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_current` |
+| Solar surplus next hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_next_hour` |
+| Solar surplus total today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_total` |
+| Solar surplus peak today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_peak` |
 
 The level sensor's state is the aggregate level for the current day and
 takes one of five values: `no_data`, `no_surplus`, `minimal_surplus`,
@@ -335,7 +334,7 @@ Example automation: run the dishwasher when it is optimal to consume:
 automation:
   trigger:
     - platform: state
-      entity_id: binary_sensor.engie_belgium_000000000000_541448820070000000_tou_offtake_is_optimal
+      entity_id: binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal
       to: "on"
   action:
     - service: switch.turn_on
@@ -404,7 +403,7 @@ the editor without a code change.
 
 ### Authentication
 
-A binary connectivity sensor (`binary_sensor.engie_belgium_authentication`)
+A binary connectivity sensor (`binary_sensor.engie_belgium_{BAN}_authentication`)
 shows whether the integration is currently authenticated with the ENGIE API.
 
 ## Prerequisites
@@ -622,7 +621,7 @@ automation:
   alias: "Start dishwasher on Happy Hours"
   trigger:
     - platform: state
-      entity_id: binary_sensor.engie_belgium_002200001234_happy_hours_active
+      entity_id: binary_sensor.engie_belgium_{BAN}_happy_hours_active
       to: "on"
   action:
     - service: switch.turn_on
@@ -637,7 +636,7 @@ automation:
   alias: "Charge car when electricity price is negative"
   trigger:
     - platform: state
-      entity_id: binary_sensor.engie_belgium_002200001234_epex_price_is_negative
+      entity_id: binary_sensor.engie_belgium_{BAN}_epex_price_is_negative
       to: "on"
   action:
     - service: switch.turn_on
@@ -654,19 +653,16 @@ automation:
   trigger:
     - platform: template
       value_template: >
-        {{ state_attr('sensor.engie_belgium_002200001234_epex_current_price', 'tomorrow') | length > 0 }}
+        {{ state_attr('sensor.engie_belgium_{BAN}_epex_current_price', 'tomorrow') | length > 0 }}
   action:
     - service: notify.mobile_app
       data:
         title: "Tomorrow's electricity prices available"
         message: >
           Cheapest slot tomorrow:
-          {{ state_attr('sensor.engie_belgium_002200001234_epex_current_price', 'tomorrow')
+          {{ state_attr('sensor.engie_belgium_{BAN}_epex_current_price', 'tomorrow')
              | sort(attribute='value') | first | to_json }}
 ```
-
-> Replace `002200001234` with your actual business-agreement number (visible in
-> **Developer tools** > **States** after the integration is set up).
 
 ## Known limitations
 
