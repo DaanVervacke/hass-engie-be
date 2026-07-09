@@ -180,9 +180,9 @@ in the Happy Hours program.
 | Happy Hours monthly consumption | `sensor.engie_belgium_happy_hours_month_consumption` |
 | Happy Hours eligible hours this month | `sensor.engie_belgium_happy_hours_month_eligible_hours` |
 | Happy Hours monthly reward | `sensor.engie_belgium_happy_hours_month_reward` |
-| Happy Hours monthly consumption vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_consumption_change` |
-| Happy Hours eligible hours vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_eligible_hours_change` |
-| Happy Hours monthly reward vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_reward_change` |
+| Happy Hours monthly consumption vs last month | `sensor.engie_belgium_happy_hours_month_consumption_change` |
+| Happy Hours eligible hours vs last month | `sensor.engie_belgium_happy_hours_month_eligible_hours_change` |
+| Happy Hours monthly reward vs last month | `sensor.engie_belgium_happy_hours_month_reward_change` |
 
 The binary sensor is `on` while the current moment falls inside a scheduled
 window, and `off` otherwise. The three monthly-summary sensors show your
