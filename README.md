@@ -33,7 +33,7 @@ as sensors, binary sensors, and calendar events.
   - [Electricity: single-rate](#electricity-single-rate)
   - [Electricity: dual-rate (peak / off-peak)](#electricity-dual-rate-peak--off-peak)
   - [Electricity: tri-rate (peak / off-peak / super off-peak)](#electricity-tri-rate-peak--off-peak--super-off-peak)
-  - [Dynamic tariff (EPEX-indexed)](#dynamic-tariff-epex-indexed)
+  - [Electricity: dynamic tariff (EPEX-indexed)](#electricity-dynamic-tariff-epex-indexed)
   - [Capacity tariff (captar)](#capacity-tariff-captar)
   - [Happy Hours](#happy-hours)
   - [Solar Surplus](#solar-surplus)
@@ -133,7 +133,7 @@ Created when your contract has three time-of-use rates.
 
 > Injection sensors are only created when injection data is present.
 
-### Dynamic tariff (EPEX-indexed)
+### Electricity: dynamic tariff (EPEX-indexed)
 
 Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get four
 sensors that surface day-ahead wholesale prices from the public EPEX
@@ -456,7 +456,7 @@ options track `SOLAR_SURPLUS_LEVELS` and `TOU_SLOT_CODES` in
 `const.py` automatically, so new codes added by ENGIE appear in
 the editor without a code change.
 
-### Examples
+### YAML-based examples
 
 #### Run the dishwasher during Happy Hours
 
