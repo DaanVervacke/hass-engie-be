@@ -412,13 +412,13 @@ and pick your ENGIE device under "When" (triggers) or "And if"
 [conditions](https://www.home-assistant.io/docs/automation/condition/)
 for the general automation model.
 
-### Triggers (29)
+### Triggers
 
 Each trigger targets a specific ENGIE entity (binary sensor, sensor,
 or calendar). Pick that entity in the "When" step of the automation
 editor.
 
-**State-transition triggers (10)**:
+**State-transition triggers**:
 
 | Trigger | Fires when |
 |---|---|
@@ -433,7 +433,7 @@ editor.
 | Authentication lost | Integration reports a lost session with ENGIE |
 | Authentication restored | Integration reports a re-established session with ENGIE |
 
-**Enum-change triggers (6)**:
+**Enum-change triggers**:
 
 | Trigger | Fires when |
 |---|---|
@@ -444,7 +444,7 @@ editor.
 | Offtake slot became `<code>` | Current offtake slot enters a chosen code |
 | Injection slot became `<code>` | Current injection slot enters a chosen code |
 
-**Threshold triggers (5)**:
+**Threshold triggers**:
 
 | Trigger | Fires when |
 |---|---|
@@ -454,7 +454,7 @@ editor.
 | Solar surplus next hour crossed threshold | Next-hour surplus crosses a chosen kWh threshold |
 | Captar peak crossed threshold | Monthly captar peak crosses a chosen kW threshold |
 
-**Value-update triggers (3)**:
+**Value-update triggers**:
 
 | Trigger | Fires when |
 |---|---|
@@ -462,7 +462,7 @@ editor.
 | EPEX high today updated | Highest EPEX price of today changes |
 | EPEX low today updated | Lowest EPEX price of today changes |
 
-**Calendar-slot triggers (5)**:
+**Calendar-slot triggers**:
 
 | Trigger | Fires when |
 |---|---|
@@ -472,7 +472,7 @@ editor.
 | Happy Hours window ended | At the end of a scheduled Happy Hours window |
 | TOU slot started | At the start of a chosen TOU slot for a chosen direction |
 
-### Conditions (10)
+### Conditions
 
 - **Binary state**: EPEX price is negative, offtake is optimal,
   injection is optimal, Happy Hours is active.
