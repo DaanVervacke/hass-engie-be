@@ -1,4 +1,11 @@
 {
+    "common": {
+        "trigger_threshold_name": "Threshold",
+        "trigger_slot_name": "Slot code",
+        "trigger_slot_description": "The TOU slot code to wait for.",
+        "condition_threshold_name": "Threshold",
+        "condition_slot_name": "Slot code"
+    },
     "config": {
         "step": {
             "user": {

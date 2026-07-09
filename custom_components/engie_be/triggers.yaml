@@ -14,26 +14,37 @@
     duration:
 
 # Entity-target anchors.  The integration: filter narrows the picker to
-# engie_be-owned entities; primary_entities_only: false ensures entities that
-# are disabled-by-default still appear.
+# engie_be-owned entities.
+#
+# Two binary-sensor anchors are needed:
+#   - _diagnostic: sets primary_entities_only: false so that the
+#     authentication entity (EntityCategory.DIAGNOSTIC) is reachable
+#     via device / area / floor target expansion.
+#   - (default): omits the key so HA defaults to True; used for all
+#     non-diagnostic binary sensors (EPEX, offtake, injection, happy-hours).
+# Sensor and calendar anchors also omit the key (default True) because
+# none of the targeted sensors are diagnostic.
 
-.target_engie_binary_sensor: &target_engie_binary_sensor
+.target_engie_binary_sensor_diagnostic: &target_engie_binary_sensor_diagnostic
   entity:
     - integration: engie_be
       domain: binary_sensor
   primary_entities_only: false
 
+.target_engie_binary_sensor: &target_engie_binary_sensor
+  entity:
+    - integration: engie_be
+      domain: binary_sensor
+
 .target_engie_sensor: &target_engie_sensor
   entity:
     - integration: engie_be
       domain: sensor
-  primary_entities_only: false
 
 .target_engie_calendar: &target_engie_calendar
   entity:
     - integration: engie_be
       domain: calendar
-  primary_entities_only: false
 
 # Numerical threshold selectors for each sensor type.
 
@@ -112,13 +123,13 @@ happy_hours_became_inactive:
     for: *trigger_for
 
 authentication_lost:
-  target: *target_engie_binary_sensor
+  target: *target_engie_binary_sensor_diagnostic
   fields:
     behavior: *trigger_behavior
     for: *trigger_for
 
 authentication_restored:
-  target: *target_engie_binary_sensor
+  target: *target_engie_binary_sensor_diagnostic
   fields:
     behavior: *trigger_behavior
     for: *trigger_for
