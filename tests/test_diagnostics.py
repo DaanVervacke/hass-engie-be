@@ -551,7 +551,7 @@ def _solar_coord_from_wrapper(wrapper: object) -> MagicMock:
 
 def test_summarise_solar_surplus_returns_none_for_missing_wrapper() -> None:
     """No wrapper -> None (so top-level key is present but empty)."""
-    # coordinator.data is not a dict - solar_surplus_payload returns None
+    # coordinator.data is not a dict - unwrap_dict_payload returns None
     coord_no_data = MagicMock()
     coord_no_data.data = None
     assert _summarise_solar_surplus(coord_no_data) is None
