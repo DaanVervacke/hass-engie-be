@@ -23,6 +23,7 @@ from .const import (
     LOGGER,
     SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+    TRANSLATION_KEY_EPEX_NEGATIVE,
 )
 from .entity import (
     EngieBeAuthEntity,
@@ -59,8 +60,8 @@ AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
 # downstream automations don't fire on stale data.  Fixed-tariff
 # accounts never get the entity at all.
 EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
-    key="epex_negative",
-    translation_key="epex_negative",
+    key=TRANSLATION_KEY_EPEX_NEGATIVE,
+    translation_key=TRANSLATION_KEY_EPEX_NEGATIVE,
 )
 
 # Happy Hours active indicator.
