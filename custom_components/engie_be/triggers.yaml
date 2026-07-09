@@ -70,6 +70,13 @@
   mode: box
   unit_of_measurement: kW
 
+.tou_slot_options: &tou_slot_options
+  - peak
+  - offpeak
+  - superoffpeak
+  - exclusive_night
+  - day
+
 # ---------------------------------------------------------------------------
 # Binary transitions - fire on a specific edge of a binary sensor
 # ---------------------------------------------------------------------------
@@ -174,12 +181,7 @@ offtake_slot_became:
       selector:
         select:
           translation_key: tou_slot_code
-          options:
-            - peak
-            - offpeak
-            - superoffpeak
-            - exclusive_night
-            - day
+          options: *tou_slot_options
 
 injection_slot_became:
   target: *target_engie_sensor
@@ -189,12 +191,7 @@ injection_slot_became:
       selector:
         select:
           translation_key: tou_slot_code
-          options:
-            - peak
-            - offpeak
-            - superoffpeak
-            - exclusive_night
-            - day
+          options: *tou_slot_options
 
 # ---------------------------------------------------------------------------
 # Numerical threshold triggers
@@ -310,9 +307,4 @@ tou_slot_started:
       selector:
         select:
           translation_key: tou_slot_code
-          options:
-            - peak
-            - offpeak
-            - superoffpeak
-            - exclusive_night
-            - day
+          options: *tou_slot_options
