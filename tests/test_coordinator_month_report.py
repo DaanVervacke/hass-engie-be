@@ -36,6 +36,8 @@ from custom_components.engie_be.coordinator import EngieBeDataUpdateCoordinator
 from custom_components.engie_be.data import EngieBeData, EngieBeSubentryData
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
 
@@ -113,45 +115,19 @@ def _wire_runtime(
     )
 
 
-def _make_client(
-    *,
-    flags: dict | Exception,
-    month_report: dict | Exception | None = None,
-) -> MagicMock:
-    client = MagicMock()
-    client.async_get_prices = AsyncMock(return_value=_load(_PRICES_FIXTURE))
-    client.async_get_monthly_peaks = AsyncMock(return_value=_load(_PEAKS_FIXTURE))
-
-    if isinstance(flags, Exception):
-        client.async_get_happy_hours_service_enabled_flag = AsyncMock(side_effect=flags)
-    else:
-        client.async_get_happy_hours_service_enabled_flag = AsyncMock(
-            return_value=flags
-        )
-
-    client.async_get_happy_hour_event = AsyncMock(return_value={})
-
-    if isinstance(month_report, Exception):
-        client.async_get_month_report = AsyncMock(side_effect=month_report)
-    else:
-        client.async_get_month_report = AsyncMock(
-            return_value=month_report
-            if month_report is not None
-            else _load(_MONTH_REPORT_FIXTURE)
-        )
-    return client
-
-
 # ---------------------------------------------------------------------------
 # Gate: only enrolled BANs trigger the month-report fetch
 # ---------------------------------------------------------------------------
 
 
-async def test_un_enrolled_ban_skips_month_report_fetch(hass: HomeAssistant) -> None:
+async def test_un_enrolled_ban_skips_month_report_fetch(
+    hass: HomeAssistant,
+    engie_client_baseline: Callable,
+) -> None:
     """An un-enrolled BAN must never call async_get_month_report."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
-    client = _make_client(flags=_load(_FLAGS_NOT_ENROLLED))
+    client = engie_client_baseline(happy_hours_flag=_load(_FLAGS_NOT_ENROLLED))
     coord = _coordinator(hass, entry, sub)
     _wire_runtime(entry, client, coord, sub)
 
@@ -161,11 +137,17 @@ async def test_un_enrolled_ban_skips_month_report_fetch(hass: HomeAssistant) -> 
     client.async_get_month_report.assert_not_awaited()
 
 
-async def test_enrolled_ban_fetches_month_report(hass: HomeAssistant) -> None:
+async def test_enrolled_ban_fetches_month_report(
+    hass: HomeAssistant,
+    engie_client_baseline: Callable,
+) -> None:
     """An enrolled BAN must call async_get_month_report and store the wrapper."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
-    client = _make_client(flags=_load(_FLAGS_ENROLLED))
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        month_report=_load(_MONTH_REPORT_FIXTURE),
+    )
     coord = _coordinator(hass, entry, sub)
     _wire_runtime(entry, client, coord, sub)
 
@@ -183,7 +165,10 @@ async def test_enrolled_ban_fetches_month_report(hass: HomeAssistant) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_month_report_api_error_keeps_last_known(hass: HomeAssistant) -> None:
+async def test_month_report_api_error_keeps_last_known(
+    hass: HomeAssistant,
+    engie_client_baseline: Callable,
+) -> None:
     """A transient API error keeps prior data with is_fallback=True."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
@@ -194,8 +179,8 @@ async def test_month_report_api_error_keeps_last_known(hass: HomeAssistant) -> N
         "month": 6,
         "is_fallback": False,
     }
-    client = _make_client(
-        flags=_load(_FLAGS_ENROLLED),
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
         month_report=EngieBeApiClientError("timeout"),
     )
     coord = _coordinator(hass, entry, sub)
@@ -216,11 +201,15 @@ async def test_month_report_api_error_keeps_last_known(hass: HomeAssistant) -> N
 
 async def test_month_report_wrapper_has_is_fallback_on_success(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """A successful fetch wraps is_fallback=False with current year/month."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
-    client = _make_client(flags=_load(_FLAGS_ENROLLED))
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        month_report=_load(_MONTH_REPORT_FIXTURE),
+    )
     coord = _coordinator(hass, entry, sub)
     _wire_runtime(entry, client, coord, sub)
 
@@ -234,12 +223,13 @@ async def test_month_report_wrapper_has_is_fallback_on_success(
 
 async def test_month_report_api_error_with_no_prior_wrapper(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """When there is no prior wrapper and the API errors, the key is absent."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
-    client = _make_client(
-        flags=_load(_FLAGS_ENROLLED),
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
         month_report=EngieBeApiClientError("timeout"),
     )
     coord = _coordinator(hass, entry, sub)
@@ -255,12 +245,15 @@ async def test_month_report_api_error_with_no_prior_wrapper(
 # ---------------------------------------------------------------------------
 
 
-async def test_month_report_auth_failure_escalates(hass: HomeAssistant) -> None:
+async def test_month_report_auth_failure_escalates(
+    hass: HomeAssistant,
+    engie_client_baseline: Callable,
+) -> None:
     """An auth error from the month-report endpoint raises ConfigEntryAuthFailed."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
-    client = _make_client(
-        flags=_load(_FLAGS_ENROLLED),
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
         month_report=EngieBeApiClientAuthenticationError("token expired"),
     )
     coord = _coordinator(hass, entry, sub)
@@ -275,11 +268,14 @@ async def test_month_report_auth_failure_escalates(hass: HomeAssistant) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_month_report_non_dict_response_stores_none(hass: HomeAssistant) -> None:
+async def test_month_report_non_dict_response_stores_none(
+    hass: HomeAssistant,
+    engie_client_baseline: Callable,
+) -> None:
     """A non-dict API response stores data=None in the wrapper."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
-    client = _make_client(flags=_load(_FLAGS_ENROLLED), month_report=None)
+    client = engie_client_baseline(happy_hours_flag=_load(_FLAGS_ENROLLED))
     # Force the mock to return a non-dict value (list)
     client.async_get_month_report = AsyncMock(return_value=["unexpected"])
     coord = _coordinator(hass, entry, sub)
@@ -297,11 +293,17 @@ async def test_month_report_non_dict_response_stores_none(hass: HomeAssistant) -
 # ---------------------------------------------------------------------------
 
 
-async def test_current_month_present_is_fallback_false(hass: HomeAssistant) -> None:
+async def test_current_month_present_is_fallback_false(
+    hass: HomeAssistant,
+    engie_client_baseline: Callable,
+) -> None:
     """When current month has happyHour data, wrapper is is_fallback=False."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
-    client = _make_client(flags=_load(_FLAGS_ENROLLED))
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        month_report=_load(_MONTH_REPORT_FIXTURE),
+    )
     coord = _coordinator(hass, entry, sub)
     _wire_runtime(entry, client, coord, sub)
 
@@ -316,12 +318,18 @@ async def test_current_month_present_is_fallback_false(hass: HomeAssistant) -> N
     assert isinstance(wrapper["data"].get("month"), dict)
 
 
-async def test_current_month_absent_history_has_fallback(hass: HomeAssistant) -> None:
+async def test_current_month_absent_history_has_fallback(
+    hass: HomeAssistant,
+    engie_client_baseline: Callable,
+) -> None:
     """When current month has no happyHour, the most-recent history entry is used."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
     no_current = _load(_MONTH_REPORT_NO_CURRENT_FIXTURE)
-    client = _make_client(flags=_load(_FLAGS_ENROLLED), month_report=no_current)
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        month_report=no_current,
+    )
     coord = _coordinator(hass, entry, sub)
     _wire_runtime(entry, client, coord, sub)
 
@@ -342,6 +350,7 @@ async def test_current_month_absent_history_has_fallback(hass: HomeAssistant) ->
 
 async def test_current_month_absent_history_empty_no_happy_hour(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """When no history entry has happyHour data, the key is absent."""
     entry = _build_entry(hass)
@@ -355,7 +364,10 @@ async def test_current_month_absent_history_empty_no_happy_hour(
             {"yearMonth": "2026-04", "happyHour": None},
         ],
     }
-    client = _make_client(flags=_load(_FLAGS_ENROLLED), month_report=no_data_response)
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        month_report=no_data_response,
+    )
     coord = _coordinator(hass, entry, sub)
     _wire_runtime(entry, client, coord, sub)
 
@@ -366,12 +378,16 @@ async def test_current_month_absent_history_empty_no_happy_hour(
 
 async def test_current_month_absent_history_completely_empty(
     hass: HomeAssistant,
+    engie_client_baseline: Callable,
 ) -> None:
     """When history is empty and current month has no happyHour, key is absent."""
     entry = _build_entry(hass)
     sub = _subentry(entry)
     no_data_response = {"month": {}, "history": []}
-    client = _make_client(flags=_load(_FLAGS_ENROLLED), month_report=no_data_response)
+    client = engie_client_baseline(
+        happy_hours_flag=_load(_FLAGS_ENROLLED),
+        month_report=no_data_response,
+    )
     coord = _coordinator(hass, entry, sub)
     _wire_runtime(entry, client, coord, sub)
 

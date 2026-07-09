@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -22,9 +22,6 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 _FIXTURES = Path(__file__).parent / "fixtures"
-_PRICES = _FIXTURES / "prices_sample.json"
-_PEAKS = _FIXTURES / "peaks_2026_04.json"
-_FLAGS_NOT_ENROLLED = _FIXTURES / "feature_flags_not_enrolled.json"
 _SOLAR_NO_DATA = _FIXTURES / "solar_surplus_no_data.json"
 _SOLAR_HIGH = _FIXTURES / "solar_surplus_high.json"
 
@@ -38,57 +35,20 @@ def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _make_client(
-    *,
-    solar_payload: dict | Exception,
-    solar_flag: dict | Exception | None = None,
-    happy_hour_enrolled: bool = False,
-    happy_hour_event: dict | None = None,
-) -> MagicMock:
-    """Build a client mock primed for a full coordinator refresh."""
-    client = MagicMock()
-    client.async_get_prices = AsyncMock(return_value=_load(_PRICES))
-    client.async_get_monthly_peaks = AsyncMock(return_value=_load(_PEAKS))
-    if happy_hour_enrolled:
-        client.async_get_happy_hours_service_enabled_flag = AsyncMock(
-            return_value={"value": True},
-        )
-    else:
-        client.async_get_happy_hours_service_enabled_flag = AsyncMock(
-            return_value=_load(_FLAGS_NOT_ENROLLED),
-        )
-    client.async_get_happy_hour_event = AsyncMock(
-        return_value=happy_hour_event if happy_hour_event is not None else {},
-    )
-    client.async_get_month_report = AsyncMock(return_value={})
-    flag_value = solar_flag if solar_flag is not None else {"value": True}
-    if isinstance(flag_value, Exception):
-        client.async_get_solar_surplus_shown_dashboard_flag = AsyncMock(
-            side_effect=flag_value,
-        )
-    else:
-        client.async_get_solar_surplus_shown_dashboard_flag = AsyncMock(
-            return_value=flag_value,
-        )
-    if isinstance(solar_payload, Exception):
-        client.async_get_solar_surplus_forecasts = AsyncMock(side_effect=solar_payload)
-    else:
-        client.async_get_solar_surplus_forecasts = AsyncMock(
-            return_value=solar_payload,
-        )
-    return client
-
-
 async def test_no_data_response_marks_has_solar_false(
     hass: HomeAssistant,
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """An all-NO_DATA response stores the wrapper and sets has_solar to False."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(solar_payload=_load(_SOLAR_NO_DATA))
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_NO_DATA),
+        solar_flag={"value": True},
+    )
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord)
 
@@ -109,11 +69,15 @@ async def test_non_no_data_response_marks_has_solar_true(
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """Any non-NO_DATA slot flips has_solar to True."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(solar_payload=_load(_SOLAR_HIGH))
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_HIGH),
+        solar_flag={"value": True},
+    )
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord)
 
@@ -128,11 +92,15 @@ async def test_no_electricity_ean_skips_fetch(
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """With no electricity service points the fetch is skipped entirely."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(solar_payload=_load(_SOLAR_HIGH))
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_HIGH),
+        solar_flag={"value": True},
+    )
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord, service_points={"5414ZZ": "GAS"})
 
@@ -148,11 +116,15 @@ async def test_transient_error_keeps_previous_wrapper(
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """A transient API error preserves the last-known wrapper."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(solar_payload=EngieBeApiClientError("boom"))
+    client = engie_client_baseline(
+        solar_forecasts=EngieBeApiClientError("boom"),
+        solar_flag={"value": True},
+    )
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord)
 
@@ -174,12 +146,14 @@ async def test_auth_error_escalates(
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """Auth failures on the solar endpoint escalate to reauth."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(
-        solar_payload=EngieBeApiClientAuthenticationError("nope"),
+    client = engie_client_baseline(
+        solar_forecasts=EngieBeApiClientAuthenticationError("nope"),
+        solar_flag={"value": True},
     )
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord)
@@ -193,12 +167,13 @@ async def test_flag_off_skips_fetch_and_marks_no_solar(
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """A False feature flag skips the forecasts endpoint entirely."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(
-        solar_payload=_load(_SOLAR_HIGH),
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_HIGH),
         solar_flag={"value": False},
     )
     coord = build_engie_coordinator(hass, entry, subentry)
@@ -217,12 +192,13 @@ async def test_flag_probe_error_soft_fails_to_enabled(
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """A transient flag probe error keeps us in the ``try to fetch`` branch."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(
-        solar_payload=_load(_SOLAR_HIGH),
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_HIGH),
         solar_flag=EngieBeApiClientError("boom"),
     )
     coord = build_engie_coordinator(hass, entry, subentry)
@@ -241,12 +217,13 @@ async def test_flag_auth_error_escalates(
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """Auth failures on the feature-flag endpoint escalate to reauth."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(
-        solar_payload=_load(_SOLAR_HIGH),
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_HIGH),
         solar_flag=EngieBeApiClientAuthenticationError("nope"),
     )
     coord = build_engie_coordinator(hass, entry, subentry)
@@ -273,17 +250,21 @@ def test_derive_has_solar_returns_none_for_non_dict_wrapper() -> None:
     assert _derive_has_solar([]) is None  # type: ignore[arg-type]
 
 
-async def test_first_has_solar_observation_seeds_cache_without_reload(
+async def test_first_has_solar_observation_seeds_cache_without_reload(  # noqa: PLR0913
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """First refresh (previous_has_solar=None) must NOT schedule a reload."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(solar_payload=_load(_SOLAR_HIGH))
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_HIGH),
+        solar_flag={"value": True},
+    )
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord)
 
@@ -298,17 +279,21 @@ async def test_first_has_solar_observation_seeds_cache_without_reload(
     reload_mock.assert_not_awaited()
 
 
-async def test_has_solar_true_to_false_flip_schedules_reload(
+async def test_has_solar_true_to_false_flip_schedules_reload(  # noqa: PLR0913
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """True->False flip must set reload_pending and call async_reload once."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(solar_payload=_load(_SOLAR_NO_DATA))
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_NO_DATA),
+        solar_flag={"value": True},
+    )
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord)
 
@@ -327,17 +312,21 @@ async def test_has_solar_true_to_false_flip_schedules_reload(
     reload_mock.assert_awaited_once_with(entry.entry_id)
 
 
-async def test_has_solar_no_flip_does_not_schedule_reload(
+async def test_has_solar_no_flip_does_not_schedule_reload(  # noqa: PLR0913
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """Same value on consecutive refreshes -> no reload, reload_pending stays False."""
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(solar_payload=_load(_SOLAR_HIGH))
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_HIGH),
+        solar_flag={"value": True},
+    )
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord)
 
@@ -355,12 +344,13 @@ async def test_has_solar_no_flip_does_not_schedule_reload(
     reload_mock.assert_not_awaited()
 
 
-async def test_simultaneous_happy_hour_and_solar_flips_debounce_to_one_reload(
+async def test_simultaneous_happy_hour_and_solar_flips_debounce_to_one_reload(  # noqa: PLR0913
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """
     Happy-hour + solar flip in the same refresh must schedule exactly one reload.
@@ -371,9 +361,10 @@ async def test_simultaneous_happy_hour_and_solar_flips_debounce_to_one_reload(
     """
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(
-        solar_payload=_load(_SOLAR_HIGH),
-        happy_hour_enrolled=True,
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_HIGH),
+        solar_flag={"value": True},
+        happy_hours_flag={"value": True},
         happy_hour_event={},
     )
     coord = build_engie_coordinator(hass, entry, subentry)
@@ -398,12 +389,13 @@ async def test_simultaneous_happy_hour_and_solar_flips_debounce_to_one_reload(
     reload_mock.assert_awaited_once_with(entry.entry_id)
 
 
-async def test_reload_pending_blocks_second_flip_from_re_scheduling(
+async def test_reload_pending_blocks_second_flip_from_re_scheduling(  # noqa: PLR0913
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
     build_engie_coordinator: Callable,
     wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
 ) -> None:
     """
     If ``reload_pending`` is already True, a fresh solar flip must not reschedule.
@@ -413,7 +405,10 @@ async def test_reload_pending_blocks_second_flip_from_re_scheduling(
     """
     entry = build_engie_entry(hass)
     subentry = next(iter(entry.subentries.values()))
-    client = _make_client(solar_payload=_load(_SOLAR_HIGH))
+    client = engie_client_baseline(
+        solar_forecasts=_load(_SOLAR_HIGH),
+        solar_flag={"value": True},
+    )
     coord = build_engie_coordinator(hass, entry, subentry)
     wire_engie_runtime(entry, client, subentry, coord)
 
