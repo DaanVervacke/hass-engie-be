@@ -414,10 +414,9 @@ for the general automation model.
 
 ### Triggers (29)
 
-Triggers are targeted at the ENGIE entity type shown in the automation
-editor picker (binary sensor for state-transition and Happy Hours
-triggers, sensor for enum-change and threshold triggers, calendar for
-event-class triggers). Pick the right entity in the "When" step.
+Each trigger targets a specific ENGIE entity (binary sensor, sensor,
+or calendar). Pick that entity in the "When" step of the automation
+editor.
 
 **State-transition triggers (10)**:
 
@@ -651,10 +650,8 @@ month, or a re-import after ENGIE corrects some data:
 5. Click **Perform action**.
 
 Running the same window again is safe, existing hours are overwritten.
-
-### Include costs
-
-Turn on **Include costs** to also import what each hour cost you in EUR.
+Turn on **Include costs** in the same dialog to also import what each
+hour cost you in EUR.
 
 ### Add to the Energy dashboard
 
