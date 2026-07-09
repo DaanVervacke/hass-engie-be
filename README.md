@@ -200,10 +200,11 @@ state-based automations without a template.
 
 ### Happy Hours
 
-ENGIE occasionally schedules "Happy Hours" windows during which the
-energy consumed at your address is free. These are announced the day
-before and are exposed by the integration for every account enrolled
-in the Happy Hours program.
+Happy Hours are free-energy windows ENGIE schedules for enrolled
+accounts. Windows are announced the day before, and enrolment is per
+address through the ENGIE Smart App under "Je diensten". See
+[engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/) for
+eligibility.
 
 | Entity | Entity ID | Description |
 |---|---|---|
@@ -217,45 +218,34 @@ in the Happy Hours program.
 | Happy Hours eligible hours vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_eligible_hours_change` | Percent change in eligible-hour count vs last month |
 | Happy Hours monthly reward vs last month | `sensor.engie_belgium_{BAN}_happy_hours_month_reward_change` | Percent change in reward earned vs last month |
 
-The binary sensor is `on` while the current moment falls inside a scheduled
-window, and `off` otherwise. The three monthly-summary sensors show your
-consumption (kWh), the number of eligible Happy Hours windows, and the reward
-(EUR) for the current calendar month. The reward is the value of the free
-energy you used during Happy Hours: what those kWh would have cost you at your
-regular rate. The reward sensor also exposes an `is_calculation_ongoing`
-attribute that ENGIE sets to `true` while it is still computing the final
-value. It is always available, and the `off` state
-covers both "no window scheduled" and "scheduled but not active right now".
-If you need to tell those two cases apart, look at the timestamp sensors
-instead. They report `unknown` when nothing is scheduled.
+The reward is the euro value of the energy you used during Happy Hours
+at your regular rate. The reward sensor exposes an
+`is_calculation_ongoing` attribute that is `true` while ENGIE is still
+finalising the number for the month.
 
-The scheduled window also appears as a "Happy Hours" event on the per-account
-calendar entity, alongside the captar peak event. Past Happy Hours windows
-the integration has observed are kept in a local history file so the
-calendar can show the full archive across restarts. Windows that ran before
-you installed the integration cannot be retrieved because ENGIE does not
-expose Happy Hours history.
+The next-start and next-end timestamps report `unknown` when nothing
+is scheduled. The active binary sensor stays `off` in that case too,
+so if you need to distinguish "no window today" from "window later
+but not right now", check the timestamps.
 
-Happy Hours is an opt-in program from ENGIE. You need to enrol each address
-separately through the ENGIE Smart App under "Je diensten". See
-[engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/) for
-eligibility and the latest details.
+The integration also emits Happy Hours events on the per-account
+calendar and keeps a rolling archive of every window it observes so
+the calendar shows the full history across restarts. Windows from
+before you installed the integration cannot be recovered.
 
-The integration checks your enrolment status on every refresh (by default every
-60 minutes, and configurable). The Happy Hours entities and the calendar
-events appear shortly after you enrol an address and disappear shortly
-after you opt out. You do not need to remove and re-add the integration
-when your enrolment changes.
+Enrolment is picked up automatically on every refresh. Entities
+appear shortly after you enrol an address and disappear after you
+opt out.
 
 ### Solar Surplus
 
-Solar Surplus is ENGIE's forecast of how much of your solar production will
-exceed your consumption for each hour of the next three days (today plus the
-two following days). ENGIE derives it from weather data, your solar-panel
-specifications, and your consumption pattern over the previous two weeks.
-The forecast is indicative and refreshes each morning.
+Solar Surplus is ENGIE's hourly forecast of how much of your solar
+production will exceed your consumption over the next three days.
+ENGIE derives it from weather, your panel setup, and your recent
+consumption pattern, and refreshes it each morning. The forecast is
+indicative.
 
-Five sensors are created per electricity meter (EAN) on accounts where
+Five sensors are created per electricity meter on accounts where
 ENGIE returns forecast data:
 
 | Sensor | Entity ID | Description |
@@ -266,29 +256,24 @@ ENGIE returns forecast data:
 | Solar surplus total today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_total` | Expected total surplus for today (kWh) |
 | Solar surplus peak today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_peak` | Highest hourly surplus expected today (kWh) |
 
-The level sensor's state is the aggregate level for the current day and
-takes one of five values: `no_data`, `no_surplus`, `minimal_surplus`,
-`low_surplus`, `high_surplus`. Its `forecast` attribute is a flat list of
-`{start, value, level}` entries covering the full 3-day outlook.
-Two provenance attributes describe today's forecast: `forecast_creation_date`
-(ISO 8601 timestamp of when ENGIE computed it -- the sentinel
-`1970-01-01T01:00:00+01:00` marks a placeholder for accounts without solar
-data) and `inference_key` (`actuals` for real forecasts, `no_data` for the
-placeholder).
+The level sensor's `forecast` attribute carries the full 3-day
+hourly outlook so you can plot it or feed it into your own
+automations. Two provenance attributes describe today's forecast:
+`forecast_creation_date` (when ENGIE computed it) and `inference_key`
+(the string `actuals` for a real forecast, `no_data` for a placeholder
+served to accounts without a solar setup). The current-hour and
+next-hour sensors flip exactly on the hour boundary.
 
-The four numeric sensors report the expected surplus in kWh: the current
-and next-hour sensors follow the hour boundary directly (state updates
-the moment the slot rolls over, not on the next coordinator refresh),
-the total-today sensor sums every hourly slot for today, and the
-peak-today sensor exposes the highest hourly value plus a `peak_start`
-attribute with its timestamp.
+The integration also feeds the Energy dashboard's solar production
+forecast. Once your ENGIE forecast is available, HA lists it as an
+option under **Settings** > **Dashboards** > **Energy** on the
+solar-production source.
 
-The integration also implements Home Assistant's `async_get_solar_forecast`
-hook. Once configured, your ENGIE forecast appears as a "Solar production
-forecast" source on **Settings** > **Dashboards** > **Energy** > your
-solar-production configuration, without any extra wiring. Values are
-aggregated across every electricity delivery point on the account and
-converted to Wh, per the Energy dashboard contract.
+**Unit note.** The ENGIE Smart App labels these values in kW, but our
+sensors declare them as kWh. For hourly slots the numeric value is
+the same either way (kW-average during an hour equals kWh delivered
+in that hour). HA's kWh choice is what lets the Energy dashboard and
+the total-today sum work correctly.
 
 Prerequisites (per ENGIE, see
 [engie.be/nl/solar-surplus](https://www.engie.be/nl/solar-surplus)):
@@ -299,17 +284,13 @@ Prerequisites (per ENGIE, see
 - An Easy, Direct, Empower, or Flow electricity contract (Basic and
   vacancy contracts do not qualify)
 
-Older meters with `terugdraaiende teller` (net metering) work too, though
-ENGIE notes the financial benefit is reduced.
+Older meters on net metering ("terugdraaiende teller") work too, at
+reduced financial benefit.
 
-The sensors are created automatically for accounts where ENGIE returns a
-non-empty forecast and disappear when it stops (for example after moving
-to a contract that does not qualify). No manual opt-in is required.
-
-Typical use cases the ENGIE blog calls out: shift washing machines,
-dryers, dishwashers, electric boilers, and EV charging to hours with
-`high_surplus`. Delayed-start programs, programmable outlets, and Smart
-Charge can all key off these sensors in a Home Assistant automation.
+The sensors appear automatically once ENGIE returns a forecast and
+disappear when they stop. Typical use: shift heavy loads (washing
+machine, dryer, dishwasher, boiler, EV charging) to hours the
+forecast tags as `high_surplus`.
 
 ### Time-of-Use tariff schedules
 
@@ -366,12 +347,12 @@ Example automation: run the dishwasher when it is optimal to consume:
 
 ```yaml
 automation:
-  trigger:
-    - platform: state
+  triggers:
+    - trigger: state
       entity_id: binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal
       to: "on"
-  action:
-    - service: switch.turn_on
+  actions:
+    - action: switch.turn_on
       target:
         entity_id: switch.dishwasher
 ```
@@ -706,12 +687,12 @@ removed and no history is lost.
 ```yaml
 automation:
   alias: "Start dishwasher on Happy Hours"
-  trigger:
-    - platform: state
+  triggers:
+    - trigger: state
       entity_id: binary_sensor.engie_belgium_{BAN}_happy_hours_active
       to: "on"
-  action:
-    - service: switch.turn_on
+  actions:
+    - action: switch.turn_on
       target:
         entity_id: switch.dishwasher
 ```
@@ -721,12 +702,12 @@ automation:
 ```yaml
 automation:
   alias: "Charge car when electricity price is negative"
-  trigger:
-    - platform: state
+  triggers:
+    - trigger: state
       entity_id: binary_sensor.engie_belgium_{BAN}_epex_negative
       to: "on"
-  action:
-    - service: switch.turn_on
+  actions:
+    - action: switch.turn_on
       target:
         entity_id: switch.ev_charger
   mode: single
@@ -737,12 +718,12 @@ automation:
 ```yaml
 automation:
   alias: "EPEX tomorrow prices published"
-  trigger:
-    - platform: template
+  triggers:
+    - trigger: template
       value_template: >
         {{ state_attr('sensor.engie_belgium_{BAN}_epex_current', 'tomorrow') | length > 0 }}
-  action:
-    - service: notify.mobile_app
+  actions:
+    - action: notify.mobile_app
       data:
         title: "Tomorrow's electricity prices available"
         message: >
