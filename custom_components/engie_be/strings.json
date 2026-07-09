@@ -670,6 +670,30 @@
                 "injection": "Electricity injection",
                 "gas": "Gas consumption"
             }
+        },
+        "solar_surplus_level": {
+            "options": {
+                "no_data": "[%key:component::engie_be::entity::sensor::solar_surplus_forecast::state::no_data%]",
+                "no_surplus": "[%key:component::engie_be::entity::sensor::solar_surplus_forecast::state::no_surplus%]",
+                "minimal_surplus": "[%key:component::engie_be::entity::sensor::solar_surplus_forecast::state::minimal_surplus%]",
+                "low_surplus": "[%key:component::engie_be::entity::sensor::solar_surplus_forecast::state::low_surplus%]",
+                "high_surplus": "[%key:component::engie_be::entity::sensor::solar_surplus_forecast::state::high_surplus%]"
+            }
+        },
+        "tou_slot_code": {
+            "options": {
+                "peak": "[%key:component::engie_be::entity::sensor::tou_offtake_slot::state::peak%]",
+                "offpeak": "[%key:component::engie_be::entity::sensor::tou_offtake_slot::state::offpeak%]",
+                "superoffpeak": "[%key:component::engie_be::entity::sensor::tou_offtake_slot::state::superoffpeak%]",
+                "exclusive_night": "[%key:component::engie_be::entity::sensor::tou_offtake_slot::state::exclusive_night%]",
+                "day": "[%key:component::engie_be::entity::sensor::tou_offtake_slot::state::day%]"
+            }
+        },
+        "tou_direction": {
+            "options": {
+                "offtake": "Offtake",
+                "injection": "Injection"
+            }
         }
     },
     "options": {

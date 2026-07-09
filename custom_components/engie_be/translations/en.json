@@ -670,6 +670,30 @@
                 "injection": "Electricity injection",
                 "gas": "Gas consumption"
             }
+        },
+        "solar_surplus_level": {
+            "options": {
+                "no_data": "No data",
+                "no_surplus": "No surplus",
+                "minimal_surplus": "Minimal surplus",
+                "low_surplus": "Low surplus",
+                "high_surplus": "High surplus"
+            }
+        },
+        "tou_slot_code": {
+            "options": {
+                "peak": "Peak",
+                "offpeak": "Off-peak",
+                "superoffpeak": "Super off-peak",
+                "exclusive_night": "Exclusive night",
+                "day": "Day"
+            }
+        },
+        "tou_direction": {
+            "options": {
+                "offtake": "Offtake",
+                "injection": "Injection"
+            }
         }
     },
     "options": {
