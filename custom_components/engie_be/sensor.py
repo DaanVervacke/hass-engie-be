@@ -645,17 +645,6 @@ def _month_report_wrapper(
     return wrapper if isinstance(wrapper, dict) else None
 
 
-def _month_report_payload(
-    coordinator: EngieBeDataUpdateCoordinator,
-) -> dict[str, Any] | None:
-    """Unwrap the happy_hour_month_report coordinator key, or return None."""
-    wrapper = _month_report_wrapper(coordinator)
-    if wrapper is None:
-        return None
-    payload = wrapper.get("data")
-    return payload if isinstance(payload, dict) else None
-
-
 def _build_happy_hour_month_report_sensors(
     coordinator: EngieBeDataUpdateCoordinator,
     subentry: ConfigSubentry,
@@ -748,7 +737,7 @@ class EngieBeHappyHourMonthSensor(EngieBeEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the numeric value at the configured path."""
-        payload = _month_report_payload(self.coordinator)
+        payload = unwrap_dict_payload(self.coordinator, "happy_hour_month_report")
         if payload is None:
             return None
         raw = self._resolve_path(payload, self._path)
@@ -797,7 +786,7 @@ class EngieBeHappyHourMonthRewardSensor(EngieBeHappyHourMonthSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Extend base attributes with the calculation-in-progress flag."""
         attrs = super().extra_state_attributes
-        payload = _month_report_payload(self.coordinator)
+        payload = unwrap_dict_payload(self.coordinator, "happy_hour_month_report")
         if payload is not None:
             flag = self._resolve_path(
                 payload, ("month", "happyHour", "isCalculationOngoing")
