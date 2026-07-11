@@ -5,9 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-> PR-number links will be substituted at release-tagging.
+## [0.13.0b2] - 2026-07-12
 
 ### Added
 
@@ -40,6 +38,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Add tests for quarter-hourly EPEX triggers: EpexNextQuarterHourCrossedThresholdTrigger, EpexHighTodayQuarterHourUpdatedTrigger, EpexLowTodayQuarterHourUpdatedTrigger (plan 102).
 
 - Fixed EPEX sensor `slot_duration_minutes` attribute to dynamically compute and report actual slot duration (15 for quarter-hourly, 60 for hourly) instead of using a hardcoded constant.
+
+## [Unreleased]
+
+> PR-number links will be substituted at release-tagging.
 
 ## [0.13.0b1] - 2026-07-09
 
