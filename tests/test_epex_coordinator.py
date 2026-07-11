@@ -597,9 +597,7 @@ async def test_qh_fetch_requests_two_full_brussels_days(
 
 
 async def test_qh_404_keeps_last_known_payload(hass: HomeAssistant) -> None:
-    """
-    EpexNotPublishedError must NOT clobber the last-known QH payload.
-    """
+    """EpexNotPublishedError must NOT clobber the last-known QH payload."""
     entry = _build_entry(hass)
     client = MagicMock()
     client.async_get_epex_prices = AsyncMock(

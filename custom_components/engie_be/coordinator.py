@@ -1513,7 +1513,8 @@ class _EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
         occurs. Returns ``None`` only when no previous payload exists
         either; platforms must handle this by reporting unavailable.
         """
-        raise NotImplementedError("Subclasses must implement _async_update_data")
+        msg = "Subclasses must implement _async_update_data"
+        raise NotImplementedError(msg)
 
 
 class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
@@ -1631,7 +1632,9 @@ class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
 
     async def _async_update_data(self) -> EpexPayload | None:
         """
-        Fetch EPEX day-ahead prices with quarter-hourly granularity covering today + tomorrow (Brussels).
+        Fetch EPEX day-ahead prices with quarter-hourly granularity.
+
+        Covering today + tomorrow (Brussels).
 
         Returns the parsed payload, or the previous (last-known) payload
         when the endpoint is reachable but tomorrow's slate is not yet
@@ -1700,6 +1703,7 @@ def _parse_epex_response(
     Args:
         raw: The raw API response dictionary.
         slot_duration_minutes: Duration of each slot in minutes (default 60 for hourly).
+
     """
     if not isinstance(raw, dict):
         msg = f"EPEX response must be a dict, got {type(raw).__name__}"

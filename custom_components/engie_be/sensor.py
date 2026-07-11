@@ -994,20 +994,28 @@ def _build_epex_sensors(
 
     # Add quarter-hourly sensors for MTU15 contracts
     if epex_qh_coordinator is not None:
-        sensors.extend([
-            EngieBeEpexCurrentSensor(
-                epex_qh_coordinator, subentry, _EPEX_CURRENT_QUARTER_HOUR
-            ),
-            EngieBeEpexExtremaSensor(
-                epex_qh_coordinator, subentry, _EPEX_LOW_TODAY_QUARTER_HOUR, mode="min"
-            ),
-            EngieBeEpexExtremaSensor(
-                epex_qh_coordinator, subentry, _EPEX_HIGH_TODAY_QUARTER_HOUR, mode="max"
-            ),
-            EngieBeEpexNextQuarterHourSensor(
-                epex_qh_coordinator, subentry, _EPEX_NEXT_QUARTER_HOUR
-            ),
-        ])
+        sensors.extend(
+            [
+                EngieBeEpexCurrentSensor(
+                    epex_qh_coordinator, subentry, _EPEX_CURRENT_QUARTER_HOUR
+                ),
+                EngieBeEpexExtremaSensor(
+                    epex_qh_coordinator,
+                    subentry,
+                    _EPEX_LOW_TODAY_QUARTER_HOUR,
+                    mode="min",
+                ),
+                EngieBeEpexExtremaSensor(
+                    epex_qh_coordinator,
+                    subentry,
+                    _EPEX_HIGH_TODAY_QUARTER_HOUR,
+                    mode="max",
+                ),
+                EngieBeEpexNextQuarterHourSensor(
+                    epex_qh_coordinator, subentry, _EPEX_NEXT_QUARTER_HOUR
+                ),
+            ]
+        )
 
     return sensors
 

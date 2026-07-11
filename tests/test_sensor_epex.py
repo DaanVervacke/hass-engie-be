@@ -626,7 +626,7 @@ def test_build_epex_sensors_includes_qh_when_coordinator_provided() -> None:
     sensors = _build_epex_sensors(epex_coordinator, epex_qh_coordinator, subentry)
 
     keys = {s.entity_description.key for s in sensors}
-    assert "epex_quarter_hour" in keys
+    assert "epex_current_quarter_hour" in keys
 
 
 def test_build_epex_sensors_excludes_qh_when_coordinator_none() -> None:
@@ -638,7 +638,7 @@ def test_build_epex_sensors_excludes_qh_when_coordinator_none() -> None:
     sensors = _build_epex_sensors(epex_coordinator, None, subentry)
 
     keys = {s.entity_description.key for s in sensors}
-    assert "epex_quarter_hour" not in keys
+    assert "epex_current_quarter_hour" not in keys
 
 
 def test_qh_sensor_uses_qh_coordinator() -> None:
@@ -650,7 +650,9 @@ def test_qh_sensor_uses_qh_coordinator() -> None:
     subentry = _make_subentry()
 
     sensors = _build_epex_sensors(epex_coordinator, epex_qh_coordinator, subentry)
-    qh_sensors = [s for s in sensors if s.entity_description.key == "epex_quarter_hour"]
+    qh_sensors = [
+        s for s in sensors if s.entity_description.key == "epex_current_quarter_hour"
+    ]
 
     assert len(qh_sensors) == 1
     assert qh_sensors[0].coordinator is epex_qh_coordinator
@@ -663,7 +665,9 @@ def test_qh_sensor_with_none_payload() -> None:
     subentry = _make_subentry()
 
     sensors = _build_epex_sensors(epex_coordinator, epex_qh_coordinator, subentry)
-    qh_sensors = [s for s in sensors if s.entity_description.key == "epex_quarter_hour"]
+    qh_sensors = [
+        s for s in sensors if s.entity_description.key == "epex_current_quarter_hour"
+    ]
 
     assert len(qh_sensors) == 1
     assert qh_sensors[0].available is False
