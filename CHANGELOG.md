@@ -9,7 +9,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
-- Three additional quarter-hourly EPEX price sensors for MTU15 dynamic tariff contracts. MTU15 contracts now get a complete set of sensors: current quarter-hourly price (`sensor.engie_belgium_{BAN}_epex_current_quarter_hour`), next quarter-hourly price (`sensor.engie_belgium_{BAN}_epex_next_quarter_hour`), lowest quarter-hourly price today (`sensor.engie_belgium_{BAN}_epex_low_today_quarter_hour`), and highest quarter-hourly price today (`sensor.engie_belgium_{BAN}_epex_high_today_quarter_hour`).
+- Additional quarter-hourly EPEX price sensors for dynamic tariff contracts. Dynamic contracts now get both hourly and quarter-hourly sensors: current quarter-hourly price (`sensor.engie_belgium_{BAN}_epex_current_quarter_hour`), next quarter-hourly price (`sensor.engie_belgium_{BAN}_epex_next_quarter_hour`), lowest quarter-hourly price today (`sensor.engie_belgium_{BAN}_epex_low_today_quarter_hour`), and highest quarter-hourly price today (`sensor.engie_belgium_{BAN}_epex_high_today_quarter_hour`).
 
 ### Changed
 
