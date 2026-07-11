@@ -24,6 +24,7 @@ from .const import (
     SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
     TRANSLATION_KEY_EPEX_NEGATIVE,
+    TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
 )
 from .entity import (
     EngieBeAuthEntity,
@@ -42,7 +43,11 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-    from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
+    from .coordinator import (
+        EngieBeDataUpdateCoordinator,
+        EngieBeEpexCoordinator,
+        EngieBeEpexQuarterHourCoordinator,
+    )
     from .data import EngieBeConfigEntry
 
 AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
@@ -62,6 +67,10 @@ AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
 EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key=TRANSLATION_KEY_EPEX_NEGATIVE,
     translation_key=TRANSLATION_KEY_EPEX_NEGATIVE,
+)
+EPEX_NEGATIVE_QUARTER_HOUR_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
+    key=TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
+    translation_key=TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
 )
 
 # Happy Hours active indicator.
@@ -161,6 +170,14 @@ async def async_setup_entry(
                     coordinator=epex_coordinator, subentry=subentry
                 )
             )
+            # Add QH negative sensor if QH coordinator exists
+            epex_qh_coordinator = entry.runtime_data.epex_qh_coordinator
+            if epex_qh_coordinator is not None:
+                subentry_entities.append(
+                    EngieBeEpexQuarterHourNegativeSensor(
+                        coordinator=epex_qh_coordinator, subentry=subentry
+                    )
+                )
 
         # TOU "is optimal slot" binary sensors: created when the supplier
         # contract is TOU-active OR when the per-EAN schedule has more than
@@ -316,6 +333,83 @@ class EngieBeEpexNegativeSensor(
         returns ``None``; the next coordinator update re-arms via
         :meth:`_handle_coordinator_update` once a fresh payload lands.
         """
+        payload = epex_payload(self.coordinator)
+        if payload is None:
+            return None
+        return next_epex_slot_boundary(payload, dt_util.utcnow())
+
+
+class EngieBeEpexQuarterHourNegativeSensor(
+    _BoundaryScheduleMixin, EngieBeEpexEntity, BinarySensorEntity
+):
+    """
+    Binary sensor that turns ``on`` when the current QH EPEX slot is negative.
+
+    The wholesale leg of the user's bill is a credit (not a cost) during
+    these slots; final delivered price still includes positive grid fees,
+    taxes, and supplier margin, so this sensor flags the wholesale signal
+    only.
+
+    State semantics:
+
+    * ``on`` / ``off`` -- a slot covers ``now`` and its price is
+      negative (``< 0``) or non-negative (``>= 0``) respectively.
+      Zero is treated as non-negative.
+    * ``unknown`` (``is_on=None`` while available) -- payload present
+      but no slot covers ``now`` (e.g. a multi-hour outage where the
+      cached payload no longer covers the present instant).
+    * ``unavailable`` -- no payload cached yet, or the QH coordinator is not set
+
+    The ``_BoundaryScheduleMixin`` arms a point-in-UTC-time callback at
+    the next slot boundary so the entity flips at the exact second the
+    market moves between negative and non-negative slots.
+    """
+
+    entity_description = EPEX_NEGATIVE_QUARTER_HOUR_SENSOR_DESCRIPTION
+
+    def __init__(
+        self,
+        coordinator: EngieBeEpexQuarterHourCoordinator,
+        subentry: ConfigSubentry,
+    ) -> None:
+        """Initialise the QH negative-price indicator."""
+        super().__init__(coordinator, subentry)
+        sub = subentry.subentry_id
+        entry = coordinator.config_entry.entry_id
+        self._attr_unique_id = f"{entry}_{sub}_epex_negative_quarter_hour"
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        if ban:
+            self.entity_id = (
+                f"binary_sensor.engie_belgium_{ban}_epex_negative_quarter_hour"
+            )
+
+    @property
+    def available(self) -> bool:
+        """Available only when the QH EPEX coordinator has a parsed payload."""
+        if not super().available:
+            return False
+        return epex_payload(self.coordinator) is not None
+
+    @property
+    def is_on(self) -> bool | None:
+        """
+        Return ``True`` when the slot covering ``now`` has a negative price.
+
+        Returns ``None`` (rendered as ``unknown``) when no slot covers
+        the current instant -- distinct from the unavailable case
+        handled in ``available``.
+        """
+        payload = epex_payload(self.coordinator)
+        if payload is None:
+            return None
+        now = dt_util.utcnow()
+        for slot in payload.slots:
+            if slot.start <= now < slot.end:
+                return slot.value_eur_per_kwh < 0
+        return None
+
+    def _next_boundary(self) -> datetime | None:
+        """Return the next EPEX slot boundary in UTC, or ``None``."""
         payload = epex_payload(self.coordinator)
         if payload is None:
             return None

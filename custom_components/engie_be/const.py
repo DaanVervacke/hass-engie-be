@@ -123,6 +123,7 @@ CONF_SELECTED_ACCOUNTS = "selected_accounts"
 # Translation keys used by condition.py, trigger.py, and referenced on the
 # matching entities. Keep in sync with the entity platform definitions.
 TRANSLATION_KEY_EPEX_NEGATIVE = "epex_negative"
+TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR = "epex_negative_quarter_hour"
 TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST = "solar_surplus_forecast"
 TRANSLATION_KEY_TOU_OFFTAKE_SLOT = "tou_offtake_slot"
 TRANSLATION_KEY_TOU_INJECTION_SLOT = "tou_injection_slot"

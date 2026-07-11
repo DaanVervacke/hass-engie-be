@@ -938,7 +938,10 @@
                 "name": "Authentication"
             },
             "epex_negative": {
-                "name": "EPEX price is negative"
+                "name": "EPEX current hour price is negative"
+            },
+            "epex_negative_quarter_hour": {
+                "name": "EPEX quarter-hourly price is negative"
             },
             "happy_hours_active": {
                 "name": "Happy Hours is active"

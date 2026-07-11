@@ -158,6 +158,9 @@
             "epex_negative": {
                 "default": "mdi:cash-minus"
             },
+            "epex_negative_quarter_hour": {
+                "default": "mdi:cash-minus"
+            },
             "happy_hours_active": {
                 "default": "mdi:sun-clock"
             }
