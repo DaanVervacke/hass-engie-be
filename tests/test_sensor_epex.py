@@ -13,12 +13,17 @@ from custom_components.engie_be.const import EPEX_TZ, SUBENTRY_TYPE_BUSINESS_AGR
 from custom_components.engie_be.data import EpexPayload, EpexSlot
 from custom_components.engie_be.sensor import (
     _EPEX_CURRENT,
+    _EPEX_CURRENT_QUARTER_HOUR,
     _EPEX_HIGH_TODAY,
+    _EPEX_HIGH_TODAY_QUARTER_HOUR,
     _EPEX_LOW_TODAY,
+    _EPEX_LOW_TODAY_QUARTER_HOUR,
     _EPEX_NEXT_HOUR,
+    _EPEX_NEXT_QUARTER_HOUR,
     EngieBeEpexCurrentSensor,
     EngieBeEpexExtremaSensor,
     EngieBeEpexNextHourSensor,
+    EngieBeEpexNextQuarterHourSensor,
     _build_epex_sensors,
 )
 
@@ -677,3 +682,110 @@ def test_qh_sensor_with_none_payload() -> None:
 
     assert len(qh_sensors) == 1
     assert qh_sensors[0].available is False
+
+
+def test_qh_next_sensor_picks_slot_covering_now_plus_15min() -> None:
+    """QH next sensor returns price for slot covering ``now + 15min``."""
+    payload = _build_epex_payload_qh()
+    coordinator = _make_epex_qh_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNextQuarterHourSensor(
+        coordinator, subentry, _EPEX_NEXT_QUARTER_HOUR
+    )
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.utcnow",
+        return_value=_NOW_UTC,
+    ):
+        # _NOW_UTC is 2026-05-04T13:30:00+00:00
+        # now + 15min = 13:45 UTC = 15:45 Brussels
+        # The QH payload has slots at :00, :15, :30, :45 each hour
+        # Slot covering 15:45 should be the 15:45-16:00 slot
+        # In the payload, hour=15, minute=45 -> index i=15*4+3=63
+        # value = 0.100 + (63 * 0.001) = 0.163
+        expected_value = 0.100 + (63 * 0.001)
+        assert sensor.native_value == pytest.approx(expected_value)
+        attrs = sensor.extra_state_attributes
+        assert attrs["slot_duration_minutes"] == 15
+
+
+def test_qh_next_sensor_attributes() -> None:
+    """QH next sensor extra state attributes include correct slot info."""
+    payload = _build_epex_payload_qh()
+    coordinator = _make_epex_qh_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNextQuarterHourSensor(
+        coordinator, subentry, _EPEX_NEXT_QUARTER_HOUR
+    )
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.utcnow",
+        return_value=_NOW_UTC,
+    ):
+        attrs = sensor.extra_state_attributes
+        assert "slot_start" in attrs
+        assert "slot_end" in attrs
+        assert attrs["slot_duration_minutes"] == 15
+        assert "last_fetched" in attrs
+
+
+def test_qh_current_sensor_slots_have_15min_duration() -> None:
+    """QH current sensor today/tomorrow slots report 15-min duration."""
+    payload = _build_epex_payload_qh()
+    coordinator = _make_epex_qh_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT_QUARTER_HOUR)
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.utcnow",
+        return_value=_NOW_UTC,
+    ):
+        attrs = sensor.extra_state_attributes
+        # Check today slots
+        for slot_attrs in attrs.get("today", []):
+            assert slot_attrs["slot_duration_minutes"] == 15
+        # Check tomorrow slots
+        for slot_attrs in attrs.get("tomorrow", []):
+            assert slot_attrs["slot_duration_minutes"] == 15
+
+
+def test_qh_low_today_sensor_selects_minimum_of_today_only() -> None:
+    """QH low today sensor selects minimum of today's slots only."""
+    payload = _build_epex_payload_qh()
+    coordinator = _make_epex_qh_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexExtremaSensor(
+        coordinator, subentry, _EPEX_LOW_TODAY_QUARTER_HOUR, mode="min"
+    )
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=_NOW_BRUSSELS,
+    ):
+        # The payload has distinct values: 0.100 + (i * 0.001) for i in 0..95
+        # Today is 2026-05-04, all slots are on day 4
+        # Minimum should be the first slot: i=0, value=0.100
+        assert sensor.native_value == pytest.approx(0.100)
+        attrs = sensor.extra_state_attributes
+        assert attrs["slot_duration_minutes"] == 15
+
+
+def test_qh_high_today_sensor_selects_maximum_of_today_only() -> None:
+    """QH high today sensor selects maximum of today's slots only."""
+    payload = _build_epex_payload_qh()
+    coordinator = _make_epex_qh_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexExtremaSensor(
+        coordinator, subentry, _EPEX_HIGH_TODAY_QUARTER_HOUR, mode="max"
+    )
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=_NOW_BRUSSELS,
+    ):
+        # The payload has distinct values: 0.100 + (i * 0.001) for i in 0..95
+        # Today is 2026-05-04, all slots are on day 4
+        # Maximum should be the last slot: i=95, value=0.100 + (95 * 0.001) = 0.195
+        assert sensor.native_value == pytest.approx(0.195)
+        attrs = sensor.extra_state_attributes
+        assert attrs["slot_duration_minutes"] == 15

@@ -40,7 +40,7 @@ from .const import (
     TRANSLATION_KEY_TOU_INJECTION_SLOT,
     TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
 )
-from .data import unwrap_dict_payload
+from .data import EpexSlot, unwrap_dict_payload
 from .entity import EngieBeEntity, EngieBeEpexEntity, _BoundaryScheduleMixin
 
 # Coordinator centralises updates; entities never poll individually.
@@ -1171,8 +1171,7 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
                 attrs: dict[str, Any] = {
                     "slot_start": slot.start.isoformat(),
                     "slot_end": slot.end.isoformat(),
-                    "slot_duration_minutes": (slot.end - slot.start).total_seconds()
-                    / 60,
+                    "slot_duration_minutes": _slot_duration_minutes(slot),
                 }
                 attrs["last_fetched"] = (
                     self.coordinator.last_update_success_time.isoformat()
@@ -1215,9 +1214,7 @@ class EngieBeEpexNextQuarterHourSensor(_EngieBeEpexSensorBase):
                 attrs: dict[str, Any] = {
                     "slot_start": slot.start.isoformat(),
                     "slot_end": slot.end.isoformat(),
-                    "slot_duration_minutes": (
-                        (slot.end - slot.start).total_seconds() / 60
-                    ),
+                    "slot_duration_minutes": _slot_duration_minutes(slot),
                 }
                 if self.coordinator.last_update_success_time is not None:
                     attrs["last_fetched"] = (
@@ -1270,7 +1267,7 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
         attrs = {
             "slot_start": slot.start.isoformat(),
             "slot_end": slot.end.isoformat(),
-            "slot_duration_minutes": (slot.end - slot.start).total_seconds() / 60,
+            "slot_duration_minutes": _slot_duration_minutes(slot),
         }
         if self.coordinator.last_update_success_time is not None:
             attrs["last_fetched"] = (
@@ -1279,14 +1276,19 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
         return attrs
 
 
-def _serialize_slot(slot: Any) -> dict[str, Any]:
+def _slot_duration_minutes(slot: EpexSlot) -> float:
+    """Return the duration of an EPEX slot in minutes."""
+    return (slot.end - slot.start).total_seconds() / 60
+
+
+def _serialize_slot(slot: EpexSlot) -> dict[str, Any]:
     """Serialise an :class:`EpexSlot` for use in entity attributes."""
     return {
         "start": slot.start.isoformat(),
         "end": slot.end.isoformat(),
         "value": slot.value_eur_per_kwh,
         "value_eur_per_mwh": slot.value_eur_per_kwh * 1000.0,
-        "slot_duration_minutes": (slot.end - slot.start).total_seconds() / 60,
+        "slot_duration_minutes": _slot_duration_minutes(slot),
     }
 
 

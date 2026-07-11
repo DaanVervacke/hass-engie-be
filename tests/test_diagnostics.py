@@ -489,6 +489,39 @@ def test_summarise_epex_with_slots_returns_full_summary() -> None:
     }
 
 
+def test_summarise_epex_with_qh_slot_duration() -> None:
+    """_summarise_epex returns 15 for quarter-hourly payloads."""
+    start = datetime(2026, 6, 8, 0, 0, tzinfo=UTC)
+    slot_a = EpexSlot(
+        start=start,
+        end=start + timedelta(minutes=15),
+        value_eur_per_kwh=0.05,
+    )
+    slot_b = EpexSlot(
+        start=start + timedelta(minutes=15),
+        end=start + timedelta(minutes=30),
+        value_eur_per_kwh=0.06,
+    )
+    publication = datetime(2026, 6, 7, 12, 0, tzinfo=UTC)
+    payload = EpexPayload(
+        slots=(slot_a, slot_b),
+        publication_time=publication,
+        market_date="2026-06-08",
+        slot_duration=timedelta(minutes=15),
+    )
+
+    summary = _summarise_epex(payload)
+
+    assert summary == {
+        "slot_count": 2,
+        "slot_duration_minutes": 15,
+        "first_slot_start": slot_a.start.isoformat(),
+        "last_slot_end": slot_b.end.isoformat(),
+        "publication_time": publication.isoformat(),
+        "market_date": "2026-06-08",
+    }
+
+
 async def test_diagnostics_skips_non_business_agreement_subentries(
     hass: HomeAssistant,
 ) -> None:
