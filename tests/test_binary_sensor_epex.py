@@ -295,6 +295,7 @@ def _make_entry(
     entry.subentries = subentries
     entry.runtime_data = MagicMock()
     entry.runtime_data.epex_coordinator = epex_coordinator
+    entry.runtime_data.epex_qh_coordinator = None
     entry.runtime_data.subentry_data = sub_runtime
     entry.runtime_data.authenticated = True
     return entry
