@@ -43,6 +43,7 @@ from custom_components.engie_be.const import (
     TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_NEGATIVE,
     TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
+    TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
@@ -849,7 +850,7 @@ async def test_epex_price_is_above_threshold_false_when_below(
     condition.async_unload()
 
 
-async def test_epex_threshold_rejects_wrong_translation_key(
+async def test_epex_price_is_below_threshold_rejects_wrong_translation_key(
     hass: HomeAssistant,
 ) -> None:
     """EpexPriceIsBelowThresholdCondition rejects sensors with wrong key."""
@@ -865,6 +866,27 @@ async def test_epex_threshold_rejects_wrong_translation_key(
     hass.states.async_set(entity_id, "0.05")
     config = _make_numerical_condition_config(entity_id, "below", 0.10)
     condition = EpexPriceIsBelowThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_epex_price_is_above_threshold_rejects_wrong_translation_key(
+    hass: HomeAssistant,
+) -> None:
+    """EpexPriceIsAboveThresholdCondition rejects sensors with wrong key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,  # Wrong key
+        entity_suffix="captar_monthly_peak_power",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_captar_peak",
+    )
+    hass.states.async_set(entity_id, "0.15")
+    config = _make_numerical_condition_config(entity_id, "above", 0.10)
+    condition = EpexPriceIsAboveThresholdCondition(hass, config)
     await condition.async_setup()
     assert condition(hass) is False
     condition.async_unload()
@@ -1092,5 +1114,74 @@ async def test_epex_price_above_threshold_qh_false(
     config = _make_numerical_condition_config(entity_id, "above", 0.10)
     condition = EpexPriceIsAboveThresholdQuarterHourCondition(hass, config)
     await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_epex_price_below_threshold_qh_boundary(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH below threshold condition at exact boundary value."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR,
+        entity_suffix="epex_current_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current_qh",
+    )
+    # Price exactly at threshold - should return False (strictly below, not at-or-below)
+    hass.states.async_set(entity_id, "0.10")
+    config = _make_numerical_condition_config(entity_id, "below", 0.10)
+    condition = EpexPriceIsBelowThresholdQuarterHourCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_epex_price_is_negative_qh_none_state(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH negative condition with None/Unknown sensor state."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
+        entity_suffix="epex_negative_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_negative_qh",
+    )
+    # Set state to None (unknown)
+    hass.states.async_set(entity_id, None)
+    await _run_condition(
+        hass,
+        EpexPriceIsNegativeQuarterHourCondition,
+        entity_id,
+        None,
+        expected=False,
+    )
+
+
+async def test_epex_price_is_above_threshold_qh_rejects_next_hour(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH above threshold condition rejects next-hour sensors."""
+    entry = _make_entry(hass)
+    # Use next-hour sensor instead of current-hour sensor
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
+        entity_suffix="epex_next_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_next_qh",
+    )
+    hass.states.async_set(entity_id, "0.15")
+    config = _make_numerical_condition_config(entity_id, "above", 0.10)
+    condition = EpexPriceIsAboveThresholdQuarterHourCondition(hass, config)
+    await condition.async_setup()
+    # QH condition should not match next-hour sensor
     assert condition(hass) is False
     condition.async_unload()

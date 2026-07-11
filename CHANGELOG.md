@@ -21,6 +21,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Clarified hourly vs quarter-hourly trigger/condition naming for better UX consistency (#106).
 
+- Apply DX improvements: fix lint script path detection, rename EPEX_DEFAULT_SLOT_DURATION_MINUTES constant, consolidate CHANGELOG entries, and clarify slot_duration_minutes docstrings (#109).
+
+- Add comprehensive edge case tests for EPEX purpose-based triggers and conditions: added missing "does not fire" and "filters wrong key" tests for QH threshold triggers and hourly threshold conditions to achieve parity between hourly and quarter-hourly test coverage (#110).
+
 - Improved icon semantics for EPEX sensors: current/next prices now use `cash-clock`, low price uses `cash-100`, and high price uses `cash-multiple` for clearer distinction from financial (offtake/injection) sensors.
 
 - Improved icon semantics for Captar peak sensors: monthly peak power uses `gauge`, monthly peak energy uses `gauge-full` for better measurement metaphor.
@@ -35,7 +39,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Security: mask BAN in statistics device_name to prevent PII in metadata (plan 103b).
 - Add tests for quarter-hourly EPEX triggers: EpexNextQuarterHourCrossedThresholdTrigger, EpexHighTodayQuarterHourUpdatedTrigger, EpexLowTodayQuarterHourUpdatedTrigger (plan 102).
 
-- Fixed EPEX sensor `slot_duration_minutes` attribute to report actual slot duration (15 for quarter-hourly, 60 for hourly) instead of hardcoded constant.
+- Fixed EPEX sensor `slot_duration_minutes` attribute to dynamically compute and report actual slot duration (15 for quarter-hourly, 60 for hourly) instead of using a hardcoded constant.
 
 ## [0.13.0b1] - 2026-07-09
 
@@ -56,7 +60,6 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Inline pass-through wrappers around filter_by_translation_key.
 - Inline solar_surplus_payload helper. Use unwrap_dict_payload directly.
-- EPEX slot duration sourced from payload instead of per-slot field calculation. slot_duration_minutes attribute reflects actual slot duration.
 - Audited `primary_entities_only` on trigger and condition target anchors: only the authentication triggers now set `false`. All other binary-sensor, sensor, and calendar anchors use the default `true`. Consolidated repeated `threshold` and `slot` field name strings into a `common:` block in `strings.json` / `translations/en.json` to reduce duplication.
 - Deduplicate TOU slot options in trigger/condition YAML and distinguish icon collisions for related triggers.
 - Drop the x-trace-id request header. It was unused by ENGIE and inconsistently applied across endpoints.

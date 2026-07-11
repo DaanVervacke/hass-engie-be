@@ -1038,6 +1038,63 @@ async def test_epex_next_hour_crossed_threshold_fires_below(
     )
 
 
+async def test_epex_next_hour_crossed_threshold_does_not_fire_when_already_below(
+    hass: HomeAssistant,
+) -> None:
+    """Next hour threshold trigger: no fire when already below threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEXT_HOUR,
+        entity_suffix="epex_next_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_next_hour",
+    )
+    # Start below threshold
+    hass.states.async_set(entity_id, "0.05")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("below", 0.10)
+    await _run_trigger(
+        hass,
+        EpexNextHourCrossedThresholdTrigger,
+        entity_id,
+        "0.05",  # Start below threshold
+        "0.01",  # Move to even lower (no crossing)
+        expected_fires=0,  # Should NOT fire
+        options=options,
+    )
+
+
+async def test_epex_next_hour_crossed_threshold_filters_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """Next hour threshold trigger rejects entities with wrong key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,  # Wrong key
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("below", 0.10)
+    await _run_trigger(
+        hass,
+        EpexNextHourCrossedThresholdTrigger,
+        entity_id,
+        "0.05",
+        "0.15",
+        expected_fires=0,  # Should NOT fire due to wrong entity type
+        options=options,
+    )
+
+
 async def test_solar_surplus_current_crossed_threshold_fires(
     hass: HomeAssistant,
 ) -> None:
@@ -1962,6 +2019,52 @@ async def test_epex_no_longer_negative_qh_fires_on_transition(
     )
 
 
+async def test_epex_no_longer_negative_qh_does_not_fire_on_off_to_on(
+    hass: HomeAssistant,
+) -> None:
+    """EpexNoLongerNegativeQHTrigger does not fire on off-to-on transition."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
+        entity_suffix="epex_negative_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_negative_qh",
+    )
+    await _run_trigger(
+        hass,
+        EpexNoLongerNegativeQuarterHourTrigger,
+        entity_id,
+        "off",
+        "on",
+        expected_fires=0,  # Should NOT fire (wrong transition direction)
+    )
+
+
+async def test_epex_no_longer_negative_qh_filters_wrong_translation_key(
+    hass: HomeAssistant,
+) -> None:
+    """EpexNoLongerNegativeQHTrigger rejects entities with wrong translation key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEGATIVE,  # Wrong key type
+        entity_suffix="epex_negative",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_negative",
+    )
+    await _run_trigger(
+        hass,
+        EpexNoLongerNegativeQuarterHourTrigger,
+        entity_id,
+        "on",
+        "off",
+        expected_fires=0,  # Should NOT fire due to wrong entity type
+    )
+
+
 async def test_epex_current_qh_crossed_threshold_fires(
     hass: HomeAssistant,
 ) -> None:
@@ -2070,6 +2173,120 @@ async def test_epex_next_qh_crossed_threshold_rejects_hourly(
         "0.05",
         "0.15",
         expected_fires=0,
+        options=options,
+    )
+
+
+async def test_epex_current_qh_crossed_threshold_does_not_fire_when_already_above(
+    hass: HomeAssistant,
+) -> None:
+    """Current QH threshold trigger: no fire when already above."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR,
+        entity_suffix="epex_current_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current_qh",
+    )
+    # Start above threshold
+    hass.states.async_set(entity_id, "0.15")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("above", 0.10)
+    await _run_trigger(
+        hass,
+        EpexCurrentQuarterHourCrossedThresholdTrigger,
+        entity_id,
+        "0.15",  # Start above threshold
+        "0.20",  # Move to even higher (no crossing)
+        expected_fires=0,  # Should NOT fire
+        options=options,
+    )
+
+
+async def test_epex_current_qh_crossed_threshold_filters_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """Current QH threshold trigger rejects entities with wrong key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,  # Wrong key type
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("above", 0.10)
+    await _run_trigger(
+        hass,
+        EpexCurrentQuarterHourCrossedThresholdTrigger,
+        entity_id,
+        "0.05",
+        "0.15",
+        expected_fires=0,  # Should NOT fire due to wrong entity type
+        options=options,
+    )
+
+
+async def test_epex_next_qh_crossed_threshold_does_not_fire_when_already_above(
+    hass: HomeAssistant,
+) -> None:
+    """EpexNextQHCrossedThresholdTrigger does not fire when already above threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
+        entity_suffix="epex_next_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_next_qh",
+    )
+    # Start above threshold
+    hass.states.async_set(entity_id, "0.15")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("above", 0.10)
+    await _run_trigger(
+        hass,
+        EpexNextQuarterHourCrossedThresholdTrigger,
+        entity_id,
+        "0.15",  # Start above threshold
+        "0.20",  # Move to even higher (no crossing)
+        expected_fires=0,  # Should NOT fire
+        options=options,
+    )
+
+
+async def test_epex_next_qh_crossed_threshold_filters_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """EpexNextQHCrossedThresholdTrigger rejects entities with wrong translation key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEXT_HOUR,  # Wrong key type
+        entity_suffix="epex_next_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_next_hour",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("above", 0.10)
+    await _run_trigger(
+        hass,
+        EpexNextQuarterHourCrossedThresholdTrigger,
+        entity_id,
+        "0.05",
+        "0.15",
+        expected_fires=0,  # Should NOT fire due to wrong entity type
         options=options,
     )
 
