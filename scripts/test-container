@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Run tests inside the podman dev container
+# Usage: ./scripts/test-container [pytest_args...]
+# Example: ./scripts/test-container -v
+# Example: ./scripts/test-container -k "quarter"
+
+set -e
+
+CONTAINER_NAME="${CONTAINER_NAME:-engie_be_dev}"
+
+echo "Running tests in container: $CONTAINER_NAME"
+echo "=========================================="
+
+# Check if container is running
+if ! podman ps | grep -q "$CONTAINER_NAME"; then
+    echo "Error: Container $CONTAINER_NAME is not running"
+    echo "Start it with: ./scripts/restart-dev-container.sh"
+    exit 1
+fi
+
+# Run pytest with default arguments plus any user-provided ones
+podman exec "$CONTAINER_NAME" python -m pytest tests/ \
+  --tb=short \
+  --cov=custom_components.engie_be \
+  --cov-report=term \
+  --cov-fail-under=95 \
+  "$@"
