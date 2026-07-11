@@ -5,15 +5,18 @@ Exposes ENGIE state as first-class conditions in the HA automation editor.
 
 Supported conditions:
 
-- ``engie_be.epex_price_is_negative``      -> binary sensor is ``on``
-- ``engie_be.solar_surplus_is_at_level``   -> enum sensor matches a surplus level
-- ``engie_be.offtake_slot_is``             -> enum sensor matches a TOU slot code
-- ``engie_be.injection_slot_is``           -> enum sensor matches a TOU slot code
-- ``engie_be.epex_price_is_below_threshold``  -> EPEX price below threshold
-- ``engie_be.epex_price_is_above_threshold``  -> EPEX price above threshold
-- ``engie_be.offtake_is_optimal``          -> offtake binary sensor is ``on``
-- ``engie_be.injection_is_optimal``        -> injection binary sensor is ``on``
-- ``engie_be.happy_hours_is_active``       -> happy hours binary sensor is ``on``
+- ``engie_be.epex_price_is_negative`` -> binary sensor is ``on``
+- ``engie_be.epex_price_is_negative_quarter_hour`` -> quarter-hourly binary sensor
+- ``engie_be.solar_surplus_is_at_level`` -> enum sensor matches a surplus level
+- ``engie_be.offtake_slot_is`` -> enum sensor matches a TOU slot code
+- ``engie_be.injection_slot_is`` -> enum sensor matches a TOU slot code
+- ``engie_be.epex_price_is_below_threshold`` -> EPEX price below threshold
+- ``engie_be.epex_price_is_below_threshold_quarter_hour`` -> quarter-hourly below thresh
+- ``engie_be.epex_price_is_above_threshold`` -> EPEX price above threshold
+- ``engie_be.epex_price_is_above_threshold_quarter_hour`` -> quarter-hourly above thresh
+- ``engie_be.offtake_is_optimal`` -> offtake binary sensor is ``on``
+- ``engie_be.injection_is_optimal`` -> injection binary sensor is ``on``
+- ``engie_be.happy_hours_is_active`` -> happy hours binary sensor is ``on``
 - ``engie_be.captar_peak_is_above_threshold`` -> captar peak power above threshold
 """
 
@@ -41,7 +44,9 @@ from .const import (
     TOU_SLOT_CODES,
     TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,
     TRANSLATION_KEY_EPEX_CURRENT,
+    TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_NEGATIVE,
+    TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
@@ -78,6 +83,26 @@ class EpexPriceIsNegativeCondition(EntityStateConditionBase):
         candidates = super().entity_filter(entities)
         return filter_by_translation_key(
             self._hass, candidates, TRANSLATION_KEY_EPEX_NEGATIVE
+        )
+
+
+class EpexPriceIsNegativeQuarterHourCondition(EntityStateConditionBase):
+    """Condition: EPEX quarter-hourly price is negative (binary sensor is on)."""
+
+    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
+        BINARY_SENSOR_DOMAIN: DomainSpec()
+    }
+
+    def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
+        """Initialise and set the expected state."""
+        super().__init__(hass, config)
+        self._states = {STATE_ON}
+
+    def entity_filter(self, entities: set[str]) -> set[str]:
+        """Restrict to the ENGIE epex_negative_quarter_hour binary sensor."""
+        candidates = super().entity_filter(entities)
+        return filter_by_translation_key(
+            self._hass, candidates, TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR
         )
 
 
@@ -242,6 +267,18 @@ class EpexPriceIsAboveThresholdCondition(_NumericalThresholdCondition):
     _translation_key = TRANSLATION_KEY_EPEX_CURRENT
 
 
+class EpexPriceIsBelowThresholdQuarterHourCondition(_NumericalThresholdCondition):
+    """Condition: EPEX current quarter-hourly price is below a configured threshold."""
+
+    _translation_key = TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR
+
+
+class EpexPriceIsAboveThresholdQuarterHourCondition(_NumericalThresholdCondition):
+    """Condition: EPEX current quarter-hourly price is above a configured threshold."""
+
+    _translation_key = TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR
+
+
 class CaptarPeakIsAboveThresholdCondition(_NumericalThresholdCondition):
     """Condition: captar monthly peak power is above a configured threshold."""
 
@@ -254,12 +291,19 @@ class CaptarPeakIsAboveThresholdCondition(_NumericalThresholdCondition):
 
 CONDITIONS: dict[str, type[Condition]] = {
     "epex_price_is_negative": EpexPriceIsNegativeCondition,
+    "epex_price_is_negative_quarter_hour": EpexPriceIsNegativeQuarterHourCondition,
     "solar_surplus_is_at_level": SolarSurplusIsAtLevelCondition,
     "offtake_slot_is": OfftakeSlotIsCondition,
     "injection_slot_is": InjectionSlotIsCondition,
     # Phase D additions
     "epex_price_is_below_threshold": EpexPriceIsBelowThresholdCondition,
+    "epex_price_is_below_threshold_quarter_hour": (
+        EpexPriceIsBelowThresholdQuarterHourCondition
+    ),
     "epex_price_is_above_threshold": EpexPriceIsAboveThresholdCondition,
+    "epex_price_is_above_threshold_quarter_hour": (
+        EpexPriceIsAboveThresholdQuarterHourCondition
+    ),
     "offtake_is_optimal": OfftakeIsOptimalCondition,
     "injection_is_optimal": InjectionIsOptimalCondition,
     "happy_hours_is_active": HappyHoursIsActiveCondition,
@@ -270,5 +314,5 @@ CONDITIONS: dict[str, type[Condition]] = {
 async def async_get_conditions(
     hass: HomeAssistant,  # noqa: ARG001
 ) -> dict[str, type[Condition]]:
-    """Return the integration-scoped ENGIE Belgium conditions (10 total)."""
+    """Return the integration-scoped ENGIE Belgium conditions (13 total)."""
     return CONDITIONS

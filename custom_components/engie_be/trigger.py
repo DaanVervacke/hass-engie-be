@@ -7,9 +7,11 @@ triggers in the HA automation editor.
 Supported trigger keys:
 
 Binary transitions (fire on a specific edge):
-- ``engie_be.epex_became_negative``         EPEX price goes negative
-- ``engie_be.epex_no_longer_negative``       EPEX price returns positive
-- ``engie_be.offtake_became_optimal``        offtake slot becomes optimal
+- ``engie_be.epex_became_negative`` - EPEX price goes negative
+- ``engie_be.epex_became_negative_quarter_hour`` - quarter-hourly goes negative
+- ``engie_be.epex_no_longer_negative`` - EPEX price returns positive
+- ``engie_be.epex_no_longer_negative_quarter_hour`` - quarter-hourly returns positive
+- ``engie_be.offtake_became_optimal`` - offtake slot becomes optimal
 - ``engie_be.offtake_no_longer_optimal``     offtake slot leaves optimal
 - ``engie_be.injection_became_optimal``      injection slot becomes optimal
 - ``engie_be.injection_no_longer_optimal``   injection slot leaves optimal
@@ -30,7 +32,9 @@ Enum "became" (fires when the sensor enters a chosen level/slot):
 
 Numerical threshold triggers (Phase B):
 - ``engie_be.epex_current_crossed_threshold``
+- ``engie_be.epex_current_quarter_hour_crossed_threshold``
 - ``engie_be.epex_next_hour_crossed_threshold``
+- ``engie_be.epex_next_quarter_hour_crossed_threshold``
 - ``engie_be.solar_surplus_current_crossed_threshold``
 - ``engie_be.solar_surplus_next_hour_crossed_threshold``
 - ``engie_be.captar_peak_crossed_threshold``
@@ -38,7 +42,9 @@ Numerical threshold triggers (Phase B):
 Value-changed triggers (Phase C):
 - ``engie_be.captar_peak_updated``
 - ``engie_be.epex_high_today_updated``
+- ``engie_be.epex_high_today_quarter_hour_updated``
 - ``engie_be.epex_low_today_updated``
+- ``engie_be.epex_low_today_quarter_hour_updated``
 
 Calendar event-class triggers (Phase E):
 - ``engie_be.captar_peak_window_started``    fires at start of captar peak window
@@ -88,10 +94,15 @@ from .const import (
     TRANSLATION_KEY_AUTHENTICATION,
     TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,
     TRANSLATION_KEY_EPEX_CURRENT,
+    TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_HIGH_TODAY,
+    TRANSLATION_KEY_EPEX_HIGH_TODAY_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_LOW_TODAY,
+    TRANSLATION_KEY_EPEX_LOW_TODAY_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_NEGATIVE,
+    TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_NEXT_HOUR,
+    TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
     TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
@@ -152,6 +163,20 @@ class EpexNoLongerNegativeTrigger(_BinaryEdgeTrigger):
     """Trigger: EPEX price no longer negative (binary sensor on -> off)."""
 
     _translation_key = TRANSLATION_KEY_EPEX_NEGATIVE
+    _to_states: ClassVar[set[str]] = {STATE_OFF}
+
+
+class EpexBecameNegativeQuarterHourTrigger(_BinaryEdgeTrigger):
+    """Trigger: EPEX quarter-hourly price became negative."""
+
+    _translation_key = TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR
+    _to_states: ClassVar[set[str]] = {STATE_ON}
+
+
+class EpexNoLongerNegativeQuarterHourTrigger(_BinaryEdgeTrigger):
+    """Trigger: EPEX quarter-hourly price no longer negative."""
+
+    _translation_key = TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR
     _to_states: ClassVar[set[str]] = {STATE_OFF}
 
 
@@ -378,6 +403,18 @@ class EpexNextHourCrossedThresholdTrigger(_ThresholdTrigger):
     _translation_key = TRANSLATION_KEY_EPEX_NEXT_HOUR
 
 
+class EpexCurrentQuarterHourCrossedThresholdTrigger(_ThresholdTrigger):
+    """Trigger: EPEX current quarter-hourly price crossed a threshold."""
+
+    _translation_key = TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR
+
+
+class EpexNextQuarterHourCrossedThresholdTrigger(_ThresholdTrigger):
+    """Trigger: EPEX next quarter-hourly price crossed a threshold."""
+
+    _translation_key = TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR
+
+
 class SolarSurplusCurrentCrossedThresholdTrigger(_ThresholdTrigger):
     """Trigger: solar surplus current-hour value crossed a threshold."""
 
@@ -443,6 +480,18 @@ class EpexLowTodayUpdatedTrigger(_ValueChangedTrigger):
     """Trigger: EPEX lowest price today changed."""
 
     _translation_key = TRANSLATION_KEY_EPEX_LOW_TODAY
+
+
+class EpexHighTodayQuarterHourUpdatedTrigger(_ValueChangedTrigger):
+    """Trigger: EPEX highest quarter-hourly price today changed."""
+
+    _translation_key = TRANSLATION_KEY_EPEX_HIGH_TODAY_QUARTER_HOUR
+
+
+class EpexLowTodayQuarterHourUpdatedTrigger(_ValueChangedTrigger):
+    """Trigger: EPEX lowest quarter-hourly price today changed."""
+
+    _translation_key = TRANSLATION_KEY_EPEX_LOW_TODAY_QUARTER_HOUR
 
 
 # ---------------------------------------------------------------------------
@@ -660,6 +709,8 @@ TRIGGERS: dict[str, type[Trigger]] = {
     # Phase A - binary transitions
     "epex_became_negative": EpexBecameNegativeTrigger,
     "epex_no_longer_negative": EpexNoLongerNegativeTrigger,
+    "epex_became_negative_quarter_hour": EpexBecameNegativeQuarterHourTrigger,
+    "epex_no_longer_negative_quarter_hour": EpexNoLongerNegativeQuarterHourTrigger,
     "offtake_became_optimal": OfftakeBecameOptimalTrigger,
     "offtake_no_longer_optimal": OfftakeNoLongerOptimalTrigger,
     "injection_became_optimal": InjectionBecameOptimalTrigger,
@@ -678,7 +729,13 @@ TRIGGERS: dict[str, type[Trigger]] = {
     "injection_slot_became": InjectionSlotBecameTrigger,
     # Phase B - numerical thresholds
     "epex_current_crossed_threshold": EpexCurrentCrossedThresholdTrigger,
+    "epex_current_quarter_hour_crossed_threshold": (
+        EpexCurrentQuarterHourCrossedThresholdTrigger
+    ),
     "epex_next_hour_crossed_threshold": EpexNextHourCrossedThresholdTrigger,
+    "epex_next_quarter_hour_crossed_threshold": (
+        EpexNextQuarterHourCrossedThresholdTrigger
+    ),
     "solar_surplus_current_crossed_threshold": (
         SolarSurplusCurrentCrossedThresholdTrigger
     ),
@@ -689,7 +746,9 @@ TRIGGERS: dict[str, type[Trigger]] = {
     # Phase C - value changed
     "captar_peak_updated": CaptarPeakUpdatedTrigger,
     "epex_high_today_updated": EpexHighTodayUpdatedTrigger,
+    "epex_high_today_quarter_hour_updated": EpexHighTodayQuarterHourUpdatedTrigger,
     "epex_low_today_updated": EpexLowTodayUpdatedTrigger,
+    "epex_low_today_quarter_hour_updated": EpexLowTodayQuarterHourUpdatedTrigger,
     # Phase E - calendar event-class triggers
     "captar_peak_window_started": CaptarPeakWindowStartedTrigger,
     "captar_peak_window_ended": CaptarPeakWindowEndedTrigger,

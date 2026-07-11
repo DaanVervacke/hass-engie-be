@@ -1030,6 +1030,30 @@
                     "description": "Power threshold in kW."
                 }
             }
+        },
+        "epex_price_is_negative_quarter_hour": {
+            "name": "EPEX quarter-hourly price is negative",
+            "description": "True when the current EPEX quarter-hourly day-ahead price is negative (you are paid to consume)."
+        },
+        "epex_price_is_below_threshold_quarter_hour": {
+            "name": "EPEX quarter-hourly price is below threshold",
+            "description": "True when the current EPEX quarter-hourly day-ahead price is below the configured threshold.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Price threshold in EUR/kWh."
+                }
+            }
+        },
+        "epex_price_is_above_threshold_quarter_hour": {
+            "name": "EPEX quarter-hourly price is above threshold",
+            "description": "True when the current EPEX quarter-hourly day-ahead price is above the configured threshold.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Price threshold in EUR/kWh."
+                }
+            }
         }
     },
     "triggers": {
@@ -1176,6 +1200,42 @@
         "epex_low_today_updated": {
             "name": "EPEX lowest price today updated",
             "description": "Fires when today's EPEX lowest price changes."
+        },
+        "epex_became_negative_quarter_hour": {
+            "name": "EPEX quarter-hourly price became negative",
+            "description": "Fires when the EPEX quarter-hourly day-ahead price turns negative (you are paid to consume)."
+        },
+        "epex_no_longer_negative_quarter_hour": {
+            "name": "EPEX quarter-hourly price no longer negative",
+            "description": "Fires when the EPEX quarter-hourly day-ahead price returns to zero or positive."
+        },
+        "epex_current_quarter_hour_crossed_threshold": {
+            "name": "EPEX quarter-hourly current price crossed threshold",
+            "description": "Fires when the current quarter-hourly EPEX price crosses into the configured threshold range.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Price threshold in EUR/kWh."
+                }
+            }
+        },
+        "epex_next_quarter_hour_crossed_threshold": {
+            "name": "EPEX quarter-hourly next price crossed threshold",
+            "description": "Fires when the next quarter-hourly EPEX price crosses into the configured threshold range.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Price threshold in EUR/kWh."
+                }
+            }
+        },
+        "epex_high_today_quarter_hour_updated": {
+            "name": "EPEX quarter-hourly high today updated",
+            "description": "Fires when the highest quarter-hourly EPEX price today changes."
+        },
+        "epex_low_today_quarter_hour_updated": {
+            "name": "EPEX quarter-hourly low today updated",
+            "description": "Fires when the lowest quarter-hourly EPEX price today changes."
         },
         "captar_peak_window_started": {
             "name": "Captar peak window started",
