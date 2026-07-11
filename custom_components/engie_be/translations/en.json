@@ -956,8 +956,8 @@
     },
     "conditions": {
         "epex_price_is_negative": {
-            "name": "EPEX price is negative",
-            "description": "True when the current EPEX day-ahead price is negative (you are paid to consume)."
+            "name": "EPEX hour price is negative",
+            "description": "True when the current EPEX hour day-ahead price is negative (you are paid to consume)."
         },
         "solar_surplus_is_at_level": {
             "name": "Solar surplus is at level",
@@ -990,8 +990,8 @@
             }
         },
         "epex_price_is_below_threshold": {
-            "name": "EPEX price is below threshold",
-            "description": "True when the current EPEX day-ahead price is below the configured threshold.",
+            "name": "EPEX hour price is below threshold",
+            "description": "True when the current EPEX hour day-ahead price is below the configured threshold.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",
@@ -1000,8 +1000,8 @@
             }
         },
         "epex_price_is_above_threshold": {
-            "name": "EPEX price is above threshold",
-            "description": "True when the current EPEX day-ahead price is above the configured threshold.",
+            "name": "EPEX hour price is above threshold",
+            "description": "True when the current EPEX hour day-ahead price is above the configured threshold.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",
@@ -1058,12 +1058,12 @@
     },
     "triggers": {
         "epex_became_negative": {
-            "name": "EPEX price became negative",
-            "description": "Fires when the EPEX day-ahead price turns negative (you are paid to consume)."
+            "name": "EPEX hour price became negative",
+            "description": "Fires when the EPEX hour day-ahead price turns negative (you are paid to consume)."
         },
         "epex_no_longer_negative": {
-            "name": "EPEX price no longer negative",
-            "description": "Fires when the EPEX day-ahead price returns to zero or positive."
+            "name": "EPEX hour price no longer negative",
+            "description": "Fires when the EPEX hour day-ahead price returns to zero or positive."
         },
         "offtake_became_optimal": {
             "name": "Offtake became optimal",
@@ -1140,8 +1140,8 @@
             }
         },
         "epex_current_crossed_threshold": {
-            "name": "EPEX current price crossed threshold",
-            "description": "Fires when the current-hour EPEX price crosses into the configured threshold range.",
+            "name": "EPEX current hour price crossed threshold",
+            "description": "Fires when the EPEX hour day-ahead price crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",
@@ -1150,8 +1150,8 @@
             }
         },
         "epex_next_hour_crossed_threshold": {
-            "name": "EPEX next-hour price crossed threshold",
-            "description": "Fires when the next-hour EPEX price crosses into the configured threshold range.",
+            "name": "EPEX next hour price crossed threshold",
+            "description": "Fires when the EPEX hour day-ahead price crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",
@@ -1194,12 +1194,12 @@
             "description": "Fires when the captar monthly peak power value changes."
         },
         "epex_high_today_updated": {
-            "name": "EPEX highest price today updated",
-            "description": "Fires when today's EPEX highest price changes."
+            "name": "EPEX hour highest price today updated",
+            "description": "Fires when the highest EPEX hour day-ahead price for today changes."
         },
         "epex_low_today_updated": {
-            "name": "EPEX lowest price today updated",
-            "description": "Fires when today's EPEX lowest price changes."
+            "name": "EPEX hour lowest price today updated",
+            "description": "Fires when the lowest EPEX hour day-ahead price for today changes."
         },
         "epex_became_negative_quarter_hour": {
             "name": "EPEX quarter-hourly price became negative",
