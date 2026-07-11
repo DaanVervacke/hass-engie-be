@@ -31,9 +31,11 @@ from custom_components.engie_be.const import (
     TRANSLATION_KEY_AUTHENTICATION,
     TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,
     TRANSLATION_KEY_EPEX_CURRENT,
+    TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_HIGH_TODAY,
     TRANSLATION_KEY_EPEX_LOW_TODAY,
     TRANSLATION_KEY_EPEX_NEGATIVE,
+    TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_NEXT_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
     TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
@@ -55,11 +57,14 @@ from custom_components.engie_be.trigger import (
     CaptarPeakUpdatedTrigger,
     CaptarPeakWindowEndedTrigger,
     CaptarPeakWindowStartedTrigger,
+    EpexBecameNegativeQuarterHourTrigger,
     EpexBecameNegativeTrigger,
     EpexCurrentCrossedThresholdTrigger,
+    EpexCurrentQuarterHourCrossedThresholdTrigger,
     EpexHighTodayUpdatedTrigger,
     EpexLowTodayUpdatedTrigger,
     EpexNextHourCrossedThresholdTrigger,
+    EpexNoLongerNegativeQuarterHourTrigger,
     EpexNoLongerNegativeTrigger,
     HappyHoursBecameActiveTrigger,
     HappyHoursBecameInactiveTrigger,
@@ -247,7 +252,9 @@ async def test_async_get_triggers_returns_all(hass: HomeAssistant) -> None:
     expected = {
         # Phase A binary transitions
         "epex_became_negative",
+        "epex_became_negative_quarter_hour",
         "epex_no_longer_negative",
+        "epex_no_longer_negative_quarter_hour",
         "offtake_became_optimal",
         "offtake_no_longer_optimal",
         "injection_became_optimal",
@@ -266,7 +273,9 @@ async def test_async_get_triggers_returns_all(hass: HomeAssistant) -> None:
         "injection_slot_became",
         # Phase B numerical
         "epex_current_crossed_threshold",
+        "epex_current_quarter_hour_crossed_threshold",
         "epex_next_hour_crossed_threshold",
+        "epex_next_quarter_hour_crossed_threshold",
         "solar_surplus_current_crossed_threshold",
         "solar_surplus_next_hour_crossed_threshold",
         "captar_peak_crossed_threshold",
@@ -274,6 +283,8 @@ async def test_async_get_triggers_returns_all(hass: HomeAssistant) -> None:
         "captar_peak_updated",
         "epex_high_today_updated",
         "epex_low_today_updated",
+        "epex_high_today_quarter_hour_updated",
+        "epex_low_today_quarter_hour_updated",
         # Phase E calendar event-class
         "captar_peak_window_started",
         "captar_peak_window_ended",
@@ -1845,4 +1856,157 @@ async def test_calendar_trigger_cancel_during_fetch_drops_new_listener(
 
     assert len(fired) == 1, (
         "Cancelled trigger leaked a listener that fired a second time"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Quarter-hourly EPEX triggers
+# ---------------------------------------------------------------------------
+
+
+async def test_epex_became_negative_qh_fires_on_transition(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH negative trigger fires when QH negative turns on."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
+        entity_suffix="epex_negative_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_negative_qh",
+    )
+    await _run_trigger(
+        hass,
+        EpexBecameNegativeQuarterHourTrigger,
+        entity_id,
+        "off",
+        "on",
+        expected_fires=1,
+    )
+
+
+async def test_epex_became_negative_qh_no_fire_on_off_to_off(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH negative trigger does not fire when staying off."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
+        entity_suffix="epex_negative_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_negative_qh",
+    )
+    await _run_trigger(
+        hass,
+        EpexBecameNegativeQuarterHourTrigger,
+        entity_id,
+        "off",
+        "off",
+        expected_fires=0,
+    )
+
+
+async def test_epex_became_negative_qh_rejects_hourly(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH negative trigger rejects hourly entity."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEGATIVE,
+        entity_suffix="epex_negative",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_negative",
+    )
+    await _run_trigger(
+        hass,
+        EpexBecameNegativeQuarterHourTrigger,
+        entity_id,
+        "off",
+        "on",
+        expected_fires=0,
+    )
+
+
+async def test_epex_no_longer_negative_qh_fires_on_transition(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH no longer negative trigger fires when QH negative turns off."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=BINARY_SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
+        entity_suffix="epex_negative_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_negative_qh",
+    )
+    await _run_trigger(
+        hass,
+        EpexNoLongerNegativeQuarterHourTrigger,
+        entity_id,
+        "on",
+        "off",
+        expected_fires=1,
+    )
+
+
+async def test_epex_current_qh_crossed_threshold_fires(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH current threshold trigger fires when QH crosses threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR,
+        entity_suffix="epex_current_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current_qh",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("above", 0.10)
+    await _run_trigger(
+        hass,
+        EpexCurrentQuarterHourCrossedThresholdTrigger,
+        entity_id,
+        "0.05",
+        "0.15",
+        expected_fires=1,
+        options=options,
+    )
+
+
+async def test_epex_current_qh_crossed_threshold_rejects_hourly(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH current threshold trigger rejects hourly entity."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("above", 0.10)
+    await _run_trigger(
+        hass,
+        EpexCurrentQuarterHourCrossedThresholdTrigger,
+        entity_id,
+        "0.05",
+        "0.15",
+        expected_fires=0,
+        options=options,
     )
