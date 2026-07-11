@@ -109,10 +109,10 @@
                 "default": "mdi:cash-plus"
             },
             "captar_monthly_peak_power": {
-                "default": "mdi:flash"
+                "default": "mdi:gauge"
             },
             "captar_monthly_peak_energy": {
-                "default": "mdi:lightning-bolt"
+                "default": "mdi:gauge-full"
             },
             "captar_monthly_peak_start": {
                 "default": "mdi:clock-start"
@@ -130,25 +130,25 @@
                 "default": "mdi:cash-clock"
             },
             "epex_low_today": {
-                "default": "mdi:cash-minus"
+                "default": "mdi:cash-100"
             },
             "epex_high_today": {
-                "default": "mdi:cash-plus"
+                "default": "mdi:cash-multiple"
             },
             "epex_next_hour": {
-                "default": "mdi:cash-fast"
+                "default": "mdi:cash-clock"
             },
             "epex_current_quarter_hour": {
                 "default": "mdi:cash-clock"
             },
             "epex_low_today_quarter_hour": {
-                "default": "mdi:cash-minus"
+                "default": "mdi:cash-100"
             },
             "epex_high_today_quarter_hour": {
-                "default": "mdi:cash-plus"
+                "default": "mdi:cash-multiple"
             },
             "epex_next_quarter_hour": {
-                "default": "mdi:cash-fast"
+                "default": "mdi:cash-clock"
             }
         },
         "binary_sensor": {
@@ -168,7 +168,7 @@
     },
     "triggers": {
         "epex_became_negative": {"trigger": "mdi:cash-minus"},
-        "epex_no_longer_negative": {"trigger": "mdi:cash-refund"},
+        "epex_no_longer_negative": {"trigger": "mdi:cash-check"},
         "offtake_became_optimal": {"trigger": "mdi:transmission-tower-import"},
         "offtake_no_longer_optimal": {"trigger": "mdi:transmission-tower-off"},
         "injection_became_optimal": {"trigger": "mdi:transmission-tower-export"},
@@ -178,8 +178,8 @@
         "authentication_lost": {"trigger": "mdi:shield-alert"},
         "authentication_restored": {"trigger": "mdi:shield-check"},
         "solar_surplus_level_changed": {"trigger": "mdi:solar-power-variant"},
-        "offtake_slot_changed": {"trigger": "mdi:clock-time-eight"},
-        "injection_slot_changed": {"trigger": "mdi:clock-time-eight-outline"},
+        "offtake_slot_changed": {"trigger": "mdi:timer-sand"},
+        "injection_slot_changed": {"trigger": "mdi:timer-sand"},
         "solar_surplus_became": {"trigger": "mdi:solar-power"},
         "offtake_slot_became": {"trigger": "mdi:clock-check"},
         "injection_slot_became": {"trigger": "mdi:clock-check-outline"},
@@ -189,7 +189,7 @@
         "solar_surplus_next_hour_crossed_threshold": {"trigger": "mdi:solar-power-variant"},
         "captar_peak_crossed_threshold": {"trigger": "mdi:flash-alert"},
         "captar_peak_updated": {"trigger": "mdi:flash"},
-        "epex_high_today_updated": {"trigger": "mdi:cash-plus"},
+        "epex_high_today_updated": {"trigger": "mdi:cash-100"},
         "epex_low_today_updated": {"trigger": "mdi:cash-100"},
         "captar_peak_window_started": {"trigger": "mdi:flash-alert"},
         "captar_peak_window_ended": {"trigger": "mdi:flash-off"},
@@ -200,8 +200,8 @@
     "conditions": {
         "epex_price_is_negative": {"condition": "mdi:cash-minus"},
         "solar_surplus_is_at_level": {"condition": "mdi:solar-power"},
-        "offtake_slot_is": {"condition": "mdi:clock-time-eight"},
-        "injection_slot_is": {"condition": "mdi:clock-time-eight-outline"},
+        "offtake_slot_is": {"condition": "mdi:timer-sand"},
+        "injection_slot_is": {"condition": "mdi:timer-sand"},
         "offtake_is_optimal": {"condition": "mdi:transmission-tower-import"},
         "injection_is_optimal": {"condition": "mdi:transmission-tower-export"},
         "happy_hours_is_active": {"condition": "mdi:sun-clock"},

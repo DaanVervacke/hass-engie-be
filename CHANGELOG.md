@@ -19,6 +19,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Standardized EPEX sensor friendly names: hourly sensors use "hour" (not "hourly"), quarter-hourly sensors use "quarter-hourly" for clarity.
 
+- Improved icon semantics for EPEX sensors: current/next prices now use `cash-clock`, low price uses `cash-100`, and high price uses `cash-multiple` for clearer distinction from financial (offtake/injection) sensors.
+
+- Improved icon semantics for Captar peak sensors: monthly peak power uses `gauge`, monthly peak energy uses `gauge-full` for better measurement metaphor.
+
+- Improved icon semantics for TOU slot triggers and conditions: now use `timer-sand` (hourglass) metaphor instead of generic clock icons.
+
+- Fixed EPEX high today updated trigger icon to use `cash-100` (completes Plan 047).
+
 ### Fixed
 
 - Fixed EPEX sensor `slot_duration_minutes` attribute to report actual slot duration (15 for quarter-hourly, 60 for hourly) instead of hardcoded constant.
