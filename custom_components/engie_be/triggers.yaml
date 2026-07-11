@@ -93,6 +93,18 @@ epex_no_longer_negative:
     behavior: *trigger_behavior
     for: *trigger_for
 
+epex_became_negative_quarter_hour:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
+epex_no_longer_negative_quarter_hour:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+
 offtake_became_optimal:
   target: *target_engie_binary_sensor
   fields:
@@ -223,6 +235,32 @@ epex_next_hour_crossed_threshold:
           mode: crossed
           number: *epex_threshold_number
 
+epex_current_quarter_hour_crossed_threshold:
+  target: *target_engie_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: crossed
+          number: *epex_threshold_number
+
+epex_next_quarter_hour_crossed_threshold:
+  target: *target_engie_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: crossed
+          number: *epex_threshold_number
+
 solar_surplus_current_crossed_threshold:
   target: *target_engie_sensor
   fields:
@@ -273,6 +311,12 @@ epex_high_today_updated:
   target: *target_engie_sensor
 
 epex_low_today_updated:
+  target: *target_engie_sensor
+
+epex_high_today_quarter_hour_updated:
+  target: *target_engie_sensor
+
+epex_low_today_quarter_hour_updated:
   target: *target_engie_sensor
 
 # ---------------------------------------------------------------------------

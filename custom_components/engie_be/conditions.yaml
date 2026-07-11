@@ -67,6 +67,12 @@ epex_price_is_negative:
     behavior: *condition_behavior
     for: *condition_for
 
+epex_price_is_negative_quarter_hour:
+  target: *target_engie_binary_sensor
+  fields:
+    behavior: *condition_behavior
+    for: *condition_for
+
 offtake_is_optimal:
   target: *target_engie_binary_sensor
   fields:
@@ -140,6 +146,28 @@ epex_price_is_below_threshold:
           number: *epex_threshold_number
 
 epex_price_is_above_threshold:
+  target: *target_engie_sensor
+  fields:
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: is
+          number: *epex_threshold_number
+
+epex_price_is_below_threshold_quarter_hour:
+  target: *target_engie_sensor
+  fields:
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: is
+          number: *epex_threshold_number
+
+epex_price_is_above_threshold_quarter_hour:
   target: *target_engie_sensor
   fields:
     threshold:
