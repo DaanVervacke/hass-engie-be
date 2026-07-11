@@ -11,11 +11,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
-- Three additional quarter-hourly EPEX price sensors for MTU15 dynamic tariff contracts. MTU15 contracts now get a complete set of sensors: current quarter-hour price (`sensor.engie_belgium_{BAN}_epex_current_quarter_hour`), next quarter-hour price (`sensor.engie_belgium_{BAN}_epex_next_quarter_hour`), lowest quarter-hour price today (`sensor.engie_belgium_{BAN}_epex_low_today_quarter_hour`), and highest quarter-hour price today (`sensor.engie_belgium_{BAN}_epex_high_today_quarter_hour`).
+- Three additional quarter-hourly EPEX price sensors for MTU15 dynamic tariff contracts. MTU15 contracts now get a complete set of sensors: current quarter-hourly price (`sensor.engie_belgium_{BAN}_epex_current_quarter_hour`), next quarter-hourly price (`sensor.engie_belgium_{BAN}_epex_next_quarter_hour`), lowest quarter-hourly price today (`sensor.engie_belgium_{BAN}_epex_low_today_quarter_hour`), and highest quarter-hourly price today (`sensor.engie_belgium_{BAN}_epex_high_today_quarter_hour`).
 
 ### Changed
 
 - Migrated EPEX endpoint from v1 to v2. The new `/pricing/public/v2/epex-prices` endpoint requires authentication (handled via existing OAuth flow) and enables dynamic granularity detection (hourly or quarter-hourly) from the API response.
+
+- Standardized EPEX sensor friendly names: hourly sensors use "hour" (not "hourly"), quarter-hourly sensors use "quarter-hourly" for clarity.
+
+### Fixed
+
+- Fixed EPEX sensor `slot_duration_minutes` attribute to report actual slot duration (15 for quarter-hourly, 60 for hourly) instead of hardcoded constant.
 
 ## [0.13.0b1] - 2026-07-09
 
@@ -36,7 +42,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Inline pass-through wrappers around filter_by_translation_key.
 - Inline solar_surplus_payload helper. Use unwrap_dict_payload directly.
-- EPEX slot duration sourced from a module constant instead of a per-slot field. slot_duration_minutes attribute unchanged.
+- EPEX slot duration sourced from payload instead of per-slot field calculation. slot_duration_minutes attribute reflects actual slot duration.
 - Audited `primary_entities_only` on trigger and condition target anchors: only the authentication triggers now set `false`. All other binary-sensor, sensor, and calendar anchors use the default `true`. Consolidated repeated `threshold` and `slot` field name strings into a `common:` block in `strings.json` / `translations/en.json` to reduce duplication.
 - Deduplicate TOU slot options in trigger/condition YAML and distinguish icon collisions for related triggers.
 - Drop the x-trace-id request header. It was unused by ENGIE and inconsistently applied across endpoints.

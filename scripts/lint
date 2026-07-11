@@ -4,5 +4,15 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-ruff format .
-ruff check . --fix
+# Use venv ruff if available, fall back to global ruff
+REPO_DIR="$(pwd)"
+VENV_RUFF="${REPO_DIR}/.venv/bin/ruff"
+
+if [[ -x "$VENV_RUFF" ]]; then
+    RUFF="$VENV_RUFF"
+else
+    RUFF="ruff"
+fi
+
+$RUFF format .
+$RUFF check . --fix

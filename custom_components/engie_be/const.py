@@ -55,7 +55,7 @@ TOU_FLAG_KEY = "dgo-tou-is-active"
 # new code from ENGIE never lands the sensor in ``unknown``.
 #
 # - ``peak`` / ``offpeak`` / ``exclusive_night`` - Dart ``TimeSlotCategory``
-#   enum. ``PEAK`` and ``OFFPEAK`` observed on the wire (BAN 002209795515,
+#   enum. ``PEAK`` and ``OFFPEAK`` observed on the wire (BAN 000000000000,
 #   2026-07-08). ``EXCLUSIVE_NIGHT`` documented for the Fluvius rollout.
 # - ``day`` - Dart enum, not yet observed.
 # - ``superoffpeak`` - the app carries a ``"Super Offpeak"`` display label,
