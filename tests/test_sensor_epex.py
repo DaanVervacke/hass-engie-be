@@ -789,3 +789,61 @@ def test_qh_high_today_sensor_selects_maximum_of_today_only() -> None:
         assert sensor.native_value == pytest.approx(0.195)
         attrs = sensor.extra_state_attributes
         assert attrs["slot_duration_minutes"] == 15
+
+
+def test_epex_quarter_hourly_extrema_sensors_empty_payload() -> None:
+    """QH extrema sensors return None with empty payload."""
+    coordinator = _make_epex_qh_coordinator(None)
+    subentry = _make_subentry()
+
+    low_sensor = EngieBeEpexExtremaSensor(
+        coordinator, subentry, _EPEX_LOW_TODAY_QUARTER_HOUR, mode="min"
+    )
+    high_sensor = EngieBeEpexExtremaSensor(
+        coordinator, subentry, _EPEX_HIGH_TODAY_QUARTER_HOUR, mode="max"
+    )
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=_NOW_BRUSSELS,
+    ):
+        assert low_sensor.native_value is None
+        assert high_sensor.native_value is None
+        assert low_sensor.available is False
+        assert high_sensor.available is False
+
+
+def test_epex_quarter_hourly_extrema_sensors_single_slot() -> None:
+    """QH extrema sensors with single slot: high and low equal that slot's price."""
+    # Build payload with single QH slot
+    single_slot = datetime(2026, 5, 4, 0, 0, 0, tzinfo=_BRUSSELS)
+    payload = EpexPayload(
+        slots=(
+            EpexSlot(
+                start=single_slot,
+                end=single_slot + timedelta(minutes=15),
+                value_eur_per_kwh=0.150,
+            ),
+        ),
+        publication_time=datetime(2026, 5, 4, 13, 0, 0, tzinfo=_BRUSSELS),
+        market_date="2026-05-04",
+        slot_duration=timedelta(minutes=15),
+    )
+    coordinator = _make_epex_qh_coordinator(payload)
+    subentry = _make_subentry()
+
+    low_sensor = EngieBeEpexExtremaSensor(
+        coordinator, subentry, _EPEX_LOW_TODAY_QUARTER_HOUR, mode="min"
+    )
+    high_sensor = EngieBeEpexExtremaSensor(
+        coordinator, subentry, _EPEX_HIGH_TODAY_QUARTER_HOUR, mode="max"
+    )
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=_NOW_BRUSSELS,
+    ):
+        assert low_sensor.native_value == pytest.approx(0.150)
+        assert high_sensor.native_value == pytest.approx(0.150)
+        assert low_sensor.extra_state_attributes["slot_duration_minutes"] == 15
+        assert high_sensor.extra_state_attributes["slot_duration_minutes"] == 15

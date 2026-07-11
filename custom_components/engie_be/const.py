@@ -192,7 +192,7 @@ EPEX_BASE_URL = "https://api.engie.be/engie/ms/pricing/v1/public/prices/epex"
 EPEX_TZ = "Europe/Brussels"
 # Hourly slots today; carried as a constant so a future 15-min rollout
 # only requires touching one place.
-EPEX_SLOT_DURATION_MINUTES = 60
+EPEX_DEFAULT_SLOT_DURATION_MINUTES = 60
 
 # Raw EPEX values are EUR/MWh; the integration normalises everything
 # to EUR/kWh for consistency with the existing supplier-energy-prices

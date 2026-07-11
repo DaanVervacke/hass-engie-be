@@ -33,8 +33,8 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
+    EPEX_DEFAULT_SLOT_DURATION_MINUTES,
     EPEX_MWH_TO_KWH,
-    EPEX_SLOT_DURATION_MINUTES,
     EPEX_TZ,
     KEY_IS_DYNAMIC,
     LOGGER,
@@ -1694,7 +1694,7 @@ class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
 
 
 def _parse_epex_response(
-    raw: Any, slot_duration_minutes: int = EPEX_SLOT_DURATION_MINUTES
+    raw: Any, slot_duration_minutes: int = EPEX_DEFAULT_SLOT_DURATION_MINUTES
 ) -> EpexPayload:
     """
     Parse a raw EPEX endpoint response into an :class:`EpexPayload`.

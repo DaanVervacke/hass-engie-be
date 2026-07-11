@@ -1082,6 +1082,15 @@ class _EngieBeEpexSensorBase(_BoundaryScheduleMixin, EngieBeEpexEntity, SensorEn
         return next_epex_slot_boundary(payload, dt_util.utcnow())
 
 
+# EPEX Sensor Slot Duration
+# All EPEX sensors expose slot_duration_minutes in extra_state_attributes.
+# Dynamically computed via _slot_duration_minutes() in _epex.py from slot
+# boundaries:
+# - Hourly contracts (MTU60): 60 minutes per slot
+# - Quarter-hourly contracts (MTU15): 15 minutes per slot
+# The value is NOT hardcoded; it reflects actual slot duration from API payload.
+
+
 class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
     """Current EPEX day-ahead price for the slot covering ``now``."""
 

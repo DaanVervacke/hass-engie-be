@@ -2,10 +2,10 @@
 
 set -e
 
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Use venv ruff if available, fall back to global ruff
-REPO_DIR="$(pwd)"
 VENV_RUFF="${REPO_DIR}/.venv/bin/ruff"
 
 if [[ -x "$VENV_RUFF" ]]; then
@@ -14,5 +14,6 @@ else
     RUFF="ruff"
 fi
 
+cd "$REPO_DIR"
 $RUFF format .
 $RUFF check . --fix
