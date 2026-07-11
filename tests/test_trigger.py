@@ -33,10 +33,14 @@ from custom_components.engie_be.const import (
     TRANSLATION_KEY_EPEX_CURRENT,
     TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_HIGH_TODAY,
+    TRANSLATION_KEY_EPEX_HIGH_TODAY_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_LOW_TODAY,
+    TRANSLATION_KEY_EPEX_LOW_TODAY_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_NEGATIVE,
     TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
+    TRANSLATION_KEY_EPEX_NEXT,
     TRANSLATION_KEY_EPEX_NEXT_HOUR,
+    TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
     TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
@@ -61,9 +65,12 @@ from custom_components.engie_be.trigger import (
     EpexBecameNegativeTrigger,
     EpexCurrentCrossedThresholdTrigger,
     EpexCurrentQuarterHourCrossedThresholdTrigger,
+    EpexHighTodayQuarterHourUpdatedTrigger,
     EpexHighTodayUpdatedTrigger,
+    EpexLowTodayQuarterHourUpdatedTrigger,
     EpexLowTodayUpdatedTrigger,
     EpexNextHourCrossedThresholdTrigger,
+    EpexNextQuarterHourCrossedThresholdTrigger,
     EpexNoLongerNegativeQuarterHourTrigger,
     EpexNoLongerNegativeTrigger,
     HappyHoursBecameActiveTrigger,
@@ -2009,4 +2016,158 @@ async def test_epex_current_qh_crossed_threshold_rejects_hourly(
         "0.15",
         expected_fires=0,
         options=options,
+    )
+
+
+async def test_epex_next_qh_crossed_threshold_fires(
+    hass: HomeAssistant,
+) -> None:
+    """EpexNextQuarterHourCrossedThresholdTrigger fires on threshold crossing."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
+        entity_suffix="epex_next_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_next_qh",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("above", 0.10)
+    await _run_trigger(
+        hass,
+        EpexNextQuarterHourCrossedThresholdTrigger,
+        entity_id,
+        "0.05",
+        "0.15",
+        expected_fires=1,
+        options=options,
+    )
+
+
+async def test_epex_next_qh_crossed_threshold_rejects_hourly(
+    hass: HomeAssistant,
+) -> None:
+    """Test QH next threshold trigger rejects hourly entity."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_NEXT,
+        entity_suffix="epex_next",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_next",
+    )
+    hass.states.async_set(entity_id, "0.05")
+    await hass.async_block_till_done()
+
+    options = _make_threshold_options("above", 0.10)
+    await _run_trigger(
+        hass,
+        EpexNextQuarterHourCrossedThresholdTrigger,
+        entity_id,
+        "0.05",
+        "0.15",
+        expected_fires=0,
+        options=options,
+    )
+
+
+async def test_epex_high_today_qh_updated_fires_on_any_change(
+    hass: HomeAssistant,
+) -> None:
+    """EpexHighTodayQuarterHourUpdatedTrigger fires when price changes."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_HIGH_TODAY_QUARTER_HOUR,
+        entity_suffix="epex_high_today_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_high_qh",
+    )
+    await _run_trigger(
+        hass,
+        EpexHighTodayQuarterHourUpdatedTrigger,
+        entity_id,
+        "0.20",
+        "0.25",
+        expected_fires=1,
+    )
+
+
+async def test_epex_high_today_qh_updated_filters_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """EpexHighTodayQuarterHourUpdatedTrigger ignores wrong key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_HIGH_TODAY,
+        entity_suffix="epex_high_today",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_high",
+    )
+    hass.states.async_set(entity_id, "0.20")
+    await hass.async_block_till_done()
+
+    await _run_trigger(
+        hass,
+        EpexHighTodayQuarterHourUpdatedTrigger,
+        entity_id,
+        "0.20",
+        "0.25",
+        expected_fires=0,
+    )
+
+
+async def test_epex_low_today_qh_updated_fires_on_any_change(
+    hass: HomeAssistant,
+) -> None:
+    """EpexLowTodayQuarterHourUpdatedTrigger fires when price changes."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_LOW_TODAY_QUARTER_HOUR,
+        entity_suffix="epex_low_today_quarter_hour",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_low_qh",
+    )
+    await _run_trigger(
+        hass,
+        EpexLowTodayQuarterHourUpdatedTrigger,
+        entity_id,
+        "0.20",
+        "0.15",
+        expected_fires=1,
+    )
+
+
+async def test_epex_low_today_qh_updated_filters_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """EpexLowTodayQuarterHourUpdatedTrigger ignores wrong key."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_LOW_TODAY,
+        entity_suffix="epex_low_today",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_low",
+    )
+    hass.states.async_set(entity_id, "0.20")
+    await hass.async_block_till_done()
+
+    await _run_trigger(
+        hass,
+        EpexLowTodayQuarterHourUpdatedTrigger,
+        entity_id,
+        "0.20",
+        "0.15",
+        expected_fires=0,
     )

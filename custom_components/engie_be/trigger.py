@@ -86,6 +86,7 @@ from ._automation_helpers import filter_by_translation_key
 from ._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
 from ._peaks import CAPTAR_EVENT_SUMMARY
 from ._tou_calendar import format_tou_event_summary
+from .api import mask_identifier
 from .const import (
     DOMAIN,
     LOGGER,
@@ -550,7 +551,9 @@ async def _get_calendar_events(hass: HomeAssistant, entity_id: str) -> list[Any]
     try:
         return await calendar_entity.async_get_events(hass, now, end)
     except (HomeAssistantError, TimeoutError) as exc:
-        LOGGER.debug("Failed to fetch events from %s: %s", entity_id, exc)
+        LOGGER.debug(
+            "Failed to fetch events from %s: %s", mask_identifier(entity_id), exc
+        )
         return []
 
 

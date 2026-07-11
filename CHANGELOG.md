@@ -29,6 +29,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- Security: mask entity_id in trigger debug logging to prevent BAN exposure (plan 103a).
+- Security: mask BAN in statistics device_name to prevent PII in metadata (plan 103b).
+- Add tests for quarter-hourly EPEX triggers: EpexNextQuarterHourCrossedThresholdTrigger, EpexHighTodayQuarterHourUpdatedTrigger, EpexLowTodayQuarterHourUpdatedTrigger (plan 102).
+
 - Fixed EPEX sensor `slot_duration_minutes` attribute to report actual slot duration (15 for quarter-hourly, 60 for hourly) instead of hardcoded constant.
 
 ## [0.13.0b1] - 2026-07-09

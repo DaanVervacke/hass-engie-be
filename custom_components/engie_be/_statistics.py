@@ -412,7 +412,7 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     """
     business_agreement_number = subentry.data[CONF_BUSINESS_AGREEMENT_NUMBER]
     masked_ban = business_agreement_number[-4:]
-    device_name = subentry.title or f"BAN {business_agreement_number}"
+    device_name = subentry.title or f"BAN ***{masked_ban}"
     active_streams = streams or frozenset(_ENERGY_STREAMS)
     LOGGER.info(
         "Starting historical usage import for BAN ***%s (streams=%s)",
