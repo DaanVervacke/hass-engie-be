@@ -57,7 +57,11 @@ from .const import (
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
     TOKEN_REFRESH_INTERVAL_SECONDS,
 )
-from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
+from .coordinator import (
+    EngieBeDataUpdateCoordinator,
+    EngieBeEpexCoordinator,
+    EngieBeEpexQuarterHourCoordinator,
+)
 from .data import EngieBeData, EngieBeSubentryData
 from .diagnostics import _hash_ean
 from .store import EngieBeHappyHoursStore, EngieBePeaksStore
@@ -125,10 +129,14 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
     )
 
     epex_coordinator = EngieBeEpexCoordinator(hass=hass, config_entry=entry)
+    epex_qh_coordinator = EngieBeEpexQuarterHourCoordinator(
+        hass=hass, config_entry=entry
+    )
 
     entry.runtime_data = EngieBeData(
         client=client,
         epex_coordinator=epex_coordinator,
+        epex_qh_coordinator=epex_qh_coordinator,
         last_options=dict(entry.options),
         last_subentry_ids={
             sub.subentry_id
@@ -247,7 +255,10 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
     #   3. anything else             -> first one wins (propagates)
     #
     # See ``.opencode/audit-v0.10.0b1-prerelease.md`` CFG-1.
-    refresh_calls = [epex_coordinator.async_config_entry_first_refresh()]
+    refresh_calls = [
+        epex_coordinator.async_config_entry_first_refresh(),
+        epex_qh_coordinator.async_config_entry_first_refresh(),
+    ]
     refresh_calls.extend(
         sub_data.coordinator.async_config_entry_first_refresh()
         for sub_data in entry.runtime_data.subentry_data.values()

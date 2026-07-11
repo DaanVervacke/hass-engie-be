@@ -855,16 +855,31 @@
                 "name": "Happy Hours monthly reward vs last month"
             },
             "epex_current": {
-                "name": "EPEX current price"
+                "name": "EPEX current hourly price"
             },
             "epex_low_today": {
-                "name": "EPEX lowest price today"
+                "name": "EPEX lowest hourly price today"
             },
             "epex_high_today": {
-                "name": "EPEX highest price today"
+                "name": "EPEX highest hourly price today"
             },
             "epex_next_hour": {
                 "name": "EPEX next hour price"
+            },
+            "epex_quarter_hour": {
+                "name": "EPEX quarter-hour price"
+            },
+            "epex_current_quarter_hour": {
+                "name": "EPEX current quarter-hour price"
+            },
+            "epex_next_quarter_hour": {
+                "name": "EPEX next quarter-hour price"
+            },
+            "epex_low_today_quarter_hour": {
+                "name": "EPEX lowest quarter-hour price today"
+            },
+            "epex_high_today_quarter_hour": {
+                "name": "EPEX highest quarter-hour price today"
             },
             "solar_surplus_forecast": {
                 "name": "Solar surplus forecast ({ean})",

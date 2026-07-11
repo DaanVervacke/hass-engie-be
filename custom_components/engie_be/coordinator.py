@@ -1450,17 +1450,12 @@ def _derive_has_solar(wrapper: dict[str, Any] | None) -> bool | None:
     return False
 
 
-class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
+class _EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
     """
-    Coordinator for EPEX day-ahead wholesale prices.
+    Common base class for EPEX day-ahead coordinators.
 
-    EPEX prices are public, login-scoped at most (the integration uses the
-    public endpoint), and identical for every customer of a given parent
-    :class:`ConfigEntry`. They are therefore polled once per parent entry
-    rather than once per subentry, regardless of how many customer
-    accounts the user owns. The coordinator is created unconditionally;
-    consumers gate entity creation on per-subentry ``is_dynamic`` so a
-    user with only fixed-tariff accounts simply never sees EPEX entities.
+    Provides shared functionality for fetching and parsing EPEX market data.
+    Subclasses implement the specific granularity (hourly or quarter-hourly).
     """
 
     config_entry: EngieBeConfigEntry
@@ -1469,8 +1464,9 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
         self,
         hass: HomeAssistant,
         config_entry: EngieBeConfigEntry,
+        coordinator_name: str,
     ) -> None:
-        """Initialise the entry-level EPEX coordinator."""
+        """Initialise the EPEX coordinator with shared configuration."""
         update_minutes = config_entry.options.get(
             CONF_UPDATE_INTERVAL,
             DEFAULT_UPDATE_INTERVAL_MINUTES,
@@ -1479,7 +1475,7 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
             hass,
             LOGGER,
             config_entry=config_entry,
-            name=f"{DOMAIN} EPEX",
+            name=f"{DOMAIN} {coordinator_name}",
             update_interval=timedelta(minutes=update_minutes),
         )
         self._last_update_success_time: datetime | None = None
@@ -1506,6 +1502,44 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
         else:
             LOGGER.warning(message, exception)
             self._unavailable_logged = True
+
+    async def _async_update_data(self) -> EpexPayload | None:
+        """
+        Fetch EPEX day-ahead prices.
+
+        Returns the parsed payload, or the previous (last-known) payload
+        when the endpoint is reachable but tomorrow's slate is not yet
+        published (HTTP 404), or when a transient communication error
+        occurs. Returns ``None`` only when no previous payload exists
+        either; platforms must handle this by reporting unavailable.
+        """
+        raise NotImplementedError("Subclasses must implement _async_update_data")
+
+
+class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
+    """
+    Coordinator for EPEX day-ahead wholesale prices.
+
+    EPEX prices are public, login-scoped at most (the integration uses the
+    public endpoint), and identical for every customer of a given parent
+    :class:`ConfigEntry`. They are therefore polled once per parent entry
+    rather than once per subentry, regardless of how many customer
+    accounts the user owns. The coordinator is created unconditionally;
+    consumers gate entity creation on per-subentry ``is_dynamic`` so a
+    user with only fixed-tariff accounts simply never sees EPEX entities.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: EngieBeConfigEntry,
+    ) -> None:
+        """Initialise the entry-level EPEX coordinator."""
+        super().__init__(
+            hass=hass,
+            config_entry=config_entry,
+            coordinator_name="EPEX",
+        )
 
     async def _async_update_data(self) -> EpexPayload | None:
         """
@@ -1550,7 +1584,7 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
             return previous
 
         try:
-            parsed = _parse_epex_response(raw)
+            parsed = _parse_epex_response(raw, slot_duration_minutes=60)
         except (KeyError, TypeError, ValueError) as exception:
             self._note_unavailable(
                 "Failed to parse EPEX response, keeping last-known payload: %s",
@@ -1564,7 +1598,96 @@ class EngieBeEpexCoordinator(DataUpdateCoordinator[EpexPayload | None]):
         return parsed
 
 
-def _parse_epex_response(raw: Any) -> EpexPayload:
+class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
+    """
+    Coordinator for EPEX day-ahead wholesale prices with quarter-hourly granularity.
+
+    EPEX prices are public, login-scoped at most (the integration uses the
+    public endpoint), and identical for every customer of a given parent
+    :class:`ConfigEntry`. They are therefore polled once per parent entry
+    rather than once per subentry, regardless of how many customer
+    accounts the user owns. The coordinator is created unconditionally;
+    consumers gate entity creation on per-subentry ``is_dynamic`` so a
+    user with only fixed-tariff accounts simply never sees EPEX entities.
+
+    This coordinator fetches 15-minute slots (MTU15 contracts) rather than
+    hourly slots. The granularity is specified via the
+    ``granularity="QUARTER_HOURLY"`` parameter when calling the API, and the
+    parsed payload carries a ``slot_duration`` of 15 minutes to distinguish
+    it from hourly data.
+    """
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: EngieBeConfigEntry,
+    ) -> None:
+        """Initialise the entry-level EPEX quarter-hourly coordinator."""
+        super().__init__(
+            hass=hass,
+            config_entry=config_entry,
+            coordinator_name="EPEX QH",
+        )
+
+    async def _async_update_data(self) -> EpexPayload | None:
+        """
+        Fetch EPEX day-ahead prices with quarter-hourly granularity covering today + tomorrow (Brussels).
+
+        Returns the parsed payload, or the previous (last-known) payload
+        when the endpoint is reachable but tomorrow's slate is not yet
+        published (HTTP 404), or when a transient communication error
+        occurs. Returns ``None`` only when no previous payload exists
+        either; platforms must handle this by reporting unavailable.
+        """
+        client = self.config_entry.runtime_data.client
+        previous = self.data if isinstance(self.data, EpexPayload) else None
+
+        # Window: [today_brussels_00:00 .. day_after_tomorrow_brussels_00:00).
+        now_brussels = dt_util.now(_BRUSSELS_TZ)
+        start_local = datetime.combine(
+            now_brussels.date(),
+            time(0, 0),
+            tzinfo=_BRUSSELS_TZ,
+        )
+        end_local = start_local + timedelta(days=2)
+
+        try:
+            raw = await client.async_get_epex_prices(
+                start_local, end_local, granularity="QUARTER_HOURLY"
+            )
+        except EpexNotPublishedError as exception:
+            LOGGER.debug(
+                "EPEX QH endpoint reports no prices yet for window %s..%s: %s",
+                start_local.isoformat(),
+                end_local.isoformat(),
+                exception,
+            )
+            return previous
+        except EngieBeApiClientError as exception:
+            self._note_unavailable(
+                "Failed to fetch EPEX QH prices, keeping last-known payload: %s",
+                exception,
+            )
+            return previous
+
+        try:
+            parsed = _parse_epex_response(raw, slot_duration_minutes=15)
+        except (KeyError, TypeError, ValueError) as exception:
+            self._note_unavailable(
+                "Failed to parse EPEX QH response, keeping last-known payload: %s",
+                exception,
+            )
+            return previous
+        self._last_update_success_time = dt_util.utcnow()
+        if self._unavailable_logged:
+            LOGGER.info("EPEX QH prices fetch recovered; resuming fresh updates")
+            self._unavailable_logged = False
+        return parsed
+
+
+def _parse_epex_response(
+    raw: Any, slot_duration_minutes: int = EPEX_SLOT_DURATION_MINUTES
+) -> EpexPayload:
     """
     Parse a raw EPEX endpoint response into an :class:`EpexPayload`.
 
@@ -1573,6 +1696,10 @@ def _parse_epex_response(raw: Any) -> EpexPayload:
     entries (missing ``period``/``value``, unparseable timestamps) are
     dropped with a debug log so a single bad row doesn't void the whole
     response.
+
+    Args:
+        raw: The raw API response dictionary.
+        slot_duration_minutes: Duration of each slot in minutes (default 60 for hourly).
     """
     if not isinstance(raw, dict):
         msg = f"EPEX response must be a dict, got {type(raw).__name__}"
@@ -1598,7 +1725,7 @@ def _parse_epex_response(raw: Any) -> EpexPayload:
         raise TypeError(msg)
 
     slots: list[EpexSlot] = []
-    duration = timedelta(minutes=EPEX_SLOT_DURATION_MINUTES)
+    duration = timedelta(minutes=slot_duration_minutes)
     for entry in series:
         if not isinstance(entry, dict):
             continue
@@ -1629,4 +1756,5 @@ def _parse_epex_response(raw: Any) -> EpexPayload:
         slots=tuple(slots),
         publication_time=publication,
         market_date=market_date,
+        slot_duration=timedelta(minutes=slot_duration_minutes),
     )

@@ -436,7 +436,15 @@ def _make_response(
     else:
         response.json = AsyncMock(return_value=None)
         response.text = AsyncMock(return_value=text_body or "")
-    response.raise_for_status = MagicMock()
+
+    # Make raise_for_status raise for error status codes
+    if status >= 400:
+        request_info = MagicMock()
+        error = aiohttp.ClientResponseError(request_info, (status, {}))
+        error.status = status
+        response.raise_for_status = MagicMock(side_effect=error)
+    else:
+        response.raise_for_status = MagicMock()
     return response
 
 

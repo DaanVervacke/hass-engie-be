@@ -137,6 +137,18 @@
             },
             "epex_next_hour": {
                 "default": "mdi:cash-fast"
+            },
+            "epex_current_quarter_hour": {
+                "default": "mdi:cash-clock"
+            },
+            "epex_low_today_quarter_hour": {
+                "default": "mdi:cash-minus"
+            },
+            "epex_high_today_quarter_hour": {
+                "default": "mdi:cash-plus"
+            },
+            "epex_next_quarter_hour": {
+                "default": "mdi:cash-fast"
             }
         },
         "binary_sensor": {

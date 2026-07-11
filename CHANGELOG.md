@@ -9,6 +9,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 > PR-number links will be substituted at release-tagging.
 
+### Added
+
+- Three additional quarter-hourly EPEX price sensors for MTU15 dynamic tariff contracts. MTU15 contracts now get a complete set of sensors: current quarter-hour price (`sensor.engie_belgium_{BAN}_epex_current_quarter_hour`), next quarter-hour price (`sensor.engie_belgium_{BAN}_epex_next_quarter_hour`), lowest quarter-hour price today (`sensor.engie_belgium_{BAN}_epex_low_today_quarter_hour`), and highest quarter-hour price today (`sensor.engie_belgium_{BAN}_epex_high_today_quarter_hour`).
+
+### Changed
+
+- Migrated EPEX endpoint from v1 to v2. The new `/pricing/public/v2/epex-prices` endpoint requires authentication (handled via existing OAuth flow) and enables dynamic granularity detection (hourly or quarter-hourly) from the API response.
+
 ## [0.13.0b1] - 2026-07-09
 
 ### Added

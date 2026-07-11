@@ -24,7 +24,10 @@ from custom_components.engie_be.const import (
     DOMAIN,
     EPEX_TZ,
 )
-from custom_components.engie_be.coordinator import EngieBeEpexCoordinator
+from custom_components.engie_be.coordinator import (
+    EngieBeEpexCoordinator,
+    EngieBeEpexQuarterHourCoordinator,
+)
 from custom_components.engie_be.data import EngieBeData, EpexPayload, EpexSlot
 
 if TYPE_CHECKING:
@@ -33,6 +36,7 @@ if TYPE_CHECKING:
 _FIXTURES = Path(__file__).parent / "fixtures"
 _EPEX_24H_FIXTURE = _FIXTURES / "epex_24h.json"
 _EPEX_48H_FIXTURE = _FIXTURES / "epex_48h.json"
+_EPEX_96H_FIXTURE = _FIXTURES / "epex_96h.json"
 
 _BRUSSELS = ZoneInfo(EPEX_TZ)
 
@@ -40,6 +44,11 @@ _BRUSSELS = ZoneInfo(EPEX_TZ)
 # inside the 15:00 slot (value 25.65 EUR/MWh).
 _NOW_BRUSSELS = datetime(2026, 5, 4, 15, 30, 0, tzinfo=_BRUSSELS)
 _NOW_UTC = _NOW_BRUSSELS.astimezone(UTC)
+
+# Anchor "now" inside the 96h (quarter-hourly) fixture window.
+# 2026-05-04 15:30 Brussels is aligned with a 15-minute slot boundary.
+_NOW_BRUSSELS_QH = datetime(2026, 5, 4, 15, 30, 0, tzinfo=_BRUSSELS)
+_NOW_UTC_QH = _NOW_BRUSSELS_QH.astimezone(UTC)
 
 
 def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
@@ -484,3 +493,349 @@ async def test_parse_failure_logs_warning_once(
     debugs = [r for r in parse_records if r.levelno == logging.DEBUG]
     assert len(warnings) == 1
     assert len(debugs) == 1
+
+
+# ---------------------------------------------------------------------------
+# Quarter-hourly coordinator tests
+# ---------------------------------------------------------------------------
+
+
+async def test_qh_fetch_parses_96_slots_to_brussels_local(
+    hass: HomeAssistant,
+) -> None:
+    """A successful QH fetch returns an EpexPayload with 96 parsed 15-min slots."""
+    entry = _build_entry(hass)
+    epex_raw = json.loads(_EPEX_96H_FIXTURE.read_text(encoding="utf-8"))
+
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(return_value=epex_raw)
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+
+    with patch(
+        "custom_components.engie_be.coordinator.dt_util.now",
+        return_value=_NOW_BRUSSELS_QH,
+    ):
+        epex = await coordinator._async_update_data()
+
+    assert isinstance(epex, EpexPayload)
+    # 96 quarter-hourly slots in the fixture (1 day * 24 hours * 4 quarters)
+    assert len(epex.slots) == 96
+    # Slots are normalised to Brussels-local during parsing
+    assert all(slot.start.tzinfo is not None for slot in epex.slots)
+    assert all(
+        slot.start.utcoffset() == _BRUSSELS.utcoffset(slot.start) for slot in epex.slots
+    )
+    # Wholesale EUR/MWh divided by 1000 -> EUR/kWh
+    assert epex.slots[0].value_eur_per_kwh == pytest.approx(0.11042)
+    # Verify slot duration is 15 minutes
+    assert epex.slot_duration == timedelta(minutes=15)
+    assert epex.slots[0].end - epex.slots[0].start == timedelta(minutes=15)
+    # Publication metadata round-trips
+    assert epex.market_date == "2026-05-05"
+    assert epex.publication_time is not None
+
+
+async def test_qh_fetch_requests_quarter_hourly_granularity(
+    hass: HomeAssistant,
+) -> None:
+    """The QH coordinator must request granularity=QUARTER_HOURLY from the API."""
+    entry = _build_entry(hass)
+    epex_raw = json.loads(_EPEX_96H_FIXTURE.read_text(encoding="utf-8"))
+
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(return_value=epex_raw)
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+
+    with patch(
+        "custom_components.engie_be.coordinator.dt_util.now",
+        return_value=_NOW_BRUSSELS_QH,
+    ):
+        await coordinator._async_update_data()
+
+    call = client.async_get_epex_prices.await_args
+    assert call is not None
+    # Verify the granularity parameter was passed
+    assert call.kwargs.get("granularity") == "QUARTER_HOURLY"
+
+
+async def test_qh_fetch_requests_two_full_brussels_days(
+    hass: HomeAssistant,
+) -> None:
+    """
+    The QH EPEX window must be [today_00:00, today+2d_00:00) Brussels-local.
+
+    Same as hourly - this guarantees we always cover today + tomorrow regardless
+    of which side of the 13:15 publication tick we're polling, and stays
+    DST-safe by using local-midnight rather than fixed UTC offsets.
+    """
+    entry = _build_entry(hass)
+    epex_raw = json.loads(_EPEX_96H_FIXTURE.read_text(encoding="utf-8"))
+
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(return_value=epex_raw)
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+
+    with patch(
+        "custom_components.engie_be.coordinator.dt_util.now",
+        return_value=_NOW_BRUSSELS_QH,
+    ):
+        await coordinator._async_update_data()
+
+    call = client.async_get_epex_prices.await_args
+    assert call is not None
+    start_dt, end_dt = call.args
+    expected_start = datetime(2026, 5, 4, 0, 0, 0, tzinfo=_BRUSSELS)
+    expected_end = datetime(2026, 5, 6, 0, 0, 0, tzinfo=_BRUSSELS)
+    assert start_dt == expected_start
+    assert end_dt == expected_end
+
+
+async def test_qh_404_keeps_last_known_payload(hass: HomeAssistant) -> None:
+    """
+    EpexNotPublishedError must NOT clobber the last-known QH payload.
+    """
+    entry = _build_entry(hass)
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(
+        side_effect=EpexNotPublishedError("not yet"),
+    )
+    _attach_runtime(entry, client)
+
+    seeded_slot = EpexSlot(
+        start=datetime(2026, 5, 4, 12, 0, tzinfo=_BRUSSELS),
+        end=datetime(2026, 5, 4, 12, 15, tzinfo=_BRUSSELS),
+        value_eur_per_kwh=0.12345,
+    )
+    seeded_payload = EpexPayload(
+        slots=(seeded_slot,),
+        publication_time=None,
+        market_date="2026-05-04",
+        slot_duration=timedelta(minutes=15),
+    )
+
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+    coordinator.data = seeded_payload
+
+    with patch(
+        "custom_components.engie_be.coordinator.dt_util.now",
+        return_value=_NOW_BRUSSELS_QH,
+    ):
+        result = await coordinator._async_update_data()
+
+    # Same payload object: no parse, no clobber
+    assert result is seeded_payload
+
+
+async def test_qh_transient_error_keeps_last_known_payload(
+    hass: HomeAssistant,
+) -> None:
+    """A transient comms error must also fall back to the last-known QH payload."""
+    entry = _build_entry(hass)
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(
+        side_effect=EngieBeApiClientCommunicationError("502"),
+    )
+    _attach_runtime(entry, client)
+
+    seeded_payload = EpexPayload(
+        slots=(),
+        publication_time=None,
+        market_date=None,
+        slot_duration=timedelta(minutes=15),
+    )
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+    coordinator.data = seeded_payload
+
+    with patch(
+        "custom_components.engie_be.coordinator.dt_util.now",
+        return_value=_NOW_BRUSSELS_QH,
+    ):
+        result = await coordinator._async_update_data()
+
+    assert result is seeded_payload
+
+
+async def test_qh_parse_failure_keeps_last_known_payload(
+    hass: HomeAssistant,
+) -> None:
+    """A malformed upstream QH payload must not clobber a previously good one."""
+    entry = _build_entry(hass)
+    client = MagicMock()
+    # Garbage that _parse_epex_response will reject
+    client.async_get_epex_prices = AsyncMock(return_value="not a dict")
+    _attach_runtime(entry, client)
+
+    seeded_payload = EpexPayload(
+        slots=(),
+        publication_time=None,
+        market_date="2026-05-04",
+        slot_duration=timedelta(minutes=15),
+    )
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+    coordinator.data = seeded_payload
+
+    with patch(
+        "custom_components.engie_be.coordinator.dt_util.now",
+        return_value=_NOW_BRUSSELS_QH,
+    ):
+        result = await coordinator._async_update_data()
+
+    assert result is seeded_payload
+
+
+async def test_qh_404_with_no_previous_payload_returns_none(
+    hass: HomeAssistant,
+) -> None:
+    """First-ever poll hitting a 404: returns None, sensors unavailable."""
+    entry = _build_entry(hass)
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(
+        side_effect=EpexNotPublishedError("not yet"),
+    )
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+
+    with patch(
+        "custom_components.engie_be.coordinator.dt_util.now",
+        return_value=_NOW_BRUSSELS_QH,
+    ):
+        result = await coordinator._async_update_data()
+
+    assert result is None
+
+
+def test_qh_epex_coordinator_uses_options_update_interval(
+    hass: HomeAssistant,
+) -> None:
+    """The QH EPEX coordinator must honour the parent entry's update_interval option."""
+    entry = _build_entry(hass)
+    _attach_runtime(entry, MagicMock())
+
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+
+    assert coordinator.update_interval == timedelta(minutes=60)
+
+
+async def test_qh_last_successful_fetch_metadata_via_coordinator_state(
+    hass: HomeAssistant,
+) -> None:
+    """A successful QH EPEX refresh marks the coordinator as last-update-success."""
+    entry = _build_entry(hass)
+    epex_raw = json.loads(_EPEX_96H_FIXTURE.read_text(encoding="utf-8"))
+
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(return_value=epex_raw)
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+
+    with (
+        patch(
+            "custom_components.engie_be.coordinator.dt_util.now",
+            return_value=_NOW_BRUSSELS_QH,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.dt_util.utcnow",
+            return_value=_NOW_UTC_QH,
+        ),
+    ):
+        await coordinator.async_refresh()
+
+    assert coordinator.last_update_success is True
+    assert isinstance(coordinator.data, EpexPayload)
+    assert coordinator.data.slot_duration == timedelta(minutes=15)
+
+
+async def test_qh_comms_outage_logs_warning_once_then_debug(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """QH coordinator: warn once on first comms failure, debug on subsequent."""
+    entry = _build_entry(hass)
+    client = MagicMock()
+    client.async_get_epex_prices = AsyncMock(
+        side_effect=EngieBeApiClientCommunicationError("502"),
+    )
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+
+    msg = "Failed to fetch EPEX QH prices"
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"),
+        patch(
+            "custom_components.engie_be.coordinator.dt_util.now",
+            return_value=_NOW_BRUSSELS_QH,
+        ),
+    ):
+        await coordinator._async_update_data()
+        await coordinator._async_update_data()
+
+    comms_records = [r for r in caplog.records if msg in r.getMessage()]
+    warnings = [r for r in comms_records if r.levelno == logging.WARNING]
+    debugs = [r for r in comms_records if r.levelno == logging.DEBUG]
+    assert len(warnings) == 1
+    assert len(debugs) == 1
+
+
+async def test_qh_recovery_logs_info_once_and_rearms(
+    hass: HomeAssistant,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """QH coordinator: info on recovery, then warn again on next failure."""
+    entry = _build_entry(hass)
+    client = MagicMock()
+
+    # First call: error
+    client.async_get_epex_prices = AsyncMock(
+        side_effect=EngieBeApiClientCommunicationError("502"),
+    )
+    _attach_runtime(entry, client)
+
+    coordinator = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+
+    msg_outage = "Failed to fetch EPEX QH prices"
+    msg_recovery = "EPEX QH prices fetch recovered"
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"),
+        patch(
+            "custom_components.engie_be.coordinator.dt_util.now",
+            return_value=_NOW_BRUSSELS_QH,
+        ),
+        patch(
+            "custom_components.engie_be.coordinator.dt_util.utcnow",
+            return_value=_NOW_UTC_QH,
+        ),
+    ):
+        # First call: outage
+        await coordinator._async_update_data()
+        # Reset mock to return valid data
+        client.async_get_epex_prices = AsyncMock(
+            return_value=json.loads(_EPEX_96H_FIXTURE.read_text(encoding="utf-8"))
+        )
+        # Second call: recovery
+        await coordinator._async_update_data()
+        # Third call: another outage
+        client.async_get_epex_prices = AsyncMock(
+            side_effect=EngieBeApiClientCommunicationError("502"),
+        )
+        await coordinator._async_update_data()
+
+    outage_records = [r for r in caplog.records if msg_outage in r.getMessage()]
+    recovery_records = [r for r in caplog.records if msg_recovery in r.getMessage()]
+
+    warnings = [r for r in outage_records if r.levelno == logging.WARNING]
+    debugs = [r for r in outage_records if r.levelno == logging.DEBUG]
+    infos = [r for r in recovery_records if r.levelno == logging.INFO]
+
+    assert len(warnings) == 2  # Warning on first and third call
+    assert len(debugs) == 0  # No debugs for outage in this scenario
+    assert len(infos) == 1

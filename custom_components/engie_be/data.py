@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from datetime import datetime
 
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .coordinator import (
         EngieBeDataUpdateCoordinator,
         EngieBeEpexCoordinator,
+        EngieBeEpexQuarterHourCoordinator,
     )
     from .store import EngieBeHappyHoursStore, EngieBePeaksStore
 
@@ -73,6 +74,7 @@ class EpexPayload:
     slots: tuple[EpexSlot, ...]
     publication_time: datetime | None
     market_date: str | None
+    slot_duration: timedelta = timedelta(minutes=60)
 
 
 @dataclass(frozen=False)
@@ -176,6 +178,7 @@ class EngieBeData:
 
     client: EngieBeApiClient
     epex_coordinator: EngieBeEpexCoordinator
+    epex_qh_coordinator: EngieBeEpexQuarterHourCoordinator | None = None
     subentry_data: dict[str, EngieBeSubentryData] = field(default_factory=dict)
     authenticated: bool = field(default=False)
     last_options: dict[str, Any] = field(default_factory=dict)

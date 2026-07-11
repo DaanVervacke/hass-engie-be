@@ -100,6 +100,48 @@ def _make_epex_coordinator(
     return coordinator
 
 
+def _build_epex_payload_qh() -> EpexPayload:
+    """Build a QH payload with 96 quarter-hourly slots."""
+    slots: list[EpexSlot] = []
+    for i in range(96):
+        hour = i // 4
+        minute = 15 * (i % 4)
+        # Use day 4 for all slots to keep it simple
+        slot_start = datetime(2026, 5, 4, hour, minute, 0, tzinfo=_BRUSSELS)
+        value = 0.100 + (i * 0.001)  # Distinct values for testing
+        slots.append(
+            EpexSlot(
+                start=slot_start,
+                end=slot_start + timedelta(minutes=15),
+                value_eur_per_kwh=value,
+            )
+        )
+
+    return EpexPayload(
+        slots=tuple(slots),
+        publication_time=datetime(2026, 5, 4, 13, 0, 0, tzinfo=_BRUSSELS),
+        market_date="2026-05-04",
+        slot_duration=timedelta(minutes=15),
+    )
+
+
+def _make_epex_qh_coordinator(
+    payload: EpexPayload | None,
+) -> MagicMock:
+    """Build a MagicMock QH EPEX coordinator stub."""
+    coordinator = MagicMock()
+    coordinator.data = payload
+    coordinator.last_update_success = True
+    if payload is not None:
+        start_time = datetime(2026, 5, 4, 14, 0, 0, tzinfo=UTC)
+        coordinator.last_update_success_time = start_time
+    else:
+        coordinator.last_update_success_time = None
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.entry_id = "test_entry_id"
+    return coordinator
+
+
 # ---------------------------------------------------------------------------
 # Builder
 # ---------------------------------------------------------------------------
@@ -118,7 +160,7 @@ def test_build_epex_sensors_creates_four_entities() -> None:
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry(subentry_id="sub_xyz")
 
-    sensors = _build_epex_sensors(coordinator, subentry)
+    sensors = _build_epex_sensors(coordinator, None, subentry)
 
     keys = {s.entity_description.key for s in sensors}
     assert keys == {
@@ -142,7 +184,7 @@ def test_build_epex_sensors_runs_without_payload() -> None:
     """
     coordinator = _make_epex_coordinator(None)
     subentry = _make_subentry()
-    assert len(_build_epex_sensors(coordinator, subentry)) == 4
+    assert len(_build_epex_sensors(coordinator, None, subentry)) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +202,7 @@ def test_sensors_unavailable_when_payload_missing() -> None:
     coordinator = _make_epex_coordinator(None)
     subentry = _make_subentry()
 
-    for sensor in _build_epex_sensors(coordinator, subentry):
+    for sensor in _build_epex_sensors(coordinator, None, subentry):
         assert sensor.available is False
 
 
@@ -170,7 +212,7 @@ def test_sensors_available_with_payload() -> None:
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
 
-    for sensor in _build_epex_sensors(coordinator, subentry):
+    for sensor in _build_epex_sensors(coordinator, None, subentry):
         assert sensor.available is True
 
 
@@ -567,3 +609,61 @@ def test_next_hour_sensor_native_value_is_none_when_unavailable() -> None:
     sensor = EngieBeEpexNextHourSensor(coordinator, subentry, _EPEX_NEXT_HOUR)
     assert sensor.native_value is None
     assert sensor.extra_state_attributes == {}
+
+
+# =============================================================================
+# QH Sensor Tests (Remediation for EPEX v2)
+# =============================================================================
+
+
+def test_build_epex_sensors_includes_qh_when_coordinator_provided() -> None:
+    """QH sensor is added when epex_qh_coordinator is not None."""
+    payload = _build_payload([(0, 0.1), (1, 0.2), (2, 0.3)])
+    epex_coordinator = _make_epex_coordinator(payload)
+    epex_qh_coordinator = _make_epex_qh_coordinator(_build_epex_payload_qh())
+    subentry = _make_subentry()
+
+    sensors = _build_epex_sensors(epex_coordinator, epex_qh_coordinator, subentry)
+
+    keys = {s.entity_description.key for s in sensors}
+    assert "epex_quarter_hour" in keys
+
+
+def test_build_epex_sensors_excludes_qh_when_coordinator_none() -> None:
+    """QH sensor is NOT added when epex_qh_coordinator is None."""
+    payload = _build_payload([(0, 0.1), (1, 0.2)])
+    epex_coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+
+    sensors = _build_epex_sensors(epex_coordinator, None, subentry)
+
+    keys = {s.entity_description.key for s in sensors}
+    assert "epex_quarter_hour" not in keys
+
+
+def test_qh_sensor_uses_qh_coordinator() -> None:
+    """QH sensor uses epex_qh_coordinator, not epex_coordinator."""
+    payload_h = _build_payload([(0, 0.1), (1, 0.2)])
+    payload_qh = _build_epex_payload_qh()
+    epex_coordinator = _make_epex_coordinator(payload_h)
+    epex_qh_coordinator = _make_epex_qh_coordinator(payload_qh)
+    subentry = _make_subentry()
+
+    sensors = _build_epex_sensors(epex_coordinator, epex_qh_coordinator, subentry)
+    qh_sensors = [s for s in sensors if s.entity_description.key == "epex_quarter_hour"]
+
+    assert len(qh_sensors) == 1
+    assert qh_sensors[0].coordinator is epex_qh_coordinator
+
+
+def test_qh_sensor_with_none_payload() -> None:
+    """QH sensor handles None payload gracefully."""
+    epex_coordinator = _make_epex_coordinator(_build_payload([(0, 0.1)]))
+    epex_qh_coordinator = _make_epex_qh_coordinator(None)
+    subentry = _make_subentry()
+
+    sensors = _build_epex_sensors(epex_coordinator, epex_qh_coordinator, subentry)
+    qh_sensors = [s for s in sensors if s.entity_description.key == "epex_quarter_hour"]
+
+    assert len(qh_sensors) == 1
+    assert qh_sensors[0].available is False

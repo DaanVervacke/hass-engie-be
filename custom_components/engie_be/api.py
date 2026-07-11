@@ -804,6 +804,8 @@ class EngieBeApiClient:
         self,
         from_dt: datetime,
         to_dt: datetime,
+        *,
+        granularity: str | None = None,
     ) -> dict[str, Any]:
         """
         Fetch EPEX day-ahead market prices for the given UTC window.
@@ -813,10 +815,13 @@ class EngieBeApiClient:
         precision and a literal ``Z`` suffix (the format the endpoint
         accepts; e.g. ``2026-05-04T00:00:00.000Z``).
 
-        The endpoint is public, so no bearer is attached and a 401/403
-        from this call must NOT trigger reauth of the user's session.
-        Authentication-style status codes are coerced into a generic
-        communication error instead.
+        The v2 endpoint requires authentication.  401/403 errors WILL
+        trigger reauth via the standard OAuth flow through _api_wrapper.
+
+        The optional ``granularity`` parameter controls the resolution of
+        the returned time series:
+        - ``None`` or ``"HOURLY"`` (default) -> 24 items/day, hourly slots
+        - ``"QUARTER_HOURLY"`` -> 96 items/day, 15-minute slots
 
         On HTTP 404 (``{"detail":"No prices found ..."}``) this raises
         :class:`EpexNotPublishedError` so callers can treat it as a soft
@@ -833,88 +838,35 @@ class EngieBeApiClient:
             return f"{iso}Z"
 
         params = {"from": _iso_ms_z(from_dt), "to": _iso_ms_z(to_dt)}
-        headers = {
-            "User-Agent": USER_AGENT_BROWSER,
-            "Accept": "application/json, application/problem+json",
-        }
+        if granularity is not None:
+            params["granularity"] = granularity
 
-        # Use raise_on_error=False so 404 doesn't go through
-        # raise_for_status (which would raise a generic ClientError) and
-        # so 401/403 don't trip the auth-error branch.  We need raw
-        # status visibility to distinguish 404 from real failures, so
-        # call session.request directly here -- mirroring _api_wrapper's
-        # error mapping but without its 401/403 handling.
-        ctx = self._req_logger.new_context("GET", EPEX_BASE_URL)
-
-        if ctx is not None:
-            self._req_logger.request(ctx, params=params, headers=headers, body=None)
-
+        # v2 endpoint requires auth; use _api_wrapper which handles bearer
+        # tokens and 401/403 reauth automatically. We still need to handle
+        # 404 (not published yet) specially.
         try:
-            async with asyncio.timeout(30):
-                response = await self._session.request(
-                    method="GET",
-                    url=EPEX_BASE_URL,
-                    headers=headers,
-                    params=params,
-                    allow_redirects=False,
+            headers = self._authenticated_headers(user_agent=USER_AGENT_BROWSER)
+            return await self._api_wrapper(
+                session=self._session,
+                method="GET",
+                url=EPEX_BASE_URL,
+                headers=headers,
+                params=params,
+                json_response=True,
+            )
+        except EngieBeApiClientCommunicationError as err:
+            # Check if this is a 404 by looking at the cause
+            # The _api_wrapper wraps aiohttp.ClientResponseError which has status
+            if (
+                isinstance(err.__cause__, aiohttp.ClientResponseError)
+                and err.__cause__.status == HTTPStatus.NOT_FOUND
+            ):
+                msg = (
+                    "EPEX prices not yet published for "
+                    f"{params['from']}..{params['to']}"
                 )
-                status = response.status
-                if status == HTTPStatus.NOT_FOUND:
-                    if ctx is not None:
-                        self._req_logger.error(
-                            ctx,
-                            status=status,
-                            suffix="(EPEX not yet published)",
-                        )
-                    msg = (
-                        "EPEX prices not yet published for "
-                        f"{params['from']}..{params['to']}"
-                    )
-                    raise EpexNotPublishedError(msg)
-                if status >= HTTPStatus.BAD_REQUEST:
-                    body_preview = (await response.text())[:200]
-                    if ctx is not None:
-                        self._req_logger.error(
-                            ctx,
-                            status=status,
-                            body=body_preview,
-                            ct=response.headers.get("Content-Type")
-                            if hasattr(response, "headers")
-                            else None,
-                        )
-                    msg = f"EPEX endpoint returned HTTP {status}: {body_preview}"
-                    raise EngieBeApiClientCommunicationError(msg)
-                result = await response.json()
-                if ctx is not None:
-                    resp_ct = (
-                        response.headers.get("Content-Type")
-                        if hasattr(response, "headers")
-                        else None
-                    )
-                    self._req_logger.response(
-                        ctx, status=status, ct=resp_ct, body=result
-                    )
-                return result
-        except EngieBeApiClientError:
+                raise EpexNotPublishedError(msg) from err
             raise
-        except TimeoutError as exception:
-            if ctx is not None:
-                self._req_logger.error(ctx, exc_name="timeout")  # noqa: TRY400
-            msg = (
-                "Timeout communicating with EPEX endpoint "
-                f"({exception.__class__.__name__})"
-            )
-            raise EngieBeApiClientCommunicationError(msg) from exception
-        except (aiohttp.ClientError, socket.gaierror) as exception:
-            if ctx is not None:
-                self._req_logger.error(  # noqa: TRY400
-                    ctx, exc_name=exception.__class__.__name__
-                )
-            msg = (
-                f"Error communicating with EPEX endpoint "
-                f"({exception.__class__.__name__})"
-            )
-            raise EngieBeApiClientCommunicationError(msg) from exception
 
     # ------------------------------------------------------------------
     # Internal: auth flow step implementations

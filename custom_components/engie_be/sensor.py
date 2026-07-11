@@ -52,7 +52,11 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-    from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
+    from .coordinator import (
+        EngieBeDataUpdateCoordinator,
+        EngieBeEpexCoordinator,
+        EngieBeEpexQuarterHourCoordinator,
+    )
     from .data import EngieBeConfigEntry, EpexPayload
 
 
@@ -219,6 +223,7 @@ async def async_setup_entry(
     flag so users on a fixed tariff never see them.
     """
     epex_coordinator = entry.runtime_data.epex_coordinator
+    epex_qh_coordinator = entry.runtime_data.epex_qh_coordinator
 
     for subentry in entry.subentries.values():
         if subentry.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
@@ -282,7 +287,9 @@ async def async_setup_entry(
                 mask_identifier(coordinator.business_agreement_number),
             )
         if coordinator.is_dynamic:
-            entities.extend(_build_epex_sensors(epex_coordinator, subentry))
+            entities.extend(
+                _build_epex_sensors(epex_coordinator, epex_qh_coordinator, subentry)
+            )
 
         if sub_data.feature_flags.solar:
             entities.extend(
@@ -938,14 +945,43 @@ _EPEX_NEXT_HOUR = SensorEntityDescription(
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=_EPEX_PRECISION,
 )
+_EPEX_CURRENT_QUARTER_HOUR = SensorEntityDescription(
+    key="epex_current_quarter_hour",
+    translation_key="epex_current_quarter_hour",
+    native_unit_of_measurement=_EPEX_UNIT,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=_EPEX_PRECISION,
+)
+_EPEX_NEXT_QUARTER_HOUR = SensorEntityDescription(
+    key="epex_next_quarter_hour",
+    translation_key="epex_next_quarter_hour",
+    native_unit_of_measurement=_EPEX_UNIT,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=_EPEX_PRECISION,
+)
+_EPEX_LOW_TODAY_QUARTER_HOUR = SensorEntityDescription(
+    key="epex_low_today_quarter_hour",
+    translation_key="epex_low_today_quarter_hour",
+    native_unit_of_measurement=_EPEX_UNIT,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=_EPEX_PRECISION,
+)
+_EPEX_HIGH_TODAY_QUARTER_HOUR = SensorEntityDescription(
+    key="epex_high_today_quarter_hour",
+    translation_key="epex_high_today_quarter_hour",
+    native_unit_of_measurement=_EPEX_UNIT,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=_EPEX_PRECISION,
+)
 
 
 def _build_epex_sensors(
     epex_coordinator: EngieBeEpexCoordinator,
+    epex_qh_coordinator: EngieBeEpexQuarterHourCoordinator | None,
     subentry: ConfigSubentry,
 ) -> list[SensorEntity]:
-    """Build the four shared EPEX day-ahead sensors for one subentry."""
-    return [
+    """Build the EPEX day-ahead sensors for one subentry."""
+    sensors = [
         EngieBeEpexCurrentSensor(epex_coordinator, subentry, _EPEX_CURRENT),
         EngieBeEpexExtremaSensor(
             epex_coordinator, subentry, _EPEX_LOW_TODAY, mode="min"
@@ -955,6 +991,25 @@ def _build_epex_sensors(
         ),
         EngieBeEpexNextHourSensor(epex_coordinator, subentry, _EPEX_NEXT_HOUR),
     ]
+
+    # Add quarter-hourly sensors for MTU15 contracts
+    if epex_qh_coordinator is not None:
+        sensors.extend([
+            EngieBeEpexCurrentSensor(
+                epex_qh_coordinator, subentry, _EPEX_CURRENT_QUARTER_HOUR
+            ),
+            EngieBeEpexExtremaSensor(
+                epex_qh_coordinator, subentry, _EPEX_LOW_TODAY_QUARTER_HOUR, mode="min"
+            ),
+            EngieBeEpexExtremaSensor(
+                epex_qh_coordinator, subentry, _EPEX_HIGH_TODAY_QUARTER_HOUR, mode="max"
+            ),
+            EngieBeEpexNextQuarterHourSensor(
+                epex_qh_coordinator, subentry, _EPEX_NEXT_QUARTER_HOUR
+            ),
+        ])
+
+    return sensors
 
 
 def _slots_for_date(payload: EpexPayload, target: date) -> list[Any]:
@@ -1110,6 +1165,52 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
                     "slot_start": slot.start.isoformat(),
                     "slot_end": slot.end.isoformat(),
                     "slot_duration_minutes": EPEX_SLOT_DURATION_MINUTES,
+                }
+                if self.coordinator.last_update_success_time is not None:
+                    attrs["last_fetched"] = (
+                        self.coordinator.last_update_success_time.isoformat()
+                    )
+                return attrs
+        return {}
+
+
+class EngieBeEpexNextQuarterHourSensor(_EngieBeEpexSensorBase):
+    """EPEX day-ahead price for the slot starting 15 minutes from now."""
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the EUR/kWh price of the slot covering ``now + 15min``."""
+        payload = epex_payload(self.coordinator)
+        if payload is None:
+            return None
+        target = dt_util.utcnow() + timedelta(minutes=15)
+        for slot in payload.slots:
+            if slot.start <= target < slot.end:
+                return slot.value_eur_per_kwh
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """
+        Expose the start/end of the slot whose price is being reported.
+
+        Intentionally narrower than :class:`EngieBeEpexCurrentSensor`'s
+        attribute set: this is a point lookup for one specific future
+        slot, not a today/tomorrow slate browser, so the per-day arrays
+        and market metadata are omitted to keep the entity focused.
+        """
+        payload = epex_payload(self.coordinator)
+        if payload is None:
+            return {}
+        target = dt_util.utcnow() + timedelta(minutes=15)
+        for slot in payload.slots:
+            if slot.start <= target < slot.end:
+                attrs: dict[str, Any] = {
+                    "slot_start": slot.start.isoformat(),
+                    "slot_end": slot.end.isoformat(),
+                    "slot_duration_minutes": (
+                        (slot.end - slot.start).total_seconds() / 60
+                    ),
                 }
                 if self.coordinator.last_update_success_time is not None:
                     attrs["last_fetched"] = (

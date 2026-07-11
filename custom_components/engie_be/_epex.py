@@ -12,9 +12,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from typing import TypeVar
 
-    from .coordinator import EngieBeEpexCoordinator
+    from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+
     from .data import EpexPayload
+
+    _EpexCoordT = TypeVar("_EpexCoordT", bound=DataUpdateCoordinator[EpexPayload | None])
 
 
 def next_epex_slot_boundary(
@@ -52,7 +56,7 @@ def next_epex_slot_boundary(
     return min(candidates)
 
 
-def epex_payload(coordinator: EngieBeEpexCoordinator) -> EpexPayload | None:
+def epex_payload(coordinator: _EpexCoordT) -> EpexPayload | None:
     """Return the cached EPEX payload, or ``None`` if not yet fetched."""
     from .data import EpexPayload  # noqa: PLC0415 - runtime isinstance check
 
