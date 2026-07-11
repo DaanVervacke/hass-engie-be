@@ -1,9 +1,14 @@
 """
-Pure helpers for EPEX slot-boundary scheduling.
+Pure helpers for EPEX slot-boundary scheduling and slot metadata.
 
 Kept dependency-free so the slot-boundary computation can be unit
 tested in isolation and reused across the binary-sensor and sensor
 platforms without crossing entity-class boundaries.
+
+Includes:
+- next_epex_slot_boundary: compute next slot change instant
+- epex_payload: accessor for coordinator data
+- _slot_duration_minutes: compute slot duration from boundaries
 """
 
 from __future__ import annotations
@@ -13,7 +18,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from .data import EpexPayload
+    from .coordinator import EngieBeEpexCoordinator, EngieBeEpexQuarterHourCoordinator
+    from .data import EpexPayload, EpexSlot
 
 
 def next_epex_slot_boundary(
@@ -51,9 +57,21 @@ def next_epex_slot_boundary(
     return min(candidates)
 
 
-def epex_payload(coordinator: object) -> EpexPayload | None:
+def epex_payload(
+    coordinator: EngieBeEpexCoordinator | EngieBeEpexQuarterHourCoordinator,
+) -> EpexPayload | None:
     """Return the cached EPEX payload, or ``None`` if not yet fetched."""
     from .data import EpexPayload  # noqa: PLC0415 - runtime isinstance check
 
     payload = coordinator.data
     return payload if isinstance(payload, EpexPayload) else None
+
+
+def _slot_duration_minutes(slot: EpexSlot) -> float:
+    """
+    Return the duration of an EPEX slot in minutes.
+
+    Computes the duration from the slot's start and end datetimes.
+    Used by sensors to expose slot_duration_minutes in their attributes.
+    """
+    return (slot.end - slot.start).total_seconds() / 60

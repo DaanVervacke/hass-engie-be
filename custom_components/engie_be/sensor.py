@@ -22,7 +22,7 @@ from homeassistant.const import (
 from homeassistant.util import dt as dt_util
 
 from ._billing import next_due_date, overview_due_amount, overview_open_amount
-from ._epex import epex_payload, next_epex_slot_boundary
+from ._epex import _slot_duration_minutes, epex_payload, next_epex_slot_boundary
 from ._happy_hour import happy_hour_window
 from ._peaks import peaks_meta, peaks_payload
 from ._tou import current_slot as tou_current_slot
@@ -1123,7 +1123,7 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
                 _serialize_slot(s) for s in _slots_for_date(payload, tomorrow_brussels)
             ],
             "slot_duration_minutes": (
-                payload.slot_duration.total_seconds() / 60 if payload.slots else None
+                _slot_duration_minutes(payload.slots[0]) if payload.slots else None
             ),
         }
         if payload.publication_time is not None:
@@ -1274,11 +1274,6 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
                 self.coordinator.last_update_success_time.isoformat()
             )
         return attrs
-
-
-def _slot_duration_minutes(slot: EpexSlot) -> float:
-    """Return the duration of an EPEX slot in minutes."""
-    return (slot.end - slot.start).total_seconds() / 60
 
 
 def _serialize_slot(slot: EpexSlot) -> dict[str, Any]:

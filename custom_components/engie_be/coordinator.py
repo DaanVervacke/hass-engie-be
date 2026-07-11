@@ -38,6 +38,7 @@ from .const import (
     EPEX_TZ,
     KEY_IS_DYNAMIC,
     LOGGER,
+    EpexGranularity,
 )
 from .data import EpexPayload, EpexSlot
 
@@ -1585,7 +1586,9 @@ class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
             return previous
 
         try:
-            parsed = _parse_epex_response(raw, slot_duration_minutes=60)
+            parsed = _parse_epex_response(
+                raw, slot_duration_minutes=EpexGranularity.HOURLY.value
+            )
         except (KeyError, TypeError, ValueError) as exception:
             self._note_unavailable(
                 "Failed to parse EPEX response, keeping last-known payload: %s",
@@ -1674,7 +1677,9 @@ class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
             return previous
 
         try:
-            parsed = _parse_epex_response(raw, slot_duration_minutes=15)
+            parsed = _parse_epex_response(
+                raw, slot_duration_minutes=EpexGranularity.QUARTER_HOURLY.value
+            )
         except (KeyError, TypeError, ValueError) as exception:
             self._note_unavailable(
                 "Failed to parse EPEX QH response, keeping last-known payload: %s",
@@ -1702,7 +1707,9 @@ def _parse_epex_response(
 
     Args:
         raw: The raw API response dictionary.
-        slot_duration_minutes: Duration of each slot in minutes (default 60 for hourly).
+        slot_duration_minutes: Duration of each slot in minutes.
+            Use EpexGranularity.HOURLY.value (60) or
+            EpexGranularity.QUARTER_HOURLY.value (15).
 
     """
     if not isinstance(raw, dict):
@@ -1729,7 +1736,7 @@ def _parse_epex_response(
         raise TypeError(msg)
 
     slots: list[EpexSlot] = []
-    duration = timedelta(minutes=slot_duration_minutes)
+    slot_duration = timedelta(minutes=slot_duration_minutes)
     for entry in series:
         if not isinstance(entry, dict):
             continue
@@ -1750,7 +1757,7 @@ def _parse_epex_response(
         slots.append(
             EpexSlot(
                 start=start_dt,
-                end=start_dt + duration,
+                end=start_dt + slot_duration,
                 value_eur_per_kwh=value / EPEX_MWH_TO_KWH,
             )
         )
@@ -1760,5 +1767,5 @@ def _parse_epex_response(
         slots=tuple(slots),
         publication_time=publication,
         market_date=market_date,
-        slot_duration=timedelta(minutes=slot_duration_minutes),
+        slot_duration=slot_duration,
     )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from logging import Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
@@ -143,6 +144,12 @@ TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT = "solar_surplus_current"
 TRANSLATION_KEY_SOLAR_SURPLUS_NEXT_HOUR = "solar_surplus_next_hour"
 TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER = "captar_monthly_peak_power"
 
+# Sensor keys for quarter-hourly EPEX (numerical / value-changed)
+TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR = "epex_current_quarter_hour"
+TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR = "epex_next_quarter_hour"
+TRANSLATION_KEY_EPEX_HIGH_TODAY_QUARTER_HOUR = "epex_high_today_quarter_hour"
+TRANSLATION_KEY_EPEX_LOW_TODAY_QUARTER_HOUR = "epex_low_today_quarter_hour"
+
 # Setup-time historical import options (stored per subentry)
 CONF_IMPORT_HISTORY = "import_history"
 CONF_IMPORT_ENERGY_TYPES = "import_energy_types"
@@ -240,3 +247,11 @@ ENERGY_TYPE_OPTIONS: tuple[str, ...] = (
     ENERGY_TYPE_INJECTION,
     ENERGY_TYPE_GAS,
 )
+
+
+# EPEX granularity options
+class EpexGranularity(Enum):
+    """Granularity options for EPEX market data."""
+
+    HOURLY = 60
+    QUARTER_HOURLY = 15
