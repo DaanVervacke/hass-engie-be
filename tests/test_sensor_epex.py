@@ -308,7 +308,13 @@ def test_current_sensor_attributes_partition_today_and_tomorrow() -> None:
     assert len(attrs["tomorrow"]) == 2
     # Each entry exposes start/end ISO strings + EUR/kWh + EUR/MWh.
     today_first = attrs["today"][0]
-    assert set(today_first) == {"start", "end", "value", "value_eur_per_mwh"}
+    assert set(today_first) == {
+        "start",
+        "end",
+        "value",
+        "value_eur_per_mwh",
+        "slot_duration_minutes",
+    }
     assert today_first["start"] == "2026-05-04T14:00:00+02:00"
     assert today_first["end"] == "2026-05-04T15:00:00+02:00"
     assert today_first["value"] == pytest.approx(-0.0123)
