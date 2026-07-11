@@ -991,7 +991,7 @@ def _build_epex_sensors(
         EngieBeEpexNextHourSensor(epex_coordinator, subentry, _EPEX_NEXT_HOUR),
     ]
 
-    # Add quarter-hourly sensors for MTU15 contracts
+    # Add quarter-hourly sensors for dynamic tariff contracts
     if epex_qh_coordinator is not None:
         sensors.extend(
             [

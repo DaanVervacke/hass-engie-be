@@ -135,7 +135,7 @@ Created when your contract has three time-of-use rates.
 
 ### Electricity: dynamic tariff (EPEX-indexed)
 
-Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get sensors that expose day-ahead wholesale prices from the EPEX day-ahead auction. All dynamic tariff contracts get four sensors for hourly slots. Quarter-hourly (MTU15) contracts get four additional sensors for 15-minute slots, for a total of eight.
+Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get sensors that expose day-ahead wholesale prices from the EPEX day-ahead auction. All dynamic tariff contracts get eight sensors: four for hourly slots and four for 15-minute (quarter-hourly) slots.
 
 | Sensor | Entity ID | Description |
 |---|---|---|
@@ -143,10 +143,10 @@ Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get sensors tha
 | EPEX next hour price | `sensor.engie_belgium_{BAN}_epex_next_hour` | Wholesale EPEX day-ahead price for the next hour (EUR/kWh) |
 | EPEX lowest hour price today | `sensor.engie_belgium_{BAN}_epex_low_today` | Lowest EPEX hour price of today (EUR/kWh) |
 | EPEX highest hour price today | `sensor.engie_belgium_{BAN}_epex_high_today` | Highest EPEX hour price of today (EUR/kWh) |
-| EPEX current quarter-hourly price | `sensor.engie_belgium_{BAN}_epex_current_quarter_hour` | Wholesale EPEX day-ahead price for the current 15-minute slot (EUR/kWh). Only created for MTU15 contracts. |
-| EPEX next quarter-hourly price | `sensor.engie_belgium_{BAN}_epex_next_quarter_hour` | Wholesale EPEX day-ahead price for the next 15-minute slot (EUR/kWh). Only created for MTU15 contracts. |
-| EPEX lowest quarter-hourly price today | `sensor.engie_belgium_{BAN}_epex_low_today_quarter_hour` | Lowest EPEX quarter-hourly price of today (EUR/kWh). Only created for MTU15 contracts. |
-| EPEX highest quarter-hourly price today | `sensor.engie_belgium_{BAN}_epex_high_today_quarter_hour` | Highest EPEX quarter-hourly price of today (EUR/kWh). Only created for MTU15 contracts. |
+| EPEX current quarter-hourly price | `sensor.engie_belgium_{BAN}_epex_current_quarter_hour` | Wholesale EPEX day-ahead price for the current 15-minute slot (EUR/kWh) |
+| EPEX next quarter-hourly price | `sensor.engie_belgium_{BAN}_epex_next_quarter_hour` | Wholesale EPEX day-ahead price for the next 15-minute slot (EUR/kWh) |
+| EPEX lowest quarter-hourly price today | `sensor.engie_belgium_{BAN}_epex_low_today_quarter_hour` | Lowest EPEX quarter-hourly price of today (EUR/kWh) |
+| EPEX highest quarter-hourly price today | `sensor.engie_belgium_{BAN}_epex_high_today_quarter_hour` | Highest EPEX quarter-hourly price of today (EUR/kWh) |
 
 All four sensors are in **EUR/kWh** (4 decimals). Tomorrow's prices appear
 once ENGIE publishes them, typically around 14:00 Europe/Brussels.

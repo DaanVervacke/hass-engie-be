@@ -1611,7 +1611,7 @@ class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
     consumers gate entity creation on per-subentry ``is_dynamic`` so a
     user with only fixed-tariff accounts simply never sees EPEX entities.
 
-    This coordinator fetches 15-minute slots (MTU15 contracts) rather than
+    This coordinator fetches 15-minute slots rather than
     hourly slots. The granularity is specified via the
     ``granularity="QUARTER_HOURLY"`` parameter when calling the API, and the
     parsed payload carries a ``slot_duration`` of 15 minutes to distinguish
