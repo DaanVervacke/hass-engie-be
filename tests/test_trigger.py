@@ -38,7 +38,6 @@ from custom_components.engie_be.const import (
     TRANSLATION_KEY_EPEX_LOW_TODAY_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_NEGATIVE,
     TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
-    TRANSLATION_KEY_EPEX_NEXT,
     TRANSLATION_KEY_EPEX_NEXT_HOUR,
     TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
@@ -2056,7 +2055,7 @@ async def test_epex_next_qh_crossed_threshold_rejects_hourly(
         hass,
         entry,
         platform=SENSOR_DOMAIN,
-        translation_key=TRANSLATION_KEY_EPEX_NEXT,
+        translation_key=TRANSLATION_KEY_EPEX_NEXT_HOUR,
         entity_suffix="epex_next",
         unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_next",
     )
