@@ -1237,14 +1237,6 @@
             "name": "EPEX quarter-hourly low today updated",
             "description": "Fires when the lowest quarter-hourly EPEX price today changes."
         },
-        "captar_peak_window_started": {
-            "name": "Captar peak window started",
-            "description": "Fires at the start of a captar monthly peak window."
-        },
-        "captar_peak_window_ended": {
-            "name": "Captar peak window ended",
-            "description": "Fires at the end of a captar monthly peak window."
-        },
         "happy_hours_window_started": {
             "name": "Happy Hours window started",
             "description": "Fires at the start of a Happy Hours free-energy window."

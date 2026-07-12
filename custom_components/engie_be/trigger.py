@@ -47,8 +47,6 @@ Value-changed triggers (Phase C):
 - ``engie_be.epex_low_today_quarter_hour_updated``
 
 Calendar event-class triggers (Phase E):
-- ``engie_be.captar_peak_window_started``    fires at start of captar peak window
-- ``engie_be.captar_peak_window_ended``      fires at end of captar peak window
 - ``engie_be.happy_hours_window_started``    fires at start of Happy Hours window
 - ``engie_be.happy_hours_window_ended``      fires at end of Happy Hours window
 - ``engie_be.tou_slot_started``              fires when a TOU slot boundary begins
@@ -84,7 +82,6 @@ from homeassistant.util import dt as dt_util
 
 from ._automation_helpers import filter_by_translation_key
 from ._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
-from ._peaks import CAPTAR_EVENT_SUMMARY
 from ._tou_calendar import format_tou_event_summary
 from .api import mask_identifier
 from .const import (
@@ -649,26 +646,6 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
         return _cancel
 
 
-class CaptarPeakWindowStartedTrigger(_CalendarEventTrigger):
-    """Trigger: fires at the start of a captar monthly peak window."""
-
-    _is_start = True
-
-    def _matches_event(self, event: Any) -> bool:
-        """Return True for captar peak events."""
-        return event.summary == CAPTAR_EVENT_SUMMARY
-
-
-class CaptarPeakWindowEndedTrigger(_CalendarEventTrigger):
-    """Trigger: fires at the end of a captar monthly peak window."""
-
-    _is_start = False
-
-    def _matches_event(self, event: Any) -> bool:
-        """Return True for captar peak events."""
-        return event.summary == CAPTAR_EVENT_SUMMARY
-
-
 class HappyHoursWindowStartedTrigger(_CalendarEventTrigger):
     """Trigger: fires at the start of a Happy Hours window."""
 
@@ -753,8 +730,6 @@ TRIGGERS: dict[str, type[Trigger]] = {
     "epex_low_today_updated": EpexLowTodayUpdatedTrigger,
     "epex_low_today_quarter_hour_updated": EpexLowTodayQuarterHourUpdatedTrigger,
     # Phase E - calendar event-class triggers
-    "captar_peak_window_started": CaptarPeakWindowStartedTrigger,
-    "captar_peak_window_ended": CaptarPeakWindowEndedTrigger,
     "happy_hours_window_started": HappyHoursWindowStartedTrigger,
     "happy_hours_window_ended": HappyHoursWindowEndedTrigger,
     "tou_slot_started": TouSlotStartedTrigger,

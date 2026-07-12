@@ -323,12 +323,6 @@ epex_low_today_quarter_hour_updated:
 # Calendar event-class triggers
 # ---------------------------------------------------------------------------
 
-captar_peak_window_started:
-  target: *target_engie_calendar
-
-captar_peak_window_ended:
-  target: *target_engie_calendar
-
 happy_hours_window_started:
   target: *target_engie_calendar
 

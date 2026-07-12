@@ -21,7 +21,6 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.engie_be._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
-from custom_components.engie_be._peaks import CAPTAR_EVENT_SUMMARY
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
     CONF_REFRESH_TOKEN,
@@ -58,8 +57,6 @@ from custom_components.engie_be.trigger import (
     AuthenticationRestoredTrigger,
     CaptarPeakCrossedThresholdTrigger,
     CaptarPeakUpdatedTrigger,
-    CaptarPeakWindowEndedTrigger,
-    CaptarPeakWindowStartedTrigger,
     EpexBecameNegativeQuarterHourTrigger,
     EpexBecameNegativeTrigger,
     EpexCurrentCrossedThresholdTrigger,
@@ -292,8 +289,6 @@ async def test_async_get_triggers_returns_all(hass: HomeAssistant) -> None:
         "epex_high_today_quarter_hour_updated",
         "epex_low_today_quarter_hour_updated",
         # Phase E calendar event-class
-        "captar_peak_window_started",
-        "captar_peak_window_ended",
         "happy_hours_window_started",
         "happy_hours_window_ended",
         "tou_slot_started",
@@ -1374,81 +1369,6 @@ def _setup_calendar_component(
     return entity_id
 
 
-async def test_captar_peak_window_started_fires_at_event_start(
-    hass: HomeAssistant,
-) -> None:
-    """CaptarPeakWindowStartedTrigger fires when a captar peak window begins."""
-    entry = _make_entry(hass)
-    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
-    events = [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start)]
-    _setup_calendar_component(hass, entry, events)
-
-    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
-    trigger = CaptarPeakWindowStartedTrigger(hass, config)
-    run_action, fired = _make_run_action()
-
-    unsub = await trigger.async_attach_runner(run_action)
-    await hass.async_block_till_done()
-    assert len(fired) == 0
-
-    async_fire_time_changed(hass, event_start)
-    await hass.async_block_till_done()
-
-    assert len(fired) == 1
-    unsub()
-
-
-async def test_captar_peak_window_started_does_not_fire_for_hh_event(
-    hass: HomeAssistant,
-) -> None:
-    """CaptarPeakWindowStartedTrigger does not fire for Happy Hours events."""
-    entry = _make_entry(hass)
-    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
-    events = [_make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_start)]
-    _setup_calendar_component(hass, entry, events)
-
-    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
-    trigger = CaptarPeakWindowStartedTrigger(hass, config)
-    run_action, fired = _make_run_action()
-
-    unsub = await trigger.async_attach_runner(run_action)
-    await hass.async_block_till_done()
-
-    async_fire_time_changed(hass, event_start)
-    await hass.async_block_till_done()
-
-    # Wrong event class: should not fire.
-    assert len(fired) == 0
-    unsub()
-
-
-async def test_captar_peak_window_ended_fires_at_event_end(
-    hass: HomeAssistant,
-) -> None:
-    """CaptarPeakWindowEndedTrigger fires when a captar peak window ends."""
-    entry = _make_entry(hass)
-    event_start = datetime.now(tz=UTC) + timedelta(seconds=10)
-    events = [
-        _make_future_event(CAPTAR_EVENT_SUMMARY, event_start, duration_seconds=60)
-    ]
-    _setup_calendar_component(hass, entry, events)
-
-    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
-    trigger = CaptarPeakWindowEndedTrigger(hass, config)
-    run_action, fired = _make_run_action()
-
-    unsub = await trigger.async_attach_runner(run_action)
-    await hass.async_block_till_done()
-    assert len(fired) == 0
-
-    # Fire at event end.
-    async_fire_time_changed(hass, event_start + timedelta(seconds=60))
-    await hass.async_block_till_done()
-
-    assert len(fired) == 1
-    unsub()
-
-
 async def test_happy_hours_window_started_fires_at_event_start(
     hass: HomeAssistant,
 ) -> None:
@@ -1639,7 +1559,7 @@ async def test_calendar_trigger_fires_for_all_bans(hass: HomeAssistant) -> None:
         )
         entity_ids.append(reg_entry.entity_id)
 
-    events = [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start)]
+    events = [_make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_start)]
 
     # Wire a separate mock entity for each calendar entity_id.
     mock_component = MagicMock()
@@ -1653,7 +1573,7 @@ async def test_calendar_trigger_fires_for_all_bans(hass: HomeAssistant) -> None:
     hass.data[CALENDAR_DOMAIN] = mock_component
 
     config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
-    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
     run_action, fired = _make_run_action()
 
     unsub = await trigger.async_attach_runner(run_action)
@@ -1675,15 +1595,15 @@ async def test_calendar_trigger_scheduler_fires_at_boundary(
     Scheduler fires exactly once when the clock reaches the event boundary.
 
     Smoke test that async_track_point_in_time integration works end-to-end
-    for the captar_peak_window_started trigger.
+    for the happy_hours_window_started trigger.
     """
     entry = _make_entry(hass)
     event_start = datetime.now(tz=UTC) + timedelta(seconds=30)
-    events = [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start)]
+    events = [_make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_start)]
     _setup_calendar_component(hass, entry, events)
 
     config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
-    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
     run_action, fired = _make_run_action()
 
     unsub = await trigger.async_attach_runner(run_action)
@@ -1706,7 +1626,7 @@ async def test_calendar_trigger_no_fires_when_no_calendar_component(
 ) -> None:
     """Calendar triggers do not fire (or raise) when no calendar component is loaded."""
     config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
-    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
     run_action, fired = _make_run_action()
 
     unsub = await trigger.async_attach_runner(run_action)
@@ -1761,7 +1681,7 @@ async def test_calendar_trigger_no_fires_when_entity_registered_but_no_component
     )
 
     config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
-    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
     run_action, fired = _make_run_action()
 
     unsub = await trigger.async_attach_runner(run_action)
@@ -1830,7 +1750,7 @@ async def test_calendar_trigger_no_fires_when_get_events_raises(
     hass.data[CALENDAR_DOMAIN] = mock_component
 
     config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
-    trigger = CaptarPeakWindowStartedTrigger(hass, config)
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
     run_action, fired = _make_run_action()
 
     # Should not raise even though async_get_events raises HomeAssistantError.
@@ -1842,7 +1762,7 @@ async def test_calendar_trigger_no_fires_when_get_events_raises(
 
 async def test_calendar_trigger_async_validate_config(hass: HomeAssistant) -> None:
     """async_validate_config is callable and returns valid config dict."""
-    result = await CaptarPeakWindowStartedTrigger.async_validate_config(hass, {})
+    result = await HappyHoursWindowStartedTrigger.async_validate_config(hass, {})
     assert isinstance(result, dict)
 
 
@@ -1870,11 +1790,11 @@ async def test_calendar_trigger_cancel_during_fetch_drops_new_listener(
     # First event fires in 60 seconds; second event would fire in 2 hours.
     event_start_1 = datetime.now(tz=UTC) + timedelta(seconds=60)
     event_start_2 = datetime.now(tz=UTC) + timedelta(hours=2)
-    events_initial = [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start_1)]
+    events_initial = [_make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_start_1)]
     _setup_calendar_component(hass, entry, events_initial)
 
     config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
-    trigger_obj = CaptarPeakWindowStartedTrigger(hass, config)
+    trigger_obj = HappyHoursWindowStartedTrigger(hass, config)
     run_action, fired = _make_run_action()
 
     # Attach normally using the real calendar component set up above.
@@ -1890,7 +1810,7 @@ async def test_calendar_trigger_cancel_during_fetch_drops_new_listener(
     async def _slow_get_events(_hass: object, _entity_id: str) -> list:
         fetch_started.set()
         await fetch_proceed.wait()
-        return [_make_future_event(CAPTAR_EVENT_SUMMARY, event_start_2)]
+        return [_make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_start_2)]
 
     with patch(
         "custom_components.engie_be.trigger._get_calendar_events",

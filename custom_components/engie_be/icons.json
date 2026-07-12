@@ -197,8 +197,6 @@
         "epex_high_today_quarter_hour_updated": {"trigger": "mdi:cash-100"},
         "epex_low_today_updated": {"trigger": "mdi:cash-100"},
         "epex_low_today_quarter_hour_updated": {"trigger": "mdi:cash-100"},
-        "captar_peak_window_started": {"trigger": "mdi:flash-alert"},
-        "captar_peak_window_ended": {"trigger": "mdi:flash-off"},
         "happy_hours_window_started": {"trigger": "mdi:weather-sunset-up"},
         "happy_hours_window_ended": {"trigger": "mdi:weather-sunset-down"},
         "tou_slot_started": {"trigger": "mdi:clock-start"}
