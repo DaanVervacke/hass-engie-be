@@ -46,6 +46,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Changed
 
 - Standardized EPEX trigger friendly names to match entity naming convention. Threshold and updated triggers now use consistent pattern: `EPEX <descriptor> <granularity> price <action>`.
+- Updated README triggers and conditions documentation to include quarter-hourly EPEX variants and remove outdated Captar peak window triggers.
+- Capitalized "Solar Surplus" consistently as ENGIE product name in README and translations (both words capitalized, matching "Happy Hours" pattern).
 
 ### Removed
 
