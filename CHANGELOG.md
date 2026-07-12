@@ -39,7 +39,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Fixed EPEX sensor `slot_duration_minutes` attribute to dynamically compute and report actual slot duration (15 for quarter-hourly, 60 for hourly) instead of using a hardcoded constant.
 
-## [Unreleased]
+## [0.13.0b3] - 2026-07-13
 
 > PR-number links will be substituted at release-tagging.
 
@@ -50,6 +50,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Removed
 
 - Removed non-functional Captar peak window triggers (`captar_peak_window_started`, `captar_peak_window_ended`). These triggers could never fire because ENGIE's API only provides historical peak data with past timestamps, and the trigger mechanism only fires for future event boundaries. The Captar peak sensors remain available for diagnostic purposes.
+
+## [Unreleased]
 
 ## [0.13.0b1] - 2026-07-09
 
