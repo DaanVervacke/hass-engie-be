@@ -65,7 +65,7 @@ as sensors, binary sensors, and calendar events.
 - Exposes ENGIE's Solar Surplus forecasts (3-day hourly injection outlook) for households with solar panels
 - Supports multiple households (business agreements) under a single ENGIE login, including several active addresses under one customer account
 - Billing sensors per account: outstanding balance, overdue amount, and next invoice due date
-- Native automation surface for the automation editor: Purpose-specific triggers and conditions for EPEX prices (hourly and quarter-hourly), TOU slots, solar surplus, captar peaks, and Happy Hours. No template YAML required
+- Native automation surface for the automation editor: Purpose-specific triggers and conditions for EPEX prices (hourly and quarter-hourly), TOU slots, Solar Surplus, captar peaks, and Happy Hours. No template YAML required
 - Configurable update interval
 
 ## Sensors
@@ -79,7 +79,7 @@ attributes. Every sensor below is also available as an `_excl_vat` variant
 > Entity IDs shown in the tables and examples below use two
 > placeholders: `{BAN}` for the 12-digit business-agreement number and
 > `{EAN}` for the 18-digit meter identifier (used by per-meter sensors
-> like solar surplus and TOU slots). Substitute your own values when
+> like Solar Surplus and TOU slots). Substitute your own values when
 > referencing a sensor in automations or dashboards. Both values are
 > visible in **Developer tools** > **States** and in the device name
 > in **Settings** > **Devices & services**.
@@ -254,11 +254,11 @@ ENGIE returns forecast data:
 
 | Sensor | Entity ID | Description |
 |---|---|---|
-| Solar surplus forecast (today's level) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_forecast` | Aggregate surplus level for today (no_data / no_surplus / minimal_surplus / low_surplus / high_surplus) |
-| Solar surplus current hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_current` | Expected surplus for the current hour (kWh) |
-| Solar surplus next hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_next_hour` | Expected surplus for the next hour (kWh) |
-| Solar surplus total today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_total` | Expected total surplus for today (kWh) |
-| Solar surplus peak today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_peak` | Highest hourly surplus expected today (kWh) |
+| Solar Surplus forecast (today's level) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_forecast` | Aggregate surplus level for today (no_data / no_surplus / minimal_surplus / low_surplus / high_surplus) |
+| Solar Surplus current hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_current` | Expected surplus for the current hour (kWh) |
+| Solar Surplus next hour (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_next_hour` | Expected surplus for the next hour (kWh) |
+| Solar Surplus total today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_total` | Expected total surplus for today (kWh) |
+| Solar Surplus peak today (kWh) | `sensor.engie_belgium_{BAN}_{EAN}_solar_surplus_today_peak` | Highest hourly surplus expected today (kWh) |
 
 The level sensor's `forecast` attribute carries the full 3-day
 hourly outlook so you can plot it or feed it into your own
@@ -412,10 +412,10 @@ editor.
 
 | Trigger | Fires when |
 |---|---|
-| Solar surplus level changed | Aggregate surplus level transitions to any different code |
+| Solar Surplus level changed | Aggregate surplus level transitions to any different code |
 | Offtake slot changed | Current offtake slot transitions to any different code |
 | Injection slot changed | Current injection slot transitions to any different code |
-| Solar surplus became `<level>` | Aggregate surplus level enters a chosen code |
+| Solar Surplus became `<level>` | Aggregate surplus level enters a chosen code |
 | Offtake slot became `<code>` | Current offtake slot enters a chosen code |
 | Injection slot became `<code>` | Current injection slot enters a chosen code |
 
@@ -427,8 +427,8 @@ editor.
 | EPEX next hour price crossed threshold | Next hourly EPEX price crosses a chosen EUR/kWh threshold |
 | EPEX current quarter-hourly price crossed threshold | Current quarter-hourly EPEX price crosses a chosen EUR/kWh threshold |
 | EPEX next quarter-hourly price crossed threshold | Next quarter-hourly EPEX price crosses a chosen EUR/kWh threshold |
-| Solar surplus current hour crossed threshold | Current-hour surplus crosses a chosen kWh threshold |
-| Solar surplus next hour crossed threshold | Next-hour surplus crosses a chosen kWh threshold |
+| Solar Surplus current hour crossed threshold | Current-hour surplus crosses a chosen kWh threshold |
+| Solar Surplus next hour crossed threshold | Next-hour surplus crosses a chosen kWh threshold |
 | Captar peak crossed threshold | Monthly captar peak crosses a chosen kW threshold |
 
 **Value-update triggers**:
@@ -453,7 +453,7 @@ editor.
 
 Binary state conditions check if EPEX hour price is negative, EPEX quarter-hourly price is negative, offtake is optimal, injection is optimal, or Happy Hours is active.
 
-Enum state conditions check if solar surplus is at a chosen level, or TOU slot is a chosen code.
+Enum state conditions check if Solar Surplus is at a chosen level, or TOU slot is a chosen code.
 
 Threshold conditions check if EPEX hour price is below/above a configured threshold, EPEX quarter-hourly price is below/above a configured threshold, or captar peak is above a configured threshold.
 
