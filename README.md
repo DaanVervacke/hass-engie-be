@@ -65,7 +65,7 @@ as sensors, binary sensors, and calendar events.
 - Exposes ENGIE's Solar Surplus forecasts (3-day hourly injection outlook) for households with solar panels
 - Supports multiple households (business agreements) under a single ENGIE login, including several active addresses under one customer account
 - Billing sensors per account: outstanding balance, overdue amount, and next invoice due date
-- Native automation surface for the automation editor: 29 purpose-specific triggers, 10 conditions, and calendar-slot events. No template YAML required
+- Native automation surface for the automation editor: Purpose-specific triggers and conditions for EPEX prices (hourly and quarter-hourly), TOU slots, solar surplus, captar peaks, and Happy Hours. No template YAML required
 - Configurable update interval
 
 ## Sensors
@@ -395,8 +395,10 @@ editor.
 
 | Trigger | Fires when |
 |---|---|
-| EPEX price became negative | Current EPEX price crosses below zero |
-| EPEX price no longer negative | Current EPEX price returns to zero or above |
+| EPEX hour price became negative | Current hourly EPEX price crosses below zero |
+| EPEX hour price no longer negative | Current hourly EPEX price returns to zero or above |
+| EPEX quarter-hourly price became negative | Current quarter-hourly EPEX price crosses below zero |
+| EPEX quarter-hourly price no longer negative | Current quarter-hourly EPEX price returns to zero or above |
 | Offtake became optimal | Current offtake slot enters the schedule's optimal code |
 | Offtake no longer optimal | Current offtake slot leaves the optimal code |
 | Injection became optimal | Current injection slot enters the schedule's optimal code |
@@ -421,8 +423,10 @@ editor.
 
 | Trigger | Fires when |
 |---|---|
-| EPEX current price crossed threshold | Current EPEX price crosses a chosen EUR/kWh threshold |
-| EPEX next hour price crossed threshold | Next-hour EPEX price crosses a chosen EUR/kWh threshold |
+| EPEX current hour price crossed threshold | Current hourly EPEX price crosses a chosen EUR/kWh threshold |
+| EPEX next hour price crossed threshold | Next hourly EPEX price crosses a chosen EUR/kWh threshold |
+| EPEX current quarter-hourly price crossed threshold | Current quarter-hourly EPEX price crosses a chosen EUR/kWh threshold |
+| EPEX next quarter-hourly price crossed threshold | Next quarter-hourly EPEX price crosses a chosen EUR/kWh threshold |
 | Solar surplus current hour crossed threshold | Current-hour surplus crosses a chosen kWh threshold |
 | Solar surplus next hour crossed threshold | Next-hour surplus crosses a chosen kWh threshold |
 | Captar peak crossed threshold | Monthly captar peak crosses a chosen kW threshold |
@@ -432,26 +436,26 @@ editor.
 | Trigger | Fires when |
 |---|---|
 | Captar peak updated | Monthly captar peak value or window changes |
-| EPEX high today updated | Highest EPEX price of today changes |
-| EPEX low today updated | Lowest EPEX price of today changes |
+| EPEX highest hour price today updated | Highest hourly EPEX price of today changes |
+| EPEX lowest hour price today updated | Lowest hourly EPEX price of today changes |
+| EPEX highest quarter-hourly price today updated | Highest quarter-hourly EPEX price of today changes |
+| EPEX lowest quarter-hourly price today updated | Lowest quarter-hourly EPEX price of today changes |
 
 **Calendar-slot triggers**:
 
 | Trigger | Fires when |
 |---|---|
-| Captar peak window started | At the start of the current monthly captar peak window |
-| Captar peak window ended | At the end of the current monthly captar peak window |
 | Happy Hours window started | At the start of a scheduled Happy Hours window |
 | Happy Hours window ended | At the end of a scheduled Happy Hours window |
 | TOU slot started | At the start of a chosen TOU slot for a chosen direction |
 
 ### Conditions
 
-Binary state triggers fire for EPEX price becoming negative, offtake becoming optimal, injection becoming optimal, or Happy Hours becoming active.
+Binary state conditions check if EPEX hour price is negative, EPEX quarter-hourly price is negative, offtake is optimal, injection is optimal, or Happy Hours is active.
 
-Enum state triggers fire for solar surplus reaching a level, or TOU slot changes.
+Enum state conditions check if solar surplus is at a chosen level, or TOU slot is a chosen code.
 
-Threshold triggers fire when EPEX price crosses a configured threshold, or captar peak crosses a threshold.
+Threshold conditions check if EPEX hour price is below/above a configured threshold, EPEX quarter-hourly price is below/above a configured threshold, or captar peak is above a configured threshold.
 
 No template YAML is required for any of the above. Dropdown
 options track `SOLAR_SURPLUS_LEVELS` and `TOU_SLOT_CODES` in
