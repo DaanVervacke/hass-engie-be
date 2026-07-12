@@ -9,11 +9,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
-- Additional quarter-hourly EPEX price sensors for dynamic tariff contracts. Dynamic contracts now get both hourly and quarter-hourly sensors: current quarter-hourly price (`sensor.engie_belgium_{BAN}_epex_current_quarter_hour`), next quarter-hourly price (`sensor.engie_belgium_{BAN}_epex_next_quarter_hour`), lowest quarter-hourly price today (`sensor.engie_belgium_{BAN}_epex_low_today_quarter_hour`), and highest quarter-hourly price today (`sensor.engie_belgium_{BAN}_epex_high_today_quarter_hour`).
+- Additional quarter-hourly EPEX price sensors for dynamic tariff contracts. All dynamic tariff contracts get eight EPEX sensors: four hourly (current, next, low today, high today) and four quarter-hourly (current, next, low today, high today). Both granularities are created for all dynamic contracts regardless of contract type.
 
 ### Changed
 
-- Migrated EPEX endpoint from v1 to v2. The new `/pricing/public/v2/epex-prices` endpoint requires authentication (handled via existing OAuth flow) and enables dynamic granularity detection (hourly or quarter-hourly) from the API response.
+- Migrated EPEX endpoint from v1 to v2. The new `/pricing/public/v2/epex-prices` endpoint requires authentication (handled via existing OAuth flow) and provides both hourly and quarter-hourly EPEX price data. Both granularities are always fetched; sensor creation is gated on the dynamic tariff flag, not on granularity detection.
 
 - Standardized EPEX sensor friendly names: hourly sensors use "hour" (not "hourly"), quarter-hourly sensors use "quarter-hourly" for clarity.
 

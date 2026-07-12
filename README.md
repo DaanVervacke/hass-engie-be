@@ -135,7 +135,7 @@ Created when your contract has three time-of-use rates.
 
 ### Electricity: dynamic tariff (EPEX-indexed)
 
-Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get sensors that expose day-ahead wholesale prices from the EPEX day-ahead auction. All dynamic tariff contracts get eight sensors: four for hourly slots and four for 15-minute (quarter-hourly) slots.
+Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get sensors that expose day-ahead wholesale prices from the EPEX day-ahead auction. All dynamic tariff contracts receive eight EPEX sensors: four for hourly slots and four for 15-minute (quarter-hourly) slots, regardless of the contract's actual granularity. The integration fetches both granularities from the API for all dynamic contracts, so all users see both sets of sensors regardless of their actual contract's billing granularity.
 
 | Sensor | Entity ID | Description |
 |---|---|---|
@@ -730,6 +730,7 @@ No historical price retrieval. ENGIE does not expose historical energy prices th
 Happy Hours history starts when the integration is installed. ENGIE's Smart App and API surface only the next upcoming Happy Hours window. The integration records each window it observes locally, so past windows are recoverable inside HA only from the point of install onwards. ENGIE also publishes a public archive of all past Happy Hours at [engie.be/nl/happyhours/overzicht](https://www.engie.be/nl/happyhours/overzicht) if you need older data.
 Happy Hours enrolment is paused until 2027. ENGIE closed new enrolments on 1 June 2026 via the Smart App and states enrolments will reopen in 2027. Existing enrolments continue automatically. See [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/).
 EPEX prices are published around 14:00 Brussels time. ENGIE publishes the next day's dynamic prices each afternoon after the EPEX day-ahead auction settles. Before that time, only today's prices are available and tomorrow's sensors show `unknown`. See [engie.be/nl/dynamic-tarief/dagelijks-gebruik](https://www.engie.be/nl/dynamic-tarief/dagelijks-gebruik/).
+EPEX sensors: Both hourly and quarter-hourly sensors are created for all dynamic contracts. The actual billing granularity of your contract may differ from what these sensors report.
 Dedicated account required. The same ENGIE credentials cannot be shared with engie.be or the ENGIE Smart App without triggering frequent re-authentication prompts. This is an ENGIE platform constraint, not a Home Assistant limitation. See [Prerequisites](#prerequisites).
 Two-factor authentication required. The integration requires MFA to be enabled on the ENGIE account. Accounts without MFA (e.g. older sub-accounts) are not supported.
 
