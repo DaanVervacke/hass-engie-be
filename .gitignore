@@ -1,38 +1,128 @@
-# artifacts
-__pycache__
+# =============================================================================
+# Home Assistant Integration Development
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Byte-compiled / optimized files
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+
+# -----------------------------------------------------------------------------
+# Distribution / packaging
+# -----------------------------------------------------------------------------
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# -----------------------------------------------------------------------------
+# PyInstaller
+# -----------------------------------------------------------------------------
+pybuild/
+TOXENV/
+
+# -----------------------------------------------------------------------------
+# PyEnv / Virtual environments
+# -----------------------------------------------------------------------------
+.env
+.venv
+
+# -----------------------------------------------------------------------------
+# IDE
+# -----------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# -----------------------------------------------------------------------------
+# macOS
+# -----------------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.Trashes
+ehthumbs.db
+iPhoto9Main.db
+
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+.pytest_cache/
 .pytest*
-*.egg-info
-*/build/*
-*/dist/*
-
-
-# misc
 .coverage
-.vscode
-coverage.xml
-.ruff_cache
+.coverage.*
+htmlcov/
+.tox/
+.nox/
 
+# -----------------------------------------------------------------------------
+# Linting/Static Analysis
+# -----------------------------------------------------------------------------
+.ruff_cache/
+.mypy_cache/
 
-# Home Assistant configuration
+# -----------------------------------------------------------------------------
+# Home Assistant
+# -----------------------------------------------------------------------------
+home-assistant*.log*
+home-assistant_*.db
+home-assistant_*.db-shm
+home-assistant_*.db-wal
+.storage/
+
+# Home Assistant version tracking (devcontainer artifact)
+.HA_VERSION
+.ha_run.lock
+
+# Debug logs
+debug*.log
+
+# -----------------------------------------------------------------------------
+# Local configuration and artifacts
+# -----------------------------------------------------------------------------
+# Configuration files that may contain secrets (keep configuration.yaml tracked)
 config/*
 !config/configuration.yaml
-
-
-# logs (repo-wide; covers home-assistant_engie_be_*.log dumps at repo root)
-*.log
-
-
-# screenshots at repo root only; do NOT match tracked brand assets under
-# custom_components/engie_be/brand/*.png (HA Brands Proxy requires these)
-/*.png
-
-
-# local working scratch (developer-only backups and source snapshots)
 config-bak*/
 config-pre-*/
+
+# Screenshots at repo root only; do NOT match tracked brand assets
+/*.png
+
+# Local working scratch (developer-only backups and source snapshots)
 .swap-source/
 .v071-source/
 
+# -----------------------------------------------------------------------------
+# CLI Tools (Claude Code, etc.)
+# -----------------------------------------------------------------------------
+.agents/
+.claude/
+.cloud/
 
-# implementation plans (developer-only, not for the repo)
+# -----------------------------------------------------------------------------
+# Local artifacts
+# -----------------------------------------------------------------------------
+backups/
+research/
+docs/audit*.md
+
+# Implementation plans (developer-only, not for the repo)
 plans/
