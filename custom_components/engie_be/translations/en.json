@@ -1194,12 +1194,12 @@
             "description": "Fires when the captar monthly peak power value changes."
         },
         "epex_high_today_updated": {
-            "name": "EPEX hour highest price today updated",
-            "description": "Fires when the highest EPEX hour day-ahead price for today changes."
+            "name": "EPEX highest hour price today updated",
+            "description": "Fires when the highest EPEX hour price for today changes."
         },
         "epex_low_today_updated": {
-            "name": "EPEX hour lowest price today updated",
-            "description": "Fires when the lowest EPEX hour day-ahead price for today changes."
+            "name": "EPEX lowest hour price today updated",
+            "description": "Fires when the lowest EPEX hour price for today changes."
         },
         "epex_became_negative_quarter_hour": {
             "name": "EPEX quarter-hourly price became negative",
@@ -1210,7 +1210,7 @@
             "description": "Fires when the EPEX quarter-hourly day-ahead price returns to zero or positive."
         },
         "epex_current_quarter_hour_crossed_threshold": {
-            "name": "EPEX quarter-hourly current price crossed threshold",
+            "name": "EPEX current quarter-hourly price crossed threshold",
             "description": "Fires when the current quarter-hourly EPEX price crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
@@ -1220,7 +1220,7 @@
             }
         },
         "epex_next_quarter_hour_crossed_threshold": {
-            "name": "EPEX quarter-hourly next price crossed threshold",
+            "name": "EPEX next quarter-hourly price crossed threshold",
             "description": "Fires when the next quarter-hourly EPEX price crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
@@ -1230,12 +1230,12 @@
             }
         },
         "epex_high_today_quarter_hour_updated": {
-            "name": "EPEX quarter-hourly high today updated",
-            "description": "Fires when the highest quarter-hourly EPEX price today changes."
+            "name": "EPEX highest quarter-hourly price today updated",
+            "description": "Fires when the highest quarter-hourly EPEX price for today changes."
         },
         "epex_low_today_quarter_hour_updated": {
-            "name": "EPEX quarter-hourly low today updated",
-            "description": "Fires when the lowest quarter-hourly EPEX price today changes."
+            "name": "EPEX lowest quarter-hourly price today updated",
+            "description": "Fires when the lowest quarter-hourly EPEX price for today changes."
         },
         "happy_hours_window_started": {
             "name": "Happy Hours window started",

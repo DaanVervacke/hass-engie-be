@@ -43,6 +43,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 > PR-number links will be substituted at release-tagging.
 
+### Changed
+
+- Standardized EPEX trigger friendly names to match entity naming convention. Threshold and updated triggers now use consistent pattern: `EPEX <descriptor> <granularity> price <action>`.
+
 ### Removed
 
 - Removed non-functional Captar peak window triggers (`captar_peak_window_started`, `captar_peak_window_ended`). These triggers could never fire because ENGIE's API only provides historical peak data with past timestamps, and the trigger mechanism only fires for future event boundaries. The Captar peak sensors remain available for diagnostic purposes.
