@@ -447,12 +447,11 @@ editor.
 
 ### Conditions
 
-- **Binary state**: EPEX price is negative, offtake is optimal,
-  injection is optimal, Happy Hours is active.
-- **Enum state**: solar surplus is at level, offtake slot is,
-  injection slot is.
-- **Thresholds**: EPEX price is below / above threshold, captar
-  peak is above threshold.
+Binary state triggers fire for EPEX price becoming negative, offtake becoming optimal, injection becoming optimal, or Happy Hours becoming active.
+
+Enum state triggers fire for solar surplus reaching a level, or TOU slot changes.
+
+Threshold triggers fire when EPEX price crosses a configured threshold, or captar peak crosses a threshold.
 
 No template YAML is required for any of the above. Dropdown
 options track `SOLAR_SURPLUS_LEVELS` and `TOU_SLOT_CODES` in
@@ -726,14 +725,15 @@ removed and no history is lost.
 
 ## Known limitations
 
-- **Historical usage data lags a few days.** ENGIE only publishes hourly usage once a day is finalised, so today and yesterday are not available yet. For real-time consumption you need a separate P1-port digital-meter reader.
-- **No historical price retrieval.** ENGIE does not expose historical energy prices through the API. The integration can only report the currently active price period. Historical sensor data is what Home Assistant's own recorder stores.
-- **Happy Hours history starts when the integration is installed.** ENGIE's Smart App and API surface only the next upcoming Happy Hours window. The integration records each window it observes locally, so past windows are recoverable inside HA only from the point of install onwards. ENGIE also publishes a public archive of all past Happy Hours at [engie.be/nl/happyhours/overzicht](https://www.engie.be/nl/happyhours/overzicht) if you need older data.
-- **Happy Hours enrolment paused until 2027.** ENGIE closed new enrolments on 1 June 2026 via the Smart App and states enrolments will reopen in 2027. Existing enrolments continue automatically. See [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/).
-- **EPEX prices published around 14:00 Brussels time.** ENGIE publishes the next day's dynamic prices each afternoon after the EPEX day-ahead auction settles. Before that time, only today's prices are available and tomorrow's sensors show `unknown`. See [engie.be/nl/dynamic-tarief/dagelijks-gebruik](https://www.engie.be/nl/dynamic-tarief/dagelijks-gebruik/).
-- **Dedicated account required.** The same ENGIE credentials cannot be shared with engie.be or the ENGIE Smart App without triggering frequent re-authentication prompts. This is an ENGIE platform constraint, not a Home Assistant limitation. See [Prerequisites](#prerequisites).
-- **Two-factor authentication required.** The integration requires MFA to be enabled on the ENGIE account. Accounts without MFA (e.g. older sub-accounts) are not supported.
-- **Read-only.** The integration only reads data from the ENGIE API and never modifies your account, contracts, or settings.
+Historical usage data lags a few days. ENGIE only publishes hourly usage once a day is finalised, so today and yesterday are not available yet. For real-time consumption you need a separate P1-port digital-meter reader.
+No historical price retrieval. ENGIE does not expose historical energy prices through the API. The integration can only report the currently active price period. Historical sensor data is what Home Assistant's own recorder stores.
+Happy Hours history starts when the integration is installed. ENGIE's Smart App and API surface only the next upcoming Happy Hours window. The integration records each window it observes locally, so past windows are recoverable inside HA only from the point of install onwards. ENGIE also publishes a public archive of all past Happy Hours at [engie.be/nl/happyhours/overzicht](https://www.engie.be/nl/happyhours/overzicht) if you need older data.
+Happy Hours enrolment is paused until 2027. ENGIE closed new enrolments on 1 June 2026 via the Smart App and states enrolments will reopen in 2027. Existing enrolments continue automatically. See [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/).
+EPEX prices are published around 14:00 Brussels time. ENGIE publishes the next day's dynamic prices each afternoon after the EPEX day-ahead auction settles. Before that time, only today's prices are available and tomorrow's sensors show `unknown`. See [engie.be/nl/dynamic-tarief/dagelijks-gebruik](https://www.engie.be/nl/dynamic-tarief/dagelijks-gebruik/).
+Dedicated account required. The same ENGIE credentials cannot be shared with engie.be or the ENGIE Smart App without triggering frequent re-authentication prompts. This is an ENGIE platform constraint, not a Home Assistant limitation. See [Prerequisites](#prerequisites).
+Two-factor authentication required. The integration requires MFA to be enabled on the ENGIE account. Accounts without MFA (e.g. older sub-accounts) are not supported.
+
+Read-only. The integration only reads data from the ENGIE API and never modifies your account, contracts, or settings.
 
 ## Removing the integration
 
