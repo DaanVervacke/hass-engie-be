@@ -882,7 +882,7 @@
                 "name": "EPEX highest quarter-hourly price today"
             },
             "solar_surplus_forecast": {
-                "name": "Solar surplus forecast ({ean})",
+                "name": "Solar Surplus forecast ({ean})",
                 "state": {
                     "no_data": "No data",
                     "no_surplus": "No surplus",
@@ -892,16 +892,16 @@
                 }
             },
             "solar_surplus_current": {
-                "name": "Solar surplus current hour ({ean})"
+                "name": "Solar Surplus current hour ({ean})"
             },
             "solar_surplus_next_hour": {
-                "name": "Solar surplus next hour ({ean})"
+                "name": "Solar Surplus next hour ({ean})"
             },
             "solar_surplus_today_total": {
-                "name": "Solar surplus total today ({ean})"
+                "name": "Solar Surplus total today ({ean})"
             },
             "solar_surplus_today_peak": {
-                "name": "Solar surplus peak today ({ean})"
+                "name": "Solar Surplus peak today ({ean})"
             },
             "outstanding_balance": {
                 "name": "Outstanding balance"
@@ -960,12 +960,12 @@
             "description": "True when the current EPEX hour day-ahead price is negative (you are paid to consume)."
         },
         "solar_surplus_is_at_level": {
-            "name": "Solar surplus is at level",
-            "description": "True when the solar surplus forecast for the current hour matches the chosen level.",
+            "name": "Solar Surplus is at level",
+            "description": "True when the Solar Surplus forecast for the current hour matches the chosen level.",
             "fields": {
                 "level": {
                     "name": "Surplus level",
-                    "description": "Expected solar surplus level."
+                    "description": "Expected Solar Surplus level."
                 }
             }
         },
@@ -1098,8 +1098,8 @@
             "description": "Fires when the ENGIE Belgium session is successfully re-established."
         },
         "solar_surplus_level_changed": {
-            "name": "Solar surplus level changed",
-            "description": "Fires when the solar surplus forecast level changes to any new value."
+            "name": "Solar Surplus level changed",
+            "description": "Fires when the Solar Surplus forecast level changes to any new value."
         },
         "offtake_slot_changed": {
             "name": "Offtake slot changed",
@@ -1110,8 +1110,8 @@
             "description": "Fires when the TOU injection slot changes to any new value."
         },
         "solar_surplus_became": {
-            "name": "Solar surplus reached level",
-            "description": "Fires when the solar surplus forecast reaches the chosen level.",
+            "name": "Solar Surplus reached level",
+            "description": "Fires when the Solar Surplus forecast reaches the chosen level.",
             "fields": {
                 "level": {
                     "name": "Surplus level",
@@ -1160,22 +1160,22 @@
             }
         },
         "solar_surplus_current_crossed_threshold": {
-            "name": "Solar surplus current hour crossed threshold",
-            "description": "Fires when the current-hour solar surplus value crosses into the configured threshold range.",
+            "name": "Solar Surplus current hour crossed threshold",
+            "description": "Fires when the current-hour Solar Surplus value crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",
-                    "description": "Solar surplus threshold in kWh."
+                    "description": "Solar Surplus threshold in kWh."
                 }
             }
         },
         "solar_surplus_next_hour_crossed_threshold": {
-            "name": "Solar surplus next hour crossed threshold",
-            "description": "Fires when the next-hour solar surplus value crosses into the configured threshold range.",
+            "name": "Solar Surplus next hour crossed threshold",
+            "description": "Fires when the next-hour Solar Surplus value crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",
-                    "description": "Solar surplus threshold in kWh."
+                    "description": "Solar Surplus threshold in kWh."
                 }
             }
         },
