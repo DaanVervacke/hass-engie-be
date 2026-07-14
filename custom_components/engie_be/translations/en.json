@@ -884,7 +884,7 @@
                 "name": "EPEX highest quarter-hourly price today"
             },
             "solar_surplus_forecast": {
-                "name": "Solar Surplus forecast ({ean})",
+                "name": "Solar Surplus forecast",
                 "state": {
                     "no_data": "No data",
                     "no_surplus": "No surplus",
@@ -894,16 +894,16 @@
                 }
             },
             "solar_surplus_current": {
-                "name": "Solar Surplus current hour ({ean})"
+                "name": "Solar Surplus current hour"
             },
             "solar_surplus_next_hour": {
-                "name": "Solar Surplus next hour ({ean})"
+                "name": "Solar Surplus next hour"
             },
             "solar_surplus_today_total": {
-                "name": "Solar Surplus total today ({ean})"
+                "name": "Solar Surplus total today"
             },
             "solar_surplus_today_peak": {
-                "name": "Solar Surplus peak today ({ean})"
+                "name": "Solar Surplus peak today"
             },
             "outstanding_balance": {
                 "name": "Outstanding balance"
@@ -915,7 +915,7 @@
                 "name": "Next invoice due"
             },
             "tou_offtake_slot": {
-                "name": "Current offtake slot ({ean})",
+                "name": "Current offtake slot",
                 "state": {
                     "peak": "Peak",
                     "offpeak": "Off-peak",
@@ -925,7 +925,7 @@
                 }
             },
             "tou_injection_slot": {
-                "name": "Current injection slot ({ean})",
+                "name": "Current injection slot",
                 "state": {
                     "peak": "Peak",
                     "offpeak": "Off-peak",
@@ -949,10 +949,10 @@
                 "name": "Happy Hours is active"
             },
             "tou_offtake_is_optimal": {
-                "name": "Offtake at optimal slot ({ean})"
+                "name": "Offtake at optimal slot"
             },
             "tou_injection_is_optimal": {
-                "name": "Injection at optimal slot ({ean})"
+                "name": "Injection at optimal slot"
             }
         }
     },
