@@ -907,7 +907,10 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
                 value = slot_entry.get(field_name)
                 if value is None:
                     return None
-                return float(value)
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return None
 
         return None
 

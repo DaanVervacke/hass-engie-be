@@ -424,3 +424,20 @@ def test_get_price_value_returns_float_for_matched_slot() -> None:
         slot_code="TOTAL_HOURS",
     )
     assert sensor._get_price_value() == pytest.approx(0.116468)
+
+
+def test_get_price_value_returns_none_for_non_numeric_string() -> None:
+    """Non-numeric string in matched slot returns None, not ValueError."""
+    coord = _coordinator_with_prices()
+    items = coord.data["items"]
+    for item in items:
+        if item["ean"] == _EAN:
+            for slot in item["prices"][0]["proportionalPriceConfigurations"]["offtake"]:
+                if slot["timeOfUseSlotCode"] == "TOTAL_HOURS":
+                    slot["priceValue"] = "N/A"
+    sensor = _build_energy_sensor(
+        value_key="offtake.priceValue",
+        slot_code="TOTAL_HOURS",
+        coordinator=coord,
+    )
+    assert sensor._get_price_value() is None
