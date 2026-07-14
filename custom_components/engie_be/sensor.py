@@ -934,6 +934,9 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
 _EPEX_UNIT = "EUR/kWh"
 _EPEX_PRECISION = 4
 _BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
+# Slot durations at or below this use the lean {start, value} shape in
+# today/tomorrow arrays -- see EngieBeEpexCurrentSensor.extra_state_attributes.
+_EPEX_LEAN_SLOT_SHAPE_MAX_MINUTES = 15
 
 _EPEX_CURRENT = SensorEntityDescription(
     key="epex_current",
@@ -1135,6 +1138,14 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
         (ApexCharts, etc.) can plot them without timezone gymnastics.
         Raw EUR/MWh is included alongside EUR/kWh for users who prefer
         wholesale-market units.
+
+        Quarter-hourly payloads use a leaner ``{start, value}`` shape
+        instead: 2 days of 15-minute slots is 192 entries, and the full
+        5-field shape pushes the serialized attributes past HA's 16 KiB
+        recorder limit (silently dropping the whole attribute set from
+        history). ``end``/``value_eur_per_mwh``/the per-slot duration are
+        all derivable from ``start`` and the top-level
+        ``slot_duration_minutes``, so nothing is lost.
         """
         payload = epex_payload(self.coordinator)
         if payload is None:
@@ -1142,17 +1153,22 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
 
         today_brussels = dt_util.now(_BRUSSELS_TZ).date()
         tomorrow_brussels = today_brussels + timedelta(days=1)
+        slot_duration = (
+            _slot_duration_minutes(payload.slots[0]) if payload.slots else None
+        )
+        serialize = (
+            _serialize_slot_lean
+            if slot_duration is not None
+            and slot_duration <= _EPEX_LEAN_SLOT_SHAPE_MAX_MINUTES
+            else _serialize_slot
+        )
 
         attrs: dict[str, Any] = {
-            "today": [
-                _serialize_slot(s) for s in _slots_for_date(payload, today_brussels)
-            ],
+            "today": [serialize(s) for s in _slots_for_date(payload, today_brussels)],
             "tomorrow": [
-                _serialize_slot(s) for s in _slots_for_date(payload, tomorrow_brussels)
+                serialize(s) for s in _slots_for_date(payload, tomorrow_brussels)
             ],
-            "slot_duration_minutes": (
-                _slot_duration_minutes(payload.slots[0]) if payload.slots else None
-            ),
+            "slot_duration_minutes": slot_duration,
         }
         if payload.publication_time is not None:
             attrs["publication_time"] = payload.publication_time.isoformat()
@@ -1313,6 +1329,14 @@ def _serialize_slot(slot: EpexSlot) -> dict[str, Any]:
         "value": slot.value_eur_per_kwh,
         "value_eur_per_mwh": slot.value_eur_per_kwh * 1000.0,
         "slot_duration_minutes": _slot_duration_minutes(slot),
+    }
+
+
+def _serialize_slot_lean(slot: EpexSlot) -> dict[str, Any]:
+    """Serialise an :class:`EpexSlot` with only start/value, for dense slates."""
+    return {
+        "start": slot.start.isoformat(),
+        "value": slot.value_eur_per_kwh,
     }
 
 

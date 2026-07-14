@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -747,7 +748,7 @@ def test_qh_next_sensor_attributes() -> None:
 
 
 def test_qh_current_sensor_slots_have_15min_duration() -> None:
-    """QH current sensor today/tomorrow slots report 15-min duration."""
+    """QH current sensor reports the 15-min duration at the top level."""
     payload = _build_epex_payload_qh()
     coordinator = _make_epex_qh_coordinator(payload)
     subentry = _make_subentry()
@@ -758,12 +759,85 @@ def test_qh_current_sensor_slots_have_15min_duration() -> None:
         return_value=_NOW_UTC,
     ):
         attrs = sensor.extra_state_attributes
-        # Check today slots
-        for slot_attrs in attrs.get("today", []):
-            assert slot_attrs["slot_duration_minutes"] == 15
-        # Check tomorrow slots
-        for slot_attrs in attrs.get("tomorrow", []):
-            assert slot_attrs["slot_duration_minutes"] == 15
+        assert attrs["slot_duration_minutes"] == 15
+
+
+def _build_epex_payload_qh_two_days() -> EpexPayload:
+    """Build a QH payload with a full 192-slot today+tomorrow slate."""
+    slots: list[EpexSlot] = []
+    for day in (4, 5):
+        for i in range(96):
+            hour = i // 4
+            minute = 15 * (i % 4)
+            slot_start = datetime(2026, 5, day, hour, minute, 0, tzinfo=_BRUSSELS)
+            value = 0.100 + (i * 0.001)
+            slots.append(
+                EpexSlot(
+                    start=slot_start,
+                    end=slot_start + timedelta(minutes=15),
+                    value_eur_per_kwh=value,
+                )
+            )
+    return EpexPayload(
+        slots=tuple(slots),
+        publication_time=datetime(2026, 5, 4, 13, 0, 0, tzinfo=_BRUSSELS),
+        market_date="2026-05-05",
+        slot_duration=timedelta(minutes=15),
+    )
+
+
+def test_qh_current_sensor_uses_lean_slot_shape_to_stay_under_recorder_limit() -> None:
+    """
+    QH today/tomorrow slots must use the lean ``{start, value}`` shape.
+
+    A full 2-day quarter-hourly slate is 192 slots. The 5-field shape used
+    for hourly slots serializes past HA's 16 KiB recorder attribute limit,
+    which silently drops the whole attribute set from history. The lean
+    shape must be used instead, and the serialized attributes must fit.
+    """
+    payload = _build_epex_payload_qh_two_days()
+    coordinator = _make_epex_qh_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT_QUARTER_HOUR)
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=_NOW_BRUSSELS,
+    ):
+        attrs = sensor.extra_state_attributes
+
+    assert len(attrs["today"]) == 96
+    assert len(attrs["tomorrow"]) == 96
+    for slot_attrs in attrs["today"] + attrs["tomorrow"]:
+        assert set(slot_attrs) == {"start", "value"}
+
+    assert len(json.dumps(attrs)) < 16384
+
+
+def test_hourly_current_sensor_keeps_full_slot_shape() -> None:
+    """Hourly slots (48 slots at most) stay well under the limit as-is."""
+    payload = _build_payload(
+        today=[(14, -0.0123), (15, 0.02565)],
+        tomorrow=[(0, 0.08810)],
+    )
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT)
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=_NOW_BRUSSELS,
+    ):
+        attrs = sensor.extra_state_attributes
+
+    today_first = attrs["today"][0]
+    assert set(today_first) == {
+        "start",
+        "end",
+        "value",
+        "value_eur_per_mwh",
+        "slot_duration_minutes",
+    }
 
 
 def test_qh_low_today_sensor_selects_minimum_of_today_only() -> None:
