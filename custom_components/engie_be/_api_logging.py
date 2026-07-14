@@ -51,6 +51,7 @@ _REDACT_BODY_KEYS: frozenset[str] = frozenset(
         "code_verifier",
         "code_challenge",
         "client_secret",
+        "client_id",
         # Auth0 opaque flow-state token. Sent as a query param on GETs
         # (already covered by ``_REDACT_QUERY_KEYS``) AND embedded in
         # the form body of every POST in the login flow -- both must
@@ -71,7 +72,12 @@ _PARTIAL_MASK_BODY_KEYS: frozenset[str] = frozenset(
         "ean",
         "customeraccountnumber",
         "businessagreementnumber",
+        "ban",
+        "contractaccountid",
         "premisesnumber",
+        "servicepointnumber",
+        "eanwithsuffix",
+        "invoicestructuredcommunication",
         # Contact / personal
         "name",
         "firstname",

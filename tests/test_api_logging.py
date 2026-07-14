@@ -207,6 +207,56 @@ class TestRedactMapping:
             "email": [f"{_REDACTED}.com", f"{_REDACTED}.com"],
         }
 
+    def test_partial_masks_ban(self) -> None:
+        """``ban`` (short-form BAN key) is partially masked, not passed through."""
+        out = _redact_mapping(
+            {"ban": "000000000000"},
+            _REDACT_BODY_KEYS,
+            _PARTIAL_MASK_BODY_KEYS,
+        )
+        assert out == {"ban": f"{_REDACTED}0000"}
+
+    def test_partial_masks_contract_account_id(self) -> None:
+        """``contractAccountId`` (feature-flag poll body, api.py:788) is masked."""
+        out = _redact_mapping(
+            {"additionalContext": {"contractAccountId": "002200001234"}},
+            _REDACT_BODY_KEYS,
+            _PARTIAL_MASK_BODY_KEYS,
+        )
+        assert out == {"additionalContext": {"contractAccountId": f"{_REDACTED}1234"}}
+
+    def test_partial_masks_service_point_number(self) -> None:
+        """``servicePointNumber`` (energy-contracts response) is masked."""
+        out = _redact_mapping(
+            {"servicePointNumber": "541448820000000001_ID1"},
+            _REDACT_BODY_KEYS,
+            _PARTIAL_MASK_BODY_KEYS,
+        )
+        assert out == {"servicePointNumber": f"{_REDACTED}_ID1"}
+
+    def test_partial_masks_ean_with_suffix(self) -> None:
+        """``eanWithSuffix`` (TOU-schedules response) is masked."""
+        out = _redact_mapping(
+            {"eanWithSuffix": "541448820070000000_ID1"},
+            _REDACT_BODY_KEYS,
+            _PARTIAL_MASK_BODY_KEYS,
+        )
+        assert out == {"eanWithSuffix": f"{_REDACTED}_ID1"}
+
+    def test_partial_masks_invoice_structured_communication(self) -> None:
+        """``invoiceStructuredCommunication`` (account-balance response) is masked."""
+        out = _redact_mapping(
+            {"invoiceStructuredCommunication": "000000000000"},
+            _REDACT_BODY_KEYS,
+            _PARTIAL_MASK_BODY_KEYS,
+        )
+        assert out == {"invoiceStructuredCommunication": f"{_REDACTED}0000"}
+
+    def test_fully_masks_client_id(self) -> None:
+        """``client_id`` is fully masked (OAuth client identifier)."""
+        out = _redact_mapping({"client_id": "abc123"}, _REDACT_BODY_KEYS)
+        assert out == {"client_id": _REDACTED}
+
 
 class TestRedactUrl:
     """``_redact_url`` rewrites sensitive query params and path identifiers."""
@@ -300,7 +350,9 @@ class TestRedactBody:
         assert "v0.secret" not in out
         assert "refresh_token=%2A%2A%2A" in out
         assert "grant_type=refresh_token" in out
-        assert "client_id=cid" in out
+        # client_id is an OAuth client identifier, fully masked.
+        assert "client_id=cid" not in out
+        assert "client_id=%2A%2A%2A" in out
 
     def test_html_truncated_and_summarised(self) -> None:
         """HTML bodies are summarised to a length + short preview."""
