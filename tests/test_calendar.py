@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.util import dt as dt_util
@@ -18,13 +19,18 @@ from custom_components.engie_be.calendar import (
     async_setup_entry,
     happy_hour_events,
 )
-from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
+from custom_components.engie_be.const import (
+    CONF_EXPOSE_ALL_ENTITIES,
+    EPEX_TZ,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+)
 
 if TYPE_CHECKING:
     import pytest
 
 _PEAKS_FIXTURE = Path(__file__).parent / "fixtures" / "peaks_2026_04.json"
 _TOU_FIXTURE = Path(__file__).parent / "fixtures" / "tou_schedules_bihoraire.json"
+_BRUSSELS = ZoneInfo(EPEX_TZ)
 
 
 def _peaks() -> dict:
@@ -544,12 +550,15 @@ def test_tou_slot_events_00_00_end_produces_midnight_boundary() -> None:
     )
     events = tou_slot_events(coordinator)
     # Weekend slots in the fixture are "00:00"-"00:00" OFFPEAK (whole day).
-    # At least one event must span from midnight to the next-day midnight,
-    # i.e. end.hour == 0 and end.minute == 0 and end.date() > start.date().
+    # At least one event must span from Brussels midnight to the next-day
+    # Brussels midnight. Events are stored in UTC, so the boundary check
+    # is done against the Brussels wall-clock representation.
     midnight_end_events = [
         e
         for e in events
-        if e.end.hour == 0 and e.end.minute == 0 and e.end.date() > e.start.date()
+        if (end_local := e.end.astimezone(_BRUSSELS)).hour == 0
+        and end_local.minute == 0
+        and end_local.date() > e.start.astimezone(_BRUSSELS).date()
     ]
     assert len(midnight_end_events) > 0
 
@@ -584,3 +593,46 @@ async def test_async_get_events_includes_tou_when_active() -> None:
         end_date=now + timedelta(days=7),
     )
     assert any("TOU:" in e.summary for e in events)
+
+
+# ---------------------------------------------------------------------------
+# expose_all_entities toggle
+# ---------------------------------------------------------------------------
+
+
+async def test_expose_all_creates_calendar_with_all_providers() -> None:
+    """expose_all must register happy_hour and tou providers despite flags off."""
+    coordinator = MagicMock()
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.entry_id = "test_entry_id"
+
+    sub_data = MagicMock()
+    sub_data.coordinator = coordinator
+    sub_data.feature_flags = MagicMock()
+    sub_data.feature_flags.happy_hour_enrolled = False
+    sub_data.feature_flags.tou_active = False
+
+    subentry = MagicMock()
+    subentry.subentry_id = "sub_test"
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
+    subentry.title = "Test"
+    subentry.data = {"business_agreement_number": "000000000000"}
+
+    entry = MagicMock()
+    entry.entry_id = "test_entry_id"
+    entry.options = {CONF_EXPOSE_ALL_ENTITIES: True}
+    entry.subentries = {"sub_test": subentry}
+    entry.runtime_data = MagicMock()
+    entry.runtime_data.subentry_data = {"sub_test": sub_data}
+
+    entities: list = []
+
+    def _add(ents, *_a: object, **_kw: object) -> None:  # noqa: ANN001
+        entities.extend(ents)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    assert len(entities) == 1
+    cal = entities[0]
+    assert happy_hour_events in cal._event_providers
+    assert tou_slot_events in cal._event_providers

@@ -1,0 +1,132 @@
+"""Direct tests for ``_tou_calendar._slots_to_events`` date-math edges."""
+
+from __future__ import annotations
+
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from custom_components.engie_be._tou_calendar import _slots_to_events
+
+_BRUSSELS = ZoneInfo("Europe/Brussels")
+
+# 2026-07-13 is a Monday, giving a full Mon..Sun spread within the
+# start..horizon window below (horizon is exactly 7 days later, so the
+# start weekday recurs once at the far edge of the window too).
+_START = datetime(2026, 7, 13, 10, 0, tzinfo=_BRUSSELS)
+_HORIZON = _START + timedelta(days=7)
+
+_BAN = "000000000000"
+
+
+def test_midnight_rollover_end_lands_on_next_day() -> None:
+    """A slot with ``endTime`` "00:00" ends at next-day midnight, not same-day."""
+    schedule = {
+        "tuesday": [{"startTime": "22:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
+    }
+    events = _slots_to_events(
+        ean=_BAN,
+        direction="offtake",
+        schedule=schedule,
+        start=_START,
+        horizon=_HORIZON,
+    )
+    assert len(events) == 1
+    event = events[0]
+    assert event.start == datetime(2026, 7, 14, 20, 0, tzinfo=UTC)
+    assert event.end == datetime(2026, 7, 14, 22, 0, tzinfo=UTC)
+    assert event.end.date() == event.start.date()
+
+
+def test_active_event_straddling_start_is_included() -> None:
+    """A slot that started before ``start`` and ends after it is emitted as-is."""
+    schedule = {
+        "monday": [{"startTime": "08:00", "endTime": "12:00", "slotCode": "PEAK"}]
+    }
+    events = _slots_to_events(
+        ean=_BAN,
+        direction="offtake",
+        schedule=schedule,
+        start=_START,
+        horizon=_HORIZON,
+    )
+    active = [
+        event
+        for event in events
+        if event.start == datetime(2026, 7, 13, 6, 0, tzinfo=UTC)
+    ]
+    assert len(active) == 1
+    assert active[0].end == datetime(2026, 7, 13, 10, 0, tzinfo=UTC)
+
+
+def test_slot_fully_before_start_is_clipped() -> None:
+    """
+    A slot whose end is at/before ``start`` is omitted for that occurrence.
+
+    The following week's occurrence of the same weekday/time is not "past"
+    relative to ``start`` and must still be emitted, proving the clip is
+    based on the absolute instant rather than the weekday alone.
+    """
+    schedule = {
+        "monday": [{"startTime": "06:00", "endTime": "08:00", "slotCode": "OFFPEAK"}]
+    }
+    events = _slots_to_events(
+        ean=_BAN,
+        direction="offtake",
+        schedule=schedule,
+        start=_START,
+        horizon=_HORIZON,
+    )
+    starts = {event.start.date() for event in events}
+    assert date(2026, 7, 13) not in starts
+    assert date(2026, 7, 20) in starts
+
+
+def test_slot_at_or_after_horizon_is_clipped() -> None:
+    """
+    A slot starting at/after ``horizon`` is omitted for that occurrence.
+
+    The earlier occurrence of the same weekday/time, well inside the
+    window, must still be emitted, proving the clip is based on the
+    absolute instant rather than the weekday alone.
+    """
+    schedule = {
+        "monday": [{"startTime": "12:00", "endTime": "14:00", "slotCode": "PEAK"}]
+    }
+    events = _slots_to_events(
+        ean=_BAN,
+        direction="offtake",
+        schedule=schedule,
+        start=_START,
+        horizon=_HORIZON,
+    )
+    starts = {event.start.date() for event in events}
+    assert date(2026, 7, 13) in starts
+    assert date(2026, 7, 20) not in starts
+
+
+def test_dst_spring_forward_slot_duration_matches_real_elapsed_time() -> None:
+    """
+    A slot straddling the spring-forward gap must report its real duration.
+
+    2026-03-29 is the Brussels DST transition day (clocks jump from
+    01:59:59 CET straight to 03:00:00 CEST). A schedule slot from 01:00
+    to 04:00 nominally spans 3 wall-clock hours but only 2 real hours
+    elapse, since the 02:00-02:59 hour does not exist that day.
+    """
+    start = datetime(2026, 3, 29, 0, 0, tzinfo=_BRUSSELS)
+    horizon = start + timedelta(days=1)
+    schedule = {
+        "sunday": [{"startTime": "01:00", "endTime": "04:00", "slotCode": "OFFPEAK"}]
+    }
+    events = _slots_to_events(
+        ean=_BAN,
+        direction="offtake",
+        schedule=schedule,
+        start=start,
+        horizon=horizon,
+    )
+    assert len(events) == 1
+    event = events[0]
+    real_seconds = event.end.timestamp() - event.start.timestamp()
+    assert real_seconds == timedelta(hours=2).total_seconds()
+    assert (event.end - event.start) == timedelta(hours=2)

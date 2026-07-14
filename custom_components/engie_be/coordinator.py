@@ -30,6 +30,7 @@ from .api import (
 )
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_EXPOSE_ALL_ENTITIES,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
@@ -155,6 +156,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Fetch energy prices and capacity-tariff peaks for this account."""
         client = self.config_entry.runtime_data.client
         business_agreement_number = self.business_agreement_number
+        expose_all = self.config_entry.options.get(CONF_EXPOSE_ALL_ENTITIES, False)
 
         try:
             data = await client.async_get_prices(business_agreement_number)
@@ -231,6 +233,8 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             business_agreement_number,
             previous_enrolled=previous_enrolled,
         )
+        if expose_all:
+            new_enrolled = True
 
         # Only poll the Happy Hours event endpoint for enrolled BANs.
         # When un-enrolled, drop any stale wrapper so the entities (if
@@ -304,6 +308,8 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             client,
             business_agreement_number,
         )
+        if expose_all:
+            solar_shown = True
 
         if solar_shown:
             solar_wrapper = await self._async_fetch_solar_surplus(
@@ -339,6 +345,8 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             client,
             business_agreement_number,
         )
+        if expose_all:
+            tou_active = True
         if tou_active:
             tou_wrapper = await self._async_fetch_tou_schedules(
                 client,
@@ -353,6 +361,16 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._async_apply_flag(
             "tou_active", previous=previous_is_tou_active, new=tou_active
         )
+
+        if expose_all:
+            LOGGER.debug(
+                "BAN %s: expose_all_entities is ON, forcing flags: "
+                "enrolled=%s, solar=%s, tou=%s",
+                mask_identifier(business_agreement_number),
+                new_enrolled,
+                solar_shown,
+                tou_active,
+            )
 
         # Fetch account-balance / billing data. The endpoint is per-BAN
         # with no feature flag; fetch unconditionally on every refresh.

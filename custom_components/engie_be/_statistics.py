@@ -25,6 +25,7 @@ from homeassistant.components.recorder.models import (
 from homeassistant.components.recorder.statistics import (
     async_add_external_statistics,
     get_last_statistics,
+    statistics_during_period,
 )
 from homeassistant.components.recorder.tasks import ClearStatisticsTask
 from homeassistant.const import UnitOfEnergy
@@ -370,6 +371,50 @@ async def _last_stats(
     return out
 
 
+async def _sums_before(
+    hass: HomeAssistant,
+    business_agreement_number: str,
+    streams: frozenset[str],
+    before_utc: datetime,
+) -> dict[str, float]:
+    """
+    Return the last recorded cumulative sum strictly before ``before_utc``.
+
+    Used to seed ``running_sums`` for an explicit re-import whose window
+    starts earlier than the newest recorded statistic. Seeding from the
+    newest lifetime row (as auto mode does, and as explicit mode used to
+    do) makes the rows rewritten inside the window jump straight to the
+    lifetime total, overshooting the untouched rows that immediately
+    follow the window; HA then reads that drop back down as a meter
+    reset. Seeding from the row immediately preceding the window keeps
+    the boundary monotonic instead.
+
+    Streams with no statistic recorded before ``before_utc`` (the window
+    predates all existing data for that stream) default to 0.0.
+    """
+    out: dict[str, float] = {}
+    recorder = get_instance(hass)
+    epoch = dt_util.utc_from_timestamp(0)
+    for stream in _STREAMS:
+        if stream not in streams:
+            continue
+        stat_id = statistic_id(business_agreement_number, stream)
+        rows = await recorder.async_add_executor_job(
+            statistics_during_period,
+            hass,
+            epoch,
+            before_utc,
+            {stat_id},
+            "hour",
+            None,
+            {"sum"},
+        )
+        entries = rows.get(stat_id) if rows else None
+        if entries:
+            out[stream] = float(entries[-1].get("sum") or 0.0)
+    return out
+
+
 async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orchestrator params + branches are all irreducible
     hass: HomeAssistant,
     client: EngieBeApiClient,
@@ -392,11 +437,15 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
 
     Explicit mode (any date supplied): imports exactly the requested
     window. The last-stats cutoff is bypassed so re-imports overwrite
-    (statistic_id, start) collisions in place. Cumulative ``sum`` values
-    still seed from the newest existing row so the tail continues
-    monotonically; if the requested window predates existing data, ``sum``
-    values inside that window are only meaningful as deltas within the
-    window, not as an absolute lifetime total.
+    (statistic_id, start) collisions in place. When ``start_date`` is
+    given, cumulative ``sum`` values seed from the row immediately
+    preceding the window (not the lifetime-newest row) so a re-import of
+    an older window stays monotonic against the untouched rows that
+    follow it. This does not rewrite that untouched tail, so if the
+    re-imported deltas differ substantially from the original ones, the
+    tail's sums may still understate or overstate the true lifetime
+    total from that point on; only the window itself and the boundary
+    into it are guaranteed correct.
 
     Chunks the fetch by ``HISTORY_CHUNK_DAYS`` and **persists each chunk
     immediately** rather than accumulating and writing at the end.  A
@@ -503,6 +552,29 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
             "BAN ***%s: resuming from last_stats at %s, running_sums seed=%s",
             masked_ban,
             last_stats_time_utc.isoformat(),
+            {s: round(v, 4) for s, v in running_sums.items()},
+        )
+
+    if start_date is not None:
+        # Explicit re-import with an explicit start: reseed running_sums
+        # from the row immediately preceding the window instead of the
+        # lifetime-newest row above. If the window lies at or after the
+        # newest existing row, this resolves to the same value (no-op);
+        # if it lies before (a re-import patching an older gap), this
+        # keeps the sum series monotonic across the window boundary.
+        # Streams with nothing recorded before the window default to 0.0,
+        # matching a first-ever import of that range.
+        window_start_utc = dt_util.as_utc(dt_util.start_of_local_day(start_date))
+        seeded = await _sums_before(
+            hass, business_agreement_number, active_streams, window_start_utc
+        )
+        for stream in active_streams:
+            running_sums[stream] = seeded.get(stream, 0.0)
+        LOGGER.debug(
+            "BAN ***%s: explicit re-import starting %s; running_sums reseeded "
+            "from row preceding window=%s",
+            masked_ban,
+            window_start_utc.isoformat(),
             {s: round(v, 4) for s, v in running_sums.items()},
         )
 

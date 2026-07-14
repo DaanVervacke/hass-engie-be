@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from homeassistant.components.sensor import SensorEntityDescription
@@ -20,6 +21,7 @@ from custom_components.engie_be.sensor import (
     _EPEX_HIGH_TODAY,
     _EPEX_LOW_TODAY,
     EngieBeEnergySensor,
+    _build_peak_sensors,
     _build_sensor_descriptions,
     _detect_energy_type,
     _find_current_price,
@@ -128,6 +130,23 @@ def test_find_current_price_falls_back_to_last() -> None:
 def test_find_current_price_empty_returns_none() -> None:
     """Empty list returns None."""
     assert _find_current_price([]) is None
+
+
+def test_find_current_price_uses_brussels_date_at_month_boundary() -> None:
+    """Brussels civil date must win at a UTC/Brussels month boundary."""
+    prices = [
+        {"from": "2026-04-01", "to": "2026-05-01", "id": "april"},
+        {"from": "2026-05-01", "to": "2026-06-01", "id": "may"},
+    ]
+    brussels = ZoneInfo("Europe/Brussels")
+    boundary_brussels = datetime(2026, 5, 1, 0, 30, 0, tzinfo=brussels)
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=boundary_brussels,
+    ):
+        result = _find_current_price(prices)
+    assert result is not None
+    assert result["id"] == "may"
 
 
 # ---------------------------------------------------------------------------
@@ -300,3 +319,78 @@ def test_epex_extrema_sensors_enabled_by_default() -> None:
     """EPEX high/low sensors are primary data for dynamic-tariff users."""
     assert _EPEX_LOW_TODAY.entity_registry_enabled_default is not False
     assert _EPEX_HIGH_TODAY.entity_registry_enabled_default is not False
+
+
+# ---------------------------------------------------------------------------
+# expose_all_entities toggle
+# ---------------------------------------------------------------------------
+
+
+def test_build_sensor_descriptions_expose_all_enables_excl_vat() -> None:
+    """Expose-all forces excl-VAT sensor descriptions to enabled-by-default."""
+    data = _load_fixture("prices_sample.json")
+    service_points = _load_fixture("service_points_sample.json")
+
+    with patch(
+        "custom_components.engie_be.sensor._find_current_price",
+        side_effect=lambda prices: prices[0] if prices else None,
+    ):
+        descriptions = _build_sensor_descriptions(
+            data, service_points, expose_all=True
+        )
+
+    excl_vat_descs = [
+        desc for desc, _ean, vk, _slot in descriptions if vk.endswith("ExclVAT")
+    ]
+    assert excl_vat_descs, "Expected at least one excl-VAT description"
+    for desc in excl_vat_descs:
+        assert desc.entity_registry_enabled_default is True, (
+            f"{desc.key}: expose_all should force excl-VAT to enabled-by-default"
+        )
+
+
+def test_build_sensor_descriptions_default_keeps_excl_vat_disabled() -> None:
+    """Without expose-all, excl-VAT sensors stay disabled-by-default."""
+    data = _load_fixture("prices_sample.json")
+    service_points = _load_fixture("service_points_sample.json")
+
+    with patch(
+        "custom_components.engie_be.sensor._find_current_price",
+        side_effect=lambda prices: prices[0] if prices else None,
+    ):
+        descriptions = _build_sensor_descriptions(data, service_points)
+
+    excl_vat_descs = [
+        desc for desc, _ean, vk, _slot in descriptions if vk.endswith("ExclVAT")
+    ]
+    assert excl_vat_descs, "Expected at least one excl-VAT description"
+    for desc in excl_vat_descs:
+        assert desc.entity_registry_enabled_default is False, (
+            f"{desc.key}: excl-VAT should remain disabled-by-default"
+        )
+
+
+def test_build_peak_sensors_expose_all_enables_disabled_descriptions() -> None:
+    """Expose-all forces captar peak energy/start/end to enabled-by-default."""
+    coordinator = MagicMock()
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.entry_id = "test_entry_id"
+
+    subentry = MagicMock()
+    subentry.subentry_id = "sub_xyz"
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
+    subentry.title = "Test Account"
+    subentry.data = {}
+
+    sensors = _build_peak_sensors(coordinator, subentry, expose_all=True)
+    disabled_keys = {
+        "captar_monthly_peak_energy",
+        "captar_monthly_peak_start",
+        "captar_monthly_peak_end",
+    }
+    for sensor in sensors:
+        desc = sensor.entity_description
+        if desc.key in disabled_keys:
+            assert desc.entity_registry_enabled_default is True, (
+                f"{desc.key}: expose_all should force to enabled-by-default"
+            )

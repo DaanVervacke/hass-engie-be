@@ -28,6 +28,7 @@ from ._peaks import captar_peak_events
 from ._tou_calendar import tou_slot_events
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_EXPOSE_ALL_ENTITIES,
     LOGGER,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
@@ -63,6 +64,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the calendar platform, one entity per customer-account subentry."""
+    expose_all = entry.options.get(CONF_EXPOSE_ALL_ENTITIES, False)
     for subentry in entry.subentries.values():
         if subentry.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
             continue
@@ -82,8 +84,10 @@ async def async_setup_entry(
                     subentry,
                     happy_hour_enrolled=bool(
                         sub_data.feature_flags.happy_hour_enrolled
-                    ),
-                    tou_active=bool(sub_data.feature_flags.tou_active),
+                    )
+                    or expose_all,
+                    tou_active=bool(sub_data.feature_flags.tou_active)
+                    or expose_all,
                 )
             ],
             config_subentry_id=subentry.subentry_id,

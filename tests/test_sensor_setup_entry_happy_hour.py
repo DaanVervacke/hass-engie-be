@@ -62,6 +62,7 @@ def _make_entry(
     """Build a MagicMock parent ConfigEntry exposing the v5 runtime layout."""
     entry = MagicMock()
     entry.entry_id = "test_entry_id"
+    entry.options = {}
     entry.subentries = subentries
     entry.runtime_data = MagicMock()
     entry.runtime_data.epex_coordinator = MagicMock()

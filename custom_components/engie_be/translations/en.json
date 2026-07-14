@@ -701,10 +701,12 @@
             "init": {
                 "description": "Configure the update interval for fetching energy prices from ENGIE Belgium.",
                 "data": {
-                    "update_interval": "Update interval"
+                    "update_interval": "Update interval",
+                    "expose_all_entities": "Expose all entities"
                 },
                 "data_description": {
-                    "update_interval": "How often to fetch new price data from the ENGIE Belgium API, in minutes."
+                    "update_interval": "How often to fetch new price data from the ENGIE Belgium API, in minutes.",
+                    "expose_all_entities": "Enable all entities regardless of your contract type or feature flags. Entities for features not available on your account will report unavailable. Useful for debugging."
                 }
             }
         }

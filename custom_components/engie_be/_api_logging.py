@@ -106,6 +106,25 @@ _REDACT_QUERY_KEYS: frozenset[str] = frozenset(
     }
 )
 
+# URL-path collection segments that are immediately followed by an
+# account-identifying PII segment (BAN, EAN, or ENGIE-formatted
+# delivery-point ID such as ``{EAN}_ID1``) in ``api.py``.  The segment
+# right after any of these prefixes is partial-masked by ``_redact_url``.
+#
+# Maintenance note: any new endpoint added to ``api.py`` that
+# interpolates a BAN/EAN/customer-account-number (or similar
+# identifier) directly into the URL path must add its collection
+# prefix here, otherwise the identifier will be logged verbatim at
+# DEBUG level.
+_REDACT_PATH_PREFIXES: frozenset[str] = frozenset(
+    {
+        "business-agreements",
+        "service-points",
+        "contract-accounts",
+        "solar-surplus",
+    }
+)
+
 # Maximum HTML preview length kept in DEBUG logs.  Auth-flow HTML
 # responses are 50-200 KB and contain live CSRF tokens; we never log
 # the body in full.
@@ -191,19 +210,41 @@ def _redact_mapping(
 
 def _redact_url(url: str) -> str:
     """
-    Return *url* with sensitive query-string parameters redacted.
+    Return *url* with sensitive query-string and path segments redacted.
 
-    Path and host are left intact (they are needed to identify which
-    endpoint was hit).  Only the query string is rewritten.
+    The host and most of the path are left intact (they are needed to
+    identify which endpoint was hit).  The exception is any path
+    segment that immediately follows one of the ``_REDACT_PATH_PREFIXES``
+    collection names (e.g. ``business-agreements/<BAN>``,
+    ``service-points/<EAN>``) -- those account identifiers are
+    partial-masked via ``_redact_text`` so log lines stay greppable
+    without leaking the full BAN/EAN. The query string is redacted the
+    same way it always was.
+
+    Maintenance note: adding a new endpoint whose URL path embeds a
+    BAN/EAN/other identifier requires adding its collection prefix to
+    ``_REDACT_PATH_PREFIXES`` above, or the identifier will leak into
+    DEBUG logs verbatim.
     """
-    if "?" not in url:
-        return url
     parts = urlsplit(url)
+
+    segments = parts.path.split("/")
+    redacted_segments = list(segments)
+    for i, segment in enumerate(segments[:-1]):
+        if segment in _REDACT_PATH_PREFIXES:
+            redacted_segments[i + 1] = _redact_text(segments[i + 1])
+    redacted_path = "/".join(redacted_segments)
+
+    if not parts.query:
+        return urlunsplit(parts._replace(path=redacted_path))
+
     pairs = parse_qsl(parts.query, keep_blank_values=True)
     redacted_pairs = [
         (k, _REDACTED if k.lower() in _REDACT_QUERY_KEYS else v) for k, v in pairs
     ]
-    return urlunsplit(parts._replace(query=urlencode(redacted_pairs)))
+    return urlunsplit(
+        parts._replace(path=redacted_path, query=urlencode(redacted_pairs))
+    )
 
 
 def _redact_body(body: Any, content_type: str | None) -> str:  # noqa: PLR0911, PLR0912

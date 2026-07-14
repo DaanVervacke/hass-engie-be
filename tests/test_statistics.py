@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.components.recorder.statistics import (
+    get_last_statistics,
+    statistics_during_period,
+)
 from homeassistant.util import dt as dt_util
 
 from custom_components.engie_be._statistics import (
@@ -370,8 +376,15 @@ async def test_orchestrator_explicit_window_bypasses_cutoff(hass) -> None:  # no
     }
     recorder = MagicMock()
 
-    async def _fake_executor(_fn, _hass, _n, sid, _c, _t):  # noqa: ANN001, ANN202
-        return {sid: fake_last[sid]}
+    async def _fake_executor(_fn, _hass, *args: Any):  # noqa: ANN001, ANN202
+        # get_last_statistics(hass, n, stat_id, convert, types) -> 4 args.
+        if len(args) == 4:
+            _n, sid, _c, _t = args
+            return {sid: fake_last[sid]}
+        # statistics_during_period(hass, start, end, stat_ids, period, units,
+        # types) -> 6 args. Nothing recorded before the explicit window in
+        # this fixture, so the reseed helper finds no pre-window row.
+        return {}
 
     recorder.async_add_executor_job = _fake_executor
     with (
@@ -399,6 +412,103 @@ async def test_orchestrator_explicit_window_bypasses_cutoff(hass) -> None:  # no
     assert count == 12
     # Per-chunk persistence: 1 chunk * 3 streams == 3 writes.
     assert mocked_add.call_count == 3
+
+
+async def test_orchestrator_explicit_reimport_keeps_full_series_monotonic(hass) -> None:  # noqa: ANN001
+    """
+    Explicit re-import of an older window must not corrupt the surrounding sum series.
+
+    Reproduces the boundary-corruption bug: seeding ``running_sums`` from the
+    newest lifetime row (instead of the row immediately preceding the
+    re-imported window) makes the rewritten window's sums overshoot the
+    untouched rows that follow it, which HA then reads as a meter reset
+    (a sum that decreases across the boundary).
+    """
+    stat_id = "engie_be:000000000000_consumption"
+
+    # Existing 72-hour monotonic series: hour i (0-indexed) starts at
+    # 2026-07-01T00:00 UTC + i hours, sum == (i + 1) * 1.0.
+    base = datetime(2026, 7, 1, tzinfo=UTC)
+    existing_sum = {i: float(i + 1) for i in range(72)}
+
+    # The re-imported window is day D1 (hours 24..47 == 2026-07-02), so a
+    # correct seed must come from hour 23 (the last hour of D0), not from
+    # the lifetime-newest row (hour 71).
+    seed_row = {
+        "start": (base + timedelta(hours=23)).timestamp(),
+        "sum": existing_sum[23],
+    }
+    newest_row = {
+        "start": (base + timedelta(hours=71)).timestamp(),
+        "sum": existing_sum[71],
+    }
+
+    async def _fake_executor(fn, *args: Any):  # noqa: ANN001, ANN202
+        if fn is get_last_statistics:
+            _hass, _n, sid, _convert, _types = args
+            return {sid: [newest_row]} if sid == stat_id else {}
+        if fn is statistics_during_period:
+            _hass, _start, _end, stat_ids, _period, _units, _types = args
+            return {stat_id: [seed_row]} if stat_id in stat_ids else {}
+        raise AssertionError(f"unexpected executor call: {fn}")
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = _fake_executor
+
+    # Fresh ENGIE deltas for the reimport: 0.8 kWh/hour (a corrected, lower
+    # reading than the original 1.0 kWh/hour series), covering exactly
+    # D1's 24 hours in UTC.
+    fresh_items = [
+        {
+            "start": datetime(2026, 7, 2, h, tzinfo=UTC).isoformat(),
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": 0.8},
+                    "injection": {"kWhSum": 0.0},
+                },
+                "gas": {"kWh": 0.0},
+            },
+        }
+        for h in range(24)
+    ]
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value={"items": fresh_items})
+
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2026, 7, 2),
+            end_date=date(2026, 7, 3),
+            streams=frozenset({STREAM_CONSUMPTION}),
+            contracts_payload={
+                "items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]
+            },
+        )
+
+    written_rows = mocked_add.call_args_list[0].args[2]
+    assert len(written_rows) == 24
+
+    # Assemble the full 72-hour series: unchanged head, rewritten window,
+    # unchanged tail.
+    full_series = [existing_sum[i] for i in range(24)]
+    full_series += [row["sum"] for row in written_rows]
+    full_series += [existing_sum[i] for i in range(48, 72)]
+
+    for earlier, later in itertools.pairwise(full_series):
+        assert later >= earlier, (
+            f"sum dropped from {earlier} to {later}: non-monotonic series"
+        )
 
 
 def test_streams_for_energy_types_maps_user_selectors() -> None:

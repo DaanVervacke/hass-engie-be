@@ -36,6 +36,7 @@ from .api import (
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_EXPOSE_ALL_ENTITIES,
     CONF_IMPORT_END_DATE,
     CONF_IMPORT_ENERGY_TYPES,
     CONF_IMPORT_HISTORY,
@@ -1460,6 +1461,12 @@ class EngieBeOptionsFlowHandler(config_entries.OptionsFlow):
                             unit_of_measurement="minutes",
                         ),
                     ),
+                    vol.Optional(
+                        CONF_EXPOSE_ALL_ENTITIES,
+                        default=self.config_entry.options.get(
+                            CONF_EXPOSE_ALL_ENTITIES, False
+                        ),
+                    ): selector.BooleanSelector(),
                 },
             ),
         )

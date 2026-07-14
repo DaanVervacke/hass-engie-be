@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -30,6 +31,7 @@ from ._tou import schedule_for_ean, tou_schedules_payload
 from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_EXPOSE_ALL_ENTITIES,
     EPEX_TZ,
     LOGGER,
     SOLAR_SURPLUS_LEVELS,
@@ -74,7 +76,7 @@ def _detect_energy_type(ean: str, service_points: dict[str, str]) -> str:
 
 def _find_current_price(prices: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Find the price entry whose date range covers today, or the last entry."""
-    today = datetime.now(tz=UTC).date()
+    today = dt_util.now(_BRUSSELS_TZ).date()
     for price in prices:
         from_date = date.fromisoformat(price["from"])
         to_date = date.fromisoformat(price["to"])
@@ -131,6 +133,8 @@ def _slot_suffixes(slot_code: str) -> tuple[str, str] | None:
 def _build_sensor_descriptions(
     data: dict[str, Any],
     service_points: dict[str, str],
+    *,
+    expose_all: bool = False,
 ) -> list[tuple[SensorEntityDescription, str, str, str]]:
     """
     Build sensor descriptions from the API response.
@@ -186,22 +190,20 @@ def _build_sensor_descriptions(
                         slot_code,
                     )
                 )
-                # Price excluding VAT - disabled by default; available for
-                # users who need the pre-VAT value for accounting purposes.
-                sensors.append(
-                    (
-                        SensorEntityDescription(
-                            key=f"{base_key}_excl_vat",
-                            translation_key=f"{base_trans}_excl_vat",
-                            native_unit_of_measurement=unit,
-                            state_class=SensorStateClass.MEASUREMENT,
-                            suggested_display_precision=6,
-                            entity_registry_enabled_default=False,
-                        ),
-                        ean,
-                        f"{direction}.priceValueExclVAT",
-                        slot_code,
+                excl_vat_desc = SensorEntityDescription(
+                    key=f"{base_key}_excl_vat",
+                    translation_key=f"{base_trans}_excl_vat",
+                    native_unit_of_measurement=unit,
+                    state_class=SensorStateClass.MEASUREMENT,
+                    suggested_display_precision=6,
+                    entity_registry_enabled_default=False,
+                )
+                if expose_all:
+                    excl_vat_desc = dataclasses.replace(
+                        excl_vat_desc, entity_registry_enabled_default=True
                     )
+                sensors.append(
+                    (excl_vat_desc, ean, f"{direction}.priceValueExclVAT", slot_code)
                 )
 
     return sensors
@@ -221,6 +223,7 @@ async def async_setup_entry(
     EPEX coordinator and are gated on the per-subentry ``is_dynamic``
     flag so users on a fixed tariff never see them.
     """
+    expose_all = entry.options.get(CONF_EXPOSE_ALL_ENTITIES, False)
     epex_coordinator = entry.runtime_data.epex_coordinator
     epex_qh_coordinator = entry.runtime_data.epex_qh_coordinator
 
@@ -247,6 +250,7 @@ async def async_setup_entry(
         sensor_defs = _build_sensor_descriptions(
             coordinator.data,
             sub_data.service_points,
+            expose_all=expose_all,
         )
         entities: list[SensorEntity] = [
             EngieBeEnergySensor(
@@ -259,13 +263,15 @@ async def async_setup_entry(
             )
             for desc, ean, value_key, slot_code in sensor_defs
         ]
-        entities.extend(_build_peak_sensors(coordinator, subentry))
+        entities.extend(
+            _build_peak_sensors(coordinator, subentry, expose_all=expose_all)
+        )
         # Only surface Happy Hours timestamp sensors when this BAN is
         # enrolled in the Happy Hours service. Enrolment is detected
         # from the feature-flags endpoint during the coordinator's
         # first refresh; the parent entry is reloaded automatically
         # when enrolment flips so entities track the service status.
-        if sub_data.feature_flags.happy_hour_enrolled:
+        if sub_data.feature_flags.happy_hour_enrolled or expose_all:
             happy_hour_sensors = _build_happy_hour_sensors(coordinator, subentry)
             LOGGER.debug(
                 "Subentry %s (BAN %s): enrolled in Happy Hours, "
@@ -285,12 +291,12 @@ async def async_setup_entry(
                 subentry.subentry_id,
                 mask_identifier(coordinator.business_agreement_number),
             )
-        if coordinator.is_dynamic:
+        if coordinator.is_dynamic or expose_all:
             entities.extend(
                 _build_epex_sensors(epex_coordinator, epex_qh_coordinator, subentry)
             )
 
-        if sub_data.feature_flags.solar:
+        if sub_data.feature_flags.solar or expose_all:
             entities.extend(
                 _build_solar_surplus_sensors(
                     coordinator,
@@ -304,7 +310,7 @@ async def async_setup_entry(
         # ``/tou-schedules`` fetch entirely when the flag is off, so
         # ``coordinator.data["tou_schedules"]`` stays absent; without the
         # gate, sensor properties would report ``None`` on every read.
-        if sub_data.feature_flags.tou_active:
+        if sub_data.feature_flags.tou_active or expose_all:
             entities.extend(
                 _build_tou_sensors(
                     coordinator,
@@ -317,7 +323,7 @@ async def async_setup_entry(
         # endpoint is per-BAN with no feature flag; if the first fetch
         # failed the wrapper is absent and we skip sensor creation until
         # the next coordinator refresh that succeeds.
-        if isinstance(coordinator.data.get("billing"), dict):
+        if isinstance(coordinator.data.get("billing"), dict) or expose_all:
             entities.extend(_build_billing_sensors(coordinator, subentry))
 
         async_add_entities(entities, config_subentry_id=subentry.subentry_id)
@@ -373,31 +379,39 @@ _CAPTAR_MONTHLY_PEAK_END = SensorEntityDescription(
 def _build_peak_sensors(
     coordinator: EngieBeDataUpdateCoordinator,
     subentry: ConfigSubentry,
+    *,
+    expose_all: bool = False,
 ) -> list[SensorEntity]:
     """Build the four monthly capacity-tariff peak sensors for one subentry."""
+
+    def _maybe_enable(desc: SensorEntityDescription) -> SensorEntityDescription:
+        if expose_all and desc.entity_registry_enabled_default is False:
+            return dataclasses.replace(desc, entity_registry_enabled_default=True)
+        return desc
+
     return [
         EngieBeMonthlyPeakValueSensor(
             coordinator,
             subentry,
-            _CAPTAR_MONTHLY_PEAK_POWER,
+            _maybe_enable(_CAPTAR_MONTHLY_PEAK_POWER),
             field="peakKW",
         ),
         EngieBeMonthlyPeakValueSensor(
             coordinator,
             subentry,
-            _CAPTAR_MONTHLY_PEAK_ENERGY,
+            _maybe_enable(_CAPTAR_MONTHLY_PEAK_ENERGY),
             field="peakKWh",
         ),
         EngieBeMonthlyPeakTimestampSensor(
             coordinator,
             subentry,
-            _CAPTAR_MONTHLY_PEAK_START,
+            _maybe_enable(_CAPTAR_MONTHLY_PEAK_START),
             field="start",
         ),
         EngieBeMonthlyPeakTimestampSensor(
             coordinator,
             subentry,
-            _CAPTAR_MONTHLY_PEAK_END,
+            _maybe_enable(_CAPTAR_MONTHLY_PEAK_END),
             field="end",
         ),
     ]
@@ -1182,9 +1196,10 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
                     "slot_end": slot.end.isoformat(),
                     "slot_duration_minutes": _slot_duration_minutes(slot),
                 }
-                attrs["last_fetched"] = (
-                    self.coordinator.last_update_success_time.isoformat()
-                )
+                if self.coordinator.last_update_success_time is not None:
+                    attrs["last_fetched"] = (
+                        self.coordinator.last_update_success_time.isoformat()
+                    )
                 return attrs
         return {}
 

@@ -622,6 +622,23 @@ def test_next_hour_sensor_native_value_is_none_when_unavailable() -> None:
     assert sensor.extra_state_attributes == {}
 
 
+def test_next_hour_sensor_attrs_omit_last_fetched_when_none() -> None:
+    """``last_fetched`` is absent when ``last_update_success_time`` is None."""
+    payload = _build_payload([(15, 0.02565), (16, 0.08040)])
+    coordinator = _make_epex_coordinator(payload, last_fetch=None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexNextHourSensor(coordinator, subentry, _EPEX_NEXT_HOUR)
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.utcnow",
+        return_value=_NOW_UTC,
+    ):
+        attrs = sensor.extra_state_attributes
+
+    assert attrs
+    assert "last_fetched" not in attrs
+
+
 # =============================================================================
 # QH Sensor Tests (Remediation for EPEX v2)
 # =============================================================================

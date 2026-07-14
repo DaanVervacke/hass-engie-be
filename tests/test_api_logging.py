@@ -209,10 +209,10 @@ class TestRedactMapping:
 
 
 class TestRedactUrl:
-    """``_redact_url`` only rewrites the query string."""
+    """``_redact_url`` rewrites sensitive query params and path identifiers."""
 
-    def test_no_query_passthrough(self) -> None:
-        """URLs without a query string are returned unchanged."""
+    def test_no_query_no_identifier_passthrough(self) -> None:
+        """URLs with no query string and no identifier path are unchanged."""
         url = "https://api.engie.be/v1/foo"
         assert _redact_url(url) == url
 
@@ -238,6 +238,40 @@ class TestRedactUrl:
         """Non-sensitive query params (e.g. ``maxGranularity``) are untouched."""
         url = "https://api.engie.be/v1/foo?maxGranularity=MONTHLY"
         assert _redact_url(url) == url
+
+    def test_path_ban_redacted(self) -> None:
+        """BAN in path after ``business-agreements/`` is partial-masked."""
+        url = (
+            "https://api.engie.be/v1/business-agreements/"
+            "000000000000/supplier-energy-prices"
+        )
+        out = _redact_url(url)
+        assert "000000000000" not in out
+        assert "***0000" in out
+        assert "supplier-energy-prices" in out
+
+    def test_path_ean_and_query_both_redacted(self) -> None:
+        """EAN in path and sensitive query param are both masked."""
+        url = (
+            "https://api.engie.be/v1/service-points/"
+            "541449900012345678?state=secret"
+        )
+        out = _redact_url(url)
+        assert "541449900012345678" not in out
+        assert "***5678" in out
+        assert "secret" not in out
+        assert "state=%2A%2A%2A" in out
+
+    def test_path_solar_surplus_delivery_point_redacted(self) -> None:
+        """Delivery-point ID after ``solar-surplus/`` is partial-masked."""
+        url = (
+            "https://api.engie.be/v1/business-agreements/"
+            "000000000000/solar-surplus/541449900012345678_ID1/forecasts"
+        )
+        out = _redact_url(url)
+        assert "000000000000" not in out
+        assert "541449900012345678_ID1" not in out
+        assert "forecasts" in out
 
 
 class TestRedactBody:

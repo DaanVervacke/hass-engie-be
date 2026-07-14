@@ -115,13 +115,19 @@ def _slots_to_events(
                 code = slot.get("slotCode")
                 if slot_start is None or slot_end is None or not isinstance(code, str):
                     continue
-                start_dt = datetime.combine(day_cursor, slot_start, tzinfo=_BRUSSELS)
+                start_dt = dt_util.as_utc(
+                    datetime.combine(day_cursor, slot_start, tzinfo=_BRUSSELS)
+                )
                 if slot_end == time(0, 0):
-                    end_dt = datetime.combine(
-                        day_cursor + timedelta(days=1), time(0, 0), tzinfo=_BRUSSELS
+                    end_dt = dt_util.as_utc(
+                        datetime.combine(
+                            day_cursor + timedelta(days=1), time(0, 0), tzinfo=_BRUSSELS
+                        )
                     )
                 else:
-                    end_dt = datetime.combine(day_cursor, slot_end, tzinfo=_BRUSSELS)
+                    end_dt = dt_util.as_utc(
+                        datetime.combine(day_cursor, slot_end, tzinfo=_BRUSSELS)
+                    )
                 # Clip past events but include the currently-active one.
                 if end_dt <= start:
                     continue

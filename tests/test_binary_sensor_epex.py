@@ -15,9 +15,11 @@ from custom_components.engie_be.binary_sensor import (
     EngieBeAuthSensor,
     EngieBeEpexNegativeSensor,
     EngieBeHappyHourActiveSensor,
+    EngieBeTouIsOptimalSensor,
     async_setup_entry,
 )
 from custom_components.engie_be.const import (
+    CONF_EXPOSE_ALL_ENTITIES,
     EPEX_TZ,
     SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
@@ -265,6 +267,8 @@ def _make_sub_data(
     *,
     is_dynamic: bool,
     is_happy_hour_enrolled: bool = True,
+    tou_active: bool = False,
+    service_points: dict[str, str] | None = None,
 ) -> MagicMock:
     """
     Build a per-subentry runtime-data stub with a coordinator stub.
@@ -278,8 +282,11 @@ def _make_sub_data(
     sub_data.coordinator.is_dynamic = is_dynamic
     sub_data.coordinator.config_entry = MagicMock()
     sub_data.coordinator.config_entry.entry_id = "test_entry_id"
+    sub_data.coordinator.business_agreement_number = "000000000000"
     sub_data.feature_flags = MagicMock()
     sub_data.feature_flags.happy_hour_enrolled = is_happy_hour_enrolled
+    sub_data.feature_flags.tou_active = tou_active
+    sub_data.service_points = service_points or {}
     return sub_data
 
 
@@ -292,6 +299,7 @@ def _make_entry(
     """Build a MagicMock parent ConfigEntry exposing the v3 runtime layout."""
     entry = MagicMock()
     entry.entry_id = "test_entry_id"
+    entry.options = {}
     entry.subentries = subentries
     entry.runtime_data = MagicMock()
     entry.runtime_data.epex_coordinator = epex_coordinator
@@ -542,3 +550,92 @@ async def test_setup_entry_mixed_enrolment_only_adds_happy_hour_where_enrolled()
     hh_entities = [e for e in added if isinstance(e, EngieBeHappyHourActiveSensor)]
     assert len(hh_entities) == 1
     assert hh_entities[0].unique_id == "test_entry_id_sub_yes_happy_hours_active"
+
+
+# ---------------------------------------------------------------------------
+# expose_all_entities toggle
+# ---------------------------------------------------------------------------
+
+
+async def test_expose_all_creates_happy_hour_sensor_when_not_enrolled() -> None:
+    """expose_all must create happy_hours_active even when not enrolled."""
+    subentry = _make_subentry(subentry_id="sub_no_hh")
+    coordinator = _make_epex_coordinator(None)
+
+    entry = _make_entry(
+        coordinator,
+        subentries={"sub_no_hh": subentry},
+        sub_runtime={
+            "sub_no_hh": _make_sub_data(
+                is_dynamic=False, is_happy_hour_enrolled=False
+            ),
+        },
+    )
+    entry.options = {CONF_EXPOSE_ALL_ENTITIES: True}
+
+    added: list = []
+
+    def _add(entities, *_a: object, **_kw: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    hh_entities = [e for e in added if isinstance(e, EngieBeHappyHourActiveSensor)]
+    assert len(hh_entities) == 1
+
+
+async def test_expose_all_creates_epex_negative_when_not_dynamic() -> None:
+    """expose_all must create epex_negative even for fixed-tariff accounts."""
+    subentry = _make_subentry(subentry_id="sub_fixed")
+    coordinator = _make_epex_coordinator(None)
+
+    entry = _make_entry(
+        coordinator,
+        subentries={"sub_fixed": subentry},
+        sub_runtime={
+            "sub_fixed": _make_sub_data(
+                is_dynamic=False, is_happy_hour_enrolled=False
+            ),
+        },
+    )
+    entry.options = {CONF_EXPOSE_ALL_ENTITIES: True}
+
+    added: list = []
+
+    def _add(entities, *_a: object, **_kw: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    epex_entities = [e for e in added if isinstance(e, EngieBeEpexNegativeSensor)]
+    assert len(epex_entities) == 1
+
+
+async def test_expose_all_creates_tou_sensors_when_tou_inactive() -> None:
+    """expose_all must bypass tou_active AND has_multiple_slot_codes gates."""
+    subentry = _make_subentry(subentry_id="sub_tou")
+    coordinator = _make_epex_coordinator(None)
+    sub_data = _make_sub_data(
+        is_dynamic=False,
+        is_happy_hour_enrolled=False,
+        tou_active=False,
+        service_points={"541448820000000001": "ELECTRICITY"},
+    )
+
+    entry = _make_entry(
+        coordinator,
+        subentries={"sub_tou": subentry},
+        sub_runtime={"sub_tou": sub_data},
+    )
+    entry.options = {CONF_EXPOSE_ALL_ENTITIES: True}
+    sub_data.coordinator.config_entry = entry
+
+    added: list = []
+
+    def _add(entities, *_a: object, **_kw: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    tou_entities = [e for e in added if isinstance(e, EngieBeTouIsOptimalSensor)]
+    assert len(tou_entities) >= 1

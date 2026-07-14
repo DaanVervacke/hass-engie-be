@@ -20,6 +20,7 @@ from ._tou import has_multiple_slot_codes, schedule_for_ean, tou_schedules_paylo
 from .api import mask_identifier
 from .const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_EXPOSE_ALL_ENTITIES,
     LOGGER,
     SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
@@ -107,6 +108,7 @@ async def async_setup_entry(
     ``is_dynamic`` at first refresh, and a contract change requires a
     config-entry reload to (re)create the entity.
     """
+    expose_all = entry.options.get(CONF_EXPOSE_ALL_ENTITIES, False)
     epex_coordinator = entry.runtime_data.epex_coordinator
 
     # Pick any per-subentry coordinator to back the auth sensor's
@@ -145,7 +147,7 @@ async def async_setup_entry(
         # coordinator's first refresh; the parent entry is reloaded
         # automatically when enrolment flips so entities track the
         # service status.
-        if sub_data.feature_flags.happy_hour_enrolled:
+        if sub_data.feature_flags.happy_hour_enrolled or expose_all:
             LOGGER.debug(
                 "Subentry %s (BAN %s): enrolled in Happy Hours, "
                 "registering happy_hours_active binary sensor",
@@ -164,7 +166,7 @@ async def async_setup_entry(
                 subentry.subentry_id,
                 mask_identifier(sub_data.coordinator.business_agreement_number),
             )
-        if sub_data.coordinator.is_dynamic:
+        if sub_data.coordinator.is_dynamic or expose_all:
             subentry_entities.append(
                 EngieBeEpexNegativeSensor(
                     coordinator=epex_coordinator, subentry=subentry
@@ -184,7 +186,9 @@ async def async_setup_entry(
         # one distinct slot code (i.e. not a flat all-OFFPEAK schedule).
         # The gate avoids spamming "is optimal" on flat-rate accounts
         # where every hour is OFFPEAK and the answer is always True.
-        tou_entities = _build_tou_binary_sensors(sub_data.coordinator, subentry)
+        tou_entities = _build_tou_binary_sensors(
+            sub_data.coordinator, subentry, expose_all=expose_all
+        )
         subentry_entities.extend(tou_entities)
 
         if not subentry_entities:
@@ -506,6 +510,8 @@ TOU_INJECTION_IS_OPTIMAL_DESCRIPTION = BinarySensorEntityDescription(
 def _build_tou_binary_sensors(
     coordinator: EngieBeDataUpdateCoordinator,
     subentry: ConfigSubentry,
+    *,
+    expose_all: bool = False,
 ) -> list[BinarySensorEntity]:
     """
     Build TOU optimal-slot binary sensors for every electricity EAN.
@@ -521,7 +527,9 @@ def _build_tou_binary_sensors(
     sub_data: EngieBeSubentryData | None = (
         runtime.subentry_data.get(subentry.subentry_id) if runtime is not None else None
     )
-    if sub_data is None or sub_data.feature_flags.tou_active is not True:
+    if sub_data is None:
+        return []
+    if sub_data.feature_flags.tou_active is not True and not expose_all:
         return []
     service_points = sub_data.service_points
 
@@ -544,8 +552,8 @@ def _build_tou_binary_sensors(
         )
         # Suppress binary sensors on trivial (all-OFFPEAK) schedules where
         # the answer would always be True and add no automation value.
-        show_offtake = has_multiple_slot_codes(offtake_sched)
-        show_injection = has_multiple_slot_codes(injection_sched)
+        show_offtake = expose_all or has_multiple_slot_codes(offtake_sched)
+        show_injection = expose_all or has_multiple_slot_codes(injection_sched)
         if show_offtake:
             entities.append(
                 EngieBeTouIsOptimalSensor(
