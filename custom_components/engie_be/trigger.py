@@ -586,60 +586,81 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
 
     async def async_attach_runner(self, run_action: TriggerActionRunner) -> Any:
         """Attach the trigger: schedule a listener per ENGIE calendar."""
-        unsub_refs: list[Any] = []
+        # Keyed by entity_id so each calendar's listener is replaced, not
+        # accumulated. Rescheduling one calendar's listener only ever pops
+        # and cancels *that same* calendar's previous (now-stale) entry, so
+        # ``unsub_refs`` never grows past one entry per calendar. It also
+        # means a fire on one calendar can never cancel another calendar's
+        # still-pending listener, which matters when multiple BANs share
+        # identical event boundaries (e.g. the same Happy Hours window
+        # starting on several calendars at once).
+        unsub_refs: dict[str, Any] = {}
         cancelled = False
         calendar_entity_ids = _engie_calendar_entity_ids(self._hass)
 
-        async def _schedule_next() -> None:
-            """Find the next matching event boundary across all ENGIE calendars."""
+        async def _schedule_one(entity_id: str) -> None:
+            """Find and schedule the next matching event boundary for one calendar."""
             nonlocal cancelled
-            for entity_id in calendar_entity_ids:
-                events = await _get_calendar_events(self._hass, entity_id)
-                if cancelled:
-                    return
-                now = dt_util.utcnow()
-                candidates: list[tuple[datetime, Any]] = []
-                for ev in events:
-                    boundary = ev.start if self._is_start else ev.end
-                    if boundary > now and self._matches_event(ev):
-                        candidates.append((boundary, ev))
-                if candidates:
-                    candidates.sort(key=lambda t: t[0])
-                    fire_at, ev = candidates[0]
+            events = await _get_calendar_events(self._hass, entity_id)
+            if cancelled:
+                return
+            now = dt_util.utcnow()
+            candidates: list[tuple[datetime, Any]] = []
+            for ev in events:
+                boundary = ev.start if self._is_start else ev.end
+                if boundary > now and self._matches_event(ev):
+                    candidates.append((boundary, ev))
 
-                    def _make_callback(
-                        fire_event: Any,
-                        cal_entity_id: str,
-                    ) -> Any:
-                        async def _on_time(_now: datetime) -> None:
-                            if cancelled:
-                                return
-                            run_action(
-                                {
-                                    "event": fire_event,
-                                    "entity_id": cal_entity_id,
-                                },
-                                f"calendar event {fire_event.summary}",
-                                None,
-                            )
-                            await _schedule_next()
+            stale_unsub = unsub_refs.pop(entity_id, None)
+            if stale_unsub is not None:
+                stale_unsub()
 
-                        return _on_time
+            if not candidates:
+                return
 
-                    unsub = async_track_point_in_time(
-                        self._hass, _make_callback(ev, entity_id), fire_at
+            candidates.sort(key=lambda t: t[0])
+            fire_at, ev = candidates[0]
+
+            def _make_callback(
+                fire_event: Any,
+                cal_entity_id: str,
+            ) -> Any:
+                async def _on_time(_now: datetime) -> None:
+                    if cancelled:
+                        return
+                    run_action(
+                        {
+                            "event": fire_event,
+                            "entity_id": cal_entity_id,
+                        },
+                        f"calendar event {fire_event.summary}",
+                        None,
                     )
-                    unsub_refs.append(unsub)
-                    # Each calendar gets its own listener; do NOT break here.
+                    # Only reschedule this calendar's own next event.
                     # Multi-BAN setups have one calendar per subentry and all
-                    # should fire independently.
+                    # should fire independently; recomputing every calendar
+                    # here would risk cancelling another calendar's still-
+                    # pending listener before it gets a chance to fire.
+                    await _schedule_one(cal_entity_id)
+
+                return _on_time
+
+            unsub = async_track_point_in_time(
+                self._hass, _make_callback(ev, entity_id), fire_at
+            )
+            unsub_refs[entity_id] = unsub
+
+        async def _schedule_next() -> None:
+            """Schedule the initial listener for every ENGIE calendar."""
+            for entity_id in calendar_entity_ids:
+                await _schedule_one(entity_id)
 
         await _schedule_next()
 
         def _cancel() -> None:
             nonlocal cancelled
             cancelled = True
-            for unsub in unsub_refs:
+            for unsub in unsub_refs.values():
                 unsub()
             unsub_refs.clear()
 

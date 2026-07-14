@@ -1842,6 +1842,107 @@ async def test_calendar_trigger_cancel_during_fetch_drops_new_listener(
     )
 
 
+async def test_calendar_trigger_reschedule_clears_stale_unsub_refs(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Rescheduling after a fire clears the unsub_ref of the event that just fired.
+
+    Regression test for plan 153: ``_schedule_next`` used to append a new
+    listener on every reschedule without removing already-fired entries, so
+    ``unsub_refs`` grew unboundedly over the trigger's lifetime. This test
+    wraps ``async_track_point_in_time`` with a spy and drives the trigger
+    through two fire-and-reschedule cycles, proving that the unsub for a
+    fired event is invoked as part of the *next* ``_schedule_next`` call
+    rather than lingering until the whole trigger is detached.
+    """
+    from unittest.mock import patch  # noqa: PLC0415
+
+    from homeassistant.helpers import event as ha_event  # noqa: PLC0415
+
+    entry = _make_entry(hass)
+    now = datetime.now(tz=UTC)
+    event_1_start = now + timedelta(seconds=30)
+    event_2_start = now + timedelta(seconds=60)
+    event_3_start = now + timedelta(seconds=90)
+
+    events_holder = {
+        "events": [_make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_1_start)]
+    }
+    entity_id = _setup_calendar_component(hass, entry, events_holder["events"])
+    mock_entity = hass.data[CALENDAR_DOMAIN].get_entity(entity_id)
+    mock_entity.async_get_events = AsyncMock(
+        side_effect=lambda *_args, **_kwargs: events_holder["events"]
+    )
+
+    real_track_point_in_time = ha_event.async_track_point_in_time
+    unsub_call_counts: list[list[int]] = []
+
+    def _spy_track_point_in_time(
+        hass_arg: object, action: object, point: object
+    ) -> object:
+        real_unsub = real_track_point_in_time(hass_arg, action, point)
+        counter = [0]
+        unsub_call_counts.append(counter)
+
+        def _spy_unsub() -> None:
+            counter[0] += 1
+            real_unsub()
+
+        return _spy_unsub
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    with patch(
+        "custom_components.engie_be.trigger.async_track_point_in_time",
+        side_effect=_spy_track_point_in_time,
+    ):
+        unsub = await trigger.async_attach_runner(run_action)
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+        assert len(unsub_call_counts) == 1
+
+        # Cycle 1: event_1 fires, trigger reschedules for event_2.
+        events_holder["events"] = [
+            _make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_2_start)
+        ]
+        async_fire_time_changed(hass, event_1_start)
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+        assert len(unsub_call_counts) == 2
+        # The fix clears the stale listener for event_1 while rescheduling,
+        # instead of letting it linger in unsub_refs until final cancel.
+        assert unsub_call_counts[0][0] == 1, (
+            "stale unsub_ref for event_1 was not cleared during reschedule"
+        )
+        assert unsub_call_counts[1][0] == 0
+
+        # Cycle 2: event_2 fires, trigger reschedules for event_3.
+        events_holder["events"] = [
+            _make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_3_start)
+        ]
+        async_fire_time_changed(hass, event_2_start)
+        await hass.async_block_till_done()
+        assert len(fired) == 2
+        assert len(unsub_call_counts) == 3
+        assert unsub_call_counts[1][0] == 1, (
+            "stale unsub_ref for event_2 was not cleared during reschedule"
+        )
+        assert unsub_call_counts[2][0] == 0
+
+        # A third boundary still fires correctly after two reschedule cycles.
+        async_fire_time_changed(hass, event_3_start)
+        await hass.async_block_till_done()
+        assert len(fired) == 3
+
+        unsub()
+
+    # Final cancel unsubscribes the last remaining listener too.
+    assert unsub_call_counts[2][0] == 1
+
+
 # ---------------------------------------------------------------------------
 # Quarter-hourly EPEX triggers
 # ---------------------------------------------------------------------------
