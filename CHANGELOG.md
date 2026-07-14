@@ -53,6 +53,26 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Removed non-functional Captar peak window triggers (`captar_peak_window_started`, `captar_peak_window_ended`). These triggers could never fire because ENGIE's API only provides historical peak data with past timestamps, and the trigger mechanism only fires for future event boundaries. The Captar peak sensors remain available for diagnostic purposes.
 
+## [0.13.0b4] - 2026-07-14
+
+### Added
+
+- Debug toggle to expose all entities regardless of contract type or detected feature flags, for troubleshooting and support requests.
+
+### Changed
+
+- The coordinator's peaks, Happy Hours enrollment, solar-flag, TOU-flag, and billing fetches now run concurrently instead of sequentially on each refresh, reducing refresh latency.
+
+### Fixed
+
+- Fixed a double-suffixed EAN bug that silently broke Solar Surplus and Time-of-Use entity discovery for some accounts, and leaked the delivery-point suffix into user-facing entity IDs.
+- Solar Surplus and Time-of-Use entities now appear for pure dynamic-tariff accounts, which previously had no service points discovered at all.
+- Turning on the expose-all-entities toggle now re-enables entities that were already registered as disabled, not just newly-registered ones.
+- Fixed EPEX quarter-hourly current-price sensor attributes silently disappearing from history once the 15-minute slot count pushed the serialized payload past Home Assistant's 16 KiB recorder attribute limit.
+- Security: added six missing ENGIE API body fields (client_id, ban, contractAccountId, servicePointNumber, eanWithSuffix, invoiceStructuredCommunication) to the DEBUG-log redaction lists, so enabling DEBUG logging to troubleshoot the integration no longer writes BANs, EANs, and bank-transfer references verbatim into the Home Assistant log.
+- Security: masked the BAN in the config flow's DEBUG log line for a failed contracts fetch, matching every other identifier-logging call site in the codebase.
+- Fixed diagnostics exports hashing the same physical EAN to two different values across the service_points and energy_products sections, which broke support-engineer correlation between the two.
+
 ## [Unreleased]
 
 ## [0.13.0b1] - 2026-07-09
