@@ -5,6 +5,48 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.13.0b4] - 2026-07-14
+
+### Added
+
+- Debug toggle to expose all entities regardless of contract type or detected feature flags, for troubleshooting and support requests.
+
+### Changed
+
+- The coordinator's peaks, Happy Hours enrollment, solar-flag, TOU-flag, and billing fetches now run concurrently instead of sequentially on each refresh, reducing refresh latency.
+- Solar Surplus and Time-of-Use sensor and binary-sensor friendly names no longer include a trailing `({ean})` suffix, for example "Solar Surplus forecast" instead of "Solar Surplus forecast ({ean})".
+
+### Fixed
+
+- Fixed a double-suffixed EAN bug that silently broke Solar Surplus and Time-of-Use entity discovery for some accounts, and leaked the delivery-point suffix into user-facing entity IDs.
+- Solar Surplus and Time-of-Use entities now appear for pure dynamic-tariff accounts, which previously had no service points discovered at all.
+- Turning on the expose-all-entities toggle now re-enables entities that were already registered as disabled, not just newly-registered ones.
+- Fixed EPEX quarter-hourly current-price sensor attributes silently disappearing from history once the 15-minute slot count pushed the serialized payload past Home Assistant's 16 KiB recorder attribute limit.
+- Security: added six missing ENGIE API body fields (client_id, ban, contractAccountId, servicePointNumber, eanWithSuffix, invoiceStructuredCommunication) to the DEBUG-log redaction lists, so enabling DEBUG logging to troubleshoot the integration no longer writes BANs, EANs, and bank-transfer references verbatim into the Home Assistant log.
+- Security: masked the BAN in the config flow's DEBUG log line for a failed contracts fetch, matching every other identifier-logging call site in the codebase.
+- Fixed diagnostics exports hashing the same physical EAN to two different values across the service_points and energy_products sections, which broke support-engineer correlation between the two.
+- Fixed price sensors picking the wrong day's price entry for part of the day. The current-price lookup computed "today" in UTC instead of Brussels time, which could select yesterday's or tomorrow's price row during the hours the two dates disagree.
+- Fixed a possible crash in the EPEX next-hour sensor's attributes before the first successful coordinator refresh, by guarding against a missing last-fetched timestamp.
+- Fixed Time-of-Use calendar events using naive Brussels-local start and end times instead of UTC, which could misalign event boundaries.
+- Fixed historical usage re-imports with an explicit start date reseeding cumulative sums from the most recent statistic instead of the one immediately before the re-imported window, which could make Home Assistant read a legitimate backfill as a meter reset.
+- Added missing icons for the Time-of-Use offtake and injection "is optimal" binary sensors.
+
+## [0.13.0b3] - 2026-07-13
+
+> PR-number links will be substituted at release-tagging.
+
+### Changed
+
+- Standardized EPEX trigger friendly names to match entity naming convention. Threshold and updated triggers now use consistent pattern: `EPEX <descriptor> <granularity> price <action>`.
+- Updated README triggers and conditions documentation to include quarter-hourly EPEX variants and remove outdated Captar peak window triggers.
+- Capitalized "Solar Surplus" consistently as ENGIE product name in README and translations (both words capitalized, matching "Happy Hours" pattern).
+
+### Removed
+
+- Removed non-functional Captar peak window triggers (`captar_peak_window_started`, `captar_peak_window_ended`). These triggers could never fire because ENGIE's API only provides historical peak data with past timestamps, and the trigger mechanism only fires for future event boundaries. The Captar peak sensors remain available for diagnostic purposes.
+
 ## [0.13.0b2] - 2026-07-12
 
 ### Added
@@ -38,42 +80,6 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Add tests for quarter-hourly EPEX triggers: EpexNextQuarterHourCrossedThresholdTrigger, EpexHighTodayQuarterHourUpdatedTrigger, EpexLowTodayQuarterHourUpdatedTrigger (plan 102).
 
 - Fixed EPEX sensor `slot_duration_minutes` attribute to dynamically compute and report actual slot duration (15 for quarter-hourly, 60 for hourly) instead of using a hardcoded constant.
-
-## [0.13.0b3] - 2026-07-13
-
-> PR-number links will be substituted at release-tagging.
-
-### Changed
-
-- Standardized EPEX trigger friendly names to match entity naming convention. Threshold and updated triggers now use consistent pattern: `EPEX <descriptor> <granularity> price <action>`.
-- Updated README triggers and conditions documentation to include quarter-hourly EPEX variants and remove outdated Captar peak window triggers.
-- Capitalized "Solar Surplus" consistently as ENGIE product name in README and translations (both words capitalized, matching "Happy Hours" pattern).
-
-### Removed
-
-- Removed non-functional Captar peak window triggers (`captar_peak_window_started`, `captar_peak_window_ended`). These triggers could never fire because ENGIE's API only provides historical peak data with past timestamps, and the trigger mechanism only fires for future event boundaries. The Captar peak sensors remain available for diagnostic purposes.
-
-## [0.13.0b4] - 2026-07-14
-
-### Added
-
-- Debug toggle to expose all entities regardless of contract type or detected feature flags, for troubleshooting and support requests.
-
-### Changed
-
-- The coordinator's peaks, Happy Hours enrollment, solar-flag, TOU-flag, and billing fetches now run concurrently instead of sequentially on each refresh, reducing refresh latency.
-
-### Fixed
-
-- Fixed a double-suffixed EAN bug that silently broke Solar Surplus and Time-of-Use entity discovery for some accounts, and leaked the delivery-point suffix into user-facing entity IDs.
-- Solar Surplus and Time-of-Use entities now appear for pure dynamic-tariff accounts, which previously had no service points discovered at all.
-- Turning on the expose-all-entities toggle now re-enables entities that were already registered as disabled, not just newly-registered ones.
-- Fixed EPEX quarter-hourly current-price sensor attributes silently disappearing from history once the 15-minute slot count pushed the serialized payload past Home Assistant's 16 KiB recorder attribute limit.
-- Security: added six missing ENGIE API body fields (client_id, ban, contractAccountId, servicePointNumber, eanWithSuffix, invoiceStructuredCommunication) to the DEBUG-log redaction lists, so enabling DEBUG logging to troubleshoot the integration no longer writes BANs, EANs, and bank-transfer references verbatim into the Home Assistant log.
-- Security: masked the BAN in the config flow's DEBUG log line for a failed contracts fetch, matching every other identifier-logging call site in the codebase.
-- Fixed diagnostics exports hashing the same physical EAN to two different values across the service_points and energy_products sections, which broke support-engineer correlation between the two.
-
-## [Unreleased]
 
 ## [0.13.0b1] - 2026-07-09
 
