@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -92,7 +92,7 @@ def test_slot_suffixes(code: str, expected: tuple[str, str] | None) -> None:
 
 def test_find_current_price_returns_matching_window() -> None:
     """Returns the price entry whose date range covers today."""
-    today = datetime.now(tz=UTC).date()
+    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
     next_week = today + timedelta(days=7)
@@ -109,7 +109,7 @@ def test_find_current_price_returns_matching_window() -> None:
 
 def test_find_current_price_falls_back_to_last() -> None:
     """When no entry covers today, the last entry is returned as fallback."""
-    today = datetime.now(tz=UTC).date()
+    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
     long_ago = today - timedelta(days=60)
     less_long_ago = today - timedelta(days=30)
     recent_past = today - timedelta(days=1)
