@@ -346,3 +346,10 @@ tou_slot_started:
         select:
           translation_key: tou_slot_code
           options: *tou_slot_options
+
+# ---------------------------------------------------------------------------
+# Coordinator-data trigger - no entity to target, listens to the EPEX
+# coordinator directly (same pattern as the built-in "sun" triggers)
+# ---------------------------------------------------------------------------
+
+tomorrow_epex_prices_published: {}

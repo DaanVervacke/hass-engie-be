@@ -50,12 +50,16 @@ Calendar event-class triggers (Phase E):
 - ``engie_be.happy_hours_window_started``    fires at start of Happy Hours window
 - ``engie_be.happy_hours_window_ended``      fires at end of Happy Hours window
 - ``engie_be.tou_slot_started``              fires when a TOU slot boundary begins
+
+Coordinator-data triggers (Phase F):
+- ``engie_be.tomorrow_epex_prices_published`` fires once when tomorrow's EPEX
+  day-ahead slate becomes available
 """
 
 from __future__ import annotations
 
 import abc
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import voluptuous as vol
@@ -81,10 +85,12 @@ from homeassistant.helpers.trigger import (
 from homeassistant.util import dt as dt_util
 
 from ._automation_helpers import filter_by_translation_key
+from ._epex import epex_payload
 from ._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
 from ._tou_calendar import format_tou_event_summary
 from .api import mask_identifier
 from .const import (
+    BRUSSELS_TZ,
     DOMAIN,
     LOGGER,
     SOLAR_SURPLUS_LEVELS,
@@ -113,6 +119,8 @@ from .const import (
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+
+    from .coordinator import EngieBeEpexCoordinator, EngieBeEpexQuarterHourCoordinator
 
 _LEVEL = "level"
 _SLOT = "slot"
@@ -703,6 +711,115 @@ class TouSlotStartedTrigger(_CalendarEventTrigger):
 
 
 # ---------------------------------------------------------------------------
+# Phase F - Coordinator-data trigger
+# ---------------------------------------------------------------------------
+
+# Unlike every other trigger above, this one has no ENGIE entity to watch:
+# the EPEX coordinator's ``tomorrow`` slate is only exposed as sensor
+# attributes, not as its own entity state, so there is nothing for an
+# entity-state trigger to subscribe to. It subclasses ``Trigger`` directly
+# (like ``_CalendarEventTrigger``) and listens to the EPEX coordinator(s) of
+# every loaded config entry instead.
+
+_NO_OPTIONS_SCHEMA: vol.Schema = vol.Schema({}, extra=vol.ALLOW_EXTRA)
+
+
+class TomorrowEpexPricesPublishedTrigger(Trigger):
+    """
+    Trigger: fires once per Brussels day when tomorrow's EPEX slate publishes.
+
+    Listens directly to every EPEX coordinator (hourly and, when present,
+    quarter-hourly) across all loaded config entries, since EPEX day-ahead
+    prices are account-agnostic and polled once per parent entry rather than
+    per business agreement. ``_last_fire_date`` guards against re-firing on
+    every subsequent refresh once tomorrow's slate is already known, and
+    resets naturally the next Brussels-local day.
+    """
+
+    _schema: ClassVar[vol.Schema] = _NO_OPTIONS_SCHEMA
+
+    @classmethod
+    async def async_validate_config(
+        cls,
+        hass: HomeAssistant,  # noqa: ARG003
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Validate config against the trigger schema."""
+        return cls._schema(config)
+
+    def __init__(self, hass: HomeAssistant, config: TriggerConfig) -> None:
+        """Initialise the trigger with no prior fire recorded."""
+        super().__init__(hass, config)
+        self._last_fire_date: date | None = None
+
+    def _epex_coordinators(
+        self,
+    ) -> list[EngieBeEpexCoordinator | EngieBeEpexQuarterHourCoordinator]:
+        """Return every EPEX coordinator (hourly + quarter-hourly) in use."""
+        coordinators: list[
+            EngieBeEpexCoordinator | EngieBeEpexQuarterHourCoordinator
+        ] = []
+        for entry in self._hass.config_entries.async_entries(DOMAIN):
+            runtime = getattr(entry, "runtime_data", None)
+            if runtime is None:
+                continue
+            hourly = getattr(runtime, "epex_coordinator", None)
+            if hourly is not None:
+                coordinators.append(hourly)
+            quarter_hourly = getattr(runtime, "epex_qh_coordinator", None)
+            if quarter_hourly is not None:
+                coordinators.append(quarter_hourly)
+        return coordinators
+
+    async def async_attach_runner(self, run_action: TriggerActionRunner) -> Any:
+        """Attach the trigger: listen to every EPEX coordinator's updates."""
+
+        def _check(
+            coordinator: EngieBeEpexCoordinator | EngieBeEpexQuarterHourCoordinator,
+        ) -> None:
+            """Fire once when the given coordinator's payload gains tomorrow."""
+            payload = epex_payload(coordinator)
+            if payload is None:
+                return
+            today = dt_util.now(BRUSSELS_TZ).date()
+            if self._last_fire_date == today:
+                return
+            tomorrow = today + timedelta(days=1)
+            tomorrow_slots = [
+                slot for slot in payload.slots if slot.start.date() == tomorrow
+            ]
+            if not tomorrow_slots:
+                return
+            self._last_fire_date = today
+            event_data: dict[str, Any] = {"slot_count": len(tomorrow_slots)}
+            if payload.publication_time is not None:
+                event_data["publication_time"] = payload.publication_time.isoformat()
+            if payload.market_date is not None:
+                event_data["market_date"] = payload.market_date
+            run_action(event_data, "tomorrow EPEX prices published", None)
+
+        def _make_listener(
+            coordinator: EngieBeEpexCoordinator | EngieBeEpexQuarterHourCoordinator,
+        ) -> Any:
+            def _on_update() -> None:
+                _check(coordinator)
+
+            return _on_update
+
+        unsub_refs = [
+            coordinator.async_add_listener(_make_listener(coordinator))
+            for coordinator in self._epex_coordinators()
+        ]
+
+        def _cancel() -> None:
+            for unsub in unsub_refs:
+                unsub()
+            unsub_refs.clear()
+
+        return _cancel
+
+
+# ---------------------------------------------------------------------------
 # Public registry
 # ---------------------------------------------------------------------------
 
@@ -754,6 +871,8 @@ TRIGGERS: dict[str, type[Trigger]] = {
     "happy_hours_window_started": HappyHoursWindowStartedTrigger,
     "happy_hours_window_ended": HappyHoursWindowEndedTrigger,
     "tou_slot_started": TouSlotStartedTrigger,
+    # Phase F - coordinator-data trigger
+    "tomorrow_epex_prices_published": TomorrowEpexPricesPublishedTrigger,
 }
 
 

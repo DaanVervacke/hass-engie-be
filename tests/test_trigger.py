@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,6 +15,7 @@ from homeassistant.components.calendar import CalendarEvent
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.trigger import TriggerConfig
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -22,6 +23,7 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.engie_be._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
 from custom_components.engie_be.const import (
+    BRUSSELS_TZ,
     CONF_ACCESS_TOKEN,
     CONF_REFRESH_TOKEN,
     DOMAIN,
@@ -48,6 +50,11 @@ from custom_components.engie_be.const import (
     TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL,
     TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
 )
+from custom_components.engie_be.coordinator import (
+    EngieBeEpexCoordinator,
+    EngieBeEpexQuarterHourCoordinator,
+)
+from custom_components.engie_be.data import EngieBeData, EpexPayload, EpexSlot
 from custom_components.engie_be.trigger import (
     _SOLAR_SURPLUS_BECAME_SCHEMA,
     _TOU_SLOT_BECAME_SCHEMA,
@@ -85,6 +92,7 @@ from custom_components.engie_be.trigger import (
     SolarSurplusCurrentCrossedThresholdTrigger,
     SolarSurplusLevelChangedTrigger,
     SolarSurplusNextHourCrossedThresholdTrigger,
+    TomorrowEpexPricesPublishedTrigger,
     TouSlotStartedTrigger,
     async_get_triggers,
 )
@@ -292,6 +300,8 @@ async def test_async_get_triggers_returns_all(hass: HomeAssistant) -> None:
         "happy_hours_window_started",
         "happy_hours_window_ended",
         "tou_slot_started",
+        # Phase F coordinator-data
+        "tomorrow_epex_prices_published",
     }
     assert set(triggers.keys()) == expected
 
@@ -2408,3 +2418,241 @@ async def test_epex_low_today_qh_updated_filters_wrong_key(
         "0.15",
         expected_fires=0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase F - Coordinator-data trigger
+# ---------------------------------------------------------------------------
+
+
+def _make_epex_payload(*, include_tomorrow: bool) -> EpexPayload:
+    """Build a minimal EpexPayload with a today slot, optionally + tomorrow."""
+    today = dt_util.now(BRUSSELS_TZ).date()
+    today_start = datetime.combine(today, time(0, 0), tzinfo=BRUSSELS_TZ)
+    slots = [
+        EpexSlot(
+            start=today_start,
+            end=today_start + timedelta(hours=1),
+            value_eur_per_kwh=0.10,
+        )
+    ]
+    if include_tomorrow:
+        tomorrow_start = today_start + timedelta(days=1)
+        slots.append(
+            EpexSlot(
+                start=tomorrow_start,
+                end=tomorrow_start + timedelta(hours=1),
+                value_eur_per_kwh=0.12,
+            )
+        )
+    return EpexPayload(
+        slots=tuple(slots),
+        publication_time=dt_util.utcnow(),
+        market_date=today.isoformat(),
+    )
+
+
+def _make_epex_coordinator(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> EngieBeEpexCoordinator:
+    """Create a real EPEX coordinator and wire it into the entry's runtime_data."""
+    coordinator = EngieBeEpexCoordinator(hass=hass, config_entry=entry)
+    entry.runtime_data = EngieBeData(client=MagicMock(), epex_coordinator=coordinator)
+    return coordinator
+
+
+async def test_tomorrow_epex_prices_published_fires_when_tomorrow_appears(
+    hass: HomeAssistant,
+) -> None:
+    """Trigger fires when the coordinator's payload gains tomorrow's slots."""
+    entry = _make_entry(hass)
+    coordinator = _make_epex_coordinator(hass, entry)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = TomorrowEpexPricesPublishedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        coordinator.async_set_updated_data(_make_epex_payload(include_tomorrow=False))
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+
+        coordinator.async_set_updated_data(_make_epex_payload(include_tomorrow=True))
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+    finally:
+        unsub()
+
+
+async def test_tomorrow_epex_prices_published_does_not_refire_same_day(
+    hass: HomeAssistant,
+) -> None:
+    """Trigger does not fire again on further updates within the same day."""
+    entry = _make_entry(hass)
+    coordinator = _make_epex_coordinator(hass, entry)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = TomorrowEpexPricesPublishedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        payload = _make_epex_payload(include_tomorrow=True)
+        coordinator.async_set_updated_data(payload)
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+
+        # A second refresh with the same (still tomorrow-populated) payload
+        # must not fire again on the same Brussels day.
+        coordinator.async_set_updated_data(payload)
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+    finally:
+        unsub()
+
+
+async def test_tomorrow_epex_prices_published_refires_next_brussels_day(
+    hass: HomeAssistant,
+) -> None:
+    """Trigger fires again once the tracked fire date rolls to a new day."""
+    entry = _make_entry(hass)
+    coordinator = _make_epex_coordinator(hass, entry)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = TomorrowEpexPricesPublishedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        payload = _make_epex_payload(include_tomorrow=True)
+        coordinator.async_set_updated_data(payload)
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+
+        # Simulate the next Brussels day by rewinding the last-fire marker,
+        # exactly like midnight rolling over would.
+        trigger._last_fire_date -= timedelta(days=1)
+
+        coordinator.async_set_updated_data(payload)
+        await hass.async_block_till_done()
+        assert len(fired) == 2
+    finally:
+        unsub()
+
+
+async def test_tomorrow_epex_prices_published_does_not_fire_without_tomorrow(
+    hass: HomeAssistant,
+) -> None:
+    """Trigger does not fire while the payload only has today's slots."""
+    entry = _make_entry(hass)
+    coordinator = _make_epex_coordinator(hass, entry)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = TomorrowEpexPricesPublishedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        coordinator.async_set_updated_data(_make_epex_payload(include_tomorrow=False))
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+    finally:
+        unsub()
+
+
+async def test_tomorrow_epex_prices_published_event_data_fields(
+    hass: HomeAssistant,
+) -> None:
+    """Trigger event data includes publication_time, market_date and slot_count."""
+    entry = _make_entry(hass)
+    coordinator = _make_epex_coordinator(hass, entry)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = TomorrowEpexPricesPublishedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        payload = _make_epex_payload(include_tomorrow=True)
+        coordinator.async_set_updated_data(payload)
+        await hass.async_block_till_done()
+    finally:
+        unsub()
+
+    assert len(fired) == 1
+    assert fired[0]["slot_count"] == 1
+    assert fired[0]["publication_time"] == payload.publication_time.isoformat()
+    assert fired[0]["market_date"] == payload.market_date
+
+
+async def test_tomorrow_epex_prices_published_schema_accepts_empty_config() -> None:
+    """async_validate_config accepts an empty options dict."""
+    result = await TomorrowEpexPricesPublishedTrigger.async_validate_config(None, {})
+    assert result == {}
+
+
+async def test_tomorrow_epex_prices_published_skips_entries_without_runtime_data(
+    hass: HomeAssistant,
+) -> None:
+    """Trigger attach does not error when an entry has no runtime_data yet."""
+    _make_entry(hass)
+    # No runtime_data assigned -- simulates the narrow reload window.
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = TomorrowEpexPricesPublishedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+    finally:
+        unsub()
+
+
+async def test_tomorrow_epex_prices_published_ignores_update_before_first_fetch(
+    hass: HomeAssistant,
+) -> None:
+    """A coordinator update before any payload exists does not fire or error."""
+    entry = _make_entry(hass)
+    coordinator = _make_epex_coordinator(hass, entry)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = TomorrowEpexPricesPublishedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        # coordinator.data is still None (no fetch has happened yet).
+        coordinator.async_update_listeners()
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+    finally:
+        unsub()
+
+
+async def test_tomorrow_epex_prices_published_listens_to_quarter_hour_coordinator(
+    hass: HomeAssistant,
+) -> None:
+    """Trigger also fires from the quarter-hourly EPEX coordinator's updates."""
+    entry = _make_entry(hass)
+    hourly = EngieBeEpexCoordinator(hass=hass, config_entry=entry)
+    quarter_hourly = EngieBeEpexQuarterHourCoordinator(hass=hass, config_entry=entry)
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        epex_coordinator=hourly,
+        epex_qh_coordinator=quarter_hourly,
+    )
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = TomorrowEpexPricesPublishedTrigger(hass, config)
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        quarter_hourly.async_set_updated_data(_make_epex_payload(include_tomorrow=True))
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+    finally:
+        unsub()

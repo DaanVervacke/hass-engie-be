@@ -1248,6 +1248,10 @@
                     "description": "[%key:component::engie_be::common::trigger_slot_description%]"
                 }
             }
+        },
+        "tomorrow_epex_prices_published": {
+            "name": "Tomorrow's EPEX prices published",
+            "description": "Fires once when day-ahead electricity prices for tomorrow become available."
         }
     }
 }
