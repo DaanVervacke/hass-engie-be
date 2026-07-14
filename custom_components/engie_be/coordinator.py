@@ -16,6 +16,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
+from ._contracts import ean_with_delivery_point_suffix
 from ._happy_hour import happy_hour_flag_reason, is_enrolled_from_flag
 from ._relations import (
     RELATIONS_BACKFILLABLE_KEYS,
@@ -599,7 +600,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     # expose ``_ID2``/``_ID3`` but no service-points
                     # endpoint currently surfaces them; extend this
                     # mapping when a real multi-ID sample appears.
-                    f"{ean}_ID1",
+                    ean_with_delivery_point_suffix(ean),
                 )
             except EngieBeApiClientAuthenticationError:
                 raise

@@ -23,7 +23,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 
-from ._contracts import is_account_dynamic, service_points_by_ean
+from ._contracts import bare_ean, is_account_dynamic, service_points_by_ean
 from ._statistics import (
     _last_stats,
     async_clear_usage_history,
@@ -1010,7 +1010,7 @@ async def _async_populate_service_points(
             # (e.g. "..._ID1"). Store the bare EAN so service_points stays
             # the single source of truth every per-EAN consumer can key
             # off of without guessing whether a suffix is already present.
-            ean_short = ean.split("_", maxsplit=1)[0] if "_" in ean else ean
+            ean_short = bare_ean(ean)
             entry.runtime_data.subentry_data[subentry_id].service_points[ean_short] = (
                 division
             )
@@ -1036,7 +1036,7 @@ def _merge_service_points_from_contracts(entry: EngieBeConfigEntry) -> None:
     for sub_data in entry.runtime_data.subentry_data.values():
         contract_points = service_points_by_ean(sub_data.energy_contracts_payload)
         for ean, division in contract_points.items():
-            ean_short = ean.split("_", maxsplit=1)[0] if "_" in ean else ean
+            ean_short = bare_ean(ean)
             sub_data.service_points.setdefault(ean_short, division)
 
 

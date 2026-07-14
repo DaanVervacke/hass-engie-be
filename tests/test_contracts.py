@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 from custom_components.engie_be._contracts import (
+    bare_ean,
+    ean_with_delivery_point_suffix,
     energy_products_by_ean,
     is_account_dynamic,
     service_points_by_ean,
@@ -256,3 +258,27 @@ def test_service_points_by_ean_skips_items_missing_ean_or_division() -> None:
     assert service_points_by_ean(payload) == {
         "541448820000000004_ID4": "GAS",
     }
+
+
+# ---------------------------------------------------------------------------
+# bare_ean / ean_with_delivery_point_suffix
+# ---------------------------------------------------------------------------
+
+
+def test_bare_ean_strips_suffix() -> None:
+    assert bare_ean("541448820000000001_ID1") == "541448820000000001"
+
+
+def test_bare_ean_passes_through_unsuffixed() -> None:
+    assert bare_ean("541448820000000001") == "541448820000000001"
+
+
+def test_ean_with_delivery_point_suffix_appends_id1() -> None:
+    assert (
+        ean_with_delivery_point_suffix("541448820000000001") == "541448820000000001_ID1"
+    )
+
+
+def test_bare_ean_and_suffix_helper_are_inverses() -> None:
+    ean = "541448820000000001"
+    assert bare_ean(ean_with_delivery_point_suffix(ean)) == ean

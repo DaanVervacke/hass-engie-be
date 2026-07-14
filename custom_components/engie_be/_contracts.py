@@ -106,3 +106,30 @@ def service_points_by_ean(payload: Any) -> dict[str, str]:
         if isinstance(ean, str) and ean and isinstance(division, str) and division:
             result[ean] = division
     return result
+
+
+DELIVERY_POINT_SUFFIX = "_ID1"
+
+
+def bare_ean(ean: str) -> str:
+    """
+    Strip a trailing delivery-point suffix (``_ID1``) from an EAN.
+
+    ENGIE's supplier-energy-prices and TOU-schedules endpoints return
+    EANs with a delivery-point suffix; ``service_points`` and every
+    user-facing EAN key are stored bare. Returns ``ean`` unchanged when
+    it carries no suffix.
+    """
+    return ean.split("_", maxsplit=1)[0] if "_" in ean else ean
+
+
+def ean_with_delivery_point_suffix(ean: str) -> str:
+    """
+    Append the delivery-point suffix ENGIE's per-EAN endpoints expect.
+
+    ENGIE delivery-point IDs observed in the wild are always
+    ``{EAN}_ID1``. Multi-panel installations may expose ``_ID2``/
+    ``_ID3`` but no service-points endpoint currently surfaces them;
+    extend this mapping when a real multi-ID sample appears.
+    """
+    return f"{ean}{DELIVERY_POINT_SUFFIX}"

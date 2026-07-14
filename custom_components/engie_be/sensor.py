@@ -23,6 +23,7 @@ from homeassistant.const import (
 from homeassistant.util import dt as dt_util
 
 from ._billing import next_due_date, overview_due_amount, overview_open_amount
+from ._contracts import bare_ean, ean_with_delivery_point_suffix
 from ._epex import _slot_duration_minutes, epex_payload, next_epex_slot_boundary
 from ._happy_hour import happy_hour_window
 from ._peaks import peaks_meta, peaks_payload
@@ -151,7 +152,7 @@ def _build_sensor_descriptions(
         # _async_populate_service_points), so strip the trailing _ID*
         # suffix before using it for the lookup or any user-facing key.
         # e.g. "541448...267_ID1" -> cleaner key
-        ean_short = ean.split("_", maxsplit=1)[0] if "_" in ean else ean
+        ean_short = bare_ean(ean)
         energy_type = _detect_energy_type(ean_short, service_points)
 
         current_price = _find_current_price(item.get("prices", []))
@@ -867,9 +868,7 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        ean_display = (
-            self._ean.split("_", maxsplit=1)[0] if "_" in self._ean else self._ean
-        )
+        ean_display = bare_ean(self._ean)
         attrs: dict[str, Any] = {"ean": ean_display}
         if self.coordinator.last_successful_fetch:
             attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
@@ -1857,7 +1856,7 @@ class _EngieBeTouSlotBase(_BoundaryScheduleMixin, _EngieBePerEanBase):
         payload = tou_schedules_payload(self.coordinator)
         if payload is None:
             return None
-        ean_suffix = f"{self._ean}_ID1"
+        ean_suffix = ean_with_delivery_point_suffix(self._ean)
         return schedule_for_ean(payload, ean_suffix)
 
     def _supplier_schedule(self) -> dict[str, Any] | None:

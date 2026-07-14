@@ -13,6 +13,7 @@ from homeassistant.const import EntityCategory
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.util import dt as dt_util
 
+from ._contracts import ean_with_delivery_point_suffix
 from ._epex import epex_payload, next_epex_slot_boundary
 from ._happy_hour import happy_hour_window, is_happy_hour_active
 from ._tou import current_slot as tou_current_slot
@@ -537,7 +538,7 @@ def _build_tou_binary_sensors(
     for ean, division in service_points.items():
         if division != "ELECTRICITY":
             continue
-        ean_suffix = f"{ean}_ID1"
+        ean_suffix = ean_with_delivery_point_suffix(ean)
         tou_data = tou_schedules_payload(coordinator)
         item = schedule_for_ean(tou_data, ean_suffix) if tou_data is not None else None
         offtake_sched = (
@@ -621,7 +622,7 @@ class EngieBeTouIsOptimalSensor(
         tou_data = tou_schedules_payload(self.coordinator)
         if tou_data is None:
             return None
-        ean_suffix = f"{self._ean}_ID1"
+        ean_suffix = ean_with_delivery_point_suffix(self._ean)
         item = schedule_for_ean(tou_data, ean_suffix)
         if not isinstance(item, dict):
             return None
