@@ -728,17 +728,15 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 # Use ``async_update_and_abort`` (not
                 # ``async_update_reload_and_abort``) because the integration
-                # also registers ``add_update_listener(async_reload_entry)``
-                # in ``__init__.py`` to drive options-change and subentry
-                # add/remove reloads. Combining a config-entry listener
-                # with a reloading method in a config flow is deprecated
-                # in HA 2026.6 and errors in 2026.12. The listener still
-                # fires for any ``async_update_entry`` write (including
-                # this one) and short-circuits to no-op when options /
-                # subentry-id set are unchanged, so reauth completion
-                # still triggers exactly one reload via the listener.
-                # See ``.opencode/audit-v0.10.0b1-prerelease.md`` Blocker
-                # B1b and HA dev blog 2026-05-07.
+                # registers ``add_update_listener(async_reload_entry)`` in
+                # ``__init__.py`` for options-change, subentry add/remove,
+                # and reauth reloads. The 2026.12 breaking change only
+                # applies to the COMBINATION of having update_listeners
+                # AND calling ``async_update_reload_and_abort`` -- using
+                # ``async_update_and_abort`` with a listener is fine.
+                # The listener fires for this write and detects the
+                # externally-updated refresh token, triggering exactly
+                # one reload.
                 return self.async_update_and_abort(
                     self._get_reauth_entry(),
                     data_updates={
