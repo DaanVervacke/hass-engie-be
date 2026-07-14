@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -376,6 +377,33 @@ _CAPTAR_MONTHLY_PEAK_END = SensorEntityDescription(
     entity_category=EntityCategory.DIAGNOSTIC,
     entity_registry_enabled_default=False,
 )
+_CAPTAR_LATEST_DAILY_PEAK = SensorEntityDescription(
+    key="captar_latest_daily_peak",
+    translation_key="captar_latest_daily_peak",
+    native_unit_of_measurement=UnitOfPower.KILO_WATT,
+    device_class=SensorDeviceClass.POWER,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=3,
+    # Disabled by default: most users only care about the monthly peak;
+    # per-day detail is opt-in via ``daily_peaks``/``expose_all``.
+    entity_registry_enabled_default=False,
+)
+
+
+def _latest_daily_peak(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any] | None:
+    """Return the most recent entry of ``dailyPeaks``, or ``None``."""
+    peaks = peaks_payload(coordinator)
+    if peaks is None:
+        return None
+    daily_peaks = peaks.get("dailyPeaks")
+    if not isinstance(daily_peaks, list) or not daily_peaks:
+        return None
+    latest = daily_peaks[-1]  # sorted chronologically by the API
+    if not isinstance(latest, dict):
+        return None
+    return latest
 
 
 def _build_peak_sensors(
@@ -384,7 +412,7 @@ def _build_peak_sensors(
     *,
     expose_all: bool = False,
 ) -> list[SensorEntity]:
-    """Build the four monthly capacity-tariff peak sensors for one subentry."""
+    """Build the monthly and latest-daily peak sensors for one subentry."""
 
     def _maybe_enable(desc: SensorEntityDescription) -> SensorEntityDescription:
         if expose_all and desc.entity_registry_enabled_default is False:
@@ -415,6 +443,11 @@ def _build_peak_sensors(
             subentry,
             _maybe_enable(_CAPTAR_MONTHLY_PEAK_END),
             field="end",
+        ),
+        EngieBeLatestDailyPeakSensor(
+            coordinator,
+            subentry,
+            _maybe_enable(_CAPTAR_LATEST_DAILY_PEAK),
         ),
     ]
 
@@ -526,6 +559,57 @@ class EngieBeMonthlyPeakTimestampSensor(_EngieBePeakSensorBase):
             return datetime.fromisoformat(raw)
         except ValueError:
             return None
+
+
+class EngieBeLatestDailyPeakSensor(_EngieBePeakSensorBase):
+    """Peak power (kW) of the most recent entry in the ``dailyPeaks`` array."""
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the ``peakKW`` value of the latest daily peak."""
+        latest = _latest_daily_peak(self.coordinator)
+        if latest is None:
+            return None
+        value = latest.get("peakKW")
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except TypeError:
+            return None
+        except ValueError:
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Add daily-peak detail to the base peak-month attributes."""
+        attrs = super().extra_state_attributes
+        peaks = peaks_payload(self.coordinator)
+        daily_peaks = peaks.get("dailyPeaks") if isinstance(peaks, dict) else None
+        if isinstance(daily_peaks, list):
+            attrs["daily_peaks"] = daily_peaks
+
+        latest = _latest_daily_peak(self.coordinator)
+        if latest is None:
+            return attrs
+
+        start = latest.get("start")
+        if isinstance(start, str):
+            attrs["peak_start"] = start
+            with contextlib.suppress(ValueError):
+                attrs["peak_date"] = (
+                    datetime.fromisoformat(start)
+                    .astimezone(BRUSSELS_TZ)
+                    .date()
+                    .isoformat()
+                )
+        end = latest.get("end")
+        if isinstance(end, str):
+            attrs["peak_end"] = end
+        peak_kwh = latest.get("peakKWh")
+        if peak_kwh is not None:
+            attrs["peak_kwh"] = peak_kwh
+        return attrs
 
 
 # ---------------------------------------------------------------------------

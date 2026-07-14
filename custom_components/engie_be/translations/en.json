@@ -832,6 +832,9 @@
             "captar_monthly_peak_end": {
                 "name": "Captar monthly peak end"
             },
+            "captar_latest_daily_peak": {
+                "name": "Captar latest daily peak"
+            },
             "happy_hours_next_start": {
                 "name": "Happy Hours next start"
             },

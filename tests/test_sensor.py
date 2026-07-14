@@ -15,6 +15,7 @@ from homeassistant.const import EntityCategory
 
 from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.sensor import (
+    _CAPTAR_LATEST_DAILY_PEAK,
     _CAPTAR_MONTHLY_PEAK_END,
     _CAPTAR_MONTHLY_PEAK_ENERGY,
     _CAPTAR_MONTHLY_PEAK_START,
@@ -348,6 +349,7 @@ def test_captar_peak_energy_and_timestamps_disabled_by_default() -> None:
     assert _CAPTAR_MONTHLY_PEAK_ENERGY.entity_registry_enabled_default is False
     assert _CAPTAR_MONTHLY_PEAK_START.entity_registry_enabled_default is False
     assert _CAPTAR_MONTHLY_PEAK_END.entity_registry_enabled_default is False
+    assert _CAPTAR_LATEST_DAILY_PEAK.entity_registry_enabled_default is False
 
 
 def test_captar_peak_timestamps_are_diagnostic() -> None:
@@ -426,6 +428,7 @@ def test_build_peak_sensors_expose_all_enables_disabled_descriptions() -> None:
         "captar_monthly_peak_energy",
         "captar_monthly_peak_start",
         "captar_monthly_peak_end",
+        "captar_latest_daily_peak",
     }
     for sensor in sensors:
         desc = sensor.entity_description

@@ -11,6 +11,7 @@ from homeassistant.components.sensor import SensorDeviceClass
 
 from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.sensor import (
+    EngieBeLatestDailyPeakSensor,
     EngieBeMonthlyPeakTimestampSensor,
     EngieBeMonthlyPeakValueSensor,
     _build_peak_sensors,
@@ -67,8 +68,8 @@ def _make_coordinator(data: dict | None) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-def test_build_peak_sensors_creates_four_entities() -> None:
-    """``_build_peak_sensors`` always returns the four monthly captar sensors."""
+def test_build_peak_sensors_creates_five_entities() -> None:
+    """``_build_peak_sensors`` returns the four monthly + one daily captar sensors."""
     coordinator = _make_coordinator({"items": [], "peaks": _wrap(_peaks())})
     subentry = _make_subentry(subentry_id="sub_xyz")
     sensors = _build_peak_sensors(coordinator, subentry)
@@ -79,6 +80,7 @@ def test_build_peak_sensors_creates_four_entities() -> None:
         "captar_monthly_peak_energy",
         "captar_monthly_peak_start",
         "captar_monthly_peak_end",
+        "captar_latest_daily_peak",
     }
     # Every sensor must carry an entry+subentry-scoped unique_id.
     for sensor in sensors:
@@ -92,7 +94,7 @@ def test_build_peak_sensors_runs_without_peaks_payload() -> None:
     coordinator = _make_coordinator({"items": []})
     subentry = _make_subentry()
     sensors = _build_peak_sensors(coordinator, subentry)
-    assert len(sensors) == 4
+    assert len(sensors) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +216,83 @@ def test_monthly_peak_timestamp_returns_none_when_field_missing() -> None:
         field="start",
     )
     assert sensor.native_value is None
+
+
+# ---------------------------------------------------------------------------
+# Latest daily peak sensor
+# ---------------------------------------------------------------------------
+
+
+def test_latest_daily_peak_native_value() -> None:
+    """``peakKW`` of the last ``dailyPeaks`` entry is returned as a float."""
+    coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
+    sensor = next(s for s in sensors if isinstance(s, EngieBeLatestDailyPeakSensor))
+    assert sensor.native_value == 1.8
+
+
+def test_latest_daily_peak_native_value_returns_none_when_empty() -> None:
+    """An empty ``dailyPeaks`` array yields ``None`` rather than raising."""
+    base = _wrap(_peaks())
+    base["data"]["dailyPeaks"] = []
+    coordinator = _make_coordinator({"peaks": base})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
+    sensor = next(s for s in sensors if isinstance(s, EngieBeLatestDailyPeakSensor))
+    assert sensor.native_value is None
+
+
+def test_latest_daily_peak_native_value_returns_none_when_key_missing() -> None:
+    """A missing ``dailyPeaks`` key yields ``None`` rather than raising."""
+    base = _wrap(_peaks())
+    del base["data"]["dailyPeaks"]
+    coordinator = _make_coordinator({"peaks": base})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
+    sensor = next(s for s in sensors if isinstance(s, EngieBeLatestDailyPeakSensor))
+    assert sensor.native_value is None
+
+
+def test_latest_daily_peak_native_value_returns_none_for_non_numeric_peak_kw() -> None:
+    """A non-coercible ``peakKW`` yields ``None`` rather than raising."""
+    base = _wrap(_peaks())
+    base["data"]["dailyPeaks"] = [{"peakKW": "not-a-number"}]
+    coordinator = _make_coordinator({"peaks": base})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
+    sensor = next(s for s in sensors if isinstance(s, EngieBeLatestDailyPeakSensor))
+    assert sensor.native_value is None
+
+
+def test_latest_daily_peak_extra_state_attributes() -> None:
+    """Extra attributes expose the latest daily peak's detail and full array."""
+    coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
+    sensor = next(s for s in sensors if isinstance(s, EngieBeLatestDailyPeakSensor))
+    attrs = sensor.extra_state_attributes
+    assert attrs["peak_date"] == "2026-04-16"
+    assert attrs["peak_kwh"] == "0.45000000"
+    assert attrs["peak_start"] == "2026-04-16T07:15:00+02:00"
+    assert attrs["peak_end"] == "2026-04-16T07:30:00+02:00"
+    assert attrs["daily_peaks"] == _peaks()["dailyPeaks"]
+    # Base peak-sensor attributes are still present.
+    assert attrs["peak_month"] == "2026-04"
+
+
+def test_latest_daily_peak_extra_state_attributes_without_daily_peaks() -> None:
+    """Without daily peaks the daily-specific attributes are omitted."""
+    coordinator = _make_coordinator({"items": []})
+    subentry = _make_subentry()
+    sensors = _build_peak_sensors(coordinator, subentry)
+    sensor = next(s for s in sensors if isinstance(s, EngieBeLatestDailyPeakSensor))
+    attrs = sensor.extra_state_attributes
+    assert "peak_date" not in attrs
+    assert "peak_kwh" not in attrs
+    assert "peak_start" not in attrs
+    assert "peak_end" not in attrs
+    assert "daily_peaks" not in attrs
 
 
 # ---------------------------------------------------------------------------
