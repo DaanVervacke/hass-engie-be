@@ -11,9 +11,11 @@ from homeassistant.const import EntityCategory
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from custom_components.engie_be.binary_sensor import (
+    EPEX_NEGATIVE_QUARTER_HOUR_SENSOR_DESCRIPTION,
     EPEX_NEGATIVE_SENSOR_DESCRIPTION,
     EngieBeAuthSensor,
     EngieBeEpexNegativeSensor,
+    EngieBeEpexQuarterHourNegativeSensor,
     EngieBeHappyHourActiveSensor,
     EngieBeTouIsOptimalSensor,
     async_setup_entry,
@@ -54,6 +56,29 @@ def _build_payload(today: list[tuple[int, float]]) -> EpexPayload:
     """Build an EpexPayload from ``(hour, eur_per_kwh)`` tuples."""
     return EpexPayload(
         slots=tuple(_make_slot(hour=h, value_eur_per_kwh=v) for h, v in today),
+        publication_time=datetime(2026, 5, 4, 13, 7, 21, tzinfo=_BRUSSELS),
+        market_date="2026-05-05",
+    )
+
+
+def _make_qh_slot(
+    *, hour: int, minute: int, value_eur_per_kwh: float, day: int = 4
+) -> EpexSlot:
+    """Build a 15-minute EpexSlot at 2026-05-{day} {hour}:{minute} Brussels-local."""
+    start = datetime(2026, 5, day, hour, minute, 0, tzinfo=_BRUSSELS)
+    return EpexSlot(
+        start=start,
+        end=start + timedelta(minutes=15),
+        value_eur_per_kwh=value_eur_per_kwh,
+    )
+
+
+def _build_qh_payload(today: list[tuple[int, int, float]]) -> EpexPayload:
+    """Build an EpexPayload from ``(hour, minute, eur_per_kwh)`` tuples."""
+    return EpexPayload(
+        slots=tuple(
+            _make_qh_slot(hour=h, minute=m, value_eur_per_kwh=v) for h, m, v in today
+        ),
         publication_time=datetime(2026, 5, 4, 13, 7, 21, tzinfo=_BRUSSELS),
         market_date="2026-05-05",
     )
@@ -251,6 +276,133 @@ def test_slot_boundary_is_half_open() -> None:
 
     # Anchor exactly on the 15:00 boundary; should pick the 15:00 slot.
     boundary = datetime(2026, 5, 4, 15, 0, 0, tzinfo=_BRUSSELS).astimezone(UTC)
+    with patch(
+        "custom_components.engie_be.binary_sensor.dt_util.utcnow",
+        return_value=boundary,
+    ):
+        assert sensor.is_on is False
+
+
+# ---------------------------------------------------------------------------
+# Quarter-hourly EPEX negative-price sensor (EngieBeEpexQuarterHourNegativeSensor)
+# ---------------------------------------------------------------------------
+
+
+def test_epex_qh_negative_description_metadata() -> None:
+    """Translation key, no device class, mirroring the hourly sensor's metadata."""
+    desc = EPEX_NEGATIVE_QUARTER_HOUR_SENSOR_DESCRIPTION
+    assert desc.key == "epex_negative_quarter_hour"
+    assert desc.translation_key == "epex_negative_quarter_hour"
+    assert desc.device_class is None
+
+
+def test_qh_negative_unique_id_is_subentry_scoped() -> None:
+    """QH unique IDs must be entry+subentry scoped with the QH-specific suffix."""
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry(subentry_id="sub_xyz")
+    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    assert sensor.unique_id == "test_entry_id_sub_xyz_epex_negative_quarter_hour"
+
+
+def test_qh_negative_unavailable_when_payload_missing() -> None:
+    """First-poll 404 leaves ``epex=None`` -> unavailable."""
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    with _patched_now():
+        assert sensor.available is False
+
+
+def test_qh_negative_available_when_slot_covers_now() -> None:
+    """Happy path: a 15-minute slot covering now -> available."""
+    payload = _build_qh_payload([(15, 30, 0.025)])
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    with _patched_now():
+        assert sensor.available is True
+
+
+def test_qh_negative_is_on_true_when_current_slot_negative() -> None:
+    """Negative wholesale price in the active QH slot -> sensor on."""
+    payload = _build_qh_payload(
+        [
+            (15, 0, 0.02),
+            (15, 15, 0.01),
+            (15, 30, -0.0123),
+            (15, 45, 0.05),
+        ],
+    )
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    with _patched_now():
+        assert sensor.is_on is True
+
+
+def test_qh_negative_is_on_false_when_current_slot_zero() -> None:
+    """
+    A wholesale price of exactly 0.0 EUR/kWh is NOT negative.
+
+    Edge case: zero is not negative.
+    """
+    payload = _build_qh_payload([(15, 30, 0.0)])
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    with _patched_now():
+        assert sensor.is_on is False
+
+
+def test_qh_negative_is_on_false_when_current_slot_positive() -> None:
+    """Typical case: positive wholesale price -> sensor off."""
+    payload = _build_qh_payload([(15, 30, 0.025)])
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    with _patched_now():
+        assert sensor.is_on is False
+
+
+def test_qh_negative_is_on_none_when_unavailable() -> None:
+    """No payload -> ``is_on`` is None (HA renders unavailable)."""
+    coordinator = _make_epex_coordinator(None)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    with _patched_now():
+        assert sensor.is_on is None
+
+
+def test_qh_negative_is_on_none_when_no_slot_covers_now() -> None:
+    """Stale payload with no covering slot -> ``is_on`` is None."""
+    payload = _build_qh_payload([(18, 0, -0.05)])
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    with _patched_now():
+        assert sensor.is_on is None
+
+
+def test_qh_negative_slot_boundary_is_half_open() -> None:
+    """
+    QH slots are ``[start, end)``: the 15:15 boundary belongs to the 15:15 slot.
+
+    Uses quarter-hour-aligned slots (15:00 and 15:15) so the boundary
+    under test is a genuine QH boundary, not an hour boundary that
+    would also pass against the hourly sensor's logic.
+    """
+    payload = _build_qh_payload(
+        [
+            (15, 0, -0.05),  # would be wrong if upper bound were inclusive
+            (15, 15, 0.02),
+        ],
+    )
+    coordinator = _make_epex_coordinator(payload)
+    subentry = _make_subentry()
+    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+
+    # Anchor exactly on the 15:15 boundary; should pick the 15:15 slot.
+    boundary = datetime(2026, 5, 4, 15, 15, 0, tzinfo=_BRUSSELS).astimezone(UTC)
     with patch(
         "custom_components.engie_be.binary_sensor.dt_util.utcnow",
         return_value=boundary,
@@ -635,3 +787,39 @@ async def test_expose_all_creates_tou_sensors_when_tou_inactive() -> None:
 
     tou_entities = [e for e in added if isinstance(e, EngieBeTouIsOptimalSensor)]
     assert len(tou_entities) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Setup-entry gating: the QH EPEX entity is only created when a QH
+# coordinator exists on the entry's runtime data.
+# ---------------------------------------------------------------------------
+
+
+async def test_setup_entry_adds_qh_negative_sensor_when_qh_coordinator_present() -> (
+    None
+):
+    """QH negative sensor must be created when the entry has a QH coordinator."""
+    subentry = _make_subentry(subentry_id="sub_qh")
+    coordinator = _make_epex_coordinator(None)
+    qh_coordinator = _make_epex_coordinator(None)
+
+    entry = _make_entry(
+        coordinator,
+        subentries={"sub_qh": subentry},
+        sub_runtime={
+            "sub_qh": _make_sub_data(is_dynamic=True, is_happy_hour_enrolled=False),
+        },
+    )
+    entry.runtime_data.epex_qh_coordinator = qh_coordinator
+
+    added: list = []
+
+    def _add(entities, *_a: object, **_kw: object) -> None:  # noqa: ANN001
+        added.extend(entities)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    qh_entities = [
+        e for e in added if isinstance(e, EngieBeEpexQuarterHourNegativeSensor)
+    ]
+    assert len(qh_entities) == 1
