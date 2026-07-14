@@ -146,7 +146,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data = self.data
         return bool(isinstance(data, dict) and data.get(KEY_IS_DYNAMIC))
 
-    async def _async_update_data(self) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
+    async def _async_update_data(self) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         """Fetch energy prices and capacity-tariff peaks for this account."""
         client = self.config_entry.runtime_data.client
         business_agreement_number = self.business_agreement_number
@@ -274,43 +274,103 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # When un-enrolled, drop any stale wrapper so the entities (if
         # they exist from a previous enrolled run that has not been
         # reloaded yet) immediately report no scheduled window.
-        if new_enrolled:
-            previous_happy_hour_wrapper: dict[str, Any] | None = None
-            if isinstance(self.data, dict):
-                existing_hh = self.data.get("happy_hour")
-                if isinstance(existing_hh, dict):
-                    previous_happy_hour_wrapper = existing_hh
+        previous_happy_hour_wrapper: dict[str, Any] | None = None
+        if isinstance(self.data, dict):
+            existing_hh = self.data.get("happy_hour")
+            if isinstance(existing_hh, dict):
+                previous_happy_hour_wrapper = existing_hh
 
-            happy_hour_wrapper = await self._async_fetch_happy_hour(
+        # The Happy Hours month report is fetched for enrolled BANs so the
+        # current-month summary sensors (consumption, eligible hours,
+        # reward) have fresh data on every coordinator refresh. Soft-fail:
+        # a transient API error keeps the last-known wrapper so existing
+        # sensors stay populated. Only fetched when enrolled.
+        previous_month_report_wrapper: dict[str, Any] | None = None
+        if isinstance(self.data, dict):
+            existing_mr = self.data.get("happy_hour_month_report")
+            if isinstance(existing_mr, dict):
+                previous_month_report_wrapper = existing_mr
+
+        # Solar-surplus forecasts. Two gates apply: the Smart App feature
+        # flag (``solar-surplus-shown-dashboard``) mirrors ENGIE's own
+        # contract for whether this account qualifies for the feature, and
+        # the per-EAN forecast payload carries ``level = NO_DATA``
+        # everywhere for accounts without a solar installation. We honour
+        # the flag first (skips the per-EAN fan-out entirely when off) and
+        # fall back to the data-driven signal for accounts where the flag
+        # is on but no forecast data is available yet.
+        previous_solar_wrapper: dict[str, Any] | None = None
+        if isinstance(self.data, dict):
+            existing_solar = self.data.get("solar_surplus")
+            if isinstance(existing_solar, dict):
+                previous_solar_wrapper = existing_solar
+
+        # TOU schedules. The flag gates the supplier-side TOU meaning but
+        # the endpoint returns data regardless (the network schedule
+        # always applies to digital-meter customers). Fetch unconditionally
+        # and surface the flag separately.
+        previous_tou_wrapper: dict[str, Any] | None = None
+        if isinstance(self.data, dict):
+            existing_tou = self.data.get("tou_schedules")
+            if isinstance(existing_tou, dict):
+                previous_tou_wrapper = existing_tou
+
+        # These four calls have no data dependency on each other's result
+        # (only on new_enrolled/solar_shown/tou_active from the first
+        # gather); run them concurrently instead of four sequential round
+        # trips. Gated-off fetches are replaced with a no-op coroutine so
+        # the tuple unpacking stays positional. Each fetch already
+        # soft-fails its own EngieBeApiClientError internally and
+        # re-raises EngieBeApiClientAuthenticationError, so gather()
+        # without return_exceptions=True preserves current
+        # abort-on-auth-failure behaviour.
+        async def _noop() -> None:
+            return None
+
+        (
+            happy_hour_wrapper,
+            month_report_wrapper,
+            solar_wrapper,
+            tou_wrapper,
+        ) = await asyncio.gather(
+            self._async_fetch_happy_hour(
                 client,
                 business_agreement_number,
                 previous_happy_hour_wrapper,
             )
-            if happy_hour_wrapper is not None:
-                data["happy_hour"] = happy_hour_wrapper
-                self._record_happy_hour_history(happy_hour_wrapper)
-
-        # Fetch the Happy Hours month report for enrolled BANs so the
-        # current-month summary sensors (consumption, eligible hours,
-        # reward) have fresh data on every coordinator refresh.
-        # Soft-fail: a transient API error keeps the last-known wrapper so
-        # existing sensors stay populated. Only fetched when enrolled.
-        if new_enrolled:
-            previous_month_report_wrapper: dict[str, Any] | None = None
-            if isinstance(self.data, dict):
-                existing_mr = self.data.get("happy_hour_month_report")
-                if isinstance(existing_mr, dict):
-                    previous_month_report_wrapper = existing_mr
-
-            month_report_wrapper = await self._async_fetch_month_report(
+            if new_enrolled
+            else _noop(),
+            self._async_fetch_month_report(
                 client,
                 business_agreement_number,
                 today.year,
                 today.month,
                 previous_month_report_wrapper,
             )
-            if month_report_wrapper is not None:
-                data["happy_hour_month_report"] = month_report_wrapper
+            if new_enrolled
+            else _noop(),
+            self._async_fetch_solar_surplus(
+                client,
+                business_agreement_number,
+                previous_solar_wrapper,
+            )
+            if solar_shown
+            else _noop(),
+            self._async_fetch_tou_schedules(
+                client,
+                business_agreement_number,
+                previous_tou_wrapper,
+            )
+            if tou_active
+            else _noop(),
+        )
+
+        if new_enrolled and happy_hour_wrapper is not None:
+            data["happy_hour"] = happy_hour_wrapper
+            self._record_happy_hour_history(happy_hour_wrapper)
+
+        if new_enrolled and month_report_wrapper is not None:
+            data["happy_hour_month_report"] = month_report_wrapper
 
         # Push the enrolment outcome onto subentry runtime data and
         # schedule a config-entry reload when the state flips. The first
@@ -323,57 +383,19 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             new_enrolled=new_enrolled,
         )
 
-        # Fetch solar-surplus forecasts. Two gates apply: the Smart App
-        # feature flag (``solar-surplus-shown-dashboard``) mirrors ENGIE's
-        # own contract for whether this account qualifies for the feature,
-        # and the per-EAN forecast payload carries ``level = NO_DATA``
-        # everywhere for accounts without a solar installation. We honour
-        # the flag first (skips the per-EAN fan-out entirely when off) and
-        # fall back to the data-driven signal for accounts where the flag
-        # is on but no forecast data is available yet.
-        previous_solar_wrapper: dict[str, Any] | None = None
-        if isinstance(self.data, dict):
-            existing_solar = self.data.get("solar_surplus")
-            if isinstance(existing_solar, dict):
-                previous_solar_wrapper = existing_solar
-
-        if solar_shown:
-            solar_wrapper = await self._async_fetch_solar_surplus(
-                client,
-                business_agreement_number,
-                previous_solar_wrapper,
-            )
-            if solar_wrapper is not None:
-                data["solar_surplus"] = solar_wrapper
-            new_has_solar = _derive_has_solar(
+        if solar_shown and solar_wrapper is not None:
+            data["solar_surplus"] = solar_wrapper
+        new_has_solar = (
+            _derive_has_solar(
                 solar_wrapper if solar_wrapper is not None else previous_solar_wrapper,
             )
-        else:
-            # Flag off: skip the per-EAN fan-out and drop any stale
-            # wrapper so entities from a prior enabled run report
-            # unavailable until the next reload.
-            new_has_solar = False
-
+            if solar_shown
+            else False
+        )
         self._async_apply_flag("solar", previous=previous_has_solar, new=new_has_solar)
 
-        # Fetch TOU schedules. The flag gates the supplier-side TOU
-        # meaning but the endpoint returns data regardless (the network
-        # schedule always applies to digital-meter customers). Fetch
-        # unconditionally and surface the flag separately.
-        previous_tou_wrapper: dict[str, Any] | None = None
-        if isinstance(self.data, dict):
-            existing_tou = self.data.get("tou_schedules")
-            if isinstance(existing_tou, dict):
-                previous_tou_wrapper = existing_tou
-
-        if tou_active:
-            tou_wrapper = await self._async_fetch_tou_schedules(
-                client,
-                business_agreement_number,
-                previous_tou_wrapper,
-            )
-            if tou_wrapper is not None:
-                data["tou_schedules"] = tou_wrapper
+        if tou_active and tou_wrapper is not None:
+            data["tou_schedules"] = tou_wrapper
         # Flag off → drop any stale wrapper so entities from a prior
         # enabled run report unavailable until the next reload. Mirrors
         # the solar-surplus behaviour when its own flag is off.
