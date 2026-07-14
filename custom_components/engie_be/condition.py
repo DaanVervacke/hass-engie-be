@@ -62,48 +62,49 @@ _LEVEL = "level"
 _SLOT = "slot"
 
 # ---------------------------------------------------------------------------
-# epex_price_is_negative - direct EntityStateConditionBase subclass
+# Shared base for binary-sensor "on" conditions
 # ---------------------------------------------------------------------------
 
 
-class EpexPriceIsNegativeCondition(EntityStateConditionBase):
+class _BinaryOnCondition(EntityStateConditionBase):
+    """
+    Base for binary-sensor conditions that check the sensor is ``on``.
+
+    Subclasses declare ``_translation_key`` to restrict entity_filter to
+    a single ENGIE binary sensor per entity class.
+    """
+
+    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
+        BINARY_SENSOR_DOMAIN: DomainSpec()
+    }
+    _translation_key: ClassVar[str]
+
+    def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
+        """Initialise and set the expected state."""
+        super().__init__(hass, config)
+        self._states = {STATE_ON}
+
+    def entity_filter(self, entities: set[str]) -> set[str]:
+        """Restrict to the matching ENGIE binary sensor."""
+        candidates = super().entity_filter(entities)
+        return filter_by_translation_key(self._hass, candidates, self._translation_key)
+
+
+# ---------------------------------------------------------------------------
+# epex_price_is_negative
+# ---------------------------------------------------------------------------
+
+
+class EpexPriceIsNegativeCondition(_BinaryOnCondition):
     """Condition: EPEX price is negative (binary sensor is on)."""
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
-        BINARY_SENSOR_DOMAIN: DomainSpec()
-    }
-
-    def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
-        """Initialise and set the expected state."""
-        super().__init__(hass, config)
-        self._states = {STATE_ON}
-
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE epex_negative binary sensor."""
-        candidates = super().entity_filter(entities)
-        return filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_EPEX_NEGATIVE
-        )
+    _translation_key = TRANSLATION_KEY_EPEX_NEGATIVE
 
 
-class EpexPriceIsNegativeQuarterHourCondition(EntityStateConditionBase):
+class EpexPriceIsNegativeQuarterHourCondition(_BinaryOnCondition):
     """Condition: EPEX quarter-hourly price is negative (binary sensor is on)."""
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
-        BINARY_SENSOR_DOMAIN: DomainSpec()
-    }
-
-    def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
-        """Initialise and set the expected state."""
-        super().__init__(hass, config)
-        self._states = {STATE_ON}
-
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the ENGIE epex_negative_quarter_hour binary sensor."""
-        candidates = super().entity_filter(entities)
-        return filter_by_translation_key(
-            self._hass, candidates, TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR
-        )
+    _translation_key = TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR
 
 
 # ---------------------------------------------------------------------------
@@ -186,32 +187,8 @@ class InjectionSlotIsCondition(_OptionBasedStateCondition):
 
 
 # ---------------------------------------------------------------------------
-# Phase D - Binary "is" conditions (EntityStateConditionBase, state == on)
+# Phase D - Binary "is" conditions (_BinaryOnCondition subclasses)
 # ---------------------------------------------------------------------------
-
-
-class _BinaryOnCondition(EntityStateConditionBase):
-    """
-    Base for binary-sensor conditions that check the sensor is ``on``.
-
-    Subclasses declare ``_translation_key`` to restrict entity_filter to
-    a single ENGIE binary sensor per entity class.
-    """
-
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
-        BINARY_SENSOR_DOMAIN: DomainSpec()
-    }
-    _translation_key: ClassVar[str]
-
-    def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
-        """Initialise and set the expected state."""
-        super().__init__(hass, config)
-        self._states = {STATE_ON}
-
-    def entity_filter(self, entities: set[str]) -> set[str]:
-        """Restrict to the matching ENGIE binary sensor."""
-        candidates = super().entity_filter(entities)
-        return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
 class OfftakeIsOptimalCondition(_BinaryOnCondition):
