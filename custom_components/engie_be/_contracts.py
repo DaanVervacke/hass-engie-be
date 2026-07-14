@@ -76,7 +76,7 @@ def energy_products_by_ean(payload: Any) -> dict[str, str]:
             continue
         energy_product = product_configuration.get("energyProduct")
         if isinstance(ean, str) and ean and isinstance(energy_product, str):
-            result[ean] = energy_product
+            result[bare_ean(ean)] = energy_product
     return result
 
 

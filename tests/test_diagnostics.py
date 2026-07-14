@@ -401,6 +401,45 @@ async def test_diagnostics_does_not_leak_raw_eans_from_contracts(
     assert "541448820000000001_ID1" not in serialised
 
 
+async def test_diagnostics_hashes_service_points_and_energy_products_alike(
+    hass: HomeAssistant,
+) -> None:
+    """
+    The same physical EAN must hash identically in both sections.
+
+    ``service_points`` is keyed by bare EAN (per the repo-wide convention)
+    while the contracts payload's ``servicePointNumber`` carries a
+    delivery-point suffix. A support engineer must be able to correlate
+    the two sections for the same physical meter, so their hashed keys
+    must match.
+    """
+    entry = _build_entry_with_contracts_payload(
+        hass,
+        is_dynamic_override=True,
+        energy_contracts_payload={
+            "items": [
+                {
+                    "servicePointNumber": "541448820000000001_ID1",
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "productConfiguration": {"energyProduct": "DYNAMIC"},
+                },
+            ],
+        },
+    )
+    sub_id = next(iter(entry.subentries))
+    sub_data = entry.runtime_data.subentry_data[sub_id]
+    sub_data.service_points = {"541448820000000001": "ELECTRICITY"}
+
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    sub = next(iter(diag["subentries"].values()))
+
+    service_point_hashes = set(sub["service_points"])
+    energy_product_hashes = set(sub["energy_products"])
+    assert service_point_hashes == energy_product_hashes
+    assert service_point_hashes == {_hash_ean("541448820000000001")}
+
+
 # ---------------------------------------------------------------------------
 # Private summariser branches
 #

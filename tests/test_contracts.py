@@ -120,12 +120,12 @@ def test_is_account_dynamic_missing_items_key() -> None:
 
 
 def test_energy_products_by_ean_maps_active_contracts() -> None:
-    """Mapping must include one entry per active contract keyed by EAN."""
+    """Mapping must include one entry per active contract keyed by bare EAN."""
     payload = _load("energy_contracts_dynamic_plus_fixed_gas.json")
     mapping = energy_products_by_ean(payload)
     assert mapping == {
-        "541448820000000001_ID1": "DYNAMIC",
-        "541448820000000002_ID2": "EASY",
+        "541448820000000001": "DYNAMIC",
+        "541448820000000002": "EASY",
     }
 
 
@@ -148,7 +148,7 @@ def test_energy_products_by_ean_skips_inactive_contracts() -> None:
         ],
     }
     assert energy_products_by_ean(payload) == {
-        "541448820000000002_ID2": "EASY",
+        "541448820000000002": "EASY",
     }
 
 
@@ -180,8 +180,15 @@ def test_energy_products_by_ean_skips_items_missing_ean_or_product() -> None:
         ],
     }
     assert energy_products_by_ean(payload) == {
-        "541448820000000004_ID4": "EASY",
+        "541448820000000004": "EASY",
     }
+
+
+def test_energy_products_by_ean_strips_delivery_point_suffix() -> None:
+    """The mapping key must be the bare EAN, matching service_points_by_ean."""
+    payload = _load("energy_contracts_dynamic_elec_only.json")
+    mapping = energy_products_by_ean(payload)
+    assert mapping == {"541448820000000001": "DYNAMIC"}
 
 
 # ---------------------------------------------------------------------------
