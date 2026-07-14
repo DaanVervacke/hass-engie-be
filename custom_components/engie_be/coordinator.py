@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
 
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -30,6 +29,7 @@ from .api import (
     mask_identifier,
 )
 from .const import (
+    BRUSSELS_TZ,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_EXPOSE_ALL_ENTITIES,
     CONF_UPDATE_INTERVAL,
@@ -37,7 +37,6 @@ from .const import (
     DOMAIN,
     EPEX_DEFAULT_SLOT_DURATION_MINUTES,
     EPEX_MWH_TO_KWH,
-    EPEX_TZ,
     KEY_IS_DYNAMIC,
     LOGGER,
     EpexGranularity,
@@ -50,12 +49,6 @@ if TYPE_CHECKING:
 
     from .api import EngieBeApiClient
     from .data import EngieBeConfigEntry
-
-# Brussels timezone is treated as a module-level constant: it never
-# changes at runtime and instantiating ``ZoneInfo`` on every refresh
-# is wasteful. ``zoneinfo`` is part of the stdlib (Python 3.9+) and
-# pulls DST data from the host -- this matches HA core practice.
-_BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
 
 # Per-flag metadata for the two thin coordinator helpers.
 # Maps the leaf field name on FeatureFlagState to (log_prefix, task_name_suffix).
@@ -202,7 +195,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # the first day or two of a new month before ENGIE has recorded a
         # 15-minute interval), we fall back to the previous month so users
         # still see a meaningful value.
-        today = dt_util.now(_BRUSSELS_TZ)
+        today = dt_util.now(BRUSSELS_TZ)
 
         previous_peaks_wrapper: dict[str, Any] | None = None
         if isinstance(self.data, dict):
@@ -1589,11 +1582,11 @@ class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
         # Two full Brussels-local days expressed as a half-open interval,
         # so we always cover today + tomorrow regardless of which side of
         # the daily 13:15 publication we're polling.
-        now_brussels = dt_util.now(_BRUSSELS_TZ)
+        now_brussels = dt_util.now(BRUSSELS_TZ)
         start_local = datetime.combine(
             now_brussels.date(),
             time(0, 0),
-            tzinfo=_BRUSSELS_TZ,
+            tzinfo=BRUSSELS_TZ,
         )
         end_local = start_local + timedelta(days=2)
 
@@ -1678,11 +1671,11 @@ class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
         previous = self.data if isinstance(self.data, EpexPayload) else None
 
         # Window: [today_brussels_00:00 .. day_after_tomorrow_brussels_00:00).
-        now_brussels = dt_util.now(_BRUSSELS_TZ)
+        now_brussels = dt_util.now(BRUSSELS_TZ)
         start_local = datetime.combine(
             now_brussels.date(),
             time(0, 0),
-            tzinfo=_BRUSSELS_TZ,
+            tzinfo=BRUSSELS_TZ,
         )
         end_local = start_local + timedelta(days=2)
 
@@ -1782,7 +1775,7 @@ def _parse_epex_response(
         # Normalise to Brussels-local for downstream slicing; the slot
         # is the same instant either way, but Brussels-local makes the
         # date comparisons in the sensor layer trivial and DST-safe.
-        start_dt = start_dt.astimezone(_BRUSSELS_TZ)
+        start_dt = start_dt.astimezone(BRUSSELS_TZ)
         slots.append(
             EpexSlot(
                 start=start_dt,

@@ -10,18 +10,16 @@ from __future__ import annotations
 
 from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo
 
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.util import dt as dt_util
 
 from ._tou import _WEEKDAY_KEYS, _parse_hhmm, tou_schedules_payload
-from .const import EPEX_TZ
+from .const import BRUSSELS_TZ
 
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
 
-_BRUSSELS = ZoneInfo(EPEX_TZ)
 _LOOKAHEAD_DAYS = 7
 
 # Public: trigger.py uses this prefix to identify TOU events in the calendar.
@@ -62,7 +60,7 @@ def tou_slot_events(
         return []
 
     events: list[CalendarEvent] = []
-    now_local = dt_util.now(_BRUSSELS)
+    now_local = dt_util.now(BRUSSELS_TZ)
     horizon = now_local + timedelta(days=_LOOKAHEAD_DAYS)
 
     for item in items:
@@ -116,17 +114,19 @@ def _slots_to_events(
                 if slot_start is None or slot_end is None or not isinstance(code, str):
                     continue
                 start_dt = dt_util.as_utc(
-                    datetime.combine(day_cursor, slot_start, tzinfo=_BRUSSELS)
+                    datetime.combine(day_cursor, slot_start, tzinfo=BRUSSELS_TZ)
                 )
                 if slot_end == time(0, 0):
                     end_dt = dt_util.as_utc(
                         datetime.combine(
-                            day_cursor + timedelta(days=1), time(0, 0), tzinfo=_BRUSSELS
+                            day_cursor + timedelta(days=1),
+                            time(0, 0),
+                            tzinfo=BRUSSELS_TZ,
                         )
                     )
                 else:
                     end_dt = dt_util.as_utc(
-                        datetime.combine(day_cursor, slot_end, tzinfo=_BRUSSELS)
+                        datetime.combine(day_cursor, slot_end, tzinfo=BRUSSELS_TZ)
                     )
                 # Clip past events but include the currently-active one.
                 if end_dt <= start:

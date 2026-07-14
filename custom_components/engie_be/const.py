@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 from logging import Logger, getLogger
+from zoneinfo import ZoneInfo
 
 LOGGER: Logger = getLogger(__package__)
 
@@ -191,6 +192,10 @@ EPEX_BASE_URL = "https://api.engie.be/engie/ms/pricing/v1/public/prices/epex"
 # carry explicit DST-aware offsets but slot bucketing must use the
 # Brussels civil day to match what end-users see on their bill.
 EPEX_TZ = "Europe/Brussels"
+# Shared Brussels ZoneInfo instance, reused across the integration so every
+# module bucketing timestamps into local civil time agrees on the same
+# object instead of constructing its own ZoneInfo("Europe/Brussels").
+BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
 # Hourly slots today; carried as a constant so a future 15-min rollout
 # only requires touching one place.
 EPEX_DEFAULT_SLOT_DURATION_MINUTES = 60

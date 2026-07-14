@@ -4,13 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
 
+from .const import BRUSSELS_TZ
 from .data import unwrap_dict_payload
-
-# Brussels timezone used to anchor ``dueDate`` strings (which are dates,
-# not datetimes) to a timezone-aware datetime at midnight local time.
-_BRUSSELS_TZ = ZoneInfo("Europe/Brussels")
 
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
@@ -94,7 +90,7 @@ def next_due_date(
             continue
         try:
             due_date_obj = datetime.strptime(due_raw, "%Y-%m-%d").replace(
-                tzinfo=_BRUSSELS_TZ,
+                tzinfo=BRUSSELS_TZ,
             )
         except ValueError:
             continue

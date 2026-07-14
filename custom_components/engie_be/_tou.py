@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
 
+from .const import BRUSSELS_TZ
 from .data import unwrap_dict_payload
 
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
 
-_BRUSSELS = ZoneInfo("Europe/Brussels")
 _WEEKDAY_KEYS = (
     "monday",
     "tuesday",
@@ -73,7 +72,7 @@ def current_slot(
     (== midnight/end-of-day) convention. Returns (None, None) if the
     schedule is empty, malformed, or no slot covers the current moment.
     """
-    now_local = now.astimezone(_BRUSSELS) if now else datetime.now(_BRUSSELS)
+    now_local = now.astimezone(BRUSSELS_TZ) if now else datetime.now(BRUSSELS_TZ)
     weekday = now_local.weekday()
     today_slots = _weekday_slots(schedule, weekday)
     for slot in today_slots:
@@ -82,14 +81,14 @@ def current_slot(
         code = slot.get("slotCode")
         if start is None or end is None or not isinstance(code, str):
             continue
-        start_dt = datetime.combine(now_local.date(), start, tzinfo=_BRUSSELS)
+        start_dt = datetime.combine(now_local.date(), start, tzinfo=BRUSSELS_TZ)
         # end="00:00" means end-of-day (midnight tonight -> tomorrow 00:00)
         if end == time(0, 0):
             end_dt = datetime.combine(
-                now_local.date() + timedelta(days=1), time(0, 0), tzinfo=_BRUSSELS
+                now_local.date() + timedelta(days=1), time(0, 0), tzinfo=BRUSSELS_TZ
             )
         else:
-            end_dt = datetime.combine(now_local.date(), end, tzinfo=_BRUSSELS)
+            end_dt = datetime.combine(now_local.date(), end, tzinfo=BRUSSELS_TZ)
         if start_dt <= now_local < end_dt:
             return code.lower(), end_dt.astimezone(now_local.tzinfo)
     return None, None

@@ -5,7 +5,6 @@ from __future__ import annotations
 import dataclasses
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -31,9 +30,9 @@ from ._tou import current_slot as tou_current_slot
 from ._tou import schedule_for_ean, tou_schedules_payload
 from .api import mask_identifier
 from .const import (
+    BRUSSELS_TZ,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_EXPOSE_ALL_ENTITIES,
-    EPEX_TZ,
     LOGGER,
     SOLAR_SURPLUS_LEVELS,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
@@ -77,7 +76,7 @@ def _detect_energy_type(ean: str, service_points: dict[str, str]) -> str:
 
 def _find_current_price(prices: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Find the price entry whose date range covers today, or the last entry."""
-    today = dt_util.now(_BRUSSELS_TZ).date()
+    today = dt_util.now(BRUSSELS_TZ).date()
     for price in prices:
         from_date = date.fromisoformat(price["from"])
         to_date = date.fromisoformat(price["to"])
@@ -935,7 +934,6 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
 
 _EPEX_UNIT = "EUR/kWh"
 _EPEX_PRECISION = 4
-_BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
 # Slot durations at or below this use the lean {start, value} shape in
 # today/tomorrow arrays -- see EngieBeEpexCurrentSensor.extra_state_attributes.
 _EPEX_LEAN_SLOT_SHAPE_MAX_MINUTES = 15
@@ -1153,7 +1151,7 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
         if payload is None:
             return {}
 
-        today_brussels = dt_util.now(_BRUSSELS_TZ).date()
+        today_brussels = dt_util.now(BRUSSELS_TZ).date()
         tomorrow_brussels = today_brussels + timedelta(days=1)
         slot_duration = (
             _slot_duration_minutes(payload.slots[0]) if payload.slots else None
@@ -1292,7 +1290,7 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
         payload = epex_payload(self.coordinator)
         if payload is None:
             return None
-        today = dt_util.now(_BRUSSELS_TZ).date()
+        today = dt_util.now(BRUSSELS_TZ).date()
         slots = _slots_for_date(payload, today)
         if not slots:
             return None
@@ -1465,7 +1463,7 @@ def _solar_slots_for_local_date(
         start = _parse_solar_slot_start(slot.get("startTime"))
         if start is None:
             continue
-        if start.astimezone(ZoneInfo(EPEX_TZ)).date() == target_date:
+        if start.astimezone(BRUSSELS_TZ).date() == target_date:
             matching.append(slot)
     return matching
 
@@ -1582,7 +1580,7 @@ class EngieBeSolarSurplusSensor(_EngieBeSolarSurplusBase):
         forecasts = self._forecasts_for_ean()
         if not forecasts:
             return None
-        today = dt_util.now(ZoneInfo(EPEX_TZ)).date().isoformat()
+        today = dt_util.now(BRUSSELS_TZ).date().isoformat()
         for day in forecasts:
             if isinstance(day, dict) and day.get("forecastDate") == today:
                 return day
@@ -1725,7 +1723,7 @@ class EngieBeSolarSurplusTodayTotalSensor(_EngieBeSolarSurplusBase):
         slots = self._cached_flat_slots()
         if not slots:
             return None
-        today = dt_util.now(ZoneInfo(EPEX_TZ)).date()
+        today = dt_util.now(BRUSSELS_TZ).date()
         total = 0.0
         seen = False
         for slot in _solar_slots_for_local_date(slots, today):
@@ -1757,7 +1755,7 @@ class EngieBeSolarSurplusTodayPeakSensor(_EngieBeSolarSurplusBase):
         slots = self._cached_flat_slots()
         if not slots:
             return []
-        today = dt_util.now(ZoneInfo(EPEX_TZ)).date()
+        today = dt_util.now(BRUSSELS_TZ).date()
         parsed: list[tuple[datetime, float]] = []
         for slot in _solar_slots_for_local_date(slots, today):
             start = _parse_solar_slot_start(slot.get("startTime"))
