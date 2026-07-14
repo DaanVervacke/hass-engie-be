@@ -12,6 +12,7 @@ payload rather than driving a full refresh.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -22,6 +23,7 @@ from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be.api import (
@@ -826,3 +828,50 @@ def test_find_history_fallback_returns_none_for_only_malformed_year_month() -> N
     history = [{"yearMonth": "bad", "happyHour": {"rewardEuros": 5.0}}]
     result = _find_history_fallback(history, "BAN-XXX")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _async_update_data: guard against a non-dict ``async_get_prices`` response
+# (coordinator.py L185-188)
+# ---------------------------------------------------------------------------
+
+
+async def test_update_data_handles_non_dict_prices_response(
+    hass: HomeAssistant,
+) -> None:
+    """
+    A malformed (non-dict) prices payload must not raise ``TypeError``.
+
+    ``async_get_prices`` is contractually expected to return a dict, but a
+    malformed upstream response could hand back ``None`` or some other
+    shape. The coordinator must not crash while writing the derived
+    ``is_dynamic`` flag onto it -- it should either complete the refresh
+    or raise ``UpdateFailed``, never ``TypeError``.
+    """
+    entry = _build_entry(hass)
+    coordinator = _coordinator(hass, entry)
+    coordinator._needs_relations_backfill = False
+    _wire_runtime(entry, coordinator)
+
+    client = MagicMock()
+    client.async_get_prices = AsyncMock(return_value=None)
+    client.async_get_monthly_peaks = AsyncMock(
+        side_effect=EngieBeApiClientError("boom"),
+    )
+    client.async_get_happy_hours_service_enabled_flag = AsyncMock(
+        side_effect=EngieBeApiClientError("boom"),
+    )
+    client.async_get_solar_surplus_shown_dashboard_flag = AsyncMock(
+        return_value={"value": False},
+    )
+    client.async_get_dgo_tou_is_active_flag = AsyncMock(return_value={"value": False})
+    client.async_get_account_balance = AsyncMock(
+        side_effect=EngieBeApiClientError("boom"),
+    )
+    entry.runtime_data.client = client
+
+    # Call the update method directly (not ``async_refresh``) since the
+    # base coordinator swallows arbitrary exceptions internally and would
+    # mask a ``TypeError`` regression here as a silent no-op.
+    with contextlib.suppress(UpdateFailed):
+        await coordinator._async_update_data()

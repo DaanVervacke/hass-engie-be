@@ -184,7 +184,8 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # falls back to this value when the contracts call failed.
         items = data.get("items") if isinstance(data, dict) else None
         is_dynamic = isinstance(items, list) and len(items) == 0
-        data[KEY_IS_DYNAMIC] = is_dynamic
+        if isinstance(data, dict):
+            data[KEY_IS_DYNAMIC] = is_dynamic
 
         # One-shot backfill of relations-derived display fields. Runs
         # only when the subentry is missing at least one such field.
