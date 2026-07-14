@@ -122,7 +122,7 @@ config-pre-*/
 # -----------------------------------------------------------------------------
 backups/
 research/
-docs/audit*.md
+docs/
 
 # Implementation plans (developer-only, not for the repo)
 plans/
