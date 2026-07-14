@@ -202,23 +202,12 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # 15-minute interval), we fall back to the previous month so users
         # still see a meaningful value.
         today = dt_util.now(_BRUSSELS_TZ)
+
         previous_peaks_wrapper: dict[str, Any] | None = None
         if isinstance(self.data, dict):
             existing = self.data.get("peaks")
             if isinstance(existing, dict):
                 previous_peaks_wrapper = existing
-
-        peaks_wrapper = await self._async_fetch_peaks_with_fallback(
-            client,
-            business_agreement_number,
-            today.year,
-            today.month,
-            previous_peaks_wrapper,
-        )
-
-        if peaks_wrapper is not None:
-            data["peaks"] = peaks_wrapper
-            self._record_peak_history(peaks_wrapper)
 
         # Probe the feature-flags endpoint to learn whether this BAN is
         # enrolled in Happy Hours. The endpoint is the authoritative
@@ -229,13 +218,63 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # signal change" so a transient outage never silently drops or
         # creates Happy Hours entities.
         previous_enrolled = self._read_cached_enrollment()
-        new_enrolled = await self._async_fetch_enrollment(
-            client,
-            business_agreement_number,
-            previous_enrolled=previous_enrolled,
+        previous_has_solar = self._read_cached_flag("solar")
+        previous_is_tou_active = self._read_cached_flag("tou_active")
+
+        # Fetch account-balance / billing data. The endpoint is per-BAN
+        # with no feature flag; fetch unconditionally on every refresh.
+        # Soft-fail to previous wrapper on transient errors so sensors
+        # stay populated. Auth errors escalate to reauth.
+        previous_billing_wrapper: dict[str, Any] | None = None
+        if isinstance(self.data, dict):
+            existing_billing = self.data.get("billing")
+            if isinstance(existing_billing, dict):
+                previous_billing_wrapper = existing_billing
+
+        # These five calls have no data dependency on each other's result;
+        # run them concurrently instead of five sequential round trips.
+        # Each already soft-fails its own EngieBeApiClientError internally
+        # (returning a fallback value) and re-raises
+        # EngieBeApiClientAuthenticationError, so gather() without
+        # return_exceptions=True preserves current abort-on-auth-failure
+        # behaviour: an auth error propagates immediately and cancels the
+        # remaining in-flight tasks.
+        (
+            peaks_wrapper,
+            new_enrolled,
+            solar_shown,
+            tou_active,
+            billing_wrapper,
+        ) = await asyncio.gather(
+            self._async_fetch_peaks_with_fallback(
+                client,
+                business_agreement_number,
+                today.year,
+                today.month,
+                previous_peaks_wrapper,
+            ),
+            self._async_fetch_enrollment(
+                client,
+                business_agreement_number,
+                previous_enrolled=previous_enrolled,
+            ),
+            self._async_fetch_solar_flag(client, business_agreement_number),
+            self._async_fetch_tou_flag(client, business_agreement_number),
+            self._async_fetch_billing(
+                client,
+                business_agreement_number,
+                previous_billing_wrapper,
+            ),
         )
+
         if expose_all:
             new_enrolled = True
+            solar_shown = True
+            tou_active = True
+
+        if peaks_wrapper is not None:
+            data["peaks"] = peaks_wrapper
+            self._record_peak_history(peaks_wrapper)
 
         # Only poll the Happy Hours event endpoint for enrolled BANs.
         # When un-enrolled, drop any stale wrapper so the entities (if
@@ -304,14 +343,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(existing_solar, dict):
                 previous_solar_wrapper = existing_solar
 
-        previous_has_solar = self._read_cached_flag("solar")
-        solar_shown = await self._async_fetch_solar_flag(
-            client,
-            business_agreement_number,
-        )
-        if expose_all:
-            solar_shown = True
-
         if solar_shown:
             solar_wrapper = await self._async_fetch_solar_surplus(
                 client,
@@ -341,13 +372,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(existing_tou, dict):
                 previous_tou_wrapper = existing_tou
 
-        previous_is_tou_active = self._read_cached_flag("tou_active")
-        tou_active = await self._async_fetch_tou_flag(
-            client,
-            business_agreement_number,
-        )
-        if expose_all:
-            tou_active = True
         if tou_active:
             tou_wrapper = await self._async_fetch_tou_schedules(
                 client,
@@ -373,21 +397,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 tou_active,
             )
 
-        # Fetch account-balance / billing data. The endpoint is per-BAN
-        # with no feature flag; fetch unconditionally on every refresh.
-        # Soft-fail to previous wrapper on transient errors so sensors
-        # stay populated. Auth errors escalate to reauth.
-        previous_billing_wrapper: dict[str, Any] | None = None
-        if isinstance(self.data, dict):
-            existing_billing = self.data.get("billing")
-            if isinstance(existing_billing, dict):
-                previous_billing_wrapper = existing_billing
-
-        billing_wrapper = await self._async_fetch_billing(
-            client,
-            business_agreement_number,
-            previous_billing_wrapper,
-        )
         if billing_wrapper is not None:
             data["billing"] = billing_wrapper
 
