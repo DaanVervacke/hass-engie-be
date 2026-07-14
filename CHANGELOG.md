@@ -7,15 +7,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-## [0.13.0b4] - 2026-07-14
+## [0.13.0b4] - 2026-07-15
 
 ### Added
 
 - Debug toggle to expose all entities regardless of contract type or detected feature flags, for troubleshooting and support requests.
+- Tomorrow EPEX prices published trigger. Fires once per Brussels day when the coordinator's payload gains tomorrow's day-ahead slate, so dynamic-tariff automations no longer need to poll the EPEX sensor's tomorrow attribute.
+- Daily capacity-tariff peak sensor exposing the most recent daily peak (kW) with peak_date, peak_kwh, peak_start, peak_end and the full daily_peaks array as attributes. Disabled by default.
 
 ### Changed
 
-- The coordinator's peaks, Happy Hours enrollment, solar-flag, TOU-flag, and billing fetches now run concurrently instead of sequentially on each refresh, reducing refresh latency.
+- All independent coordinator fetches (peaks, Happy Hours enrollment, solar-flag, TOU-flag, billing, and the per-subentry Happy Hours, month-report, solar-surplus, and TOU-schedule fetches) now run concurrently instead of sequentially on each refresh, reducing refresh latency.
 - Solar Surplus and Time-of-Use sensor and binary-sensor friendly names no longer include a trailing `({ean})` suffix, for example "Solar Surplus forecast" instead of "Solar Surplus forecast ({ean})".
 
 ### Fixed
@@ -29,6 +31,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Fixed diagnostics exports hashing the same physical EAN to two different values across the service_points and energy_products sections, which broke support-engineer correlation between the two.
 - Fixed price sensors picking the wrong day's price entry for part of the day. The current-price lookup computed "today" in UTC instead of Brussels time, which could select yesterday's or tomorrow's price row during the hours the two dates disagree.
 - Fixed a possible crash in the EPEX next-hour sensor's attributes before the first successful coordinator refresh, by guarding against a missing last-fetched timestamp.
+- Fixed a possible crash when the ENGIE API returns a non-dict response where a dict was expected.
+- Fixed a possible crash in price sensors when the API returns a non-numeric string where a number was expected.
+- Fixed calendar triggers leaking stale listeners on reschedule. Each reschedule cycle appended a new listener without dropping the fired one, causing unbounded growth and duplicate firings for multi-BAN accounts.
 - Fixed Time-of-Use calendar events using naive Brussels-local start and end times instead of UTC, which could misalign event boundaries.
 - Fixed historical usage re-imports with an explicit start date reseeding cumulative sums from the most recent statistic instead of the one immediately before the re-imported window, which could make Home Assistant read a legitimate backfill as a meter reset.
 - Added missing icons for the Time-of-Use offtake and injection "is optimal" binary sensors.
