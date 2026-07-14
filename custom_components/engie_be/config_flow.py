@@ -32,6 +32,7 @@ from .api import (
     EngieBeApiClientCommunicationError,
     EngieBeApiClientError,
     EngieBeApiClientMfaError,
+    mask_identifier,
 )
 from .const import (
     CONF_ACCESS_TOKEN,
@@ -1144,7 +1145,7 @@ async def _fetch_ban_divisions(
         except EngieBeApiClientError as exc:
             LOGGER.debug(
                 "Contracts fetch failed for BAN %s, falling back to all options: %s",
-                ban,
+                mask_identifier(ban),
                 exc,
             )
             return None

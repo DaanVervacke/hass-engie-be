@@ -30,6 +30,7 @@ from custom_components.engie_be.api import (
 from custom_components.engie_be.config_flow import (
     EngieBeFlowHandler,
     _collect_configured_identifiers,
+    _fetch_ban_divisions,
 )
 from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
@@ -2065,5 +2066,22 @@ async def test_import_options_subentry_flow_elec_only_ban_hides_gas(
                 }
             },
         )
+        assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
 
-    assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
+
+async def test_fetch_ban_divisions_masks_ban_on_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A contracts-fetch failure must not leak the raw BAN into the log."""
+    client = AsyncMock()
+    client.async_get_energy_contracts = AsyncMock(
+        side_effect=EngieBeApiClientError("boom")
+    )
+    ban = "002200001234"
+
+    with caplog.at_level("DEBUG"):
+        result = await _fetch_ban_divisions(client, [ban])
+
+    assert result == {}
+    assert ban not in caplog.text
+    assert caplog.text.count("1234") >= 1  # masked form keeps the last 4 chars
