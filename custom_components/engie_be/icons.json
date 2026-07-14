@@ -163,6 +163,12 @@
             },
             "happy_hours_active": {
                 "default": "mdi:sun-clock"
+            },
+            "tou_offtake_is_optimal": {
+                "default": "mdi:transmission-tower-import"
+            },
+            "tou_injection_is_optimal": {
+                "default": "mdi:transmission-tower-export"
             }
         }
     },

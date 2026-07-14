@@ -78,3 +78,31 @@ def energy_products_by_ean(payload: Any) -> dict[str, str]:
         if isinstance(ean, str) and ean and isinstance(energy_product, str):
             result[ean] = energy_product
     return result
+
+
+def service_points_by_ean(payload: Any) -> dict[str, str]:
+    """
+    Return a mapping of EAN to division for active contracts.
+
+    The energy-contracts payload carries a division per active contract
+    regardless of tariff type, unlike the supplier-energy-prices
+    endpoint which returns no items for pure dynamic-tariff accounts.
+    Used to fill in service_points for accounts the prices-based
+    lookup misses. Items missing an EAN or division are skipped.
+    """
+    result: dict[str, str] = {}
+    if not isinstance(payload, dict):
+        return result
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return result
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") != CONTRACT_STATUS_ACTIVE:
+            continue
+        ean = item.get("servicePointNumber")
+        division = item.get("division")
+        if isinstance(ean, str) and ean and isinstance(division, str) and division:
+            result[ean] = division
+    return result

@@ -253,14 +253,16 @@ def test_energy_sensor_extra_state_attributes_full_shape() -> None:
     Verify the full attributes shape.
 
     Full attributes shape includes ean, last_fetched, from/to, vat_tariff,
-    and time_of_use_slot_code.
+    and time_of_use_slot_code. ``ean`` is stripped of its delivery-point
+    suffix - the raw ``_ID1``-suffixed EAN is an internal lookup detail,
+    not something to expose to the user.
     """
     sensor = _build_energy_sensor(
         value_key="offtake.priceValue",
         slot_code="TOTAL_HOURS",
     )
     attrs = sensor.extra_state_attributes
-    assert attrs["ean"] == _EAN
+    assert attrs["ean"] == _EAN.split("_", maxsplit=1)[0]
     assert attrs["last_fetched"] == "2026-05-22T12:00:00+00:00"
     assert attrs["from"] == "2000-01-01"
     assert attrs["to"] == "2099-12-31"
@@ -306,7 +308,7 @@ def test_energy_sensor_extra_state_attributes_when_no_price_entry() -> None:
     )
     attrs = sensor.extra_state_attributes
     assert attrs == {
-        "ean": _MISSING_EAN,
+        "ean": _MISSING_EAN.split("_", maxsplit=1)[0],
         "last_fetched": "2026-05-22T12:00:00+00:00",
     }
 

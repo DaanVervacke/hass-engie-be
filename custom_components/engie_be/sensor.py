@@ -147,10 +147,12 @@ def _build_sensor_descriptions(
 
     for item in data.get("items", []):
         ean: str = item.get("ean", "unknown")
-        energy_type = _detect_energy_type(ean, service_points)
-        # Strip trailing _ID* suffix for display
+        # service_points is keyed by the bare EAN (see
+        # _async_populate_service_points), so strip the trailing _ID*
+        # suffix before using it for the lookup or any user-facing key.
         # e.g. "541448...267_ID1" -> cleaner key
         ean_short = ean.split("_", maxsplit=1)[0] if "_" in ean else ean
+        energy_type = _detect_energy_type(ean_short, service_points)
 
         current_price = _find_current_price(item.get("prices", []))
         if current_price is None:
@@ -865,7 +867,10 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        attrs: dict[str, Any] = {"ean": self._ean}
+        ean_display = (
+            self._ean.split("_", maxsplit=1)[0] if "_" in self._ean else self._ean
+        )
+        attrs: dict[str, Any] = {"ean": ean_display}
         if self.coordinator.last_successful_fetch:
             attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
         price_entry = self._get_current_price_entry()
@@ -1328,7 +1333,10 @@ _SOLAR_SURPLUS_CURRENT = SensorEntityDescription(
     icon="mdi:solar-power",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.MEASUREMENT,
+    # No state_class: this is a snapshot of one forecast hour slot's
+    # value, not a measurement, total, or total_increasing. HA rejects
+    # ENERGY + MEASUREMENT at runtime; see _CAPTAR_MONTHLY_PEAK_ENERGY
+    # for the same pattern.
     suggested_display_precision=3,
 )
 _SOLAR_SURPLUS_NEXT_HOUR = SensorEntityDescription(
@@ -1337,7 +1345,7 @@ _SOLAR_SURPLUS_NEXT_HOUR = SensorEntityDescription(
     icon="mdi:solar-power",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.MEASUREMENT,
+    # No state_class: same snapshot reasoning as _SOLAR_SURPLUS_CURRENT.
     suggested_display_precision=3,
 )
 _SOLAR_SURPLUS_TODAY_TOTAL = SensorEntityDescription(
@@ -1346,7 +1354,11 @@ _SOLAR_SURPLUS_TODAY_TOTAL = SensorEntityDescription(
     icon="mdi:solar-power",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.MEASUREMENT,
+    # No state_class: re-summed from today's forecast slots on every
+    # refresh (not an accumulating meter reading), so forecast revisions
+    # can move it up or down. TOTAL/TOTAL_INCREASING assume a
+    # monotonically accumulating source; this isn't one. Same pattern as
+    # _CAPTAR_MONTHLY_PEAK_ENERGY.
     suggested_display_precision=2,
 )
 _SOLAR_SURPLUS_TODAY_PEAK = SensorEntityDescription(
@@ -1355,7 +1367,7 @@ _SOLAR_SURPLUS_TODAY_PEAK = SensorEntityDescription(
     icon="mdi:solar-power",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
-    state_class=SensorStateClass.MEASUREMENT,
+    # No state_class: same snapshot reasoning as _SOLAR_SURPLUS_CURRENT.
     suggested_display_precision=3,
 )
 

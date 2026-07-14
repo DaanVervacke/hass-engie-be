@@ -8,6 +8,7 @@ from pathlib import Path
 from custom_components.engie_be._contracts import (
     energy_products_by_ean,
     is_account_dynamic,
+    service_points_by_ean,
 )
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -178,4 +179,80 @@ def test_energy_products_by_ean_skips_items_missing_ean_or_product() -> None:
     }
     assert energy_products_by_ean(payload) == {
         "541448820000000004_ID4": "EASY",
+    }
+
+
+# ---------------------------------------------------------------------------
+# service_points_by_ean
+# ---------------------------------------------------------------------------
+
+
+def test_service_points_by_ean_maps_active_contracts() -> None:
+    """Mapping must include one entry per active contract keyed by EAN."""
+    payload = _load("energy_contracts_dynamic_plus_fixed_gas.json")
+    mapping = service_points_by_ean(payload)
+    assert mapping == {
+        "541448820000000001_ID1": "ELECTRICITY",
+        "541448820000000002_ID2": "GAS",
+    }
+
+
+def test_service_points_by_ean_maps_dynamic_elec_only() -> None:
+    """A pure dynamic-tariff account's single EAN must still map."""
+    payload = _load("energy_contracts_dynamic_elec_only.json")
+    assert service_points_by_ean(payload) == {
+        "541448820000000001_ID1": "ELECTRICITY",
+    }
+
+
+def test_service_points_by_ean_skips_inactive_contracts() -> None:
+    """Inactive contracts must be excluded from the mapping."""
+    payload = {
+        "items": [
+            {
+                "division": "ELECTRICITY",
+                "status": "TERMINATED",
+                "servicePointNumber": "541448820000000001_ID1",
+            },
+            {
+                "division": "GAS",
+                "status": "ACTIVE",
+                "servicePointNumber": "541448820000000002_ID2",
+            },
+        ],
+    }
+    assert service_points_by_ean(payload) == {
+        "541448820000000002_ID2": "GAS",
+    }
+
+
+def test_service_points_by_ean_empty_payload() -> None:
+    """Empty payloads must return an empty mapping, not raise."""
+    assert service_points_by_ean(_load("energy_contracts_empty.json")) == {}
+    assert service_points_by_ean(None) == {}
+    assert service_points_by_ean({}) == {}
+
+
+def test_service_points_by_ean_skips_items_missing_ean_or_division() -> None:
+    """Items missing EAN or division must be skipped silently."""
+    payload = {
+        "items": [
+            {
+                "status": "ACTIVE",
+                "division": "ELECTRICITY",
+            },
+            {
+                "status": "ACTIVE",
+                "servicePointNumber": "541448820000000003_ID3",
+                "division": "",
+            },
+            {
+                "status": "ACTIVE",
+                "servicePointNumber": "541448820000000004_ID4",
+                "division": "GAS",
+            },
+        ],
+    }
+    assert service_points_by_ean(payload) == {
+        "541448820000000004_ID4": "GAS",
     }

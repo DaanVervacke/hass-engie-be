@@ -274,6 +274,47 @@ def test_energy_sensor_unique_id_includes_subentry_segment() -> None:
     assert sensor.unique_id == "test_entry_id_sub_xyz_541448820000000001_offtake"
 
 
+def test_energy_sensor_ean_attribute_strips_delivery_point_suffix() -> None:
+    """
+    The ``ean`` extra-state-attribute must not leak the delivery-point suffix.
+
+    ``self._ean`` itself must stay raw (it's matched against
+    ``coordinator.data["items"]``'s unmodified ``ean`` field to find the
+    current price entry), but the value shown to the user in
+    ``extra_state_attributes`` should be the clean EAN.
+    """
+    coordinator = MagicMock()
+    coordinator.config_entry = MagicMock()
+    coordinator.config_entry.entry_id = "test_entry_id"
+    coordinator.data = {"items": []}
+    coordinator.last_successful_fetch = None
+
+    subentry = MagicMock()
+    subentry.subentry_id = "sub_xyz"
+    subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT
+    subentry.title = "Test Account"
+    subentry.data = {}
+
+    description = SensorEntityDescription(
+        key="541448820000000001_offtake",
+        translation_key="electricity_offtake_price_eur_per_kwh",
+    )
+
+    sensor = EngieBeEnergySensor(
+        coordinator=coordinator,
+        subentry=subentry,
+        entity_description=description,
+        ean="541448820000000001_ID1",
+        value_key="ELE_OFFTAKE",
+        slot_code="STD",
+    )
+
+    assert sensor.extra_state_attributes["ean"] == "541448820000000001"
+    # The internal, unstripped value is unchanged - needed to match
+    # coordinator.data["items"] price lookups.
+    assert sensor._ean == "541448820000000001_ID1"
+
+
 # ---------------------------------------------------------------------------
 # entity-disabled-by-default: verify disabled-by-default flags on descriptions
 # ---------------------------------------------------------------------------

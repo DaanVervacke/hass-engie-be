@@ -16,6 +16,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be import (
@@ -35,6 +36,7 @@ from custom_components.engie_be.const import (
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     CONF_CONSUMPTION_ADDRESS,
+    CONF_EXPOSE_ALL_ENTITIES,
     CONF_IMPORT_END_DATE,
     CONF_IMPORT_ENERGY_TYPES,
     CONF_IMPORT_HISTORY,
@@ -1106,6 +1108,237 @@ async def test_setup_entry_fetches_service_points_in_parallel(
     # Per-subentry service-points dict must reflect each EAN's division.
     sid = _only_subentry_id(entry)
     assert entry.runtime_data.subentry_data[sid].service_points == division_by_ean
+
+
+async def test_setup_entry_strips_delivery_point_suffix_from_service_points(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    The prices API's EAN carries a delivery-point suffix (e.g. "_ID1").
+
+    ``service_points`` must be keyed by the bare EAN so every per-EAN
+    consumer that re-appends "_ID1" itself (solar-surplus fetch, TOU
+    schedule matching) builds a single, correct suffix instead of a
+    double one.
+    """
+    entry = _build_entry(hass)
+    client = _make_client(
+        prices_return={
+            "items": [{"ean": "541448820000000001_ID1"}],
+        },
+    )
+    client.async_get_service_point = AsyncMock(return_value={"division": "ELECTRICITY"})
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    sid = _only_subentry_id(entry)
+    assert entry.runtime_data.subentry_data[sid].service_points == {
+        "541448820000000001": "ELECTRICITY",
+    }
+
+
+async def test_setup_entry_populates_service_points_from_contracts_for_dynamic_account(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Pure dynamic-tariff accounts get zero items from the prices endpoint.
+
+    That's the legacy signal ``is_dynamic`` is derived from - so
+    ``_async_populate_service_points`` never learns their EAN.
+    ``_merge_service_points_from_contracts`` must fill the gap from the
+    energy-contracts payload (already fetched for dynamic-tariff
+    detection) so solar-surplus/TOU entity builders have an EAN to
+    iterate over.
+    """
+    entry = _build_entry(hass)
+    client = _make_client(
+        # Default prices_return is {"items": []} - the dynamic-account shape.
+        energy_contracts_return={
+            "items": [
+                {
+                    "businessAgreementNumber": "002200000001",
+                    "servicePointNumber": "541448820000000001_ID1",
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "productConfiguration": {
+                        "energyProduct": "DYNAMIC",
+                        "type": "INDEXED",
+                    },
+                },
+            ],
+        },
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    sid = _only_subentry_id(entry)
+    assert entry.runtime_data.subentry_data[sid].service_points == {
+        "541448820000000001": "ELECTRICITY",
+    }
+
+
+async def test_setup_entry_contracts_fallback_never_overrides_prices_derived_entry(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """The prices/service-point lookup wins when both sources know an EAN."""
+    entry = _build_entry(hass)
+    client = _make_client(
+        prices_return={
+            "items": [{"ean": "541448820000000001_ID1"}],
+        },
+        energy_contracts_return={
+            "items": [
+                {
+                    "businessAgreementNumber": "002200000001",
+                    "servicePointNumber": "541448820000000001_ID1",
+                    # Deliberately mismatched division to prove the
+                    # prices-derived entry is never overwritten.
+                    "division": "GAS",
+                    "status": "ACTIVE",
+                    "productConfiguration": {
+                        "energyProduct": "EASY",
+                        "type": "INDEXED",
+                    },
+                },
+            ],
+        },
+    )
+    client.async_get_service_point = AsyncMock(return_value={"division": "ELECTRICITY"})
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    sid = _only_subentry_id(entry)
+    assert entry.runtime_data.subentry_data[sid].service_points == {
+        "541448820000000001": "ELECTRICITY",
+    }
+
+
+def _registry_entries_by_unique_id_suffix(
+    hass: HomeAssistant, entry: MockConfigEntry, suffix: str
+) -> list[er.RegistryEntry]:
+    """Return this entry's registered entities whose unique_id ends with suffix."""
+    registry = er.async_get(hass)
+    return [
+        e
+        for e in er.async_entries_for_config_entry(registry, entry.entry_id)
+        if e.unique_id.endswith(suffix)
+    ]
+
+
+async def test_expose_all_reenables_previously_disabled_entities(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Turning on expose_all_entities must re-enable already-registered entities.
+
+    ``entity_registry_enabled_default`` only applies at first
+    registration, so a captar peak energy/start/end sensor that was
+    already registered (disabled) before the toggle is flipped on stays
+    disabled after a reload unless the integration explicitly clears
+    ``disabled_by``.
+    """
+    entry = _build_entry(hass)
+    client = _make_client()
+    # expose_all forces happy_hour_enrolled True on reload, which triggers
+    # a month-report fetch _make_client doesn't mock by default.
+    client.async_get_month_report = AsyncMock(return_value={})
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    assert ok is True
+
+    before = _registry_entries_by_unique_id_suffix(
+        hass, entry, "_captar_monthly_peak_energy"
+    )
+    assert len(before) == 1
+    assert before[0].disabled_by is er.RegistryEntryDisabler.INTEGRATION
+
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_EXPOSE_ALL_ENTITIES: True}
+    )
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+
+    after = _registry_entries_by_unique_id_suffix(
+        hass, entry, "_captar_monthly_peak_energy"
+    )
+    assert len(after) == 1
+    assert after[0].disabled_by is None
+
+
+async def test_expose_all_does_not_reenable_user_disabled_entities(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """An entity the user disabled themselves must stay disabled."""
+    entry = _build_entry(hass)
+    client = _make_client()
+    # expose_all forces happy_hour_enrolled True on reload, which triggers
+    # a month-report fetch _make_client doesn't mock by default.
+    client.async_get_month_report = AsyncMock(return_value={})
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    assert ok is True
+
+    power = _registry_entries_by_unique_id_suffix(
+        hass, entry, "_captar_monthly_peak_power"
+    )
+    assert len(power) == 1
+    registry = er.async_get(hass)
+    registry.async_update_entity(
+        power[0].entity_id, disabled_by=er.RegistryEntryDisabler.USER
+    )
+
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_EXPOSE_ALL_ENTITIES: True}
+    )
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient",
+        return_value=client,
+    ):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+
+    after = _registry_entries_by_unique_id_suffix(
+        hass, entry, "_captar_monthly_peak_power"
+    )
+    assert len(after) == 1
+    assert after[0].disabled_by is er.RegistryEntryDisabler.USER
 
 
 async def test_setup_entry_service_point_failure_does_not_poison_others(

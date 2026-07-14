@@ -17,12 +17,13 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 
-from ._contracts import is_account_dynamic
+from ._contracts import is_account_dynamic, service_points_by_ean
 from ._statistics import (
     _last_stats,
     async_clear_usage_history,
@@ -41,6 +42,7 @@ from .const import (
     ATTR_START_DATE,
     CONF_ACCESS_TOKEN,
     CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_EXPOSE_ALL_ENTITIES,
     CONF_IMPORT_END_DATE,
     CONF_IMPORT_ENERGY_TYPES,
     CONF_IMPORT_HISTORY,
@@ -284,8 +286,10 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
         _async_populate_service_points(client, entry),
         _async_populate_dynamic_flags(client, entry),
     )
+    _merge_service_points_from_contracts(entry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _async_reenable_expose_all_entities(hass, entry)
 
     _async_register_services(hass)
 
@@ -1002,8 +1006,62 @@ async def _async_populate_service_points(
             raise result
         division: str = result.get("division", "")
         if division:
-            entry.runtime_data.subentry_data[subentry_id].service_points[ean] = division
+            # The prices API returns the EAN with a delivery-point suffix
+            # (e.g. "..._ID1"). Store the bare EAN so service_points stays
+            # the single source of truth every per-EAN consumer can key
+            # off of without guessing whether a suffix is already present.
+            ean_short = ean.split("_", maxsplit=1)[0] if "_" in ean else ean
+            entry.runtime_data.subentry_data[subentry_id].service_points[ean_short] = (
+                division
+            )
             LOGGER.debug("Service-point %s: division=%s", _hash_ean(ean), division)
+
+
+def _merge_service_points_from_contracts(entry: EngieBeConfigEntry) -> None:
+    """
+    Fill in service_points gaps using the energy-contracts payload.
+
+    _async_populate_service_points learns EANs from the supplier-
+    energy-prices endpoint, which returns no items for pure dynamic-
+    tariff accounts (that emptiness is how the legacy is_dynamic
+    heuristic works - see coordinator.py). Those accounts' EANs are
+    never learned, so every EAN-scoped feature (solar-surplus, TOU) has
+    nothing to attach to. The energy-contracts payload - already
+    fetched by _async_populate_dynamic_flags in the same gather above -
+    carries EAN + division for every active contract regardless of
+    tariff type, so use it to fill in what the prices-based lookup
+    missed. Never overwrites an existing entry: the dedicated service-
+    point endpoint lookup is more authoritative when both agree.
+    """
+    for sub_data in entry.runtime_data.subentry_data.values():
+        contract_points = service_points_by_ean(sub_data.energy_contracts_payload)
+        for ean, division in contract_points.items():
+            ean_short = ean.split("_", maxsplit=1)[0] if "_" in ean else ean
+            sub_data.service_points.setdefault(ean_short, division)
+
+
+def _async_reenable_expose_all_entities(
+    hass: HomeAssistant, entry: EngieBeConfigEntry
+) -> None:
+    """
+    Re-enable entities disabled by default, once expose_all_entities is on.
+
+    entity_registry_enabled_default only takes effect the first time an
+    entity is registered - flipping the option on later never
+    retroactively enables an entity that already exists in the registry
+    (excl-VAT prices, captar peak energy/start/end). Without this, the
+    debug toggle silently does nothing for any account whose entities
+    were first registered before the toggle was turned on, which is the
+    common case. Only clears ``disabled_by`` when it is
+    ``RegistryEntryDisabler.INTEGRATION`` - an entity the user disabled
+    themselves (``RegistryEntryDisabler.USER``) is left untouched.
+    """
+    if not entry.options.get(CONF_EXPOSE_ALL_ENTITIES, False):
+        return
+    registry = er.async_get(hass)
+    for entity_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity_entry.disabled_by is er.RegistryEntryDisabler.INTEGRATION:
+            registry.async_update_entity(entity_entry.entity_id, disabled_by=None)
 
 
 async def _async_populate_dynamic_flags(
