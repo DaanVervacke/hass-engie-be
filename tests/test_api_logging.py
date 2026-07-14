@@ -252,10 +252,7 @@ class TestRedactUrl:
 
     def test_path_ean_and_query_both_redacted(self) -> None:
         """EAN in path and sensitive query param are both masked."""
-        url = (
-            "https://api.engie.be/v1/service-points/"
-            "541449900012345678?state=secret"
-        )
+        url = "https://api.engie.be/v1/service-points/541449900012345678?state=secret"
         out = _redact_url(url)
         assert "541449900012345678" not in out
         assert "***5678" in out

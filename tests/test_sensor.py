@@ -335,9 +335,7 @@ def test_build_sensor_descriptions_expose_all_enables_excl_vat() -> None:
         "custom_components.engie_be.sensor._find_current_price",
         side_effect=lambda prices: prices[0] if prices else None,
     ):
-        descriptions = _build_sensor_descriptions(
-            data, service_points, expose_all=True
-        )
+        descriptions = _build_sensor_descriptions(data, service_points, expose_all=True)
 
     excl_vat_descs = [
         desc for desc, _ean, vk, _slot in descriptions if vk.endswith("ExclVAT")

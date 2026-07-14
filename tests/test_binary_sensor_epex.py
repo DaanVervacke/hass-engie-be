@@ -566,9 +566,7 @@ async def test_expose_all_creates_happy_hour_sensor_when_not_enrolled() -> None:
         coordinator,
         subentries={"sub_no_hh": subentry},
         sub_runtime={
-            "sub_no_hh": _make_sub_data(
-                is_dynamic=False, is_happy_hour_enrolled=False
-            ),
+            "sub_no_hh": _make_sub_data(is_dynamic=False, is_happy_hour_enrolled=False),
         },
     )
     entry.options = {CONF_EXPOSE_ALL_ENTITIES: True}
@@ -593,9 +591,7 @@ async def test_expose_all_creates_epex_negative_when_not_dynamic() -> None:
         coordinator,
         subentries={"sub_fixed": subentry},
         sub_runtime={
-            "sub_fixed": _make_sub_data(
-                is_dynamic=False, is_happy_hour_enrolled=False
-            ),
+            "sub_fixed": _make_sub_data(is_dynamic=False, is_happy_hour_enrolled=False),
         },
     )
     entry.options = {CONF_EXPOSE_ALL_ENTITIES: True}
