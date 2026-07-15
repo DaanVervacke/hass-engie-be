@@ -610,6 +610,12 @@ After setup, you can change the price update interval:
 2. Click **Configure** (the cog wheel icon).
 3. Set the **Update interval** (5-1440 minutes, default: 60 minutes).
 
+You can also toggle **Expose all entities** (off by default). When enabled,
+the integration creates entities for all supported features regardless of
+your contract type or active feature flags. Entities for features your
+account does not have show as `unavailable`. This is useful for
+troubleshooting or exploring the full entity set.
+
 ## Multiple households
 
 A single ENGIE login can be linked to several households. This includes the

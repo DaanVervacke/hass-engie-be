@@ -40,8 +40,6 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [0.13.0b3] - 2026-07-13
 
-> PR-number links will be substituted at release-tagging.
-
 ### Changed
 
 - Standardized EPEX trigger friendly names to match entity naming convention. Threshold and updated triggers now use consistent pattern: `EPEX <descriptor> <granularity> price <action>`.
@@ -1205,6 +1203,13 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b4...HEAD
+[0.13.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b3...v0.13.0b4
+[0.13.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b2...v0.13.0b3
+[0.13.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b1...v0.13.0b2
+[0.13.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0...v0.13.0b1
+[0.12.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b12...v0.12.0
+[0.12.0b12]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b11...v0.12.0b12
 [0.12.0b11]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b10...v0.12.0b11
 [0.12.0b10]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b9...v0.12.0b10
 [0.12.0b9]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0b8...v0.12.0b9
