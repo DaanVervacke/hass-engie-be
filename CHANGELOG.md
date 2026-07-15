@@ -5,7 +5,39 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.13.0b5] - 2026-07-15
+
+### Added
+
+- Event platform: six event entities per business agreement record state transitions (EPEX price sign flips, Happy Hours activation, TOU slot changes, Solar Surplus level changes, authentication loss/restore) in the Home Assistant logbook.
+- Solar Surplus forecast level change event entity, firing when the aggregate surplus level transitions between levels.
+
+### Changed
+
+- TOU calendar events now use human-readable titles (e.g. "Off-peak (offtake)") instead of raw slot codes.
+- Hardcoded sensor icons moved to `icons.json`, matching the Gold quality-scale pattern. All 13 sensor icon assignments now live in one canonical file.
+- EPEX coordinator, binary sensor, and next-hour sensor code deduplicated: the hourly and quarter-hourly variants share a single parameterized base implementation instead of copy-pasted overrides.
+- Weekday keys tuple deduplicated: `_tou.py` now imports from `const.py` instead of maintaining a separate copy.
+- Contributor setup script (`scripts/setup`) now creates a `.venv` and installs requirements into it.
+
+### Fixed
+
+- EPEX event entity renamed from "EPEX price events" to "EPEX hourly price events" for consistency with the quarter-hourly variant.
+- Updated MDI icons for captar, billing, TOU, and EPEX entities to more specific variants (e.g. `mdi:gauge` for peak power, `mdi:cash-clock` for current price).
+- DST fold propagation: `datetime.combine` calls in TOU slot boundary calculation now carry the fold bit, preventing ambiguous-time mismatches during the autumn clock change.
+- Falsy-zero conflation in statistics: `entries[-1].get("sum") or 0.0` replaced with `entries[-1].get("sum", 0.0)` so a legitimate zero sum is no longer treated as missing.
+- `secrets.yaml` untracked from git and added to `.gitignore`.
+- Seven midnight-flaky `_find_current_price` tests fixed by freezing to a deterministic date instead of using `datetime.now()`.
+- `solar_surplus_today_peak` icon corrected to `mdi:solar-panel`.
+
+### Docs
+
+- CHANGELOG comparison links added for all releases from 0.12.0b12 through Unreleased.
+- Stale EPEX v2 endpoint comments removed from test docstrings.
+- Contributing guide updated with local venv test setup instructions.
+- README: added tomorrow EPEX trigger documentation with YAML example, captar daily peak sensor, and "Expose all entities" option.
+- README: added event platform documentation (six event entities) and TOU calendar event title format.
+- Semicolons removed from CHANGELOG and CONTRIBUTING prose.
 
 ## [0.13.0b4] - 2026-07-15
 
@@ -1203,7 +1235,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b4...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b5...HEAD
+[0.13.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b4...v0.13.0b5
 [0.13.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b3...v0.13.0b4
 [0.13.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b2...v0.13.0b3
 [0.13.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b1...v0.13.0b2
