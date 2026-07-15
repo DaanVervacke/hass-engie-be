@@ -150,6 +150,98 @@ def test_find_current_price_uses_brussels_date_at_month_boundary() -> None:
     assert result["id"] == "may"
 
 
+def test_find_current_price_skips_entry_missing_from_key() -> None:
+    """An entry missing the 'from' key is skipped in favour of a valid one."""
+    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+
+    prices = [
+        {"to": tomorrow.isoformat(), "id": "broken"},
+        {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
+    ]
+
+    result = _find_current_price(prices)
+    assert result is not None
+    assert result["id"] == "current"
+
+
+def test_find_current_price_skips_entry_missing_to_key() -> None:
+    """An entry missing the 'to' key is skipped in favour of a valid one."""
+    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+
+    prices = [
+        {"from": yesterday.isoformat(), "id": "broken"},
+        {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
+    ]
+
+    result = _find_current_price(prices)
+    assert result is not None
+    assert result["id"] == "current"
+
+
+def test_find_current_price_skips_unparseable_date_string() -> None:
+    """An entry with an unparseable date string is skipped."""
+    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+
+    prices = [
+        {"from": "not-a-date", "to": tomorrow.isoformat(), "id": "broken"},
+        {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
+    ]
+
+    result = _find_current_price(prices)
+    assert result is not None
+    assert result["id"] == "current"
+
+
+def test_find_current_price_skips_none_date_value() -> None:
+    """An entry whose date value is None is skipped."""
+    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+
+    prices = [
+        {"from": None, "to": tomorrow.isoformat(), "id": "broken"},
+        {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
+    ]
+
+    result = _find_current_price(prices)
+    assert result is not None
+    assert result["id"] == "current"
+
+
+def test_find_current_price_all_malformed_falls_back_without_crashing() -> None:
+    """When every entry is malformed, the function falls back to the last entry."""
+    prices = [
+        {"from": "not-a-date", "to": "also-not-a-date", "id": "broken1"},
+        {"id": "broken2"},
+    ]
+
+    result = _find_current_price(prices)
+    assert result is not None
+    assert result["id"] == "broken2"
+
+
+def test_find_current_price_mixed_malformed_and_valid() -> None:
+    """A malformed entry followed by a valid one still returns the valid entry."""
+    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+
+    prices = [
+        {"from": "bad", "to": "bad", "id": "broken"},
+        {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
+    ]
+
+    result = _find_current_price(prices)
+    assert result is not None
+    assert result["id"] == "current"
+
+
 # ---------------------------------------------------------------------------
 # _detect_energy_type
 # ---------------------------------------------------------------------------

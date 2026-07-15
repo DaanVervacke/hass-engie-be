@@ -79,8 +79,11 @@ def _find_current_price(prices: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Find the price entry whose date range covers today, or the last entry."""
     today = dt_util.now(BRUSSELS_TZ).date()
     for price in prices:
-        from_date = date.fromisoformat(price["from"])
-        to_date = date.fromisoformat(price["to"])
+        try:
+            from_date = date.fromisoformat(price["from"])
+            to_date = date.fromisoformat(price["to"])
+        except (KeyError, ValueError, TypeError):
+            continue
         if from_date <= today < to_date:
             return price
     # Fall back to the last entry if no exact match
