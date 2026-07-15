@@ -694,7 +694,6 @@ class EngieBeHappyHourTimestampSensor(EngieBeEntity, SensorEntity):
 _HAPPY_HOUR_MONTH_CONSUMPTION = SensorEntityDescription(
     key="happy_hours_month_consumption",
     translation_key="happy_hours_month_consumption",
-    icon="mdi:lightning-bolt",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL,
@@ -703,7 +702,6 @@ _HAPPY_HOUR_MONTH_CONSUMPTION = SensorEntityDescription(
 _HAPPY_HOUR_MONTH_ELIGIBLE_HOURS = SensorEntityDescription(
     key="happy_hours_month_eligible_hours",
     translation_key="happy_hours_month_eligible_hours",
-    icon="mdi:clock-check",
     # Count of discrete Happy Hours windows - no standard unit applies.
     native_unit_of_measurement=None,
     state_class=SensorStateClass.TOTAL_INCREASING,
@@ -712,7 +710,6 @@ _HAPPY_HOUR_MONTH_ELIGIBLE_HOURS = SensorEntityDescription(
 _HAPPY_HOUR_MONTH_REWARD = SensorEntityDescription(
     key="happy_hours_month_reward",
     translation_key="happy_hours_month_reward",
-    icon="mdi:hand-coin",
     native_unit_of_measurement=CURRENCY_EURO,
     device_class=SensorDeviceClass.MONETARY,
     state_class=SensorStateClass.TOTAL,
@@ -721,7 +718,6 @@ _HAPPY_HOUR_MONTH_REWARD = SensorEntityDescription(
 _HAPPY_HOUR_MONTH_CONSUMPTION_CHANGE = SensorEntityDescription(
     key="happy_hours_month_consumption_change",
     translation_key="happy_hours_month_consumption_change",
-    icon="mdi:percent",
     native_unit_of_measurement=PERCENTAGE,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=1,
@@ -729,7 +725,6 @@ _HAPPY_HOUR_MONTH_CONSUMPTION_CHANGE = SensorEntityDescription(
 _HAPPY_HOUR_MONTH_ELIGIBLE_HOURS_CHANGE = SensorEntityDescription(
     key="happy_hours_month_eligible_hours_change",
     translation_key="happy_hours_month_eligible_hours_change",
-    icon="mdi:percent",
     native_unit_of_measurement=PERCENTAGE,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=1,
@@ -737,7 +732,6 @@ _HAPPY_HOUR_MONTH_ELIGIBLE_HOURS_CHANGE = SensorEntityDescription(
 _HAPPY_HOUR_MONTH_REWARD_CHANGE = SensorEntityDescription(
     key="happy_hours_month_reward_change",
     translation_key="happy_hours_month_reward_change",
-    icon="mdi:percent",
     native_unit_of_measurement=PERCENTAGE,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=1,
@@ -1434,14 +1428,12 @@ def _serialize_slot_lean(slot: EpexSlot) -> dict[str, Any]:
 _SOLAR_SURPLUS_FORECAST = SensorEntityDescription(
     key=TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     translation_key=TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
-    icon="mdi:solar-power-variant",
     device_class=SensorDeviceClass.ENUM,
     options=list(SOLAR_SURPLUS_LEVELS),
 )
 _SOLAR_SURPLUS_CURRENT = SensorEntityDescription(
     key="solar_surplus_current",
     translation_key="solar_surplus_current",
-    icon="mdi:solar-power",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
     # No state_class: this is a snapshot of one forecast hour slot's
@@ -1453,7 +1445,6 @@ _SOLAR_SURPLUS_CURRENT = SensorEntityDescription(
 _SOLAR_SURPLUS_NEXT_HOUR = SensorEntityDescription(
     key="solar_surplus_next_hour",
     translation_key="solar_surplus_next_hour",
-    icon="mdi:solar-power",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
     # No state_class: same snapshot reasoning as _SOLAR_SURPLUS_CURRENT.
@@ -1462,7 +1453,6 @@ _SOLAR_SURPLUS_NEXT_HOUR = SensorEntityDescription(
 _SOLAR_SURPLUS_TODAY_TOTAL = SensorEntityDescription(
     key="solar_surplus_today_total",
     translation_key="solar_surplus_today_total",
-    icon="mdi:solar-panel-large",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
     # No state_class: re-summed from today's forecast slots on every
@@ -1475,7 +1465,6 @@ _SOLAR_SURPLUS_TODAY_TOTAL = SensorEntityDescription(
 _SOLAR_SURPLUS_TODAY_PEAK = SensorEntityDescription(
     key="solar_surplus_today_peak",
     translation_key="solar_surplus_today_peak",
-    icon="mdi:solar-panel-large",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
     # No state_class: same snapshot reasoning as _SOLAR_SURPLUS_CURRENT.
@@ -1882,14 +1871,12 @@ _TOU_OFFTAKE_SLOT = SensorEntityDescription(
     translation_key=TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
     device_class=SensorDeviceClass.ENUM,
     options=list(TOU_SLOT_CODES),
-    icon="mdi:transmission-tower-import",
 )
 _TOU_INJECTION_SLOT = SensorEntityDescription(
     key="injection_slot",
     translation_key=TRANSLATION_KEY_TOU_INJECTION_SLOT,
     device_class=SensorDeviceClass.ENUM,
     options=list(TOU_SLOT_CODES),
-    icon="mdi:transmission-tower-export",
 )
 
 

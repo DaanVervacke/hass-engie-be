@@ -126,6 +126,24 @@
             "happy_hours_next_end": {
                 "default": "mdi:sun-clock-outline"
             },
+            "happy_hours_month_consumption": {
+                "default": "mdi:lightning-bolt"
+            },
+            "happy_hours_month_consumption_change": {
+                "default": "mdi:percent"
+            },
+            "happy_hours_month_eligible_hours": {
+                "default": "mdi:clock-check"
+            },
+            "happy_hours_month_eligible_hours_change": {
+                "default": "mdi:percent"
+            },
+            "happy_hours_month_reward": {
+                "default": "mdi:hand-coin"
+            },
+            "happy_hours_month_reward_change": {
+                "default": "mdi:percent"
+            },
             "epex_current": {
                 "default": "mdi:cash-clock"
             },
@@ -161,6 +179,27 @@
             },
             "captar_latest_daily_peak": {
                 "default": "mdi:speedometer-medium"
+            },
+            "solar_surplus_current": {
+                "default": "mdi:solar-power"
+            },
+            "solar_surplus_forecast": {
+                "default": "mdi:solar-power-variant"
+            },
+            "solar_surplus_next_hour": {
+                "default": "mdi:solar-power"
+            },
+            "solar_surplus_today_peak": {
+                "default": "mdi:solar-panel-large"
+            },
+            "solar_surplus_today_total": {
+                "default": "mdi:solar-panel-large"
+            },
+            "tou_injection_slot": {
+                "default": "mdi:transmission-tower-export"
+            },
+            "tou_offtake_slot": {
+                "default": "mdi:transmission-tower-import"
             }
         },
         "binary_sensor": {
