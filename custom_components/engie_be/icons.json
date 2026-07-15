@@ -7,10 +7,10 @@
         },
         "sensor": {
             "gas_offtake": {
-                "default": "mdi:cash-minus"
+                "default": "mdi:meter-gas"
             },
             "gas_offtake_excl_vat": {
-                "default": "mdi:cash-minus"
+                "default": "mdi:meter-gas"
             },
             "electricity_offtake": {
                 "default": "mdi:cash-minus"
@@ -121,34 +121,46 @@
                 "default": "mdi:clock-end"
             },
             "happy_hours_next_start": {
-                "default": "mdi:weather-sunset-up"
+                "default": "mdi:sun-clock"
             },
             "happy_hours_next_end": {
-                "default": "mdi:weather-sunset-down"
+                "default": "mdi:sun-clock-outline"
             },
             "epex_current": {
                 "default": "mdi:cash-clock"
             },
             "epex_low_today": {
-                "default": "mdi:cash-100"
+                "default": "mdi:cash-remove"
             },
             "epex_high_today": {
                 "default": "mdi:cash-multiple"
             },
             "epex_next_hour": {
-                "default": "mdi:cash-clock"
+                "default": "mdi:cash-fast"
             },
             "epex_current_quarter_hour": {
                 "default": "mdi:cash-clock"
             },
             "epex_low_today_quarter_hour": {
-                "default": "mdi:cash-100"
+                "default": "mdi:cash-remove"
             },
             "epex_high_today_quarter_hour": {
                 "default": "mdi:cash-multiple"
             },
             "epex_next_quarter_hour": {
+                "default": "mdi:cash-fast"
+            },
+            "outstanding_balance": {
                 "default": "mdi:cash-clock"
+            },
+            "overdue_amount": {
+                "default": "mdi:cash-remove"
+            },
+            "next_invoice_due": {
+                "default": "mdi:calendar-clock"
+            },
+            "captar_latest_daily_peak": {
+                "default": "mdi:speedometer-medium"
             }
         },
         "binary_sensor": {
@@ -156,25 +168,42 @@
                 "default": "mdi:shield-check"
             },
             "epex_negative": {
-                "default": "mdi:cash-minus"
+                "default": "mdi:cash-off"
             },
             "epex_negative_quarter_hour": {
-                "default": "mdi:cash-minus"
+                "default": "mdi:cash-off"
             },
             "happy_hours_active": {
                 "default": "mdi:sun-clock"
             },
             "tou_offtake_is_optimal": {
-                "default": "mdi:transmission-tower-import"
+                "default": "mdi:check-decagram"
             },
             "tou_injection_is_optimal": {
-                "default": "mdi:transmission-tower-export"
+                "default": "mdi:check-decagram-outline"
+            }
+        },
+        "event": {
+            "epex_events": {
+                "default": "mdi:cash-sync"
+            },
+            "epex_events_quarter_hourly": {
+                "default": "mdi:cash-sync"
+            },
+            "happy_hours_events": {
+                "default": "mdi:calendar-star"
+            },
+            "tou_events": {
+                "default": "mdi:calendar-clock"
+            },
+            "authentication_events": {
+                "default": "mdi:shield-lock"
             }
         }
     },
     "triggers": {
-        "epex_became_negative": {"trigger": "mdi:cash-minus"},
-        "epex_became_negative_quarter_hour": {"trigger": "mdi:cash-minus"},
+        "epex_became_negative": {"trigger": "mdi:cash-off"},
+        "epex_became_negative_quarter_hour": {"trigger": "mdi:cash-off"},
         "epex_no_longer_negative": {"trigger": "mdi:cash-check"},
         "epex_no_longer_negative_quarter_hour": {"trigger": "mdi:cash-check"},
         "offtake_became_optimal": {"trigger": "mdi:transmission-tower-import"},
@@ -199,17 +228,18 @@
         "solar_surplus_next_hour_crossed_threshold": {"trigger": "mdi:solar-power-variant"},
         "captar_peak_crossed_threshold": {"trigger": "mdi:flash-alert"},
         "captar_peak_updated": {"trigger": "mdi:flash"},
-        "epex_high_today_updated": {"trigger": "mdi:cash-100"},
-        "epex_high_today_quarter_hour_updated": {"trigger": "mdi:cash-100"},
-        "epex_low_today_updated": {"trigger": "mdi:cash-100"},
-        "epex_low_today_quarter_hour_updated": {"trigger": "mdi:cash-100"},
-        "happy_hours_window_started": {"trigger": "mdi:weather-sunset-up"},
-        "happy_hours_window_ended": {"trigger": "mdi:weather-sunset-down"},
-        "tou_slot_started": {"trigger": "mdi:clock-start"}
+        "epex_high_today_updated": {"trigger": "mdi:cash-multiple"},
+        "epex_high_today_quarter_hour_updated": {"trigger": "mdi:cash-multiple"},
+        "epex_low_today_updated": {"trigger": "mdi:cash-remove"},
+        "epex_low_today_quarter_hour_updated": {"trigger": "mdi:cash-remove"},
+        "happy_hours_window_started": {"trigger": "mdi:sun-clock"},
+        "happy_hours_window_ended": {"trigger": "mdi:sun-clock-outline"},
+        "tou_slot_started": {"trigger": "mdi:clock-start"},
+        "tomorrow_epex_prices_published": {"trigger": "mdi:newspaper-variant"}
     },
     "conditions": {
-        "epex_price_is_negative": {"condition": "mdi:cash-minus"},
-        "epex_price_is_negative_quarter_hour": {"condition": "mdi:cash-minus"},
+        "epex_price_is_negative": {"condition": "mdi:cash-off"},
+        "epex_price_is_negative_quarter_hour": {"condition": "mdi:cash-off"},
         "solar_surplus_is_at_level": {"condition": "mdi:solar-power"},
         "offtake_slot_is": {"condition": "mdi:timer-sand"},
         "injection_slot_is": {"condition": "mdi:timer-sand"},
@@ -218,8 +248,8 @@
         "happy_hours_is_active": {"condition": "mdi:sun-clock"},
         "epex_price_is_below_threshold": {"condition": "mdi:cash-remove"},
         "epex_price_is_below_threshold_quarter_hour": {"condition": "mdi:cash-remove"},
-        "epex_price_is_above_threshold": {"condition": "mdi:cash-plus"},
-        "epex_price_is_above_threshold_quarter_hour": {"condition": "mdi:cash-plus"},
+        "epex_price_is_above_threshold": {"condition": "mdi:cash-alert"},
+        "epex_price_is_above_threshold_quarter_hour": {"condition": "mdi:cash-alert"},
         "captar_peak_is_above_threshold": {"condition": "mdi:flash-alert"}
     }
 }
