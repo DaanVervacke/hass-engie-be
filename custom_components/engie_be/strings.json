@@ -942,6 +942,67 @@
             "tou_injection_is_optimal": {
                 "name": "Injection at optimal slot"
             }
+        },
+        "event": {
+            "epex_events": {
+                "name": "EPEX price events",
+                "state_attributes": {
+                    "event_type": {
+                        "state": {
+                            "price_negative": "Price became negative",
+                            "price_positive": "Price no longer negative"
+                        }
+                    }
+                }
+            },
+            "epex_events_quarter_hourly": {
+                "name": "EPEX quarter-hourly price events",
+                "state_attributes": {
+                    "event_type": {
+                        "state": {
+                            "price_negative": "Price became negative",
+                            "price_positive": "Price no longer negative"
+                        }
+                    }
+                }
+            },
+            "happy_hours_events": {
+                "name": "Happy Hours events",
+                "state_attributes": {
+                    "event_type": {
+                        "state": {
+                            "activated": "Happy Hours activated",
+                            "deactivated": "Happy Hours deactivated"
+                        }
+                    }
+                }
+            },
+            "tou_events": {
+                "name": "Tariff schedule events",
+                "state_attributes": {
+                    "event_type": {
+                        "state": {
+                            "offtake_slot_changed": "Offtake slot changed",
+                            "injection_slot_changed": "Injection slot changed",
+                            "offtake_optimal": "Offtake became optimal",
+                            "offtake_not_optimal": "Offtake no longer optimal",
+                            "injection_optimal": "Injection became optimal",
+                            "injection_not_optimal": "Injection no longer optimal"
+                        }
+                    }
+                }
+            },
+            "authentication_events": {
+                "name": "Authentication events",
+                "state_attributes": {
+                    "event_type": {
+                        "state": {
+                            "lost": "Authentication lost",
+                            "restored": "Authentication restored"
+                        }
+                    }
+                }
+            }
         }
     },
     "conditions": {

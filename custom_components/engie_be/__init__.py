@@ -78,6 +78,7 @@ if TYPE_CHECKING:
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.CALENDAR,
+    Platform.EVENT,
     Platform.SENSOR,
 ]
 
