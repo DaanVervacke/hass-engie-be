@@ -178,7 +178,7 @@ state-based automations without a template.
 
 ### Capacity tariff (captar)
 
-Four sensors expose the monthly peak window used for the Belgian
+Five sensors expose the monthly peak window used for the Belgian
 capacity-tariff calculation. ENGIE returns one aggregated peak per
 business agreement.
 
@@ -188,12 +188,17 @@ business agreement.
 | Captar monthly peak energy | `sensor.engie_belgium_{BAN}_captar_monthly_peak_energy` | Energy consumed during that 15-minute window, in kWh |
 | Captar monthly peak start | `sensor.engie_belgium_{BAN}_captar_monthly_peak_start` | Start of the 15-minute peak window |
 | Captar monthly peak end | `sensor.engie_belgium_{BAN}_captar_monthly_peak_end` | End of the 15-minute peak window |
+| Captar latest daily peak | `sensor.engie_belgium_{BAN}_captar_latest_daily_peak` | Most recent daily peak power (kW). Disabled by default |
 
 ENGIE only publishes a peak after the first 15-minute peak of the month is
 recorded, so the current month is empty for the first day or so. Until then,
 the integration shows the previous month's peak and marks it via the
 `peak_is_fallback` attribute (and `peak_month` shows which month the value
 covers).
+
+A fifth sensor, the daily peak, is disabled by default. Enable it from
+the entity settings if you want per-day peak tracking. Its `daily_peaks`
+attribute contains the full array of daily peaks for the current month.
 
 A calendar entity (`calendar.engie_belgium_{BAN}`) is also created and shows the
 current monthly peak as a single event, with the peak power and energy in the
