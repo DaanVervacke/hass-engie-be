@@ -22,20 +22,25 @@ if TYPE_CHECKING:
 
 _LOOKAHEAD_DAYS = 7
 
-# Public: trigger.py uses this prefix to identify TOU events in the calendar.
-# Full summary format: "TOU: {code} ({direction})" - see _slots_to_events.
-TOU_EVENT_SUMMARY_PREFIX = "TOU:"
+_SLOT_LABELS: dict[str, str] = {
+    "peak": "Peak",
+    "offpeak": "Off-peak",
+    "superoffpeak": "Super off-peak",
+    "exclusive_night": "Exclusive night",
+    "day": "Day",
+}
+
+_DIRECTION_LABELS: dict[str, str] = {
+    "offtake": "Offtake",
+    "injection": "Injection",
+}
 
 
 def format_tou_event_summary(slot: str, direction: str) -> str:
-    """
-    Return the canonical TOU calendar event summary string.
-
-    Both the calendar emitter (_slots_to_events) and the trigger matcher
-    (TouSlotStartedTrigger._matches_event) use this function so the format
-    contract lives in one place.
-    """
-    return f"{TOU_EVENT_SUMMARY_PREFIX} {slot} ({direction})"
+    """Return the canonical TOU calendar event summary string."""
+    label = _SLOT_LABELS.get(slot.lower(), slot)
+    dir_label = _DIRECTION_LABELS.get(direction.lower(), direction)
+    return f"{label} ({dir_label.lower()})"
 
 
 def tou_slot_events(
@@ -78,7 +83,6 @@ def tou_slot_events(
                 continue
             events.extend(
                 _slots_to_events(
-                    ean=ean,
                     direction=direction,
                     schedule=direction_sched,
                     start=now_local,
@@ -90,7 +94,6 @@ def tou_slot_events(
 
 def _slots_to_events(
     *,
-    ean: str,
     direction: str,
     schedule: dict,
     start: datetime,
@@ -138,7 +141,6 @@ def _slots_to_events(
                         start=start_dt,
                         end=end_dt,
                         summary=format_tou_event_summary(code, direction),
-                        description=(f"EAN {ean} - supplier {direction} schedule"),
                     )
                 )
         day_cursor += timedelta(days=1)

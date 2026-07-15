@@ -537,10 +537,9 @@ def test_tou_slot_events_summary_includes_code_and_direction() -> None:
     )
     events = tou_slot_events(coordinator)
     summaries = {e.summary for e in events}
-    # Fixture has PEAK and OFFPEAK codes for both offtake and injection.
-    assert any("PEAK" in s and "offtake" in s for s in summaries)
-    assert any("OFFPEAK" in s and "offtake" in s for s in summaries)
-    assert any("PEAK" in s and "injection" in s for s in summaries)
+    assert any("Peak" in s and "offtake" in s for s in summaries)
+    assert any("Off-peak" in s and "offtake" in s for s in summaries)
+    assert any("Peak" in s and "injection" in s for s in summaries)
 
 
 def test_tou_slot_events_00_00_end_produces_midnight_boundary() -> None:
@@ -592,7 +591,7 @@ async def test_async_get_events_includes_tou_when_active() -> None:
         start_date=now,
         end_date=now + timedelta(days=7),
     )
-    assert any("TOU:" in e.summary for e in events)
+    assert any("(offtake)" in e.summary or "(injection)" in e.summary for e in events)
 
 
 # ---------------------------------------------------------------------------

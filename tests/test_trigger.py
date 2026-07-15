@@ -1435,8 +1435,7 @@ async def test_tou_slot_started_fires_on_matching_direction_and_slot(
     """TouSlotStartedTrigger fires for the correct direction and slot."""
     entry = _make_entry(hass)
     event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
-    # TOU summary format: "TOU: {code} ({direction})" - slot code is lowercase.
-    events = [_make_future_event("TOU: peak (offtake)", event_start)]
+    events = [_make_future_event("Peak (offtake)", event_start)]
     _setup_calendar_component(hass, entry, events)
 
     config = TriggerConfig(
@@ -1461,16 +1460,10 @@ async def test_tou_slot_started_fires_on_matching_direction_and_slot(
 async def test_tou_slot_started_does_not_fire_for_uppercase_summary(
     hass: HomeAssistant,
 ) -> None:
-    """
-    TouSlotStartedTrigger does not fire for uppercase slot code summaries.
-
-    Regression test for bug where trigger used slot.upper() and never matched
-    the lowercase summaries emitted by _tou_calendar.py.
-    """
+    """TouSlotStartedTrigger does not fire when summary format differs."""
     entry = _make_entry(hass)
     event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
-    # Uppercase - old buggy trigger matched this; real calendar emits lowercase.
-    events = [_make_future_event("TOU: PEAK (offtake)", event_start)]
+    events = [_make_future_event("PEAK (offtake)", event_start)]
     _setup_calendar_component(hass, entry, events)
 
     config = TriggerConfig(
@@ -1487,7 +1480,6 @@ async def test_tou_slot_started_does_not_fire_for_uppercase_summary(
     async_fire_time_changed(hass, event_start)
     await hass.async_block_till_done()
 
-    # Uppercase summary must NOT fire - real summaries are lowercase.
     assert len(fired) == 0
     unsub()
 
@@ -1498,7 +1490,7 @@ async def test_tou_slot_started_does_not_fire_for_wrong_direction(
     """TouSlotStartedTrigger does not fire when direction does not match."""
     entry = _make_entry(hass)
     event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
-    events = [_make_future_event("TOU: peak (injection)", event_start)]
+    events = [_make_future_event("Peak (injection)", event_start)]
     _setup_calendar_component(hass, entry, events)
 
     config = TriggerConfig(
@@ -1525,7 +1517,7 @@ async def test_tou_slot_started_does_not_fire_for_wrong_slot(
     """TouSlotStartedTrigger does not fire when slot does not match."""
     entry = _make_entry(hass)
     event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
-    events = [_make_future_event("TOU: offpeak (offtake)", event_start)]
+    events = [_make_future_event("Off-peak (offtake)", event_start)]
     _setup_calendar_component(hass, entry, events)
 
     config = TriggerConfig(

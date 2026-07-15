@@ -705,7 +705,7 @@ class TouSlotStartedTrigger(_CalendarEventTrigger):
         """Return True when the TOU event summary matches direction and slot."""
         direction = self._options.get(_DIRECTION, "")
         slot = self._options.get(_SLOT, "")
-        # Summary format: "TOU: {code} ({direction})" - slot code is lowercase.
+        # Summary format: "{Label} ({direction})" - see format_tou_event_summary.
         expected = format_tou_event_summary(slot, direction)
         return event.summary == expected
 

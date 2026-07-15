@@ -15,8 +15,6 @@ _BRUSSELS = ZoneInfo("Europe/Brussels")
 _START = datetime(2026, 7, 13, 10, 0, tzinfo=_BRUSSELS)
 _HORIZON = _START + timedelta(days=7)
 
-_BAN = "000000000000"
-
 
 def test_midnight_rollover_end_lands_on_next_day() -> None:
     """A slot with ``endTime`` "00:00" ends at next-day midnight, not same-day."""
@@ -24,7 +22,6 @@ def test_midnight_rollover_end_lands_on_next_day() -> None:
         "tuesday": [{"startTime": "22:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
     }
     events = _slots_to_events(
-        ean=_BAN,
         direction="offtake",
         schedule=schedule,
         start=_START,
@@ -43,7 +40,6 @@ def test_active_event_straddling_start_is_included() -> None:
         "monday": [{"startTime": "08:00", "endTime": "12:00", "slotCode": "PEAK"}]
     }
     events = _slots_to_events(
-        ean=_BAN,
         direction="offtake",
         schedule=schedule,
         start=_START,
@@ -70,7 +66,6 @@ def test_slot_fully_before_start_is_clipped() -> None:
         "monday": [{"startTime": "06:00", "endTime": "08:00", "slotCode": "OFFPEAK"}]
     }
     events = _slots_to_events(
-        ean=_BAN,
         direction="offtake",
         schedule=schedule,
         start=_START,
@@ -93,7 +88,6 @@ def test_slot_at_or_after_horizon_is_clipped() -> None:
         "monday": [{"startTime": "12:00", "endTime": "14:00", "slotCode": "PEAK"}]
     }
     events = _slots_to_events(
-        ean=_BAN,
         direction="offtake",
         schedule=schedule,
         start=_START,
@@ -119,7 +113,6 @@ def test_dst_spring_forward_slot_duration_matches_real_elapsed_time() -> None:
         "sunday": [{"startTime": "01:00", "endTime": "04:00", "slotCode": "OFFPEAK"}]
     }
     events = _slots_to_events(
-        ean=_BAN,
         direction="offtake",
         schedule=schedule,
         start=start,
