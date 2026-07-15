@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -92,7 +92,7 @@ def test_slot_suffixes(code: str, expected: tuple[str, str] | None) -> None:
 
 def test_find_current_price_returns_matching_window() -> None:
     """Returns the price entry whose date range covers today."""
-    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    today = date(2026, 7, 15)
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
     next_week = today + timedelta(days=7)
@@ -102,14 +102,18 @@ def test_find_current_price_returns_matching_window() -> None:
         {"from": tomorrow.isoformat(), "to": next_week.isoformat(), "id": "future"},
     ]
 
-    result = _find_current_price(prices)
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=datetime(2026, 7, 15, 12, 0, tzinfo=ZoneInfo("Europe/Brussels")),
+    ):
+        result = _find_current_price(prices)
     assert result is not None
     assert result["id"] == "current"
 
 
 def test_find_current_price_falls_back_to_last() -> None:
     """When no entry covers today, the last entry is returned as fallback."""
-    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    today = date(2026, 7, 15)
     long_ago = today - timedelta(days=60)
     less_long_ago = today - timedelta(days=30)
     recent_past = today - timedelta(days=1)
@@ -123,7 +127,11 @@ def test_find_current_price_falls_back_to_last() -> None:
         },
     ]
 
-    result = _find_current_price(prices)
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=datetime(2026, 7, 15, 12, 0, tzinfo=ZoneInfo("Europe/Brussels")),
+    ):
+        result = _find_current_price(prices)
     assert result is not None
     assert result["id"] == "fallback"
 
@@ -152,7 +160,7 @@ def test_find_current_price_uses_brussels_date_at_month_boundary() -> None:
 
 def test_find_current_price_skips_entry_missing_from_key() -> None:
     """An entry missing the 'from' key is skipped in favour of a valid one."""
-    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    today = date(2026, 7, 15)
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
 
@@ -161,14 +169,18 @@ def test_find_current_price_skips_entry_missing_from_key() -> None:
         {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
     ]
 
-    result = _find_current_price(prices)
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=datetime(2026, 7, 15, 12, 0, tzinfo=ZoneInfo("Europe/Brussels")),
+    ):
+        result = _find_current_price(prices)
     assert result is not None
     assert result["id"] == "current"
 
 
 def test_find_current_price_skips_entry_missing_to_key() -> None:
     """An entry missing the 'to' key is skipped in favour of a valid one."""
-    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    today = date(2026, 7, 15)
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
 
@@ -177,14 +189,18 @@ def test_find_current_price_skips_entry_missing_to_key() -> None:
         {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
     ]
 
-    result = _find_current_price(prices)
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=datetime(2026, 7, 15, 12, 0, tzinfo=ZoneInfo("Europe/Brussels")),
+    ):
+        result = _find_current_price(prices)
     assert result is not None
     assert result["id"] == "current"
 
 
 def test_find_current_price_skips_unparseable_date_string() -> None:
     """An entry with an unparseable date string is skipped."""
-    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    today = date(2026, 7, 15)
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
 
@@ -193,14 +209,18 @@ def test_find_current_price_skips_unparseable_date_string() -> None:
         {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
     ]
 
-    result = _find_current_price(prices)
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=datetime(2026, 7, 15, 12, 0, tzinfo=ZoneInfo("Europe/Brussels")),
+    ):
+        result = _find_current_price(prices)
     assert result is not None
     assert result["id"] == "current"
 
 
 def test_find_current_price_skips_none_date_value() -> None:
     """An entry whose date value is None is skipped."""
-    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    today = date(2026, 7, 15)
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
 
@@ -209,7 +229,11 @@ def test_find_current_price_skips_none_date_value() -> None:
         {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
     ]
 
-    result = _find_current_price(prices)
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=datetime(2026, 7, 15, 12, 0, tzinfo=ZoneInfo("Europe/Brussels")),
+    ):
+        result = _find_current_price(prices)
     assert result is not None
     assert result["id"] == "current"
 
@@ -228,7 +252,7 @@ def test_find_current_price_all_malformed_falls_back_without_crashing() -> None:
 
 def test_find_current_price_mixed_malformed_and_valid() -> None:
     """A malformed entry followed by a valid one still returns the valid entry."""
-    today = datetime.now(tz=ZoneInfo("Europe/Brussels")).date()
+    today = date(2026, 7, 15)
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
 
@@ -237,7 +261,11 @@ def test_find_current_price_mixed_malformed_and_valid() -> None:
         {"from": yesterday.isoformat(), "to": tomorrow.isoformat(), "id": "current"},
     ]
 
-    result = _find_current_price(prices)
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=datetime(2026, 7, 15, 12, 0, tzinfo=ZoneInfo("Europe/Brussels")),
+    ):
+        result = _find_current_price(prices)
     assert result is not None
     assert result["id"] == "current"
 

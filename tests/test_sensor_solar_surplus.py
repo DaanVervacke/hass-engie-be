@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -20,6 +22,10 @@ from custom_components.engie_be.sensor import (
     EngieBeSolarSurplusTodayPeakSensor,
     EngieBeSolarSurplusTodayTotalSensor,
     _build_solar_surplus_sensors,
+    _parse_solar_slot_start,
+    _solar_slot_covering,
+    _solar_slots,
+    _solar_slots_for_local_date,
 )
 
 if TYPE_CHECKING:
@@ -445,3 +451,145 @@ def test_extra_state_attributes_metadata_none_when_today_absent(
     # Falls back to first day in the fixture, which also has this metadata.
     assert attrs["forecast_creation_date"] == "2026-07-07T22:00:00+02:00"
     assert attrs["inference_key"] == "actuals"
+
+
+# ---------------------------------------------------------------------------
+# _parse_solar_slot_start
+# ---------------------------------------------------------------------------
+
+
+def test_parse_solar_slot_start_none_for_non_string() -> None:
+    """A non-string input returns None."""
+    assert _parse_solar_slot_start(None) is None
+    assert _parse_solar_slot_start(1234) is None
+    assert _parse_solar_slot_start({"startTime": "2026-07-08T10:00:00+02:00"}) is None
+
+
+def test_parse_solar_slot_start_none_for_unparseable_string() -> None:
+    """A string that isn't a valid ISO datetime returns None."""
+    assert _parse_solar_slot_start("not-a-timestamp") is None
+
+
+def test_parse_solar_slot_start_none_for_naive_datetime() -> None:
+    """A valid ISO string with no timezone offset returns None."""
+    assert _parse_solar_slot_start("2026-07-08T10:00:00") is None
+
+
+def test_parse_solar_slot_start_returns_parsed_aware_datetime() -> None:
+    """A valid ISO string with a timezone offset parses cleanly."""
+    result = _parse_solar_slot_start("2026-07-08T10:00:00+02:00")
+    assert result == datetime(2026, 7, 8, 10, 0, tzinfo=ZoneInfo("Europe/Brussels"))
+
+
+# ---------------------------------------------------------------------------
+# _solar_slots
+# ---------------------------------------------------------------------------
+
+
+def test_solar_slots_skips_non_dict_days() -> None:
+    """Non-dict day entries are skipped without raising."""
+    forecasts = ["not a dict", {"details": [{"startTime": "x", "value": 1}]}]
+    result = _solar_slots(forecasts)
+    assert result == [{"startTime": "x", "value": 1}]
+
+
+def test_solar_slots_skips_days_with_missing_or_non_list_details() -> None:
+    """Days without a 'details' list contribute no slots."""
+    forecasts = [
+        {"forecastDate": "2026-07-08"},
+        {"details": "not a list"},
+    ]
+    assert _solar_slots(forecasts) == []
+
+
+def test_solar_slots_skips_non_dict_slot_entries() -> None:
+    """Non-dict entries inside 'details' are skipped."""
+    forecasts = [
+        {
+            "details": [
+                "not a dict",
+                {"startTime": "2026-07-08T10:00:00+02:00", "value": 2.0},
+            ]
+        }
+    ]
+    result = _solar_slots(forecasts)
+    assert result == [{"startTime": "2026-07-08T10:00:00+02:00", "value": 2.0}]
+
+
+def test_solar_slots_flattens_multiple_days() -> None:
+    """Valid slots across multiple days are flattened into one list."""
+    forecasts = [
+        {"details": [{"startTime": "a", "value": 1}]},
+        {"details": [{"startTime": "b", "value": 2}, {"startTime": "c", "value": 3}]},
+    ]
+    result = _solar_slots(forecasts)
+    assert result == [
+        {"startTime": "a", "value": 1},
+        {"startTime": "b", "value": 2},
+        {"startTime": "c", "value": 3},
+    ]
+
+
+# ---------------------------------------------------------------------------
+# _solar_slot_covering
+# ---------------------------------------------------------------------------
+
+
+def test_solar_slot_covering_none_for_empty_slots() -> None:
+    """An empty slots list returns None."""
+    now = datetime(2026, 7, 8, 10, 30, tzinfo=ZoneInfo("Europe/Brussels"))
+    assert _solar_slot_covering([], now) is None
+
+
+def test_solar_slot_covering_returns_slot_when_instant_within_window() -> None:
+    """A timestamp inside a slot's [start, start+1h) window returns that slot."""
+    slot = {"startTime": "2026-07-08T10:00:00+02:00", "value": 1.5}
+    now = datetime(2026, 7, 8, 10, 30, tzinfo=ZoneInfo("Europe/Brussels"))
+    assert _solar_slot_covering([slot], now) is slot
+
+
+def test_solar_slot_covering_none_when_instant_outside_all_slots() -> None:
+    """A timestamp outside every slot's window returns None."""
+    slot = {"startTime": "2026-07-08T10:00:00+02:00", "value": 1.5}
+    now = datetime(2026, 7, 8, 3, 0, tzinfo=ZoneInfo("Europe/Brussels"))
+    assert _solar_slot_covering([slot], now) is None
+
+
+def test_solar_slot_covering_skips_slots_with_unparseable_start() -> None:
+    """A slot with an unparseable startTime is skipped in favour of a valid one."""
+    broken = {"startTime": "not-a-timestamp", "value": 9.9}
+    valid = {"startTime": "2026-07-08T10:00:00+02:00", "value": 1.5}
+    now = datetime(2026, 7, 8, 10, 30, tzinfo=ZoneInfo("Europe/Brussels"))
+    assert _solar_slot_covering([broken, valid], now) is valid
+
+
+# ---------------------------------------------------------------------------
+# _solar_slots_for_local_date
+# ---------------------------------------------------------------------------
+
+
+def test_solar_slots_for_local_date_empty_list_returns_empty() -> None:
+    """An empty slots list returns an empty list."""
+    assert _solar_slots_for_local_date([], date(2026, 7, 8)) == []
+
+
+def test_solar_slots_for_local_date_matches_brussels_local_date() -> None:
+    """Slots whose Brussels-local date matches the target date are returned."""
+    matching = {"startTime": "2026-07-08T23:30:00+02:00", "value": 1.0}
+    other_day = {"startTime": "2026-07-09T01:00:00+02:00", "value": 2.0}
+    result = _solar_slots_for_local_date([matching, other_day], date(2026, 7, 8))
+    assert result == [matching]
+
+
+def test_solar_slots_for_local_date_no_matching_date_returns_empty() -> None:
+    """No slot matching the target date returns an empty list."""
+    slot = {"startTime": "2026-07-08T10:00:00+02:00", "value": 1.0}
+    result = _solar_slots_for_local_date([slot], date(2026, 7, 9))
+    assert result == []
+
+
+def test_solar_slots_for_local_date_skips_unparseable_start() -> None:
+    """A slot with an unparseable startTime is skipped without raising."""
+    broken = {"startTime": "not-a-timestamp", "value": 9.9}
+    result = _solar_slots_for_local_date([broken], date(2026, 7, 8))
+    assert result == []
