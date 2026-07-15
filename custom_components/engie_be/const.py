@@ -186,7 +186,7 @@ MIN_UPDATE_INTERVAL_MINUTES = 5
 MAX_UPDATE_INTERVAL_MINUTES = 1440
 
 # EPEX day-ahead prices (used for ENGIE Dynamic tariff customers).
-# Public endpoint, no authentication required.
+# Requires authentication; see ``fetch_epex_prices`` in api.py.
 EPEX_BASE_URL = "https://api.engie.be/engie/ms/pricing/v1/public/prices/epex"
 # All Belgian retail dynamic tariffs bill in local time; EPEX values
 # carry explicit DST-aware offsets but slot bucketing must use the

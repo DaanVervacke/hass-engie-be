@@ -815,7 +815,7 @@ class EngieBeApiClient:
         precision and a literal ``Z`` suffix (the format the endpoint
         accepts; e.g. ``2026-05-04T00:00:00.000Z``).
 
-        The v2 endpoint requires authentication.  401/403 errors WILL
+        The endpoint requires authentication.  401/403 errors WILL
         trigger reauth via the standard OAuth flow through _api_wrapper.
 
         The optional ``granularity`` parameter controls the resolution of
@@ -841,7 +841,7 @@ class EngieBeApiClient:
         if granularity is not None:
             params["granularity"] = granularity
 
-        # v2 endpoint requires auth; use _api_wrapper which handles bearer
+        # Endpoint requires auth; use _api_wrapper which handles bearer
         # tokens and 401/403 reauth automatically. We still need to handle
         # 404 (not published yet) specially.
         try:
