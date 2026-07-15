@@ -23,6 +23,7 @@ from custom_components.engie_be._tou import (
 pytestmark = pytest.mark.tou
 
 _BRUSSELS = ZoneInfo("Europe/Brussels")
+_UTC = ZoneInfo("UTC")
 
 
 # --- _parse_hhmm defensive branches (lines 28, 31, 34-35, 38) ---
@@ -105,6 +106,58 @@ def test_current_slot_returns_none_when_no_slot_covers_now() -> None:
     }
     now = datetime(2026, 7, 6, 4, 0, tzinfo=_BRUSSELS)
     assert current_slot(schedule, now=now) == (None, None)
+
+
+# --- current_slot DST fall-back fold handling ---
+
+# 2026-10-25 is the last Sunday of October: Brussels clocks fall back from
+# CEST (+02:00) to CET (+01:00) at 03:00 CEST local (01:00 UTC), so the
+# 02:00-03:00 wall-clock hour occurs twice. fold=0 is the first (CEST)
+# occurrence, fold=1 is the second (CET) occurrence.
+_DST_SCHEDULE = {
+    "monday": [],
+    "tuesday": [],
+    "wednesday": [],
+    "thursday": [],
+    "friday": [],
+    "saturday": [],
+    "sunday": [
+        {"startTime": "02:00", "endTime": "02:45", "slotCode": "PEAK"},
+        {"startTime": "02:45", "endTime": "03:00", "slotCode": "OFFPEAK"},
+    ],
+}
+
+
+def test_current_slot_dst_fallback_fold_zero_reports_cest_transition() -> None:
+    """fold=0 (first, CEST occurrence) resolves to the CEST end-of-slot instant."""
+    now = datetime(2026, 10, 25, 2, 15, tzinfo=_BRUSSELS, fold=0)
+    code, end_dt = current_slot(_DST_SCHEDULE, now=now)
+    assert code == "peak"
+    assert end_dt is not None
+    assert end_dt.utcoffset().total_seconds() == 2 * 3600
+    # Absolute instant: 02:45 CEST == 00:45 UTC.
+    assert end_dt.astimezone(_UTC).hour == 0
+    assert end_dt.astimezone(_UTC).minute == 45
+
+
+def test_current_slot_dst_fallback_fold_one_reports_cet_transition() -> None:
+    """
+    fold=1 (second, CET occurrence) resolves to the CET end-of-slot instant.
+
+    Regression test: without propagating ``fold`` from ``now_local`` into
+    the constructed slot-boundary datetimes, the returned transition
+    instant would incorrectly collapse to the CEST (fold=0) occurrence,
+    reporting a UTC instant one hour earlier than the true CET transition.
+    """
+    now = datetime(2026, 10, 25, 2, 15, tzinfo=_BRUSSELS, fold=1)
+    code, end_dt = current_slot(_DST_SCHEDULE, now=now)
+    assert code == "peak"
+    assert end_dt is not None
+    assert end_dt.utcoffset().total_seconds() == 1 * 3600
+    # Absolute instant: 02:45 CET == 01:45 UTC (one hour later than the
+    # fold=0 case above, despite identical wall-clock time).
+    assert end_dt.astimezone(_UTC).hour == 1
+    assert end_dt.astimezone(_UTC).minute == 45
 
 
 # --- schedule_for_ean defensive branches (lines 93, 97) ---

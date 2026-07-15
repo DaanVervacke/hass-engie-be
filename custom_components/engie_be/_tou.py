@@ -81,14 +81,18 @@ def current_slot(
         code = slot.get("slotCode")
         if start is None or end is None or not isinstance(code, str):
             continue
-        start_dt = datetime.combine(now_local.date(), start, tzinfo=BRUSSELS_TZ)
+        start_dt = datetime.combine(
+            now_local.date(), start, tzinfo=BRUSSELS_TZ
+        ).replace(fold=now_local.fold)
         # end="00:00" means end-of-day (midnight tonight -> tomorrow 00:00)
         if end == time(0, 0):
             end_dt = datetime.combine(
                 now_local.date() + timedelta(days=1), time(0, 0), tzinfo=BRUSSELS_TZ
-            )
+            ).replace(fold=now_local.fold)
         else:
-            end_dt = datetime.combine(now_local.date(), end, tzinfo=BRUSSELS_TZ)
+            end_dt = datetime.combine(
+                now_local.date(), end, tzinfo=BRUSSELS_TZ
+            ).replace(fold=now_local.fold)
         if start_dt <= now_local < end_dt:
             return code.lower(), end_dt.astimezone(now_local.tzinfo)
     return None, None

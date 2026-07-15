@@ -23,6 +23,7 @@ from custom_components.engie_be._statistics import (
     STREAM_GAS_COST,
     STREAM_INJECTION,
     STREAM_INJECTION_COST,
+    _sums_before,
     async_clear_usage_history,
     async_import_usage_history,
     earliest_contract_start_date,
@@ -412,6 +413,43 @@ async def test_orchestrator_explicit_window_bypasses_cutoff(hass) -> None:  # no
     assert count == 12
     # Per-chunk persistence: 1 chunk * 3 streams == 3 writes.
     assert mocked_add.call_count == 3
+
+
+async def test_sums_before_preserves_legitimate_zero_sum(hass) -> None:  # noqa: ANN001
+    """
+    A recorded ``sum`` of exactly 0.0 must round-trip as 0.0, not "absent".
+
+    Regression test for the ``float(x.get("sum") or 0.0)`` pattern: since
+    ``0.0`` is falsy, ``or 0.0`` masked a real recorded zero the same way
+    it masked a missing key. The fix (``x.get("sum", 0.0)``) only falls
+    back to the default when the key is genuinely absent.
+    """
+    stat_id = statistic_id("000000000000", STREAM_CONSUMPTION)
+    before_utc = datetime(2026, 7, 2, tzinfo=UTC)
+
+    async def _fake_executor(fn, *args: Any):  # noqa: ANN001, ANN202
+        if fn is statistics_during_period:
+            _hass, _start, _end, stat_ids, _period, _units, _types = args
+            if stat_id in stat_ids:
+                return {stat_id: [{"start": before_utc.timestamp(), "sum": 0.0}]}
+            return {}
+        raise AssertionError(f"unexpected executor call: {fn}")
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = _fake_executor
+
+    with patch(
+        "custom_components.engie_be._statistics.get_instance",
+        return_value=recorder,
+    ):
+        result = await _sums_before(
+            hass,
+            "000000000000",
+            frozenset({STREAM_CONSUMPTION}),
+            before_utc,
+        )
+
+    assert result == {STREAM_CONSUMPTION: 0.0}
 
 
 async def test_orchestrator_explicit_reimport_keeps_full_series_monotonic(hass) -> None:  # noqa: ANN001

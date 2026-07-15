@@ -411,7 +411,7 @@ async def _sums_before(
         )
         entries = rows.get(stat_id) if rows else None
         if entries:
-            out[stream] = float(entries[-1].get("sum") or 0.0)
+            out[stream] = float(entries[-1].get("sum", 0.0))
     return out
 
 
@@ -542,7 +542,7 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     # newest existing row per stream so a resumed import continues the
     # lifetime total rather than starting over.
     running_sums: dict[str, float] = {
-        stream: float(entry.get("sum") or 0.0) for stream, entry in last.items()
+        stream: float(entry.get("sum", 0.0)) for stream, entry in last.items()
     }
     last_stats_time_utc: datetime | None = None
     if last:
