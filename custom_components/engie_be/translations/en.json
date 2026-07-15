@@ -960,7 +960,7 @@
         },
         "event": {
             "epex_events": {
-                "name": "EPEX price events",
+                "name": "EPEX hourly price events",
                 "state_attributes": {
                     "event_type": {
                         "state": {
