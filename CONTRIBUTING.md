@@ -16,7 +16,7 @@ Pull requests are the best way to propose changes to the codebase.
 1. Fork the repo and create your branch from `main`.
 2. If you've changed something, update the documentation.
 3. Make sure your code lints (using `scripts/lint`).
-4. Test you contribution.
+4. Test your contribution.
 5. Issue that pull request!
 
 ## Any contributions you make will be under the MIT Software License
@@ -48,11 +48,27 @@ Use [ruff](https://github.com/astral-sh/ruff) to make sure the code follows the 
 
 ## Test your code modification
 
-This custom component comes with a development environment in a container,
-easy to launch if you use Visual Studio Code or any devcontainer-compatible
-editor. With this container you will have a stand-alone Home Assistant instance
-running and already configured with the included
-[`configuration.yaml`](./config/configuration.yaml) file.
+### Local venv (tests and linting)
+
+Set up a local Python virtual environment and run the test suite:
+
+```bash
+./scripts/setup       # creates .venv and installs dependencies
+./scripts/lint        # ruff check + format check
+./scripts/test        # pytest with coverage (target: 95%+)
+```
+
+All three scripts use the `.venv` created by `scripts/setup`. You do
+not need the devcontainer to run tests or linting.
+
+### Devcontainer (live Home Assistant)
+
+A devcontainer is included for running a live Home Assistant instance
+with the integration loaded. Open the repo in VS Code (or any
+devcontainer-compatible editor) and it will start a stand-alone HA
+configured with the included
+[`configuration.yaml`](./config/configuration.yaml) file. Use this for
+manual testing and UI verification, not for running the test suite.
 
 ## License
 
