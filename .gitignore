@@ -102,6 +102,7 @@ config/*
 !config/configuration.yaml
 config-bak*/
 config-pre-*/
+/secrets.yaml
 
 # Screenshots at repo root only; do NOT match tracked brand assets
 /*.png
