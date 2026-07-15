@@ -135,11 +135,10 @@ async def test_async_get_epex_prices_normalises_non_utc_input() -> None:
 
 async def test_async_get_epex_prices_attaches_bearer() -> None:
     """
-    v2 endpoint requires authentication; bearer token must be attached.
+    EPEX endpoint requires authentication; bearer token must be attached.
 
-    The v2 endpoint (/pricing/public/v2/epex-prices) requires a valid
-    OAuth2 bearer token.  Sending the user's bearer is necessary for
-    authentication.
+    The endpoint requires a valid OAuth2 bearer token.  Sending the
+    user's bearer is necessary for authentication.
     """
     payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
     response = _build_response(200, payload)
@@ -147,7 +146,7 @@ async def test_async_get_epex_prices_attaches_bearer() -> None:
 
     await client.async_get_epex_prices(_FROM, _TO)
 
-    # v2 uses _api_wrapper which attaches the bearer token
+    # _api_wrapper attaches the bearer token
     # We can't easily check the headers because _api_wrapper wraps the session
     # but we can verify the request was made
     assert client._session.request.await_count == 1
@@ -198,7 +197,7 @@ async def test_async_get_epex_prices_raises_communication_error_on_non_auth_4xx_
     """
     Non-401/403 >=400 status codes are mapped to the generic comms error.
 
-    401/403 errors on the v2 endpoint trigger OAuth reauth flow (via _api_wrapper),
+    401/403 errors on the EPEX endpoint trigger OAuth reauth flow (via _api_wrapper),
     so they are not tested here. Other >=400 errors are communication errors.
     """
     client = _build_client(_build_response(status, "boom"))
@@ -208,8 +207,8 @@ async def test_async_get_epex_prices_raises_communication_error_on_non_auth_4xx_
 
 
 async def test_async_get_epex_prices_401_triggers_reauth() -> None:
-    """401 on v2 endpoint triggers OAuth reauth flow."""
-    # v2 endpoint requires auth; 401 should trigger reauth via _api_wrapper
+    """401 on EPEX endpoint triggers OAuth reauth flow."""
+    # Endpoint requires auth; 401 should trigger reauth via _api_wrapper
     # This is handled by the OAuth flow in _api_wrapper, which raises
     # EngieBeApiClientAuthenticationError
 
