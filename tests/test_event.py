@@ -15,6 +15,7 @@ from custom_components.engie_be.const import (
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
     TRANSLATION_KEY_AUTHENTICATION,
     TRANSLATION_KEY_EPEX_NEGATIVE,
+    TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
 )
 from custom_components.engie_be.event import (
@@ -22,6 +23,7 @@ from custom_components.engie_be.event import (
     EPEX_EVENTS_DESCRIPTION,
     EPEX_EVENTS_QUARTER_HOURLY_DESCRIPTION,
     HAPPY_HOURS_EVENTS_DESCRIPTION,
+    SOLAR_SURPLUS_EVENTS_DESCRIPTION,
     TOU_EVENTS_DESCRIPTION,
     EngieBeAuthenticationEvent,
     EngieBeTransitionEvent,
@@ -73,6 +75,7 @@ def _make_entry(  # noqa: PLR0913
     is_dynamic: bool = False,
     happy_hour_enrolled: bool = False,
     tou_active: bool = False,
+    solar: bool = False,
     epex_qh_coordinator: object | None = None,
     expose_all: bool = False,
 ) -> MagicMock:
@@ -90,6 +93,7 @@ def _make_entry(  # noqa: PLR0913
         feature_flags = MagicMock()
         feature_flags.happy_hour_enrolled = happy_hour_enrolled
         feature_flags.tou_active = tou_active
+        feature_flags.solar = solar
         sub_data = MagicMock()
         sub_data.coordinator = coordinator
         sub_data.feature_flags = feature_flags
@@ -222,13 +226,14 @@ def test_authentication_event_device_info_matches_login_device() -> None:
 
 
 async def test_setup_creates_all_entities_when_flags_on() -> None:
-    """Every feature flag on: all five event entities are created."""
+    """Every feature flag on: all six event entities are created."""
     subentry = _make_subentry()
     entry = _make_entry(
         {subentry.subentry_id: subentry},
         is_dynamic=True,
         happy_hour_enrolled=True,
         tou_active=True,
+        solar=True,
         epex_qh_coordinator=MagicMock(),
     )
     entities: list = []
@@ -243,6 +248,7 @@ async def test_setup_creates_all_entities_when_flags_on() -> None:
         "epex_events",
         "epex_events_quarter_hourly",
         "happy_hours_events",
+        "solar_surplus_events",
         "tou_events",
     }
 
@@ -300,6 +306,7 @@ async def test_setup_expose_all_creates_gated_entities_despite_flags_off() -> No
         "epex_events",
         "epex_events_quarter_hourly",
         "happy_hours_events",
+        "solar_surplus_events",
         "tou_events",
     }
 
@@ -343,6 +350,36 @@ async def test_auth_event_is_entry_scoped_not_subentry_scoped() -> None:
 
     auth_entities = [e for e in entities if isinstance(e, EngieBeAuthenticationEvent)]
     assert len(auth_entities) == 1
+
+
+async def test_setup_creates_solar_event_when_solar_flag_on() -> None:
+    """Solar surplus event entity is created when the solar flag is on."""
+    subentry = _make_subentry()
+    entry = _make_entry({subentry.subentry_id: subentry}, solar=True)
+    entities: list = []
+
+    def _add(ents: list, *_a: object, **_kw: object) -> None:
+        entities.extend(ents)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    keys = _description_keys(entities)
+    assert "solar_surplus_events" in keys
+
+
+async def test_setup_skips_solar_event_when_solar_flag_off() -> None:
+    """Solar surplus event entity is skipped when the solar flag is off."""
+    subentry = _make_subentry()
+    entry = _make_entry({subentry.subentry_id: subentry})
+    entities: list = []
+
+    def _add(ents: list, *_a: object, **_kw: object) -> None:
+        entities.extend(ents)
+
+    await async_setup_entry(MagicMock(), entry, _add)
+
+    keys = _description_keys(entities)
+    assert "solar_surplus_events" not in keys
 
 
 # ---------------------------------------------------------------------------
@@ -532,6 +569,38 @@ async def test_enum_change_fires_event_with_previous_and_current(
     assert entity.state_attributes["current"] == "offpeak"
 
 
+async def test_solar_surplus_level_change_fires_event(
+    hass: HomeAssistant,
+    build_engie_entry: Callable[[HomeAssistant, str], MockConfigEntry],
+) -> None:
+    """Solar surplus forecast level change fires ``level_changed``."""
+    entry = build_engie_entry(hass)
+    subentry = next(iter(entry.subentries.values()))
+
+    ent_reg = er.async_get(hass)
+    sibling = ent_reg.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "unique_solar_surplus_forecast",
+        config_entry=entry,
+        config_subentry_id=subentry.subentry_id,
+        translation_key=TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
+    )
+
+    entity = EngieBeTransitionEvent(SOLAR_SURPLUS_EVENTS_DESCRIPTION, entry, subentry)
+    await _add_event_entity(hass, entity)
+
+    hass.states.async_set(sibling.entity_id, "no_surplus")
+    await hass.async_block_till_done()
+    hass.states.async_set(sibling.entity_id, "high_surplus")
+    await hass.async_block_till_done()
+
+    assert entity.state is not None
+    assert entity.state_attributes["event_type"] == "level_changed"
+    assert entity.state_attributes["previous"] == "no_surplus"
+    assert entity.state_attributes["current"] == "high_surplus"
+
+
 # ---------------------------------------------------------------------------
 # QH description watches the correct translation key (regression guard)
 # ---------------------------------------------------------------------------
@@ -549,6 +618,14 @@ def test_happy_hours_description_transitions() -> None:
     watched = HAPPY_HOURS_EVENTS_DESCRIPTION.watched_translation_keys[0]
     assert watched.resolve("off", "on") == ("activated", {})
     assert watched.resolve("on", "off") == ("deactivated", {})
+
+
+def test_solar_surplus_description_watches_forecast() -> None:
+    """Solar surplus event description watches the forecast translation key."""
+    watched = SOLAR_SURPLUS_EVENTS_DESCRIPTION.watched_translation_keys
+    assert len(watched) == 1
+    assert watched[0].translation_key == "solar_surplus_forecast"
+    assert watched[0].changed_event_type == "level_changed"
 
 
 def test_authentication_description_transitions() -> None:

@@ -1,7 +1,7 @@
 """
 Event platform for the ENGIE Belgium integration.
 
-Records every meaningful state transition that the 34 automation
+Records every meaningful state transition that the 33 automation
 triggers already detect (EPEX going negative, Happy Hours activating,
 TOU slot changing, authentication lost/restored, ...) as a logbook-
 visible ``event`` entity. This platform does not duplicate any
@@ -32,6 +32,7 @@ from .const import (
     TRANSLATION_KEY_EPEX_NEGATIVE,
     TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
+    TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
     TRANSLATION_KEY_TOU_INJECTION_SLOT,
     TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL,
@@ -175,6 +176,18 @@ AUTHENTICATION_EVENTS_DESCRIPTION = EngieBeEventEntityDescription(
     ),
 )
 
+SOLAR_SURPLUS_EVENTS_DESCRIPTION = EngieBeEventEntityDescription(
+    key="solar_surplus_events",
+    translation_key="solar_surplus_events",
+    event_types=["level_changed"],
+    watched_translation_keys=(
+        WatchedSibling(
+            translation_key=TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
+            changed_event_type="level_changed",
+        ),
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001
@@ -227,6 +240,13 @@ async def async_setup_entry(
         if sub_data.feature_flags.tou_active or expose_all:
             subentry_entities.append(
                 EngieBeTransitionEvent(TOU_EVENTS_DESCRIPTION, entry, subentry)
+            )
+
+        if sub_data.feature_flags.solar or expose_all:
+            subentry_entities.append(
+                EngieBeTransitionEvent(
+                    SOLAR_SURPLUS_EVENTS_DESCRIPTION, entry, subentry
+                )
             )
 
         if not subentry_entities:

@@ -992,6 +992,16 @@
                     }
                 }
             },
+            "solar_surplus_events": {
+                "name": "Solar Surplus events",
+                "state_attributes": {
+                    "event_type": {
+                        "state": {
+                            "level_changed": "Forecast level changed"
+                        }
+                    }
+                }
+            },
             "authentication_events": {
                 "name": "Authentication events",
                 "state_attributes": {

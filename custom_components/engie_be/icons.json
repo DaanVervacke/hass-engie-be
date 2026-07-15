@@ -196,6 +196,9 @@
             "tou_events": {
                 "default": "mdi:calendar-clock"
             },
+            "solar_surplus_events": {
+                "default": "mdi:solar-power-variant"
+            },
             "authentication_events": {
                 "default": "mdi:shield-lock"
             }
