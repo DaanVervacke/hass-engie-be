@@ -190,7 +190,7 @@
                 "default": "mdi:solar-power"
             },
             "solar_surplus_today_peak": {
-                "default": "mdi:solar-panel-large"
+                "default": "mdi:solar-panel"
             },
             "solar_surplus_today_total": {
                 "default": "mdi:solar-panel-large"
