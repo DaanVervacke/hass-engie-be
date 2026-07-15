@@ -1505,6 +1505,10 @@ class _EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
 
     config_entry: EngieBeConfigEntry
 
+    # Subclasses set this to select the API/parse granularity. Defined here
+    # only as a type annotation; each concrete coordinator overrides it.
+    _granularity: EpexGranularity
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -1523,6 +1527,7 @@ class _EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
             name=f"{DOMAIN} {coordinator_name}",
             update_interval=timedelta(minutes=update_minutes),
         )
+        self._coordinator_name = coordinator_name
         self._last_update_success_time: datetime | None = None
         self._unavailable_logged = False
 
@@ -1550,45 +1555,6 @@ class _EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
 
     async def _async_update_data(self) -> EpexPayload | None:
         """
-        Fetch EPEX day-ahead prices.
-
-        Returns the parsed payload, or the previous (last-known) payload
-        when the endpoint is reachable but tomorrow's slate is not yet
-        published (HTTP 404), or when a transient communication error
-        occurs. Returns ``None`` only when no previous payload exists
-        either; platforms must handle this by reporting unavailable.
-        """
-        msg = "Subclasses must implement _async_update_data"
-        raise NotImplementedError(msg)
-
-
-class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
-    """
-    Coordinator for EPEX day-ahead wholesale prices.
-
-    EPEX prices are public, login-scoped at most (the integration uses the
-    public endpoint), and identical for every customer of a given parent
-    :class:`ConfigEntry`. They are therefore polled once per parent entry
-    rather than once per subentry, regardless of how many customer
-    accounts the user owns. The coordinator is created unconditionally;
-    consumers gate entity creation on per-subentry ``is_dynamic`` so a
-    user with only fixed-tariff accounts simply never sees EPEX entities.
-    """
-
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        config_entry: EngieBeConfigEntry,
-    ) -> None:
-        """Initialise the entry-level EPEX coordinator."""
-        super().__init__(
-            hass=hass,
-            config_entry=config_entry,
-            coordinator_name="EPEX",
-        )
-
-    async def _async_update_data(self) -> EpexPayload | None:
-        """
         Fetch EPEX day-ahead prices covering today + tomorrow (Brussels).
 
         Returns the parsed payload, or the previous (last-known) payload
@@ -1613,10 +1579,13 @@ class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
         end_local = start_local + timedelta(days=2)
 
         try:
-            raw = await client.async_get_epex_prices(start_local, end_local)
+            raw = await client.async_get_epex_prices(
+                start_local, end_local, granularity=self._granularity.name
+            )
         except EpexNotPublishedError as exception:
             LOGGER.debug(
-                "EPEX endpoint reports no prices yet for window %s..%s: %s",
+                "%s endpoint reports no prices yet for window %s..%s: %s",
+                self._coordinator_name,
                 start_local.isoformat(),
                 end_local.isoformat(),
                 exception,
@@ -1624,26 +1593,59 @@ class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
             return previous
         except EngieBeApiClientError as exception:
             self._note_unavailable(
-                "Failed to fetch EPEX prices, keeping last-known payload: %s",
+                f"Failed to fetch {self._coordinator_name} prices, "
+                "keeping last-known payload: %s",
                 exception,
             )
             return previous
 
         try:
             parsed = _parse_epex_response(
-                raw, slot_duration_minutes=EpexGranularity.HOURLY.value
+                raw, slot_duration_minutes=self._granularity.value
             )
         except (KeyError, TypeError, ValueError) as exception:
             self._note_unavailable(
-                "Failed to parse EPEX response, keeping last-known payload: %s",
+                f"Failed to parse {self._coordinator_name} response, "
+                "keeping last-known payload: %s",
                 exception,
             )
             return previous
         self._last_update_success_time = dt_util.utcnow()
         if self._unavailable_logged:
-            LOGGER.info("EPEX prices fetch recovered; resuming fresh updates")
+            LOGGER.info(
+                "%s prices fetch recovered; resuming fresh updates",
+                self._coordinator_name,
+            )
             self._unavailable_logged = False
         return parsed
+
+
+class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
+    """
+    Coordinator for EPEX day-ahead wholesale prices.
+
+    EPEX prices are public, login-scoped at most (the integration uses the
+    public endpoint), and identical for every customer of a given parent
+    :class:`ConfigEntry`. They are therefore polled once per parent entry
+    rather than once per subentry, regardless of how many customer
+    accounts the user owns. The coordinator is created unconditionally;
+    consumers gate entity creation on per-subentry ``is_dynamic`` so a
+    user with only fixed-tariff accounts simply never sees EPEX entities.
+    """
+
+    _granularity = EpexGranularity.HOURLY
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config_entry: EngieBeConfigEntry,
+    ) -> None:
+        """Initialise the entry-level EPEX coordinator."""
+        super().__init__(
+            hass=hass,
+            config_entry=config_entry,
+            coordinator_name="EPEX",
+        )
 
 
 class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
@@ -1665,6 +1667,8 @@ class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
     it from hourly data.
     """
 
+    _granularity = EpexGranularity.QUARTER_HOURLY
+
     def __init__(
         self,
         hass: HomeAssistant,
@@ -1676,65 +1680,6 @@ class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
             config_entry=config_entry,
             coordinator_name="EPEX QH",
         )
-
-    async def _async_update_data(self) -> EpexPayload | None:
-        """
-        Fetch EPEX day-ahead prices with quarter-hourly granularity.
-
-        Covering today + tomorrow (Brussels).
-
-        Returns the parsed payload, or the previous (last-known) payload
-        when the endpoint is reachable but tomorrow's slate is not yet
-        published (HTTP 404), or when a transient communication error
-        occurs. Returns ``None`` only when no previous payload exists
-        either; platforms must handle this by reporting unavailable.
-        """
-        client = self.config_entry.runtime_data.client
-        previous = self.data if isinstance(self.data, EpexPayload) else None
-
-        # Window: [today_brussels_00:00 .. day_after_tomorrow_brussels_00:00).
-        now_brussels = dt_util.now(BRUSSELS_TZ)
-        start_local = datetime.combine(
-            now_brussels.date(),
-            time(0, 0),
-            tzinfo=BRUSSELS_TZ,
-        )
-        end_local = start_local + timedelta(days=2)
-
-        try:
-            raw = await client.async_get_epex_prices(
-                start_local, end_local, granularity="QUARTER_HOURLY"
-            )
-        except EpexNotPublishedError as exception:
-            LOGGER.debug(
-                "EPEX QH endpoint reports no prices yet for window %s..%s: %s",
-                start_local.isoformat(),
-                end_local.isoformat(),
-                exception,
-            )
-            return previous
-        except EngieBeApiClientError as exception:
-            self._note_unavailable(
-                "Failed to fetch EPEX QH prices, keeping last-known payload: %s",
-                exception,
-            )
-            return previous
-
-        try:
-            parsed = _parse_epex_response(
-                raw, slot_duration_minutes=EpexGranularity.QUARTER_HOURLY.value
-            )
-        except (KeyError, TypeError, ValueError) as exception:
-            self._note_unavailable(
-                "Failed to parse EPEX QH response, keeping last-known payload: %s",
-                exception,
-            )
-            return previous
-        self._last_update_success_time = dt_util.utcnow()
-        if self._unavailable_logged:
-            LOGGER.info("EPEX QH prices fetch recovered; resuming fresh updates")
-            self._unavailable_logged = False
-        return parsed
 
 
 def _parse_epex_response(

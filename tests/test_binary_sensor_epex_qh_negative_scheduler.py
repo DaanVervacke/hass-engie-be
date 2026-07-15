@@ -1,9 +1,10 @@
 """
 Tests for the QH EPEX-negative binary sensor's boundary scheduler.
 
-Validates that ``EngieBeEpexQuarterHourNegativeSensor`` flips at the
-exact second the market moves to the next 15-minute slot, instead of
-waiting for the next coordinator refresh.
+Validates that the ``EngieBeEpexNegativeSensor`` (constructed with the
+quarter-hourly description/suffix) flips at the exact second the market
+moves to the next 15-minute slot, instead of waiting for the next
+coordinator refresh.
 """
 
 from __future__ import annotations
@@ -16,7 +17,8 @@ from zoneinfo import ZoneInfo
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.engie_be.binary_sensor import (
-    EngieBeEpexQuarterHourNegativeSensor,
+    EPEX_NEGATIVE_QUARTER_HOUR_SENSOR_DESCRIPTION,
+    EngieBeEpexNegativeSensor,
 )
 from custom_components.engie_be.const import EPEX_TZ, SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.data import EpexPayload, EpexSlot
@@ -73,6 +75,18 @@ def _make_coordinator(payload: EpexPayload | None) -> MagicMock:
     return coordinator
 
 
+def _make_qh_sensor(
+    coordinator: MagicMock, subentry: MagicMock
+) -> EngieBeEpexNegativeSensor:
+    """Build the QH-flavoured negative-price sensor under test."""
+    return EngieBeEpexNegativeSensor(
+        coordinator,
+        subentry,
+        EPEX_NEGATIVE_QUARTER_HOUR_SENSOR_DESCRIPTION,
+        "epex_negative_quarter_hour",
+    )
+
+
 # Two adjacent 15-minute slots: 14:00 negative, 14:15 non-negative.
 _PAYLOAD = _build_payload(((14, 0, -0.012), (14, 15, 0.087)))
 # 14:00 Brussels (= 12:00 UTC) is the start of the first slot, 14:15
@@ -87,7 +101,7 @@ async def test_scheduler_arms_at_next_slot_boundary(
 ) -> None:
     """Inside the negative slot, timer arms at the slot end."""
     coordinator = _make_coordinator(_PAYLOAD)
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, _make_subentry())
+    sensor = _make_qh_sensor(coordinator, _make_subentry())
     inside = _NEG_SLOT_START_UTC + timedelta(minutes=7)
     with patch(
         "custom_components.engie_be.binary_sensor.dt_util.utcnow",
@@ -113,7 +127,7 @@ async def test_scheduler_does_not_arm_when_payload_missing(
 ) -> None:
     """No payload cached: nothing to schedule against."""
     coordinator = _make_coordinator(None)
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, _make_subentry())
+    sensor = _make_qh_sensor(coordinator, _make_subentry())
     await add_sensor(hass, sensor)
     assert sensor._unsub_boundary is None
 
@@ -124,7 +138,7 @@ async def test_scheduler_does_not_arm_when_payload_in_past(
 ) -> None:
     """Cached payload whose slots are all in the past: no timer armed."""
     coordinator = _make_coordinator(_PAYLOAD)
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, _make_subentry())
+    sensor = _make_qh_sensor(coordinator, _make_subentry())
     future = _BOUNDARY_UTC + timedelta(hours=2)
     with patch(
         "custom_components.engie_be.binary_sensor.dt_util.utcnow",
@@ -140,7 +154,7 @@ async def test_coordinator_update_rearms_on_new_payload(
 ) -> None:
     """A coordinator refresh swaps the timer to the new slot boundary."""
     coordinator = _make_coordinator(_PAYLOAD)
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, _make_subentry())
+    sensor = _make_qh_sensor(coordinator, _make_subentry())
     inside = _NEG_SLOT_START_UTC + timedelta(minutes=7)
     with patch(
         "custom_components.engie_be.binary_sensor.dt_util.utcnow",
@@ -163,7 +177,7 @@ async def test_remove_cancels_pending_timer(
 ) -> None:
     """Removing the entity cancels its pending boundary timer."""
     coordinator = _make_coordinator(_PAYLOAD)
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, _make_subentry())
+    sensor = _make_qh_sensor(coordinator, _make_subentry())
     inside = _NEG_SLOT_START_UTC + timedelta(minutes=7)
     with patch(
         "custom_components.engie_be.binary_sensor.dt_util.utcnow",

@@ -15,7 +15,6 @@ from custom_components.engie_be.binary_sensor import (
     EPEX_NEGATIVE_SENSOR_DESCRIPTION,
     EngieBeAuthSensor,
     EngieBeEpexNegativeSensor,
-    EngieBeEpexQuarterHourNegativeSensor,
     EngieBeHappyHourActiveSensor,
     EngieBeTouIsOptimalSensor,
     async_setup_entry,
@@ -112,6 +111,18 @@ def _patched_now():  # noqa: ANN202
     return patch(
         "custom_components.engie_be.binary_sensor.dt_util.utcnow",
         return_value=_NOW_UTC,
+    )
+
+
+def _make_qh_sensor(
+    coordinator: MagicMock, subentry: MagicMock
+) -> EngieBeEpexNegativeSensor:
+    """Build the QH-flavoured negative-price sensor under test."""
+    return EngieBeEpexNegativeSensor(
+        coordinator,
+        subentry,
+        EPEX_NEGATIVE_QUARTER_HOUR_SENSOR_DESCRIPTION,
+        "epex_negative_quarter_hour",
     )
 
 
@@ -284,7 +295,7 @@ def test_slot_boundary_is_half_open() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Quarter-hourly EPEX negative-price sensor (EngieBeEpexQuarterHourNegativeSensor)
+# Quarter-hourly EPEX negative-price sensor (EngieBeEpexNegativeSensor, QH flavour)
 # ---------------------------------------------------------------------------
 
 
@@ -300,7 +311,7 @@ def test_qh_negative_unique_id_is_subentry_scoped() -> None:
     """QH unique IDs must be entry+subentry scoped with the QH-specific suffix."""
     coordinator = _make_epex_coordinator(None)
     subentry = _make_subentry(subentry_id="sub_xyz")
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    sensor = _make_qh_sensor(coordinator, subentry)
     assert sensor.unique_id == "test_entry_id_sub_xyz_epex_negative_quarter_hour"
 
 
@@ -308,7 +319,7 @@ def test_qh_negative_unavailable_when_payload_missing() -> None:
     """First-poll 404 leaves ``epex=None`` -> unavailable."""
     coordinator = _make_epex_coordinator(None)
     subentry = _make_subentry()
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    sensor = _make_qh_sensor(coordinator, subentry)
     with _patched_now():
         assert sensor.available is False
 
@@ -318,7 +329,7 @@ def test_qh_negative_available_when_slot_covers_now() -> None:
     payload = _build_qh_payload([(15, 30, 0.025)])
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    sensor = _make_qh_sensor(coordinator, subentry)
     with _patched_now():
         assert sensor.available is True
 
@@ -335,7 +346,7 @@ def test_qh_negative_is_on_true_when_current_slot_negative() -> None:
     )
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    sensor = _make_qh_sensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is True
 
@@ -349,7 +360,7 @@ def test_qh_negative_is_on_false_when_current_slot_zero() -> None:
     payload = _build_qh_payload([(15, 30, 0.0)])
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    sensor = _make_qh_sensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is False
 
@@ -359,7 +370,7 @@ def test_qh_negative_is_on_false_when_current_slot_positive() -> None:
     payload = _build_qh_payload([(15, 30, 0.025)])
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    sensor = _make_qh_sensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is False
 
@@ -368,7 +379,7 @@ def test_qh_negative_is_on_none_when_unavailable() -> None:
     """No payload -> ``is_on`` is None (HA renders unavailable)."""
     coordinator = _make_epex_coordinator(None)
     subentry = _make_subentry()
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    sensor = _make_qh_sensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is None
 
@@ -378,7 +389,7 @@ def test_qh_negative_is_on_none_when_no_slot_covers_now() -> None:
     payload = _build_qh_payload([(18, 0, -0.05)])
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    sensor = _make_qh_sensor(coordinator, subentry)
     with _patched_now():
         assert sensor.is_on is None
 
@@ -399,7 +410,7 @@ def test_qh_negative_slot_boundary_is_half_open() -> None:
     )
     coordinator = _make_epex_coordinator(payload)
     subentry = _make_subentry()
-    sensor = EngieBeEpexQuarterHourNegativeSensor(coordinator, subentry)
+    sensor = _make_qh_sensor(coordinator, subentry)
 
     # Anchor exactly on the 15:15 boundary; should pick the 15:15 slot.
     boundary = datetime(2026, 5, 4, 15, 15, 0, tzinfo=_BRUSSELS).astimezone(UTC)
@@ -819,7 +830,12 @@ async def test_setup_entry_adds_qh_negative_sensor_when_qh_coordinator_present()
 
     await async_setup_entry(MagicMock(), entry, _add)
 
+    # The hourly and QH negative-price sensors share a class; disambiguate
+    # by unique-id suffix instead of ``isinstance``.
     qh_entities = [
-        e for e in added if isinstance(e, EngieBeEpexQuarterHourNegativeSensor)
+        e
+        for e in added
+        if isinstance(e, EngieBeEpexNegativeSensor)
+        and e.unique_id.endswith("_epex_negative_quarter_hour")
     ]
     assert len(qh_entities) == 1

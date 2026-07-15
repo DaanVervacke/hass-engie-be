@@ -6,20 +6,11 @@ from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 
 from .const import BRUSSELS_TZ
+from .const import TOU_WEEKDAY_KEYS as _WEEKDAY_KEYS
 from .data import unwrap_dict_payload
 
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
-
-_WEEKDAY_KEYS = (
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-    "sunday",
-)
 
 _MAX_HOUR = 23
 _MAX_MINUTE = 59

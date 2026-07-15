@@ -1263,15 +1263,23 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
 
 
 class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
-    """EPEX day-ahead price for the slot starting one hour from now."""
+    """
+    EPEX day-ahead price for the slot starting one hour from now.
+
+    ``_lookahead`` controls how far ahead of ``now`` the reported slot
+    sits; :class:`EngieBeEpexNextQuarterHourSensor` reuses this
+    implementation with a 15-minute lookahead instead of an hour.
+    """
+
+    _lookahead = timedelta(hours=1)
 
     @property
     def native_value(self) -> float | None:
-        """Return the EUR/kWh price of the slot covering ``now + 1h``."""
+        """Return the EUR/kWh price of the slot covering ``now + _lookahead``."""
         payload = epex_payload(self.coordinator)
         if payload is None:
             return None
-        target = dt_util.utcnow() + timedelta(hours=1)
+        target = dt_util.utcnow() + self._lookahead
         for slot in payload.slots:
             if slot.start <= target < slot.end:
                 return slot.value_eur_per_kwh
@@ -1290,7 +1298,7 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
         payload = epex_payload(self.coordinator)
         if payload is None:
             return {}
-        target = dt_util.utcnow() + timedelta(hours=1)
+        target = dt_util.utcnow() + self._lookahead
         for slot in payload.slots:
             if slot.start <= target < slot.end:
                 attrs: dict[str, Any] = {
@@ -1306,48 +1314,10 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
         return {}
 
 
-class EngieBeEpexNextQuarterHourSensor(_EngieBeEpexSensorBase):
+class EngieBeEpexNextQuarterHourSensor(EngieBeEpexNextHourSensor):
     """EPEX day-ahead price for the slot starting 15 minutes from now."""
 
-    @property
-    def native_value(self) -> float | None:
-        """Return the EUR/kWh price of the slot covering ``now + 15min``."""
-        payload = epex_payload(self.coordinator)
-        if payload is None:
-            return None
-        target = dt_util.utcnow() + timedelta(minutes=15)
-        for slot in payload.slots:
-            if slot.start <= target < slot.end:
-                return slot.value_eur_per_kwh
-        return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """
-        Expose the start/end of the slot whose price is being reported.
-
-        Intentionally narrower than :class:`EngieBeEpexCurrentSensor`'s
-        attribute set: this is a point lookup for one specific future
-        slot, not a today/tomorrow slate browser, so the per-day arrays
-        and market metadata are omitted to keep the entity focused.
-        """
-        payload = epex_payload(self.coordinator)
-        if payload is None:
-            return {}
-        target = dt_util.utcnow() + timedelta(minutes=15)
-        for slot in payload.slots:
-            if slot.start <= target < slot.end:
-                attrs: dict[str, Any] = {
-                    "slot_start": slot.start.isoformat(),
-                    "slot_end": slot.end.isoformat(),
-                    "slot_duration_minutes": _slot_duration_minutes(slot),
-                }
-                if self.coordinator.last_update_success_time is not None:
-                    attrs["last_fetched"] = (
-                        self.coordinator.last_update_success_time.isoformat()
-                    )
-                return attrs
-        return {}
+    _lookahead = timedelta(minutes=15)
 
 
 class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
