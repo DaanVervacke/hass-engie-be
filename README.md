@@ -445,6 +445,7 @@ editor.
 | EPEX lowest hour price today updated | Lowest hourly EPEX price of today changes |
 | EPEX highest quarter-hourly price today updated | Highest quarter-hourly EPEX price of today changes |
 | EPEX lowest quarter-hourly price today updated | Lowest quarter-hourly EPEX price of today changes |
+| Tomorrow EPEX prices published | Tomorrow's EPEX day-ahead slate becomes available (fires once per day) |
 
 **Calendar-slot triggers**:
 
@@ -506,9 +507,7 @@ automation:
 automation:
   alias: "EPEX tomorrow prices published"
   triggers:
-    - trigger: template
-      value_template: >
-        {{ state_attr('sensor.engie_belgium_{BAN}_epex_current', 'tomorrow') | length > 0 }}
+    - trigger: engie_be.tomorrow_epex_prices_published
   actions:
     - action: notify.mobile_app
       data:
