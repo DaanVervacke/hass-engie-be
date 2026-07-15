@@ -60,7 +60,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
-- EPEX endpoint now requires authentication (handled via existing OAuth flow) and accepts a `granularity` query parameter for quarter-hourly data. Both hourly and quarter-hourly prices are always fetched; sensor creation is gated on the dynamic tariff flag, not on granularity detection.
+- EPEX endpoint now requires authentication (handled via existing OAuth flow) and accepts a `granularity` query parameter for quarter-hourly data. Both hourly and quarter-hourly prices are always fetched. Sensor creation is gated on the dynamic tariff flag, not on granularity detection.
 
 - Standardized EPEX sensor friendly names: hourly sensors use "hour" (not "hourly"), quarter-hourly sensors use "quarter-hourly" for clarity.
 
