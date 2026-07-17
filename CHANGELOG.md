@@ -5,6 +5,122 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-07-18
+
+This release turns the integration into a full automation platform for your
+ENGIE account. It adds 34 purpose-specific triggers and 13 purpose-specific
+conditions that show up directly in the Home Assistant automation editor,
+quarter-hourly EPEX prices, time-of-use
+schedule sensors, solar surplus forecasts, billing information, and an event
+platform that records state transitions in the logbook.
+
+### What's new
+
+- **Purpose-specific triggers and conditions.** 34 triggers across five
+  categories are now available in the automation editor: state transitions
+  (EPEX becoming negative, TOU slot becoming optimal, Happy Hours activating,
+  authentication loss), threshold crossings for EPEX prices and solar surplus
+  values, value updates for daily peaks and price extremes, and calendar-boundary
+  triggers for Happy Hours windows and TOU slot starts. 13 conditions let you
+  gate automations on current EPEX price sign, solar surplus level, and TOU slot
+  state. These are native HA 2026.7+ automation primitives, not template sensors.
+
+- **Quarter-hourly EPEX prices.** Dynamic tariff contracts now get eight EPEX
+  sensors: four hourly (current, next, low today, high today) and four
+  quarter-hourly. Both granularities are always created, regardless of meter
+  type. A new "tomorrow EPEX prices published" trigger fires once per Brussels
+  day when tomorrow's day-ahead slate arrives, so your automations can react
+  without polling.
+
+- **Event platform.** Six event entities per business agreement record state
+  transitions in the logbook: EPEX price sign flips, Happy Hours
+  activation/deactivation, TOU slot changes, Solar Surplus level changes, and
+  authentication loss/restore.
+
+- **Time-of-Use schedule.** Two enum sensors per electricity meter show the
+  current offtake and injection slot. Two binary sensors indicate whether
+  you're in the optimal slot for each direction. State flips happen exactly on
+  the TOU slot boundary, not on the next coordinator refresh. The calendar
+  entity shows the weekly TOU schedule as events with human-readable titles
+  like "Off-peak (offtake)".
+
+- **Solar Surplus forecast.** Five sensors per electricity delivery point:
+  aggregate level (with a 3-day hourly outlook in the `forecast` attribute),
+  current-hour, next-hour, today-total, and today-peak surplus in kWh. Current
+  and next-hour sensors roll over exactly on the hour. The forecast also
+  appears in the Energy dashboard's solar production configuration. Only
+  created for accounts where ENGIE has the `solar-surplus-shown-dashboard`
+  flag active.
+
+- **Billing.** Outstanding balance (EUR), overdue amount (EUR), and next
+  invoice due date per business agreement. Created automatically when the
+  billing endpoint returns data.
+
+- **Happy Hours "vs last month" comparison.** Three new sensors showing
+  consumption, eligible hours, and reward compared to the previous month,
+  sourced from the month-report endpoint.
+
+- **Daily capacity-tariff peak sensor.** Exposes the most recent daily peak
+  (kW) with `peak_date`, `peak_kwh`, `peak_start`, `peak_end` and the full
+  `daily_peaks` array as attributes. Disabled by default.
+
+- **Expose-all debug toggle.** A new option in the integration settings shows
+  all entities regardless of your contract type or feature flags, for
+  troubleshooting and support requests.
+
+### Fixed
+
+- **Price sensor timezone.** The current-price lookup now computes "today" in
+  Brussels time instead of UTC, which could select the wrong day's price entry
+  during the hours the two dates disagree.
+
+- **Historical re-import seeding.** Re-imports with an explicit start date now
+  reseed cumulative sums from the correct statistic, preventing Home Assistant
+  from misreading a legitimate backfill as a meter reset.
+
+- **Falsy-zero in statistics.** A legitimate zero sum in long-term statistics
+  is no longer treated as missing data.
+
+- **Python 3.13 compatibility.** Replaced legacy `except A, B:` syntax at 13
+  sites so the integration loads on Python 3.13.
+
+- **Security: debug log redaction.** Six missing ENGIE API body fields
+  (including BANs, EANs, and bank-transfer references) are now masked in
+  DEBUG-level logging.
+
+- **Malformed API responses.** Guards added for when ENGIE returns a non-dict
+  where a dict was expected, or a non-numeric string where a number was
+  expected.
+
+### Changed
+
+- All independent coordinator fetches now run concurrently instead of
+  sequentially, reducing refresh latency.
+- EPEX coordinator, binary sensor, and next-hour sensor code deduplicated:
+  hourly and quarter-hourly variants share a single parameterized
+  implementation.
+- All sensor icons moved from hardcoded Python to `icons.json`, matching the
+  Gold quality-scale pattern.
+- Removed non-functional Captar peak window triggers that could never fire
+  because ENGIE's API only provides historical peak data.
+- Solar Surplus and Time-of-Use sensor friendly names no longer include a
+  trailing `({ean})` suffix.
+
+### Upgrading
+
+Coming from v0.12.0 or any v0.13.0 beta? Your accounts and settings carry
+over. After updating, open **Settings > Devices & services > ENGIE Belgium**
+and check for new entities.
+
+If you're on a dynamic tariff, you'll see the new quarter-hourly EPEX sensors
+alongside the existing hourly ones. The automation editor will show all 34
+purpose-specific triggers and 13 purpose-specific conditions under the ENGIE
+Belgium integration.
+
+For TOU and Solar Surplus sensors to appear, your ENGIE account needs the
+corresponding feature flags active on their side. If you don't see them, try
+the new expose-all debug toggle under the integration options.
+
 ## [0.13.0b5] - 2026-07-15
 
 ### Added
@@ -1235,7 +1351,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b5...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0...v0.13.0
 [0.13.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b4...v0.13.0b5
 [0.13.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b3...v0.13.0b4
 [0.13.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b2...v0.13.0b3

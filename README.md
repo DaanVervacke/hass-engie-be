@@ -545,9 +545,10 @@ their transitions as HA events with timestamps.
 | Solar Surplus events | `event.engie_belgium_{BAN}_solar_surplus_events` | Solar Surplus forecast level changes |
 | Authentication events | `event.engie_belgium_{BAN}_authentication_events` | Authentication lost or restored |
 
-Event entities are created per business agreement. The TOU and Solar
-Surplus event entities only appear when the corresponding feature flag
-is active on the account.
+Event entities are created per business agreement, except for the
+Authentication events entity which is created once per login. The TOU
+and Solar Surplus event entities only appear when the corresponding
+feature flag is active on the account.
 
 ## Prerequisites
 

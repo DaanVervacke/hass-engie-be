@@ -1334,6 +1334,10 @@
                     "description": "The TOU slot code to wait for."
                 }
             }
+        },
+        "tomorrow_epex_prices_published": {
+            "name": "Tomorrow's EPEX prices published",
+            "description": "Fires once when day-ahead electricity prices for tomorrow become available."
         }
     }
 }

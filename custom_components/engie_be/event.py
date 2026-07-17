@@ -1,7 +1,7 @@
 """
 Event platform for the ENGIE Belgium integration.
 
-Records every meaningful state transition that the 33 automation
+Records every meaningful state transition that the 34 automation
 triggers already detect (EPEX going negative, Happy Hours activating,
 TOU slot changing, authentication lost/restored, ...) as a logbook-
 visible ``event`` entity. This platform does not duplicate any
