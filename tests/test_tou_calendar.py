@@ -249,9 +249,7 @@ def test_slots_to_events_non_dict_slot_is_skipped() -> None:
             {"startTime": "bad", "endTime": "12:00", "slotCode": "PEAK"},
             id="unparseable-start-time",
         ),
-        pytest.param(
-            {"endTime": "12:00", "slotCode": "PEAK"}, id="missing-start-time"
-        ),
+        pytest.param({"endTime": "12:00", "slotCode": "PEAK"}, id="missing-start-time"),
     ],
 )
 def test_slots_to_events_incomplete_slot_is_skipped(slot: dict[str, object]) -> None:
