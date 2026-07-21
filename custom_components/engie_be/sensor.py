@@ -487,10 +487,8 @@ class _EngieBePeakSensorBase(EngieBeEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return last-fetched timestamp plus active peak month metadata."""
+        """Return active peak month metadata."""
         attrs: dict[str, Any] = {}
-        if self.coordinator.last_successful_fetch:
-            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
         meta = peaks_meta(self.coordinator)
         if meta is not None:
             attrs["peak_month"] = f"{meta['year']:04d}-{meta['month']:02d}"
@@ -853,10 +851,8 @@ class EngieBeHappyHourMonthSensor(EngieBeEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose report month metadata and last-fetched timestamp."""
+        """Expose report month metadata."""
         attrs: dict[str, Any] = {}
-        if self.coordinator.last_successful_fetch:
-            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
         wrapper = _month_report_wrapper(self.coordinator)
         if wrapper is not None:
             year = wrapper.get("year")
@@ -950,8 +946,6 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
         """Return extra state attributes."""
         ean_display = bare_ean(self._ean)
         attrs: dict[str, Any] = {"ean": ean_display}
-        if self.coordinator.last_successful_fetch:
-            attrs["last_fetched"] = self.coordinator.last_successful_fetch.isoformat()
         price_entry = self._get_current_price_entry()
         if price_entry:
             attrs["from"] = price_entry.get("from")
@@ -1255,10 +1249,6 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
             attrs["publication_time"] = payload.publication_time.isoformat()
         if payload.market_date is not None:
             attrs["market_date"] = payload.market_date
-        if self.coordinator.last_update_success_time is not None:
-            attrs["last_fetched"] = (
-                self.coordinator.last_update_success_time.isoformat()
-            )
         return attrs
 
 
@@ -1306,10 +1296,6 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
                     "slot_end": slot.end.isoformat(),
                     "slot_duration_minutes": _slot_duration_minutes(slot),
                 }
-                if self.coordinator.last_update_success_time is not None:
-                    attrs["last_fetched"] = (
-                        self.coordinator.last_update_success_time.isoformat()
-                    )
                 return attrs
         return {}
 
@@ -1360,16 +1346,11 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
         slot = self._selected_slot()
         if slot is None:
             return {}
-        attrs = {
+        return {
             "slot_start": slot.start.isoformat(),
             "slot_end": slot.end.isoformat(),
             "slot_duration_minutes": _slot_duration_minutes(slot),
         }
-        if self.coordinator.last_update_success_time is not None:
-            attrs["last_fetched"] = (
-                self.coordinator.last_update_success_time.isoformat()
-            )
-        return attrs
 
 
 def _serialize_slot(slot: EpexSlot) -> dict[str, Any]:

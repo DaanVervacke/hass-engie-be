@@ -300,8 +300,8 @@ def test_latest_daily_peak_extra_state_attributes_without_daily_peaks() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_extra_state_attributes_includes_last_fetched_when_set() -> None:
-    """``last_fetched`` is included when the coordinator has a fetch timestamp."""
+def test_extra_state_attributes_omits_last_fetched_even_when_set() -> None:
+    """``last_fetched`` is never exposed, even with a fetch timestamp set."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
     coordinator.last_successful_fetch = datetime.fromisoformat(
         "2026-04-15T19:00:00+00:00",
@@ -315,11 +315,11 @@ def test_extra_state_attributes_includes_last_fetched_when_set() -> None:
         field="peakKW",
     )
     attrs = sensor.extra_state_attributes
-    assert "last_fetched" in attrs
+    assert "last_fetched" not in attrs
 
 
 def test_extra_state_attributes_omits_last_fetched_when_unset() -> None:
-    """Without a fetch timestamp ``last_fetched`` is omitted but peak meta stays."""
+    """Without a fetch timestamp ``last_fetched`` is still absent, peak meta stays."""
     coordinator = _make_coordinator({"peaks": _wrap(_peaks())})
     subentry = _make_subentry()
     sensors = _build_peak_sensors(coordinator, subentry)

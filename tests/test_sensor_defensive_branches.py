@@ -252,8 +252,8 @@ def test_energy_sensor_extra_state_attributes_full_shape() -> None:
     """
     Verify the full attributes shape.
 
-    Full attributes shape includes ean, last_fetched, from/to, vat_tariff,
-    and time_of_use_slot_code. ``ean`` is stripped of its delivery-point
+    Full attributes shape includes ean, from/to, vat_tariff, and
+    time_of_use_slot_code. ``ean`` is stripped of its delivery-point
     suffix - the raw ``_ID1``-suffixed EAN is an internal lookup detail,
     not something to expose to the user.
     """
@@ -263,15 +263,14 @@ def test_energy_sensor_extra_state_attributes_full_shape() -> None:
     )
     attrs = sensor.extra_state_attributes
     assert attrs["ean"] == _EAN.split("_", maxsplit=1)[0]
-    assert attrs["last_fetched"] == "2026-05-22T12:00:00+00:00"
     assert attrs["from"] == "2000-01-01"
     assert attrs["to"] == "2099-12-31"
     assert attrs["vat_tariff"] == 6.0
     assert attrs["time_of_use_slot_code"] == "TOTAL_HOURS"
 
 
-def test_energy_sensor_extra_state_attributes_omits_last_fetched_when_unset() -> None:
-    """``last_fetched`` is omitted when the coordinator has never succeeded."""
+def test_energy_sensor_extra_state_attributes_omits_last_fetched() -> None:
+    """``last_fetched`` is never exposed, regardless of fetch state."""
     coord = _coordinator_with_prices()
     coord.last_successful_fetch = None
     sensor = _build_energy_sensor(
@@ -287,10 +286,9 @@ def test_energy_sensor_extra_state_attributes_when_no_price_entry() -> None:
     """
     Verify attributes when no matching price entry exists.
 
-    No price entry for this EAN -> attrs contain only ``ean`` (and
-    ``last_fetched`` since the coordinator has a successful-fetch
-    timestamp); the ``from`` / ``to`` / ``vat_tariff`` / ``slot_code``
-    keys must NOT be present.
+    No price entry for this EAN -> attrs contain only ``ean``. The
+    ``from`` / ``to`` / ``vat_tariff`` / ``slot_code`` keys must NOT be
+    present.
     """
     coord = _coordinator_with_prices()
     sub = _subentry()
@@ -309,7 +307,6 @@ def test_energy_sensor_extra_state_attributes_when_no_price_entry() -> None:
     attrs = sensor.extra_state_attributes
     assert attrs == {
         "ean": _MISSING_EAN.split("_", maxsplit=1)[0],
-        "last_fetched": "2026-05-22T12:00:00+00:00",
     }
 
 

@@ -91,11 +91,12 @@ def _make_epex_coordinator(
     """
     Build a MagicMock EPEX coordinator stub.
 
-    ``    EngieBeEpexCoordinator.data`` is now an ``EpexPayload | None``
-    (no longer a dict). The current sensor
-    reads ``last_update_success_time`` for the ``last_fetched`` attr,
-    which is a custom property on ``EngieBeEpexCoordinator`` set on
-    every successful parse.
+    ``EngieBeEpexCoordinator.data`` is now an ``EpexPayload | None``
+    (no longer a dict). ``last_update_success_time`` is a custom
+    property on ``EngieBeEpexCoordinator`` set on every successful
+    parse. It no longer surfaces as a ``last_fetched`` attribute, but
+    the stub keeps accepting it since callers still exercise it via
+    diagnostics and logging.
     """
     coordinator = MagicMock()
     coordinator.data = payload
@@ -328,10 +329,10 @@ def test_current_sensor_attributes_partition_today_and_tomorrow() -> None:
     assert today_first["value_eur_per_mwh"] == pytest.approx(-12.3)
     # Slot duration carried for forward-compat with 15-min publication.
     assert attrs["slot_duration_minutes"] == 60
-    # Publication metadata + last_fetched are present.
+    # Publication metadata is present, last_fetched is not exposed.
     assert "publication_time" in attrs
     assert attrs["market_date"] == "2026-05-05"
-    assert attrs["last_fetched"] == last_fetch.isoformat()
+    assert "last_fetched" not in attrs
 
 
 def test_current_sensor_attributes_empty_when_unavailable() -> None:
@@ -344,10 +345,11 @@ def test_current_sensor_attributes_empty_when_unavailable() -> None:
 
 def test_current_sensor_attributes_omit_optional_metadata_when_absent() -> None:
     """
-    ``publication_time``/``market_date``/``last_fetched`` are optional.
+    ``publication_time``/``market_date`` are optional.
 
     They must be omitted (not emitted as ``None``) when missing, so
     template authors don't have to defend against ``None``.
+    ``last_fetched`` is never exposed.
     """
     slot = _make_slot(hour=15, value_eur_per_kwh=0.02565)
     payload = EpexPayload(
@@ -368,6 +370,51 @@ def test_current_sensor_attributes_omit_optional_metadata_when_absent() -> None:
     assert "publication_time" not in attrs
     assert "market_date" not in attrs
     assert "last_fetched" not in attrs
+
+
+def test_current_sensor_attributes_stable_across_identical_refreshes() -> None:
+    """
+    Identical payload data across two refreshes yields identical attrs.
+
+    ``last_fetched`` used to change on every successful poll, forcing
+    a new recorder row even when the underlying prices were unchanged.
+    With it removed, two refreshes carrying the same payload data must
+    produce attribute dicts that compare equal, so HA's recorder can
+    dedupe them.
+    """
+    payload = _build_payload(
+        today=[(14, -0.0123), (15, 0.02565), (18, 0.19840)],
+        tomorrow=[(0, 0.08810), (18, 0.21050)],
+    )
+    coordinator = _make_epex_coordinator(
+        payload,
+        last_fetch=datetime(2026, 5, 4, 13, 7, 21, tzinfo=UTC),
+    )
+    subentry = _make_subentry()
+    sensor = EngieBeEpexCurrentSensor(coordinator, subentry, _EPEX_CURRENT)
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=_NOW_BRUSSELS,
+    ):
+        attrs_before = sensor.extra_state_attributes
+
+    # Simulate a second coordinator refresh that fetched the exact same
+    # data again, but at a later timestamp -- the volatile field that
+    # used to break this contract.
+    coordinator.last_update_success_time = datetime(2026, 5, 4, 14, 7, 21, tzinfo=UTC)
+    coordinator.data = _build_payload(
+        today=[(14, -0.0123), (15, 0.02565), (18, 0.19840)],
+        tomorrow=[(0, 0.08810), (18, 0.21050)],
+    )
+
+    with patch(
+        "custom_components.engie_be.sensor.dt_util.now",
+        return_value=_NOW_BRUSSELS,
+    ):
+        attrs_after = sensor.extra_state_attributes
+
+    assert attrs_before == attrs_after
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +454,7 @@ def test_low_today_sensor_selects_minimum_of_today_only() -> None:
     assert attrs["slot_start"] == "2026-05-04T14:00:00+02:00"
     assert attrs["slot_end"] == "2026-05-04T15:00:00+02:00"
     assert attrs["slot_duration_minutes"] == 60
-    assert attrs["last_fetched"] == last_fetch.isoformat()
+    assert "last_fetched" not in attrs
 
 
 def test_high_today_sensor_selects_maximum_of_today_only() -> None:
@@ -564,7 +611,7 @@ def test_next_hour_sensor_picks_slot_covering_now_plus_one_hour() -> None:
     assert attrs["slot_start"] == "2026-05-04T16:00:00+02:00"
     assert attrs["slot_end"] == "2026-05-04T17:00:00+02:00"
     assert attrs["slot_duration_minutes"] == 60
-    assert attrs["last_fetched"] == last_fetch.isoformat()
+    assert "last_fetched" not in attrs
 
 
 def test_next_hour_sensor_crosses_midnight_into_tomorrow() -> None:
@@ -624,7 +671,7 @@ def test_next_hour_sensor_native_value_is_none_when_unavailable() -> None:
 
 
 def test_next_hour_sensor_attrs_omit_last_fetched_when_none() -> None:
-    """``last_fetched`` is absent when ``last_update_success_time`` is None."""
+    """``last_fetched`` is never exposed, even with no fetch timestamp."""
     payload = _build_payload([(15, 0.02565), (16, 0.08040)])
     coordinator = _make_epex_coordinator(payload, last_fetch=None)
     subentry = _make_subentry()
@@ -744,7 +791,7 @@ def test_qh_next_sensor_attributes() -> None:
         assert "slot_start" in attrs
         assert "slot_end" in attrs
         assert attrs["slot_duration_minutes"] == 15
-        assert "last_fetched" in attrs
+        assert "last_fetched" not in attrs
 
 
 def test_qh_current_sensor_slots_have_15min_duration() -> None:

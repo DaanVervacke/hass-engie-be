@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Removed the last_fetched attribute from all sensors. It forced a new
+  recorder row on every poll even when prices and peaks were unchanged.
+  Data freshness remains visible in the diagnostics download.
+
 ## [0.13.0] - 2026-07-18
 
 This release turns the integration into a full automation platform for your
