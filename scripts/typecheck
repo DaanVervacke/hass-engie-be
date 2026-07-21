@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Use venv mypy if available, fall back to global mypy
+VENV_MYPY="${REPO_DIR}/.venv/bin/mypy"
+
+if [[ -x "$VENV_MYPY" ]]; then
+    MYPY="$VENV_MYPY"
+else
+    MYPY="mypy"
+fi
+
+cd "$REPO_DIR"
+# Baseline mode: report but never fail the build. Plan 099 flips this
+# to a hard gate once the error count reaches zero.
+$MYPY custom_components/engie_be || true
