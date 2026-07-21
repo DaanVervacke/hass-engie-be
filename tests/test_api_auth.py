@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -145,6 +146,29 @@ async def test_refresh_token_returns_fresh_pair_when_racing_caller_rotated() -> 
     assert access == "racer-access"
     assert refresh == "racer-refresh"
     wrapper.assert_not_awaited()
+
+
+async def test_refresh_token_concurrent_callers_issue_single_request() -> None:
+    """Two overlapping refreshes serialize on the real lock: one HTTP call."""
+    client = _make_client()
+    calls = 0
+
+    async def _fake_wrapper(**_kwargs: object) -> dict[str, str]:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0)
+        return {"access_token": "v1.access", "refresh_token": "v1.rotated"}
+
+    client._api_wrapper = _fake_wrapper  # type: ignore[method-assign]
+
+    results = await asyncio.gather(
+        client.async_refresh_token(),
+        client.async_refresh_token(),
+    )
+
+    assert calls == 1
+    assert all(r == ("v1.access", "v1.rotated") for r in results)
+    assert client.refresh_token == "v1.rotated"  # noqa: S105
 
 
 # ---------------------------------------------------------------------------

@@ -28,7 +28,11 @@ from custom_components.engie_be.const import (
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-from custom_components.engie_be.api import EngieBeApiClientError
+from custom_components.engie_be._statistics import streams_for_energy_types
+from custom_components.engie_be.api import (
+    EngieBeApiClientAuthenticationError,
+    EngieBeApiClientError,
+)
 
 
 def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
@@ -392,6 +396,41 @@ async def test_import_history_dispatches_in_parallel_across_bans(
     assert called_bans == ["000000000001", "000000000002"]
 
 
+async def test_clear_import_history_dispatches_expected_streams_across_bans(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """Each targeted BAN is cleared with exactly the resolved stream set."""
+    entry = await _setup_two_ban_entry(hass)
+    device_registry = dr.async_get(hass)
+    ban_devices = [
+        device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+        for subentry_id in entry.subentries
+    ]
+    assert all(d is not None for d in ban_devices)
+    device_ids = [d.id for d in ban_devices]
+
+    with patch(
+        "custom_components.engie_be.async_clear_usage_history",
+        new=AsyncMock(return_value=None),
+    ) as mock_clear:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CLEAR_IMPORT_HISTORY,
+            {
+                "device_id": device_ids,
+                "energy_type": ["consumption"],
+                "include_costs": True,
+            },
+            blocking=True,
+        )
+
+    expected = streams_for_energy_types(["consumption"], include_costs=True)
+    assert mock_clear.await_count == 2
+    for call_args in mock_clear.await_args_list:
+        assert call_args.kwargs["streams"] == expected
+
+
 async def test_import_history_continues_when_one_ban_fails(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
@@ -438,3 +477,49 @@ async def test_import_history_continues_when_one_ban_fails(
     assert mock_logger.exception.call_count == 1
     exc_log_call: call = mock_logger.exception.call_args
     assert "unexpected error" in exc_log_call.args[0]
+
+
+async def test_import_history_continues_when_one_ban_auth_rejected(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """An auth rejection for one BAN logs a warning-and-continue, not an exception."""
+    entry = await _setup_two_ban_entry(hass)
+    device_registry = dr.async_get(hass)
+    subentry_ids = list(entry.subentries)
+    ban_devices = [
+        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        for sid in subentry_ids
+    ]
+    assert all(d is not None for d in ban_devices)
+    device_ids = [d.id for d in ban_devices]
+
+    call_count = 0
+
+    async def _fake_import(*_args: object, **_kwargs: object) -> int:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise EngieBeApiClientAuthenticationError("expired")
+        return 42
+
+    with (
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            side_effect=_fake_import,
+        ) as mock_import,
+        patch("custom_components.engie_be.LOGGER") as mock_logger,
+    ):
+        # Must not raise.
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": device_ids},
+            blocking=True,
+        )
+
+    assert mock_import.await_count == 2
+    assert mock_logger.warning.call_count == 1
+    warning_call: call = mock_logger.warning.call_args
+    assert "authentication rejected" in warning_call.args[0]
+    mock_logger.exception.assert_not_called()
