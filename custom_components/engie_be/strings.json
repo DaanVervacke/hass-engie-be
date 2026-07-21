@@ -871,6 +871,21 @@
             "epex_next_hour": {
                 "name": "EPEX next hour price"
             },
+            "epex_quarter_hour": {
+                "name": "EPEX quarter-hourly price"
+            },
+            "epex_current_quarter_hour": {
+                "name": "EPEX current quarter-hourly price"
+            },
+            "epex_next_quarter_hour": {
+                "name": "EPEX next quarter-hourly price"
+            },
+            "epex_low_today_quarter_hour": {
+                "name": "EPEX lowest quarter-hourly price today"
+            },
+            "epex_high_today_quarter_hour": {
+                "name": "EPEX highest quarter-hourly price today"
+            },
             "solar_surplus_forecast": {
                 "name": "Solar Surplus forecast",
                 "state": {
