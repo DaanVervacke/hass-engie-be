@@ -16,10 +16,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from homeassistant.components.event import EventEntity, EventEntityDescription
-from homeassistant.const import CONF_USERNAME, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
@@ -38,6 +37,7 @@ from .const import (
     TRANSLATION_KEY_TOU_OFFTAKE_IS_OPTIMAL,
     TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
 )
+from .entity import login_device_info, subentry_device_info
 
 # Coordinator centralises updates; this platform doesn't poll at all -- it
 # reacts to sibling-entity state changes instead.
@@ -345,11 +345,7 @@ class EngieBeTransitionEvent(_TransitionWatcherMixin, EventEntity):
         self._attr_unique_id = (
             f"{entry.entry_id}_{subentry.subentry_id}_{description.key}"
         )
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, subentry.subentry_id)},
-            manufacturer="ENGIE Belgium",
-            name=subentry.title,
-        )
+        self._attr_device_info = subentry_device_info(subentry)
         self._entity_watch_map: dict[str, WatchedSibling] = {}
         ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
         if ban:
@@ -400,13 +396,7 @@ class EngieBeAuthenticationEvent(_TransitionWatcherMixin, EventEntity):
         self._attr_translation_key = self.entity_description.translation_key
         self._attr_event_types = list(self.entity_description.event_types or [])
         self._attr_unique_id = f"{entry.entry_id}_authentication_events"
-        username = entry.data.get(CONF_USERNAME, "")
-        device_name = f"Account ({username})" if username else "Account"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"login_{entry.entry_id}")},
-            manufacturer="ENGIE Belgium",
-            name=device_name,
-        )
+        self._attr_device_info = login_device_info(entry)
         self._entity_watch_map: dict[str, WatchedSibling] = {}
 
     async def async_added_to_hass(self) -> None:

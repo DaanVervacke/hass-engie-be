@@ -193,6 +193,26 @@ class _BoundaryScheduleMixin(_MixinBase):
         return getattr(self, "native_value", None)
 
 
+def subentry_device_info(subentry: ConfigSubentry) -> DeviceInfo:
+    """Device info for the per-account device backing one subentry."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, subentry.subentry_id)},
+        manufacturer="ENGIE Belgium",
+        name=subentry.title,
+    )
+
+
+def login_device_info(entry: EngieBeConfigEntry) -> DeviceInfo:
+    """Device info for the per-login account device of one config entry."""
+    username = entry.data.get(CONF_USERNAME, "")
+    device_name = f"Account ({username})" if username else "Account"
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"login_{entry.entry_id}")},
+        manufacturer="ENGIE Belgium",
+        name=device_name,
+    )
+
+
 class _EngieBeBaseEntity:
     """
     Common attributes shared by every ENGIE Belgium entity.
@@ -231,11 +251,7 @@ class EngieBeEntity(
         """Initialise the per-subentry entity."""
         super().__init__(coordinator)
         self._subentry = subentry
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, subentry.subentry_id)},
-            manufacturer="ENGIE Belgium",
-            name=subentry.title,
-        )
+        self._attr_device_info = subentry_device_info(subentry)
 
 
 class EngieBeEpexEntity(
@@ -261,11 +277,7 @@ class EngieBeEpexEntity(
         """Initialise the EPEX entity bound to a subentry's device."""
         super().__init__(coordinator)
         self._subentry = subentry
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, subentry.subentry_id)},
-            manufacturer="ENGIE Belgium",
-            name=subentry.title,
-        )
+        self._attr_device_info = subentry_device_info(subentry)
 
 
 class EngieBeAuthEntity(
@@ -292,10 +304,4 @@ class EngieBeAuthEntity(
         """Initialise the per-entry login entity."""
         super().__init__(coordinator)
         self._entry = entry
-        username = entry.data.get(CONF_USERNAME, "")
-        device_name = f"Account ({username})" if username else "Account"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"login_{entry.entry_id}")},
-            manufacturer="ENGIE Belgium",
-            name=device_name,
-        )
+        self._attr_device_info = login_device_info(entry)
