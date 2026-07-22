@@ -62,6 +62,14 @@ Set up a local Python virtual environment and run the test suite:
 All scripts use the `.venv` created by `scripts/setup`. You do
 not need the devcontainer to run tests or linting.
 
+Optionally install the git pre-commit hooks so ruff runs on every commit:
+
+    .venv/bin/pip install -r requirements.txt
+    .venv/bin/pre-commit install
+
+The hooks call the venv ruff, so they always match the pinned version.
+CI enforces the same checks either way.
+
 ### Devcontainer (live Home Assistant)
 
 A devcontainer is included for running a live Home Assistant instance

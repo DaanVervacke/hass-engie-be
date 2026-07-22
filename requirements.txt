@@ -7,3 +7,4 @@ ruff==0.15.20
 # Note: pytest-cov is pulled in transitively (==7.0.0) via this package.
 pytest-homeassistant-custom-component @ git+https://github.com/MatthewFlamm/pytest-homeassistant-custom-component@0.13.345
 mypy==2.3.0
+pre-commit==4.6.0
