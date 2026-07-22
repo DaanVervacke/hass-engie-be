@@ -39,6 +39,8 @@ from .const import (
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
     TOU_SLOT_CODES,
     TOU_WEEKDAY_KEYS,
+    TRANSLATION_KEY_OUTSTANDING_BALANCE,
+    TRANSLATION_KEY_OVERDUE_AMOUNT,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_TOU_INJECTION_SLOT,
     TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
@@ -1975,7 +1977,7 @@ class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
 
 _BILLING_OUTSTANDING_BALANCE = SensorEntityDescription(
     key="outstanding_balance",
-    translation_key="outstanding_balance",
+    translation_key=TRANSLATION_KEY_OUTSTANDING_BALANCE,
     native_unit_of_measurement=CURRENCY_EURO,
     device_class=SensorDeviceClass.MONETARY,
     state_class=SensorStateClass.TOTAL,
@@ -1984,7 +1986,7 @@ _BILLING_OUTSTANDING_BALANCE = SensorEntityDescription(
 
 _BILLING_OVERDUE_AMOUNT = SensorEntityDescription(
     key="overdue_amount",
-    translation_key="overdue_amount",
+    translation_key=TRANSLATION_KEY_OVERDUE_AMOUNT,
     native_unit_of_measurement=CURRENCY_EURO,
     device_class=SensorDeviceClass.MONETARY,
     state_class=SensorStateClass.TOTAL,

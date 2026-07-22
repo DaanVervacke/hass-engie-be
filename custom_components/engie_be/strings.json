@@ -1107,6 +1107,26 @@
                 }
             }
         },
+        "outstanding_balance_is_above_threshold": {
+            "name": "Outstanding balance is above threshold",
+            "description": "True when the outstanding balance is above the configured threshold.",
+            "fields": {
+                "threshold": {
+                    "name": "[%key:component::engie_be::common::condition_threshold_name%]",
+                    "description": "Amount threshold in EUR."
+                }
+            }
+        },
+        "overdue_amount_is_above_threshold": {
+            "name": "Overdue amount is above threshold",
+            "description": "True when the overdue amount is above the configured threshold.",
+            "fields": {
+                "threshold": {
+                    "name": "[%key:component::engie_be::common::condition_threshold_name%]",
+                    "description": "Amount threshold in EUR."
+                }
+            }
+        },
         "epex_price_is_negative_quarter_hour": {
             "name": "EPEX quarter-hourly price is negative",
             "description": "True when the current EPEX quarter-hourly day-ahead price is negative (you are paid to consume)."
@@ -1262,6 +1282,26 @@
                 "threshold": {
                     "name": "[%key:component::engie_be::common::trigger_threshold_name%]",
                     "description": "Power threshold in kW."
+                }
+            }
+        },
+        "outstanding_balance_crossed_threshold": {
+            "name": "Outstanding balance crossed threshold",
+            "description": "Fires when the outstanding balance crosses into the configured threshold range.",
+            "fields": {
+                "threshold": {
+                    "name": "[%key:component::engie_be::common::trigger_threshold_name%]",
+                    "description": "Amount threshold in EUR."
+                }
+            }
+        },
+        "overdue_amount_crossed_threshold": {
+            "name": "Overdue amount crossed threshold",
+            "description": "Fires when the overdue amount crosses into the configured threshold range.",
+            "fields": {
+                "threshold": {
+                    "name": "[%key:component::engie_be::common::trigger_threshold_name%]",
+                    "description": "Amount threshold in EUR."
                 }
             }
         },

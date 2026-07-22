@@ -28,6 +28,8 @@ from custom_components.engie_be.condition import (
     InjectionSlotIsCondition,
     OfftakeIsOptimalCondition,
     OfftakeSlotIsCondition,
+    OutstandingBalanceIsAboveThresholdCondition,
+    OverdueAmountIsAboveThresholdCondition,
     SolarSurplusIsAtLevelCondition,
     async_get_conditions,
 )
@@ -45,6 +47,8 @@ from custom_components.engie_be.const import (
     TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
     TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
+    TRANSLATION_KEY_OUTSTANDING_BALANCE,
+    TRANSLATION_KEY_OVERDUE_AMOUNT,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
     TRANSLATION_KEY_TOU_INJECTION_SLOT,
@@ -156,8 +160,8 @@ def test_abcs_importable() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_async_get_conditions_returns_all_thirteen(hass: HomeAssistant) -> None:
-    """async_get_conditions returns all thirteen condition names."""
+async def test_async_get_conditions_returns_all_fifteen(hass: HomeAssistant) -> None:
+    """async_get_conditions returns all fifteen condition names."""
     conditions = await async_get_conditions(hass)
 
     assert set(conditions.keys()) == {
@@ -177,6 +181,9 @@ async def test_async_get_conditions_returns_all_thirteen(hass: HomeAssistant) ->
         "epex_price_is_negative_quarter_hour",
         "epex_price_is_below_threshold_quarter_hour",
         "epex_price_is_above_threshold_quarter_hour",
+        # Billing additions
+        "outstanding_balance_is_above_threshold",
+        "overdue_amount_is_above_threshold",
     }
 
 
@@ -1183,5 +1190,141 @@ async def test_epex_price_is_above_threshold_qh_rejects_next_hour(
     condition = EpexPriceIsAboveThresholdQuarterHourCondition(hass, config)
     await condition.async_setup()
     # QH condition should not match next-hour sensor
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+# ---------------------------------------------------------------------------
+# Billing - outstanding_balance_is_above_threshold
+# ---------------------------------------------------------------------------
+
+
+async def test_outstanding_balance_is_above_threshold_true_when_above(
+    hass: HomeAssistant,
+) -> None:
+    """OutstandingBalanceIsAboveThresholdCondition is True when above threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_OUTSTANDING_BALANCE,
+        entity_suffix="outstanding_balance",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_outstanding_balance",
+    )
+    hass.states.async_set(entity_id, "600.0")
+    config = _make_numerical_condition_config(entity_id, "above", 500.0)
+    condition = OutstandingBalanceIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is True
+    condition.async_unload()
+
+
+async def test_outstanding_balance_is_above_threshold_false_when_below(
+    hass: HomeAssistant,
+) -> None:
+    """OutstandingBalanceIsAboveThresholdCondition is False when below threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_OUTSTANDING_BALANCE,
+        entity_suffix="outstanding_balance",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_outstanding_balance",
+    )
+    hass.states.async_set(entity_id, "100.0")
+    config = _make_numerical_condition_config(entity_id, "above", 500.0)
+    condition = OutstandingBalanceIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_outstanding_balance_is_above_threshold_rejects_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """OutstandingBalanceIsAboveThresholdCondition rejects non-billing sensors."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "600.0")
+    config = _make_numerical_condition_config(entity_id, "above", 500.0)
+    condition = OutstandingBalanceIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+# ---------------------------------------------------------------------------
+# Billing - overdue_amount_is_above_threshold
+# ---------------------------------------------------------------------------
+
+
+async def test_overdue_amount_is_above_threshold_true_when_above(
+    hass: HomeAssistant,
+) -> None:
+    """OverdueAmountIsAboveThresholdCondition is True when above threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_OVERDUE_AMOUNT,
+        entity_suffix="overdue_amount",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_overdue_amount",
+    )
+    hass.states.async_set(entity_id, "150.0")
+    config = _make_numerical_condition_config(entity_id, "above", 100.0)
+    condition = OverdueAmountIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is True
+    condition.async_unload()
+
+
+async def test_overdue_amount_is_above_threshold_false_when_below(
+    hass: HomeAssistant,
+) -> None:
+    """OverdueAmountIsAboveThresholdCondition is False when below threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_OVERDUE_AMOUNT,
+        entity_suffix="overdue_amount",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_overdue_amount",
+    )
+    hass.states.async_set(entity_id, "50.0")
+    config = _make_numerical_condition_config(entity_id, "above", 100.0)
+    condition = OverdueAmountIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_overdue_amount_is_above_threshold_rejects_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """OverdueAmountIsAboveThresholdCondition rejects non-billing sensors."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "150.0")
+    config = _make_numerical_condition_config(entity_id, "above", 100.0)
+    condition = OverdueAmountIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
     assert condition(hass) is False
     condition.async_unload()

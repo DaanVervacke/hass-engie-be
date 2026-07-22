@@ -18,6 +18,9 @@ Supported conditions:
 - ``engie_be.injection_is_optimal`` -> injection binary sensor is ``on``
 - ``engie_be.happy_hours_is_active`` -> happy hours binary sensor is ``on``
 - ``engie_be.captar_peak_is_above_threshold`` -> captar peak power above threshold
+- ``engie_be.outstanding_balance_is_above_threshold`` -> outstanding balance above
+  threshold
+- ``engie_be.overdue_amount_is_above_threshold`` -> overdue amount above threshold
 """
 
 from __future__ import annotations
@@ -48,6 +51,8 @@ from .const import (
     TRANSLATION_KEY_EPEX_NEGATIVE,
     TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
+    TRANSLATION_KEY_OUTSTANDING_BALANCE,
+    TRANSLATION_KEY_OVERDUE_AMOUNT,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
     TRANSLATION_KEY_TOU_INJECTION_SLOT,
@@ -262,6 +267,18 @@ class CaptarPeakIsAboveThresholdCondition(_NumericalThresholdCondition):
     _translation_key = TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER
 
 
+class OutstandingBalanceIsAboveThresholdCondition(_NumericalThresholdCondition):
+    """Condition: outstanding balance is above a configured threshold."""
+
+    _translation_key = TRANSLATION_KEY_OUTSTANDING_BALANCE
+
+
+class OverdueAmountIsAboveThresholdCondition(_NumericalThresholdCondition):
+    """Condition: overdue amount is above a configured threshold."""
+
+    _translation_key = TRANSLATION_KEY_OVERDUE_AMOUNT
+
+
 # ---------------------------------------------------------------------------
 # Public registry
 # ---------------------------------------------------------------------------
@@ -285,11 +302,15 @@ CONDITIONS: dict[str, type[Condition]] = {
     "injection_is_optimal": InjectionIsOptimalCondition,
     "happy_hours_is_active": HappyHoursIsActiveCondition,
     "captar_peak_is_above_threshold": CaptarPeakIsAboveThresholdCondition,
+    "outstanding_balance_is_above_threshold": (
+        OutstandingBalanceIsAboveThresholdCondition
+    ),
+    "overdue_amount_is_above_threshold": OverdueAmountIsAboveThresholdCondition,
 }
 
 
 async def async_get_conditions(
     hass: HomeAssistant,  # noqa: ARG001
 ) -> dict[str, type[Condition]]:
-    """Return the integration-scoped ENGIE Belgium conditions (13 total)."""
+    """Return the integration-scoped ENGIE Belgium conditions (15 total)."""
     return CONDITIONS

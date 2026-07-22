@@ -144,6 +144,8 @@ TRANSLATION_KEY_EPEX_LOW_TODAY = "epex_low_today"
 TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT = "solar_surplus_current"
 TRANSLATION_KEY_SOLAR_SURPLUS_NEXT_HOUR = "solar_surplus_next_hour"
 TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER = "captar_monthly_peak_power"
+TRANSLATION_KEY_OUTSTANDING_BALANCE = "outstanding_balance"
+TRANSLATION_KEY_OVERDUE_AMOUNT = "overdue_amount"
 
 # Sensor keys for quarter-hourly EPEX (numerical / value-changed)
 TRANSLATION_KEY_EPEX_CURRENT_QUARTER_HOUR = "epex_current_quarter_hour"

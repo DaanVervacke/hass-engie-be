@@ -50,6 +50,12 @@
   mode: box
   unit_of_measurement: kW
 
+.billing_threshold_number: &billing_threshold_number
+  min: 0
+  max: 100000
+  mode: box
+  unit_of_measurement: EUR
+
 .tou_slot_options: &tou_slot_options
   - peak
   - offpeak
@@ -188,3 +194,25 @@ captar_peak_is_above_threshold:
           entity: *epex_threshold_entity
           mode: is
           number: *captar_threshold_number
+
+outstanding_balance_is_above_threshold:
+  target: *target_engie_sensor
+  fields:
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: is
+          number: *billing_threshold_number
+
+overdue_amount_is_above_threshold:
+  target: *target_engie_sensor
+  fields:
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: is
+          number: *billing_threshold_number

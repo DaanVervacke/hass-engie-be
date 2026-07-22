@@ -42,6 +42,8 @@ from custom_components.engie_be.const import (
     TRANSLATION_KEY_EPEX_NEXT_HOUR,
     TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
+    TRANSLATION_KEY_OUTSTANDING_BALANCE,
+    TRANSLATION_KEY_OVERDUE_AMOUNT,
     TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_SOLAR_SURPLUS_NEXT_HOUR,
@@ -88,6 +90,8 @@ from custom_components.engie_be.trigger import (
     OfftakeNoLongerOptimalTrigger,
     OfftakeSlotBecameTrigger,
     OfftakeSlotChangedTrigger,
+    OutstandingBalanceCrossedThresholdTrigger,
+    OverdueAmountCrossedThresholdTrigger,
     SolarSurplusBecameTrigger,
     SolarSurplusCurrentCrossedThresholdTrigger,
     SolarSurplusLevelChangedTrigger,
@@ -290,6 +294,8 @@ async def test_async_get_triggers_returns_all(hass: HomeAssistant) -> None:
         "solar_surplus_current_crossed_threshold",
         "solar_surplus_next_hour_crossed_threshold",
         "captar_peak_crossed_threshold",
+        "outstanding_balance_crossed_threshold",
+        "overdue_amount_crossed_threshold",
         # Phase C value changed
         "captar_peak_updated",
         "epex_high_today_updated",
@@ -1191,6 +1197,100 @@ async def test_captar_peak_crossed_threshold_filters_wrong_key(
         "6.0",
         expected_fires=0,
         options=_make_threshold_options("above", 5.0),
+    )
+
+
+async def test_outstanding_balance_crossed_threshold_fires(
+    hass: HomeAssistant,
+) -> None:
+    """OutstandingBalanceCrossedThresholdTrigger fires on threshold crossing."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_OUTSTANDING_BALANCE,
+        entity_suffix="outstanding_balance",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_outstanding_balance",
+    )
+    await _run_trigger(
+        hass,
+        OutstandingBalanceCrossedThresholdTrigger,
+        entity_id,
+        "300.0",
+        "600.0",
+        expected_fires=1,
+        options=_make_threshold_options("above", 500.0),
+    )
+
+
+async def test_outstanding_balance_crossed_threshold_filters_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """OutstandingBalanceCrossedThresholdTrigger ignores non-billing sensors."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    await _run_trigger(
+        hass,
+        OutstandingBalanceCrossedThresholdTrigger,
+        entity_id,
+        "300.0",
+        "600.0",
+        expected_fires=0,
+        options=_make_threshold_options("above", 500.0),
+    )
+
+
+async def test_overdue_amount_crossed_threshold_fires(hass: HomeAssistant) -> None:
+    """OverdueAmountCrossedThresholdTrigger fires on threshold crossing."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_OVERDUE_AMOUNT,
+        entity_suffix="overdue_amount",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_overdue_amount",
+    )
+    await _run_trigger(
+        hass,
+        OverdueAmountCrossedThresholdTrigger,
+        entity_id,
+        "50.0",
+        "150.0",
+        expected_fires=1,
+        options=_make_threshold_options("above", 100.0),
+    )
+
+
+async def test_overdue_amount_crossed_threshold_filters_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """OverdueAmountCrossedThresholdTrigger ignores non-billing sensors."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    await _run_trigger(
+        hass,
+        OverdueAmountCrossedThresholdTrigger,
+        entity_id,
+        "50.0",
+        "150.0",
+        expected_fires=0,
+        options=_make_threshold_options("above", 100.0),
     )
 
 

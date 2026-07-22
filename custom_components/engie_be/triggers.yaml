@@ -70,6 +70,12 @@
   mode: box
   unit_of_measurement: kW
 
+.billing_threshold_number: &billing_threshold_number
+  min: 0
+  max: 100000
+  mode: box
+  unit_of_measurement: EUR
+
 .tou_slot_options: &tou_slot_options
   - peak
   - offpeak
@@ -299,6 +305,32 @@ captar_peak_crossed_threshold:
           entity: *epex_threshold_entity
           mode: crossed
           number: *captar_threshold_number
+
+outstanding_balance_crossed_threshold:
+  target: *target_engie_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: crossed
+          number: *billing_threshold_number
+
+overdue_amount_crossed_threshold:
+  target: *target_engie_sensor
+  fields:
+    behavior: *trigger_behavior
+    for: *trigger_for
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: crossed
+          number: *billing_threshold_number
 
 # ---------------------------------------------------------------------------
 # Value-changed triggers - fire on any numeric state change

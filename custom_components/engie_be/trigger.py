@@ -38,6 +38,8 @@ Numerical threshold triggers (Phase B):
 - ``engie_be.solar_surplus_current_crossed_threshold``
 - ``engie_be.solar_surplus_next_hour_crossed_threshold``
 - ``engie_be.captar_peak_crossed_threshold``
+- ``engie_be.outstanding_balance_crossed_threshold``
+- ``engie_be.overdue_amount_crossed_threshold``
 
 Value-changed triggers (Phase C):
 - ``engie_be.captar_peak_updated``
@@ -108,6 +110,8 @@ from .const import (
     TRANSLATION_KEY_EPEX_NEXT_HOUR,
     TRANSLATION_KEY_EPEX_NEXT_QUARTER_HOUR,
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
+    TRANSLATION_KEY_OUTSTANDING_BALANCE,
+    TRANSLATION_KEY_OVERDUE_AMOUNT,
     TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_SOLAR_SURPLUS_NEXT_HOUR,
@@ -437,6 +441,18 @@ class CaptarPeakCrossedThresholdTrigger(_ThresholdTrigger):
     """Trigger: captar monthly peak power crossed a threshold."""
 
     _translation_key = TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER
+
+
+class OutstandingBalanceCrossedThresholdTrigger(_ThresholdTrigger):
+    """Trigger: outstanding balance crossed a threshold."""
+
+    _translation_key = TRANSLATION_KEY_OUTSTANDING_BALANCE
+
+
+class OverdueAmountCrossedThresholdTrigger(_ThresholdTrigger):
+    """Trigger: overdue amount crossed a threshold."""
+
+    _translation_key = TRANSLATION_KEY_OVERDUE_AMOUNT
 
 
 # ---------------------------------------------------------------------------
@@ -861,6 +877,8 @@ TRIGGERS: dict[str, type[Trigger]] = {
         SolarSurplusNextHourCrossedThresholdTrigger
     ),
     "captar_peak_crossed_threshold": CaptarPeakCrossedThresholdTrigger,
+    "outstanding_balance_crossed_threshold": OutstandingBalanceCrossedThresholdTrigger,
+    "overdue_amount_crossed_threshold": OverdueAmountCrossedThresholdTrigger,
     # Phase C - value changed
     "captar_peak_updated": CaptarPeakUpdatedTrigger,
     "epex_high_today_updated": EpexHighTodayUpdatedTrigger,

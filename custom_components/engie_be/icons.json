@@ -270,6 +270,8 @@
         "solar_surplus_next_hour_crossed_threshold": {"trigger": "mdi:solar-power-variant"},
         "captar_peak_crossed_threshold": {"trigger": "mdi:flash-alert"},
         "captar_peak_updated": {"trigger": "mdi:flash"},
+        "outstanding_balance_crossed_threshold": {"trigger": "mdi:cash-multiple"},
+        "overdue_amount_crossed_threshold": {"trigger": "mdi:cash-clock"},
         "epex_high_today_updated": {"trigger": "mdi:cash-multiple"},
         "epex_high_today_quarter_hour_updated": {"trigger": "mdi:cash-multiple"},
         "epex_low_today_updated": {"trigger": "mdi:cash-remove"},
@@ -292,6 +294,8 @@
         "epex_price_is_below_threshold_quarter_hour": {"condition": "mdi:cash-remove"},
         "epex_price_is_above_threshold": {"condition": "mdi:cash-alert"},
         "epex_price_is_above_threshold_quarter_hour": {"condition": "mdi:cash-alert"},
-        "captar_peak_is_above_threshold": {"condition": "mdi:flash-alert"}
+        "captar_peak_is_above_threshold": {"condition": "mdi:flash-alert"},
+        "outstanding_balance_is_above_threshold": {"condition": "mdi:cash-multiple"},
+        "overdue_amount_is_above_threshold": {"condition": "mdi:cash-clock"}
     }
 }

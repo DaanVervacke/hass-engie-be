@@ -438,6 +438,8 @@ editor.
 | Solar Surplus current hour crossed threshold | Current-hour surplus crosses a chosen kWh threshold |
 | Solar Surplus next hour crossed threshold | Next-hour surplus crosses a chosen kWh threshold |
 | Captar peak crossed threshold | Monthly captar peak crosses a chosen kW threshold |
+| Outstanding balance crossed threshold | Outstanding balance crosses a chosen EUR threshold |
+| Overdue amount crossed threshold | Overdue amount crosses a chosen EUR threshold |
 
 **Value-update triggers**:
 
@@ -464,7 +466,7 @@ Binary state conditions check if EPEX hour price is negative, EPEX quarter-hourl
 
 Enum state conditions check if Solar Surplus is at a chosen level, or TOU slot is a chosen code.
 
-Threshold conditions check if EPEX hour price is below/above a configured threshold, EPEX quarter-hourly price is below/above a configured threshold, or captar peak is above a configured threshold.
+Threshold conditions check if EPEX hour price is below/above a configured threshold, EPEX quarter-hourly price is below/above a configured threshold, captar peak is above a configured threshold, outstanding balance is above a configured threshold, or overdue amount is above a configured threshold.
 
 No template YAML is required for any of the above. Dropdown
 options track `SOLAR_SURPLUS_LEVELS` and `TOU_SLOT_CODES` in

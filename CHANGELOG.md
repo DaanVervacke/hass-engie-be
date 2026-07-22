@@ -7,6 +7,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+- Billing threshold triggers and conditions: outstanding balance and
+  overdue amount can now drive automations directly from the editor.
+
 ### Changed
 
 - Removed the last_fetched attribute from all sensors. It forced a new
