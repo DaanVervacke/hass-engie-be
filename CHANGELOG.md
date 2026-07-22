@@ -9,16 +9,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
-- Billing threshold triggers and conditions: outstanding balance and
-  overdue amount can now drive automations directly from the editor.
-- Solar Surplus threshold conditions: guard automations on the
-  current-hour surplus being above or below a chosen kWh value.
+- Billing threshold triggers and conditions. Automations can react to the
+  outstanding balance or overdue amount crossing a EUR threshold, without
+  numeric-state YAML.
+- Solar Surplus threshold conditions. Automations can check whether the
+  current-hour surplus is above or below a kWh threshold.
 
 ### Changed
 
-- Removed the last_fetched attribute from all sensors. It forced a new
-  recorder row on every poll even when prices and peaks were unchanged.
-  Data freshness remains visible in the diagnostics download.
+- Removed the last_fetched attribute from all sensors. It wrote a new
+  recorder row on every poll even when nothing had changed. The fetch
+  timestamp is still available in the diagnostics download.
 
 ## [0.13.0] - 2026-07-18
 
