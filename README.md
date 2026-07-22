@@ -466,7 +466,7 @@ Binary state conditions check if EPEX hour price is negative, EPEX quarter-hourl
 
 Enum state conditions check if Solar Surplus is at a chosen level, or TOU slot is a chosen code.
 
-Threshold conditions check if EPEX hour price is below/above a configured threshold, EPEX quarter-hourly price is below/above a configured threshold, captar peak is above a configured threshold, outstanding balance is above a configured threshold, or overdue amount is above a configured threshold.
+Threshold conditions check if EPEX hour price is below/above a configured threshold, EPEX quarter-hourly price is below/above a configured threshold, captar peak is above a configured threshold, outstanding balance is above a configured threshold, overdue amount is above a configured threshold, or current-hour Solar Surplus is below/above a configured threshold.
 
 No template YAML is required for any of the above. Dropdown
 options track `SOLAR_SURPLUS_LEVELS` and `TOU_SLOT_CODES` in

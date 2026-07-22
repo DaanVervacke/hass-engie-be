@@ -56,6 +56,12 @@
   mode: box
   unit_of_measurement: EUR
 
+.solar_surplus_threshold_number: &solar_surplus_threshold_number
+  min: 0
+  max: 20
+  mode: box
+  unit_of_measurement: kWh
+
 .tou_slot_options: &tou_slot_options
   - peak
   - offpeak
@@ -216,3 +222,25 @@ overdue_amount_is_above_threshold:
           entity: *epex_threshold_entity
           mode: is
           number: *billing_threshold_number
+
+solar_surplus_is_above_threshold:
+  target: *target_engie_sensor
+  fields:
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: is
+          number: *solar_surplus_threshold_number
+
+solar_surplus_is_below_threshold:
+  target: *target_engie_sensor
+  fields:
+    threshold:
+      required: true
+      selector:
+        numeric_threshold:
+          entity: *epex_threshold_entity
+          mode: is
+          number: *solar_surplus_threshold_number

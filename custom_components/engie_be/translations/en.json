@@ -1150,6 +1150,26 @@
                     "description": "Price threshold in EUR/kWh."
                 }
             }
+        },
+        "solar_surplus_is_above_threshold": {
+            "name": "Solar Surplus is above threshold",
+            "description": "True when the current-hour Solar Surplus forecast is above the configured threshold.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Surplus threshold in kWh."
+                }
+            }
+        },
+        "solar_surplus_is_below_threshold": {
+            "name": "Solar Surplus is below threshold",
+            "description": "True when the current-hour Solar Surplus forecast is below the configured threshold.",
+            "fields": {
+                "threshold": {
+                    "name": "Threshold",
+                    "description": "Surplus threshold in kWh."
+                }
+            }
         }
     },
     "triggers": {

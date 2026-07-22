@@ -11,6 +11,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - Billing threshold triggers and conditions: outstanding balance and
   overdue amount can now drive automations directly from the editor.
+- Solar Surplus threshold conditions: guard automations on the
+  current-hour surplus being above or below a chosen kWh value.
 
 ### Changed
 

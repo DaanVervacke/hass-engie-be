@@ -30,7 +30,9 @@ from custom_components.engie_be.condition import (
     OfftakeSlotIsCondition,
     OutstandingBalanceIsAboveThresholdCondition,
     OverdueAmountIsAboveThresholdCondition,
+    SolarSurplusIsAboveThresholdCondition,
     SolarSurplusIsAtLevelCondition,
+    SolarSurplusIsBelowThresholdCondition,
     async_get_conditions,
 )
 from custom_components.engie_be.const import (
@@ -49,6 +51,7 @@ from custom_components.engie_be.const import (
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
     TRANSLATION_KEY_OUTSTANDING_BALANCE,
     TRANSLATION_KEY_OVERDUE_AMOUNT,
+    TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
     TRANSLATION_KEY_TOU_INJECTION_SLOT,
@@ -160,8 +163,8 @@ def test_abcs_importable() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_async_get_conditions_returns_all_fifteen(hass: HomeAssistant) -> None:
-    """async_get_conditions returns all fifteen condition names."""
+async def test_async_get_conditions_returns_all_seventeen(hass: HomeAssistant) -> None:
+    """async_get_conditions returns all seventeen condition names."""
     conditions = await async_get_conditions(hass)
 
     assert set(conditions.keys()) == {
@@ -184,6 +187,9 @@ async def test_async_get_conditions_returns_all_fifteen(hass: HomeAssistant) -> 
         # Billing additions
         "outstanding_balance_is_above_threshold",
         "overdue_amount_is_above_threshold",
+        # Solar surplus threshold additions
+        "solar_surplus_is_above_threshold",
+        "solar_surplus_is_below_threshold",
     }
 
 
@@ -1325,6 +1331,137 @@ async def test_overdue_amount_is_above_threshold_rejects_wrong_key(
     hass.states.async_set(entity_id, "150.0")
     config = _make_numerical_condition_config(entity_id, "above", 100.0)
     condition = OverdueAmountIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+# ---------------------------------------------------------------------------
+# Solar surplus - solar_surplus_is_above_threshold / solar_surplus_is_below_threshold
+# ---------------------------------------------------------------------------
+
+
+async def test_solar_surplus_is_above_threshold_true_when_above(
+    hass: HomeAssistant,
+) -> None:
+    """SolarSurplusIsAboveThresholdCondition is True when surplus is above threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
+        entity_suffix="solar_surplus_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_solar_surplus_current",
+    )
+    hass.states.async_set(entity_id, "3.0")
+    config = _make_numerical_condition_config(entity_id, "above", 2.0)
+    condition = SolarSurplusIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is True
+    condition.async_unload()
+
+
+async def test_solar_surplus_is_above_threshold_false_when_below(
+    hass: HomeAssistant,
+) -> None:
+    """SolarSurplusIsAboveThresholdCondition is False when surplus is below."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
+        entity_suffix="solar_surplus_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_solar_surplus_current",
+    )
+    hass.states.async_set(entity_id, "1.0")
+    config = _make_numerical_condition_config(entity_id, "above", 2.0)
+    condition = SolarSurplusIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_solar_surplus_is_above_threshold_rejects_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """SolarSurplusIsAboveThresholdCondition rejects non-solar-surplus sensors."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "3.0")
+    config = _make_numerical_condition_config(entity_id, "above", 2.0)
+    condition = SolarSurplusIsAboveThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_solar_surplus_is_below_threshold_true_when_below(
+    hass: HomeAssistant,
+) -> None:
+    """SolarSurplusIsBelowThresholdCondition is True when surplus is below threshold."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
+        entity_suffix="solar_surplus_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_solar_surplus_current",
+    )
+    hass.states.async_set(entity_id, "1.0")
+    config = _make_numerical_condition_config(entity_id, "below", 2.0)
+    condition = SolarSurplusIsBelowThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is True
+    condition.async_unload()
+
+
+async def test_solar_surplus_is_below_threshold_false_when_above(
+    hass: HomeAssistant,
+) -> None:
+    """SolarSurplusIsBelowThresholdCondition is False when surplus is above."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
+        entity_suffix="solar_surplus_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_solar_surplus_current",
+    )
+    hass.states.async_set(entity_id, "3.0")
+    config = _make_numerical_condition_config(entity_id, "below", 2.0)
+    condition = SolarSurplusIsBelowThresholdCondition(hass, config)
+    await condition.async_setup()
+    assert condition(hass) is False
+    condition.async_unload()
+
+
+async def test_solar_surplus_is_below_threshold_rejects_wrong_key(
+    hass: HomeAssistant,
+) -> None:
+    """SolarSurplusIsBelowThresholdCondition rejects non-solar-surplus sensors."""
+    entry = _make_entry(hass)
+    entity_id = _register_entity(
+        hass,
+        entry,
+        platform=SENSOR_DOMAIN,
+        translation_key=TRANSLATION_KEY_EPEX_CURRENT,
+        entity_suffix="epex_current",
+        unique_id=f"{entry.entry_id}_{_SUBENTRY_ID}_epex_current",
+    )
+    hass.states.async_set(entity_id, "1.0")
+    config = _make_numerical_condition_config(entity_id, "below", 2.0)
+    condition = SolarSurplusIsBelowThresholdCondition(hass, config)
     await condition.async_setup()
     assert condition(hass) is False
     condition.async_unload()

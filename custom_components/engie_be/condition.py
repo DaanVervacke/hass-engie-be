@@ -21,6 +21,10 @@ Supported conditions:
 - ``engie_be.outstanding_balance_is_above_threshold`` -> outstanding balance above
   threshold
 - ``engie_be.overdue_amount_is_above_threshold`` -> overdue amount above threshold
+- ``engie_be.solar_surplus_is_above_threshold`` -> current-hour solar surplus above
+  threshold
+- ``engie_be.solar_surplus_is_below_threshold`` -> current-hour solar surplus below
+  threshold
 """
 
 from __future__ import annotations
@@ -53,6 +57,7 @@ from .const import (
     TRANSLATION_KEY_HAPPY_HOURS_ACTIVE,
     TRANSLATION_KEY_OUTSTANDING_BALANCE,
     TRANSLATION_KEY_OVERDUE_AMOUNT,
+    TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT,
     TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     TRANSLATION_KEY_TOU_INJECTION_IS_OPTIMAL,
     TRANSLATION_KEY_TOU_INJECTION_SLOT,
@@ -279,6 +284,18 @@ class OverdueAmountIsAboveThresholdCondition(_NumericalThresholdCondition):
     _translation_key = TRANSLATION_KEY_OVERDUE_AMOUNT
 
 
+class SolarSurplusIsAboveThresholdCondition(_NumericalThresholdCondition):
+    """Condition: current-hour solar surplus is above a configured threshold."""
+
+    _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT
+
+
+class SolarSurplusIsBelowThresholdCondition(_NumericalThresholdCondition):
+    """Condition: current-hour solar surplus is below a configured threshold."""
+
+    _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT
+
+
 # ---------------------------------------------------------------------------
 # Public registry
 # ---------------------------------------------------------------------------
@@ -306,11 +323,13 @@ CONDITIONS: dict[str, type[Condition]] = {
         OutstandingBalanceIsAboveThresholdCondition
     ),
     "overdue_amount_is_above_threshold": OverdueAmountIsAboveThresholdCondition,
+    "solar_surplus_is_above_threshold": SolarSurplusIsAboveThresholdCondition,
+    "solar_surplus_is_below_threshold": SolarSurplusIsBelowThresholdCondition,
 }
 
 
 async def async_get_conditions(
     hass: HomeAssistant,  # noqa: ARG001
 ) -> dict[str, type[Condition]]:
-    """Return the integration-scoped ENGIE Belgium conditions (15 total)."""
+    """Return the integration-scoped ENGIE Belgium conditions (17 total)."""
     return CONDITIONS

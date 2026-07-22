@@ -296,6 +296,8 @@
         "epex_price_is_above_threshold_quarter_hour": {"condition": "mdi:cash-alert"},
         "captar_peak_is_above_threshold": {"condition": "mdi:flash-alert"},
         "outstanding_balance_is_above_threshold": {"condition": "mdi:cash-multiple"},
-        "overdue_amount_is_above_threshold": {"condition": "mdi:cash-clock"}
+        "overdue_amount_is_above_threshold": {"condition": "mdi:cash-clock"},
+        "solar_surplus_is_above_threshold": {"condition": "mdi:solar-power-variant"},
+        "solar_surplus_is_below_threshold": {"condition": "mdi:solar-power-variant"}
     }
 }
