@@ -111,6 +111,18 @@ config-pre-*/
 .swap-source/
 .v071-source/
 
+# Local HA runtime files written by the dev container at repo root
+/configuration.yaml
+/automations.yaml
+/blueprints/script/
+
+# Local tooling caches and agent docs (kept out of the repo by policy)
+/.cache/
+/.opencode/
+/uv.lock
+/CLAUDE.md
+/AGENTS.md
+
 # -----------------------------------------------------------------------------
 # CLI Tools (Claude Code, etc.)
 # -----------------------------------------------------------------------------

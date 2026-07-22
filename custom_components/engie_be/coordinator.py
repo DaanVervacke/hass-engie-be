@@ -146,7 +146,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data = self.data
         return bool(isinstance(data, dict) and data.get(KEY_IS_DYNAMIC))
 
-    async def _async_update_data(self) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915
+    async def _async_update_data(self) -> dict[str, Any]:  # noqa: C901, PLR0912, PLR0915 - orchestrator, per-domain fetch consolidation was weighed and rejected
         """Fetch energy prices and capacity-tariff peaks for this account."""
         client = self.config_entry.runtime_data.client
         business_agreement_number = self.business_agreement_number
