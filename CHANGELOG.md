@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-07-22
+
 ### Added
 
 - Billing threshold triggers and conditions. Automations can react to the
