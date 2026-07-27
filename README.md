@@ -451,6 +451,7 @@ editor.
 | EPEX highest quarter-hourly price today updated | Highest quarter-hourly EPEX price of today changes |
 | EPEX lowest quarter-hourly price today updated | Lowest quarter-hourly EPEX price of today changes |
 | Tomorrow EPEX prices published | Tomorrow's EPEX day-ahead slate becomes available (fires once per day) |
+| Happy Hours window announced | ENGIE announces a new Happy Hours window or revises an announced one |
 
 **Calendar-slot triggers**:
 
@@ -521,6 +522,21 @@ automation:
           Cheapest slot tomorrow:
           {{ state_attr('sensor.engie_belgium_{BAN}_epex_current', 'tomorrow')
              | sort(attribute='value') | first | to_json }}
+```
+
+#### Notify when a Happy Hours window is announced or revised
+
+```yaml
+automation:
+  alias: "Happy Hours window announced"
+  triggers:
+    - trigger: engie_be.happy_hours_window_announced
+  actions:
+    - action: notify.mobile_app
+      data:
+        title: "Happy Hours window {{ trigger.change }}"
+        message: >
+          {{ trigger.start }} to {{ trigger.end }}
 ```
 
 ### Authentication

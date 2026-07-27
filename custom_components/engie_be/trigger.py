@@ -56,6 +56,8 @@ Calendar event-class triggers (Phase E):
 Coordinator-data triggers (Phase F):
 - ``engie_be.tomorrow_epex_prices_published`` fires once when tomorrow's EPEX
   day-ahead slate becomes available
+- ``engie_be.happy_hours_window_announced`` fires when ENGIE announces a new
+  Happy Hours window or revises a known one
 """
 
 from __future__ import annotations
@@ -88,7 +90,7 @@ from homeassistant.util import dt as dt_util
 
 from ._automation_helpers import filter_by_translation_key
 from ._epex import epex_payload
-from ._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
+from ._happy_hour import HAPPY_HOUR_EVENT_SUMMARY, happy_hour_windows
 from ._tou_calendar import format_tou_event_summary
 from .api import mask_identifier
 from .const import (
@@ -124,7 +126,12 @@ from .const import (
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-    from .coordinator import EngieBeEpexCoordinator, EngieBeEpexQuarterHourCoordinator
+    from .coordinator import (
+        EngieBeDataUpdateCoordinator,
+        EngieBeEpexCoordinator,
+        EngieBeEpexQuarterHourCoordinator,
+    )
+    from .store import EngieBeHappyHoursStore
 
 _LEVEL = "level"
 _SLOT = "slot"
@@ -835,6 +842,159 @@ class TomorrowEpexPricesPublishedTrigger(Trigger):
         return _cancel
 
 
+def _parse_stored_window(entry: dict[str, Any]) -> tuple[datetime, datetime] | None:
+    """
+    Parse one persisted Happy Hours store entry into a ``(start, end)`` pair.
+
+    The store holds ENGIE's raw ISO strings verbatim. Returns ``None`` when
+    either field is missing, not a string, unparseable, or timezone-naive, so
+    a malformed entry is silently skipped rather than seeded as a window.
+    """
+    start_raw = entry.get("start")
+    end_raw = entry.get("end")
+    if not isinstance(start_raw, str) or not isinstance(end_raw, str):
+        return None
+    try:
+        start = datetime.fromisoformat(start_raw)
+        end = datetime.fromisoformat(end_raw)
+    except ValueError:
+        return None
+    if start.tzinfo is None or end.tzinfo is None:
+        return None
+    return start, end
+
+
+class HappyHoursWindowAnnouncedTrigger(Trigger):
+    """
+    Trigger: fires when ENGIE announces a new Happy Hours window or revises one.
+
+    Listens to every subentry's coordinator (one per business agreement)
+    across all loaded config entries, since Happy Hours windows are
+    per-account, unlike the account-agnostic EPEX slate above. ENGIE
+    publishes a window under a ``tomorrow`` key the day before and
+    re-publishes the same window under a ``today`` key once midnight
+    passes; ``happy_hour_windows`` already merges both keys, so a seen-map
+    keyed on the parsed window *start* is enough to dedup that
+    republication without a spurious "announced" fire.
+
+    Seeded at attach from the persisted Happy Hours history store when it
+    has finished loading, so a plain restart with a previously-observed
+    window stays silent. Falls back to seeding from the current coordinator
+    payload when the store is absent or has not loaded yet, so a window
+    that was already pending does not fire the moment the store catches up.
+    """
+
+    _schema: ClassVar[vol.Schema] = _NO_OPTIONS_SCHEMA
+
+    @classmethod
+    async def async_validate_config(
+        cls,
+        hass: HomeAssistant,  # noqa: ARG003
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Validate config against the trigger schema."""
+        return cls._schema(config)
+
+    def __init__(self, hass: HomeAssistant, config: TriggerConfig) -> None:
+        """Initialise the trigger with no prior windows recorded."""
+        super().__init__(hass, config)
+        self._seen: dict[str, dict[datetime, datetime]] = {}
+
+    def _subentries(
+        self,
+    ) -> list[tuple[str, EngieBeDataUpdateCoordinator, EngieBeHappyHoursStore | None]]:
+        """Return per-subentry ``(subentry_id, coordinator, happy_hours_store)``."""
+        result: list[
+            tuple[str, EngieBeDataUpdateCoordinator, EngieBeHappyHoursStore | None]
+        ] = []
+        for entry in self._hass.config_entries.async_entries(DOMAIN):
+            runtime = getattr(entry, "runtime_data", None)
+            if runtime is None:
+                continue
+            for subentry_id, subentry_data in runtime.subentry_data.items():
+                result.append(
+                    (
+                        subentry_id,
+                        subentry_data.coordinator,
+                        subentry_data.happy_hours_store,
+                    )
+                )
+        return result
+
+    def _seed(
+        self,
+        subentry_id: str,
+        coordinator: EngieBeDataUpdateCoordinator,
+        store: EngieBeHappyHoursStore | None,
+    ) -> None:
+        """Seed the seen-map for one subentry at attach time."""
+        seen: dict[datetime, datetime] = {}
+        if store is not None and store.loaded:
+            for entry in store.windows:
+                parsed = _parse_stored_window(entry)
+                if parsed is not None:
+                    start, end = parsed
+                    seen[start] = end
+        else:
+            seen = dict(happy_hour_windows(coordinator))
+        self._seen[subentry_id] = seen
+
+    def _check(
+        self,
+        subentry_id: str,
+        coordinator: EngieBeDataUpdateCoordinator,
+        run_action: TriggerActionRunner,
+    ) -> None:
+        """Fire for every newly-announced or revised window on one subentry."""
+        seen = self._seen.setdefault(subentry_id, {})
+        now = dt_util.utcnow()
+        for start, end in happy_hour_windows(coordinator):
+            if end <= now:
+                continue
+            previous_end = seen.get(start)
+            if previous_end is None:
+                change = "announced"
+            elif previous_end != end:
+                change = "revised"
+            else:
+                continue
+            seen[start] = end
+            event_data = {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "change": change,
+                "business_agreement_number": coordinator.business_agreement_number,
+            }
+            run_action(event_data, f"Happy Hours window {change}", None)
+
+    async def async_attach_runner(self, run_action: TriggerActionRunner) -> Any:
+        """Attach the trigger: seed state and listen to every subentry coordinator."""
+        subentries = self._subentries()
+        for subentry_id, coordinator, store in subentries:
+            self._seed(subentry_id, coordinator, store)
+
+        def _make_listener(
+            subentry_id: str,
+            coordinator: EngieBeDataUpdateCoordinator,
+        ) -> Any:
+            def _on_update() -> None:
+                self._check(subentry_id, coordinator, run_action)
+
+            return _on_update
+
+        unsub_refs = [
+            coordinator.async_add_listener(_make_listener(subentry_id, coordinator))
+            for subentry_id, coordinator, _store in subentries
+        ]
+
+        def _cancel() -> None:
+            for unsub in unsub_refs:
+                unsub()
+            unsub_refs.clear()
+
+        return _cancel
+
+
 # ---------------------------------------------------------------------------
 # Public registry
 # ---------------------------------------------------------------------------
@@ -891,6 +1051,7 @@ TRIGGERS: dict[str, type[Trigger]] = {
     "tou_slot_started": TouSlotStartedTrigger,
     # Phase F - coordinator-data trigger
     "tomorrow_epex_prices_published": TomorrowEpexPricesPublishedTrigger,
+    "happy_hours_window_announced": HappyHoursWindowAnnouncedTrigger,
 }
 
 

@@ -1398,6 +1398,10 @@
         "tomorrow_epex_prices_published": {
             "name": "Tomorrow's EPEX prices published",
             "description": "Fires once when day-ahead electricity prices for tomorrow become available."
+        },
+        "happy_hours_window_announced": {
+            "name": "Happy Hours window announced",
+            "description": "Fires when ENGIE announces a new Happy Hours window or revises an announced one."
         }
     }
 }

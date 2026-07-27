@@ -187,6 +187,11 @@ class EngieBeHappyHoursStore:
             self._windows_sorted = sorted(self._windows, key=lambda w: w["start"])
         return self._windows_sorted
 
+    @property
+    def loaded(self) -> bool:
+        """Return True once ``async_load`` has populated the store from disk."""
+        return self._loaded
+
     def upsert(self, start: str, end: str) -> bool:
         """
         Insert or update a window entry, returning ``True`` if anything changed.

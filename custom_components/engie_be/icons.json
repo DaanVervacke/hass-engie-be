@@ -279,7 +279,8 @@
         "happy_hours_window_started": {"trigger": "mdi:sun-clock"},
         "happy_hours_window_ended": {"trigger": "mdi:sun-clock-outline"},
         "tou_slot_started": {"trigger": "mdi:clock-start"},
-        "tomorrow_epex_prices_published": {"trigger": "mdi:newspaper-variant"}
+        "tomorrow_epex_prices_published": {"trigger": "mdi:newspaper-variant"},
+        "happy_hours_window_announced": {"trigger": "mdi:bullhorn-variant"}
     },
     "conditions": {
         "epex_price_is_negative": {"condition": "mdi:cash-off"},

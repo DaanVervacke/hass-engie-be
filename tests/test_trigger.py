@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, time, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,6 +13,7 @@ from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAI
 from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
+from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.trigger import TriggerConfig
 from homeassistant.util import dt as dt_util
@@ -25,9 +26,13 @@ from custom_components.engie_be._happy_hour import HAPPY_HOUR_EVENT_SUMMARY
 from custom_components.engie_be.const import (
     BRUSSELS_TZ,
     CONF_ACCESS_TOKEN,
+    CONF_BUSINESS_AGREEMENT_NUMBER,
+    CONF_CONSUMPTION_ADDRESS,
+    CONF_PREMISES_NUMBER,
     CONF_REFRESH_TOKEN,
     DOMAIN,
     SOLAR_SURPLUS_LEVELS,
+    SUBENTRY_TYPE_BUSINESS_AGREEMENT,
     TOU_SLOT_CODES,
     TRANSLATION_KEY_AUTHENTICATION,
     TRANSLATION_KEY_CAPTAR_MONTHLY_PEAK_POWER,
@@ -53,10 +58,17 @@ from custom_components.engie_be.const import (
     TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
 )
 from custom_components.engie_be.coordinator import (
+    EngieBeDataUpdateCoordinator,
     EngieBeEpexCoordinator,
     EngieBeEpexQuarterHourCoordinator,
 )
-from custom_components.engie_be.data import EngieBeData, EpexPayload, EpexSlot
+from custom_components.engie_be.data import (
+    EngieBeData,
+    EngieBeSubentryData,
+    EpexPayload,
+    EpexSlot,
+)
+from custom_components.engie_be.store import EngieBeHappyHoursStore
 from custom_components.engie_be.trigger import (
     _SOLAR_SURPLUS_BECAME_SCHEMA,
     _TOU_SLOT_BECAME_SCHEMA,
@@ -80,6 +92,7 @@ from custom_components.engie_be.trigger import (
     EpexNoLongerNegativeTrigger,
     HappyHoursBecameActiveTrigger,
     HappyHoursBecameInactiveTrigger,
+    HappyHoursWindowAnnouncedTrigger,
     HappyHoursWindowEndedTrigger,
     HappyHoursWindowStartedTrigger,
     InjectionBecameOptimalTrigger,
@@ -98,6 +111,7 @@ from custom_components.engie_be.trigger import (
     SolarSurplusNextHourCrossedThresholdTrigger,
     TomorrowEpexPricesPublishedTrigger,
     TouSlotStartedTrigger,
+    _parse_stored_window,
     async_get_triggers,
 )
 
@@ -109,6 +123,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 _BAN = "000000000000"
+_BAN_2 = "000000000001"
 _EAN = "541448820070000000"
 _SUBENTRY_ID = "test_subentry_id"
 
@@ -308,6 +323,7 @@ async def test_async_get_triggers_returns_all(hass: HomeAssistant) -> None:
         "tou_slot_started",
         # Phase F coordinator-data
         "tomorrow_epex_prices_published",
+        "happy_hours_window_announced",
     }
     assert set(triggers.keys()) == expected
 
@@ -2748,3 +2764,425 @@ async def test_tomorrow_epex_prices_published_listens_to_quarter_hour_coordinato
         assert len(fired) == 1
     finally:
         unsub()
+
+
+# ---------------------------------------------------------------------------
+# Phase F - Happy Hours window announced trigger
+# ---------------------------------------------------------------------------
+
+
+def _build_hh_entry(hass: HomeAssistant, bans: list[str]) -> MockConfigEntry:
+    """Build a v5 MockConfigEntry with one business-agreement subentry per BAN."""
+    entry: MockConfigEntry = MockConfigEntry(
+        domain=DOMAIN,
+        version=5,
+        title="user@example.com",
+        unique_id="user_example_com_hh",
+        data={
+            "username": "user@example.com",
+            "password": "hunter2",
+            CONF_ACCESS_TOKEN: "fake_access",
+            CONF_REFRESH_TOKEN: "fake_refresh",
+        },
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+                title=f"placeholder-{ban}",
+                unique_id=ban,
+                data={
+                    CONF_BUSINESS_AGREEMENT_NUMBER: ban,
+                    CONF_PREMISES_NUMBER: f"P-{ban}",
+                    CONF_CONSUMPTION_ADDRESS: "Test 1, 1000 Brussels",
+                },
+            )
+            for ban in bans
+        ],
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+def _hh_coordinators(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> dict[str, EngieBeDataUpdateCoordinator]:
+    """Build one coordinator per subentry on ``entry``, keyed by subentry_id."""
+    return {
+        subentry.subentry_id: EngieBeDataUpdateCoordinator(
+            hass=hass, config_entry=entry, subentry=subentry
+        )
+        for subentry in entry.subentries.values()
+    }
+
+
+def _wire_hh_runtime(
+    entry: MockConfigEntry,
+    coordinators: dict[str, EngieBeDataUpdateCoordinator],
+    stores: dict[str, EngieBeHappyHoursStore] | None = None,
+) -> None:
+    """Attach an EngieBeData runtime with one EngieBeSubentryData per coordinator."""
+    stores = stores or {}
+    subentry_data = {
+        subentry_id: EngieBeSubentryData(
+            coordinator=coord, happy_hours_store=stores.get(subentry_id)
+        )
+        for subentry_id, coord in coordinators.items()
+    }
+    entry.runtime_data = EngieBeData(
+        client=MagicMock(),
+        epex_coordinator=MagicMock(),
+        subentry_data=subentry_data,
+    )
+
+
+def _hh_window(
+    *, start_offset_hours: float, duration_hours: float = 2
+) -> tuple[str, str]:
+    """Return an ISO ``(start, end)`` pair offset from now by the given hours."""
+    start = dt_util.utcnow() + timedelta(hours=start_offset_hours)
+    end = start + timedelta(hours=duration_hours)
+    return start.isoformat(), end.isoformat()
+
+
+def _hh_payload(
+    *,
+    tomorrow: tuple[str, str] | None = None,
+    today: tuple[str, str] | None = None,
+) -> dict[str, Any]:
+    """Build the coordinator ``data`` dict wrapping a Happy Hours API payload."""
+    inner: dict[str, Any] = {}
+    if tomorrow is not None:
+        inner["tomorrow"] = {"startTime": tomorrow[0], "endTime": tomorrow[1]}
+    if today is not None:
+        inner["today"] = {"startTime": today[0], "endTime": today[1]}
+    return {"happy_hour": {"data": inner}}
+
+
+def _hh_trigger_config() -> TriggerConfig:
+    """Return a bare TriggerConfig: no target, no options."""
+    return TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+
+
+async def test_hh_window_announced_fires_for_new_window(hass: HomeAssistant) -> None:
+    """Fires with change='announced' for a window never seen before."""
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    _wire_hh_runtime(entry, coordinators)
+    coordinator = next(iter(coordinators.values()))
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        start, end = _hh_window(start_offset_hours=20)
+        coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, end)))
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+        assert fired[0]["change"] == "announced"
+    finally:
+        unsub()
+
+
+async def test_hh_window_announced_fires_revised_on_end_change(
+    hass: HomeAssistant,
+) -> None:
+    """Fires with change='revised' when a known start comes back with a new end."""
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    _wire_hh_runtime(entry, coordinators)
+    coordinator = next(iter(coordinators.values()))
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        start, end = _hh_window(start_offset_hours=20)
+        coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, end)))
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+
+        _, revised_end = _hh_window(start_offset_hours=20, duration_hours=3)
+        coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, revised_end)))
+        await hass.async_block_till_done()
+        assert len(fired) == 2
+        assert fired[1]["change"] == "revised"
+        assert fired[1]["start"] == start
+        assert fired[1]["end"] == revised_end
+    finally:
+        unsub()
+
+
+async def test_hh_window_announced_does_not_refire_unchanged_republication(
+    hass: HomeAssistant,
+) -> None:
+    """Does not fire when the same window reappears under 'today' unchanged."""
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    _wire_hh_runtime(entry, coordinators)
+    coordinator = next(iter(coordinators.values()))
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        start, end = _hh_window(start_offset_hours=20)
+        coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, end)))
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+
+        # Midnight passes: ENGIE re-publishes the same window under "today".
+        coordinator.async_set_updated_data(_hh_payload(today=(start, end)))
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+    finally:
+        unsub()
+
+
+async def test_hh_window_announced_silent_at_attach_when_store_has_window(
+    hass: HomeAssistant,
+) -> None:
+    """A plain restart with an already-recorded window stays silent."""
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    subentry_id, coordinator = next(iter(coordinators.items()))
+
+    store = EngieBeHappyHoursStore(hass, subentry_id)
+    await store.async_load()
+    start, end = _hh_window(start_offset_hours=20)
+    store.upsert(start, end)
+
+    _wire_hh_runtime(entry, coordinators, {subentry_id: store})
+    # Simulate a restart: the coordinator already fetched the same window.
+    coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, end)))
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        coordinator.async_update_listeners()
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+    finally:
+        unsub()
+
+
+async def test_hh_window_announced_fires_when_store_missing_window(
+    hass: HomeAssistant,
+) -> None:
+    """Fires when the store has loaded but does not yet know the window."""
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    subentry_id, coordinator = next(iter(coordinators.items()))
+
+    store = EngieBeHappyHoursStore(hass, subentry_id)
+    await store.async_load()  # loaded, but no windows recorded yet
+
+    _wire_hh_runtime(entry, coordinators, {subentry_id: store})
+    start, end = _hh_window(start_offset_hours=20)
+    # The window was announced while HA was down: already sitting in the payload.
+    coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, end)))
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        coordinator.async_update_listeners()
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+        assert fired[0]["change"] == "announced"
+    finally:
+        unsub()
+
+
+async def test_hh_window_announced_ignores_already_ended_window(
+    hass: HomeAssistant,
+) -> None:
+    """Does not fire for a window whose end already lies in the past."""
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    _wire_hh_runtime(entry, coordinators)
+    coordinator = next(iter(coordinators.values()))
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        start, end = _hh_window(start_offset_hours=-5, duration_hours=2)
+        coordinator.async_set_updated_data(_hh_payload(today=(start, end)))
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+    finally:
+        unsub()
+
+
+async def test_hh_window_announced_silent_at_attach_when_store_none(
+    hass: HomeAssistant,
+) -> None:
+    """Seeds from the current payload and stays quiet when there is no store."""
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    coordinator = next(iter(coordinators.values()))
+
+    start, end = _hh_window(start_offset_hours=20)
+    coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, end)))
+    _wire_hh_runtime(entry, coordinators)  # no store for this subentry
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        coordinator.async_update_listeners()
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+    finally:
+        unsub()
+
+
+async def test_hh_window_announced_silent_at_attach_when_store_not_loaded(
+    hass: HomeAssistant,
+) -> None:
+    """Seeds from the current payload when the store exists but has not loaded."""
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    subentry_id, coordinator = next(iter(coordinators.items()))
+
+    store = EngieBeHappyHoursStore(hass, subentry_id)
+    # Deliberately not calling async_load(): store.loaded stays False.
+
+    start, end = _hh_window(start_offset_hours=20)
+    coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, end)))
+    _wire_hh_runtime(entry, coordinators, {subentry_id: store})
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        assert store.loaded is False
+        coordinator.async_update_listeners()
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+    finally:
+        unsub()
+
+
+async def test_hh_window_announced_event_data_fields(hass: HomeAssistant) -> None:
+    """Event data carries start, end, change and the raw business_agreement_number."""
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    _wire_hh_runtime(entry, coordinators)
+    coordinator = next(iter(coordinators.values()))
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        start, end = _hh_window(start_offset_hours=20)
+        coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, end)))
+        await hass.async_block_till_done()
+    finally:
+        unsub()
+
+    assert len(fired) == 1
+    assert fired[0] == {
+        "start": start,
+        "end": end,
+        "change": "announced",
+        "business_agreement_number": _BAN,
+    }
+
+
+async def test_hh_window_announced_multi_ban_independent(
+    hass: HomeAssistant,
+) -> None:
+    """Two subentries each fire independently with their own BAN."""
+    entry = _build_hh_entry(hass, [_BAN, _BAN_2])
+    coordinators = _hh_coordinators(hass, entry)
+    _wire_hh_runtime(entry, coordinators)
+    by_ban = {c.business_agreement_number: c for c in coordinators.values()}
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        start_1, end_1 = _hh_window(start_offset_hours=20)
+        by_ban[_BAN].async_set_updated_data(_hh_payload(tomorrow=(start_1, end_1)))
+        await hass.async_block_till_done()
+
+        start_2, end_2 = _hh_window(start_offset_hours=10)
+        by_ban[_BAN_2].async_set_updated_data(_hh_payload(tomorrow=(start_2, end_2)))
+        await hass.async_block_till_done()
+
+        assert len(fired) == 2
+        bans_fired = {item["business_agreement_number"] for item in fired}
+        assert bans_fired == {_BAN, _BAN_2}
+    finally:
+        unsub()
+
+
+async def test_hh_window_announced_schema_accepts_empty_config() -> None:
+    """async_validate_config accepts an empty options dict."""
+    result = await HappyHoursWindowAnnouncedTrigger.async_validate_config(None, {})
+    assert result == {}
+
+
+async def test_hh_window_announced_skips_entries_without_runtime_data(
+    hass: HomeAssistant,
+) -> None:
+    """Trigger attach does not error when an entry has no runtime_data yet."""
+    _make_entry(hass)
+    # No runtime_data assigned -- simulates the narrow reload window.
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    run_action, fired = _make_run_action()
+
+    unsub = await trigger.async_attach_runner(run_action)
+    try:
+        await hass.async_block_till_done()
+        assert len(fired) == 0
+    finally:
+        unsub()
+
+
+async def test_parse_stored_window_rejects_non_string_fields() -> None:
+    """A store entry whose start/end are not strings is skipped, not seeded."""
+    assert _parse_stored_window({"start": None, "end": None}) is None
+    assert _parse_stored_window({"start": 12345, "end": 67890}) is None
+    assert _parse_stored_window({}) is None
+
+
+async def test_parse_stored_window_rejects_unparseable_timestamps() -> None:
+    """A store entry holding a non-ISO timestamp is skipped, not seeded."""
+    assert _parse_stored_window({"start": "not-a-date", "end": "also-not"}) is None
+
+
+async def test_parse_stored_window_rejects_naive_timestamps() -> None:
+    """
+    A timezone-naive store entry is skipped.
+
+    ENGIE always sends an explicit offset, so a naive timestamp means a
+    corrupted store. Seeding it would make the window's instant ambiguous
+    and could fire a spurious announcement.
+    """
+    naive = {"start": "2026-07-28T14:00:00", "end": "2026-07-28T16:00:00"}
+    assert _parse_stored_window(naive) is None
+
+
+async def test_parse_stored_window_accepts_aware_timestamps() -> None:
+    """A well-formed entry parses to an aware (start, end) pair."""
+    parsed = _parse_stored_window(
+        {"start": "2026-07-28T14:00:00+02:00", "end": "2026-07-28T16:00:00+02:00"}
+    )
+    assert parsed is not None
+    start, end = parsed
+    assert start.tzinfo is not None
+    assert end.tzinfo is not None
+    assert start < end

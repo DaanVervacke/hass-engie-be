@@ -7,6 +7,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+- Happy Hours window announced trigger. Fires when ENGIE announces a new
+  Happy Hours window or revises one already known, distinguishing the two
+  with a `change` field on the event data.
+
 ## [0.13.1] - 2026-07-22
 
 ### Added
