@@ -83,6 +83,7 @@ from homeassistant.helpers.trigger import (
     Trigger,
     TriggerActionRunner,
     TriggerConfig,
+    TriggerNotTriggeredReporter,
     make_entity_numerical_state_crossed_threshold_trigger,
     make_entity_target_state_trigger,
 )
@@ -615,7 +616,11 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
     def _matches_event(self, event: Any) -> bool:
         """Return True if the calendar event should cause this trigger to fire."""
 
-    async def async_attach_runner(self, run_action: TriggerActionRunner) -> Any:
+    async def async_attach_runner(
+        self,
+        run_action: TriggerActionRunner,
+        did_not_trigger: TriggerNotTriggeredReporter | None = None,  # noqa: ARG002
+    ) -> Any:
         """Attach the trigger: schedule a listener per ENGIE calendar."""
         # Keyed by entity_id so each calendar's listener is replaced, not
         # accumulated. Rescheduling one calendar's listener only ever pops
@@ -794,7 +799,11 @@ class TomorrowEpexPricesPublishedTrigger(Trigger):
                 coordinators.append(quarter_hourly)
         return coordinators
 
-    async def async_attach_runner(self, run_action: TriggerActionRunner) -> Any:
+    async def async_attach_runner(
+        self,
+        run_action: TriggerActionRunner,
+        did_not_trigger: TriggerNotTriggeredReporter | None = None,  # noqa: ARG002
+    ) -> Any:
         """Attach the trigger: listen to every EPEX coordinator's updates."""
 
         def _check(
@@ -967,7 +976,11 @@ class HappyHoursWindowAnnouncedTrigger(Trigger):
             }
             run_action(event_data, f"Happy Hours window {change}", None)
 
-    async def async_attach_runner(self, run_action: TriggerActionRunner) -> Any:
+    async def async_attach_runner(
+        self,
+        run_action: TriggerActionRunner,
+        did_not_trigger: TriggerNotTriggeredReporter | None = None,  # noqa: ARG002
+    ) -> Any:
         """Attach the trigger: seed state and listen to every subentry coordinator."""
         subentries = self._subentries()
         for subentry_id, coordinator, store in subentries:

@@ -7,6 +7,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- Happy Hours window announced, tomorrow EPEX prices published, and the
+  calendar event triggers (Happy Hours window started/ended, TOU slot
+  started) failed to attach with a TypeError, so automations using them
+  showed as enabled but never fired. Their `async_attach_runner` overrides
+  were missing the `did_not_trigger` parameter Home Assistant's automation
+  engine always passes.
+
 ## [0.13.2] - 2026-07-27
 
 ### Added

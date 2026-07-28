@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
@@ -3186,3 +3187,135 @@ async def test_parse_stored_window_accepts_aware_timestamps() -> None:
     assert start.tzinfo is not None
     assert end.tzinfo is not None
     assert start < end
+
+
+# ---------------------------------------------------------------------------
+# Regression: core's async_attach_action calling convention
+# ---------------------------------------------------------------------------
+
+# Every test above attaches with ``trigger.async_attach_runner(run_action)``,
+# a single positional argument. That is *not* how Home Assistant's automation
+# engine attaches a trigger: ``Trigger.async_attach_action`` always calls
+# ``await self.async_attach_runner(run_action, did_not_trigger)`` with two
+# positional arguments (see homeassistant/helpers/trigger.py). A subclass
+# whose override only declared ``run_action`` therefore passed every direct
+# unit test in this file while still raising
+# ``TypeError: async_attach_runner() takes 2 positional arguments but 3 were
+# given`` the moment a real automation attached it - exactly the
+# ``happy_hours_window_announced`` production bug. The tests below close that
+# gap: one static signature check covering every registered trigger, plus a
+# concrete attach-through-the-real-entry-point test for each of the three
+# hand-written ``async_attach_runner`` overrides (calendar, EPEX
+# tomorrow-published, Happy Hours announced).
+
+
+def test_all_triggers_accept_core_attach_runner_signature() -> None:
+    """
+    Every registered trigger's async_attach_runner accepts core's call signature.
+
+    A signature-only check, so it does not need a configured entity or
+    coordinator per trigger - it exercises the exact call HA's automation
+    engine makes without instantiating anything.
+    """
+    placeholder_self = MagicMock()
+    run_action = MagicMock()
+    did_not_trigger = MagicMock()
+    for name, trigger_cls in TRIGGERS.items():
+        sig = inspect.signature(trigger_cls.async_attach_runner)
+        try:
+            sig.bind(placeholder_self, run_action, did_not_trigger)
+        except TypeError as exc:
+            pytest.fail(
+                f"{name} ({trigger_cls.__name__}).async_attach_runner does not "
+                f"accept core's (run_action, did_not_trigger) call convention: {exc}"
+            )
+
+
+async def _attach_via_attach_action(
+    trigger: Any,
+) -> tuple[Any, list[dict[str, Any]]]:
+    """
+    Attach through ``Trigger.async_attach_action``, the real HA entry point.
+
+    Returns an ``(unsub, fired)`` pair, mirroring ``_make_run_action`` /
+    ``async_attach_runner`` above, but exercised through the wrapper that
+    supplies the ``did_not_trigger`` argument the direct calls never pass.
+    """
+    fired: list[dict[str, Any]] = []
+
+    async def _action(run_variables: dict[str, Any], _context: Any = None) -> None:
+        fired.append(run_variables)
+
+    def _payload_builder(
+        extra_trigger_payload: dict[str, Any], description: str
+    ) -> dict[str, Any]:
+        return {**extra_trigger_payload, "description": description}
+
+    unsub = await trigger.async_attach_action(_action, _payload_builder)
+    return unsub, fired
+
+
+async def test_hh_window_announced_fires_via_real_attach_action(
+    hass: HomeAssistant,
+) -> None:
+    """
+    HappyHoursWindowAnnouncedTrigger attaches and fires via async_attach_action.
+
+    Reproduces the reported production bug: calling ``async_attach_runner``
+    directly (as every other test in this file does) cannot see a missing
+    ``did_not_trigger`` parameter, because it never supplies one.
+    """
+    entry = _build_hh_entry(hass, [_BAN])
+    coordinators = _hh_coordinators(hass, entry)
+    _wire_hh_runtime(entry, coordinators)
+    coordinator = next(iter(coordinators.values()))
+
+    trigger = HappyHoursWindowAnnouncedTrigger(hass, _hh_trigger_config())
+    unsub, fired = await _attach_via_attach_action(trigger)
+    try:
+        start, end = _hh_window(start_offset_hours=20)
+        coordinator.async_set_updated_data(_hh_payload(tomorrow=(start, end)))
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+    finally:
+        unsub()
+
+
+async def test_tomorrow_epex_prices_published_fires_via_real_attach_action(
+    hass: HomeAssistant,
+) -> None:
+    """TomorrowEpexPricesPublishedTrigger attaches and fires via async_attach_action."""
+    entry = _make_entry(hass)
+    coordinator = _make_epex_coordinator(hass, entry)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = TomorrowEpexPricesPublishedTrigger(hass, config)
+    unsub, fired = await _attach_via_attach_action(trigger)
+    try:
+        coordinator.async_set_updated_data(_make_epex_payload(include_tomorrow=True))
+        await hass.async_block_till_done()
+        assert len(fired) == 1
+    finally:
+        unsub()
+
+
+async def test_happy_hours_window_started_fires_via_real_attach_action(
+    hass: HomeAssistant,
+) -> None:
+    """A _CalendarEventTrigger subclass attaches and fires via async_attach_action."""
+    entry = _make_entry(hass)
+    event_start = datetime.now(tz=UTC) + timedelta(seconds=60)
+    events = [_make_future_event(HAPPY_HOUR_EVENT_SUMMARY, event_start)]
+    _setup_calendar_component(hass, entry, events)
+
+    config = TriggerConfig(key=f"{DOMAIN}.test", target=None, options={})
+    trigger = HappyHoursWindowStartedTrigger(hass, config)
+    unsub, fired = await _attach_via_attach_action(trigger)
+    await hass.async_block_till_done()
+    assert len(fired) == 0
+
+    async_fire_time_changed(hass, event_start)
+    await hass.async_block_till_done()
+
+    assert len(fired) == 1
+    unsub()
