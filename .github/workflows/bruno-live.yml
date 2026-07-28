@@ -1,6 +1,6 @@
 name: Bruno live contract check
 
-# Weekly canary against the real ENGIE API. No unit test can catch ENGIE
+# Daily canary against the real ENGIE API. No unit test can catch ENGIE
 # reshaping a payload, so this job exists to notice it before a user does.
 #
 # Required repository secrets:

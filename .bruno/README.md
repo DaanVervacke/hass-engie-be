@@ -130,8 +130,10 @@ up in a public log.
 requests targeting it. It needs no credentials and makes no network calls,
 because all it does is check the collection against `api.py`.
 
-`.github/workflows/bruno-live.yml` runs weekly against the real API. It cannot
-log in, because MFA needs a human, so it refreshes a stored token instead.
+`.github/workflows/bruno-live.yml` runs daily against the real API, in the
+evening rather than overnight so the EPEX requests cover a published window. It
+cannot log in, because MFA needs a human, so it refreshes a stored token
+instead.
 
 Seed these repository secrets once:
 
