@@ -47,11 +47,11 @@ _SCHEDULED = {
     },
 }
 
-# A real-format ENGIE BAN: purely numeric, 12 digits (matches the
-# fixtures and the existing happy-hour slug tests). The masked form
-# keeps only the last four digits (``***6420``).
-_BAN = "002208796420"
-_BAN_LAST4 = "6420"
+# A real-format ENGIE BAN placeholder: purely numeric, 12 digits
+# (matches the fixtures and the existing happy-hour slug tests). The
+# masked form keeps only the last four digits (``***0000``).
+_BAN = "000000000000"
+_BAN_LAST4 = "0000"
 
 
 def _make_subentry(*, ban: str | None = None) -> MagicMock:

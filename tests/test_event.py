@@ -177,9 +177,9 @@ def test_transition_event_entity_id_uses_ban_when_present() -> None:
     """A subentry with a BAN gets the stable ``engie_belgium_<ban>_...`` slug."""
     entry = MagicMock()
     entry.entry_id = "test_entry_id"
-    subentry = _make_subentry(ban="002208796420")
+    subentry = _make_subentry(ban="000000000000")
     entity = EngieBeTransitionEvent(EPEX_EVENTS_DESCRIPTION, entry, subentry)
-    assert entity.entity_id == "event.engie_belgium_002208796420_epex_events"
+    assert entity.entity_id == "event.engie_belgium_000000000000_epex_events"
 
 
 def test_transition_event_no_entity_id_override_without_ban() -> None:

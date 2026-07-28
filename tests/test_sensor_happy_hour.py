@@ -167,7 +167,7 @@ def test_entity_id_uses_ban_when_present() -> None:
     """When the subentry carries a BAN, the entity_id slug uses it."""
     coordinator = _make_coordinator(_wrap(_SCHEDULED))
     subentry = _make_subentry()
-    subentry.data = {"business_agreement_number": "002208796420"}
+    subentry.data = {"business_agreement_number": "000000000000"}
     sensor = EngieBeHappyHourTimestampSensor(
         coordinator,
         subentry,
@@ -179,5 +179,5 @@ def test_entity_id_uses_ban_when_present() -> None:
         field="start",
     )
     assert sensor.entity_id == (
-        "sensor.engie_belgium_002208796420_happy_hours_next_start"
+        "sensor.engie_belgium_000000000000_happy_hours_next_start"
     )
