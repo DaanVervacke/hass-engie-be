@@ -51,6 +51,7 @@ as sensors, binary sensors, events, and calendar events.
 - [Troubleshooting](#troubleshooting)
 - [Credential storage](#credential-storage)
 - [Changelog](#changelog)
+- [Contributing](#contributing)
 - [License](#license)
 
 ## Features
@@ -855,6 +856,12 @@ redacts all of these fields and is safe to share.
 
 See [CHANGELOG.md](CHANGELOG.md) for the version history. Notable changes
 since the last release live under the **[Unreleased]** section.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), including the
+[Running a live Home Assistant](CONTRIBUTING.md#running-a-live-home-assistant)
+section for testing changes against a real instance.
 
 ## License
 

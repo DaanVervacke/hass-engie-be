@@ -60,7 +60,7 @@ Set up a local Python virtual environment and run the test suite:
 ```
 
 All scripts use the `.venv` created by `scripts/setup`. You do
-not need the devcontainer to run tests or linting.
+not need the live Home Assistant container to run tests or linting.
 
 Optionally install the git pre-commit hooks so ruff runs on every commit:
 
@@ -70,14 +70,27 @@ Optionally install the git pre-commit hooks so ruff runs on every commit:
 The hooks call the venv ruff, so they always match the pinned version.
 CI enforces the same checks either way.
 
-### Devcontainer (live Home Assistant)
+### Running a live Home Assistant
 
-A devcontainer is included for running a live Home Assistant instance
-with the integration loaded. Open the repo in VS Code (or any
-devcontainer-compatible editor) and it will start a stand-alone HA
-configured with the included
-[`configuration.yaml`](./config/configuration.yaml) file. Use this for
-manual testing and UI verification, not for running the test suite.
+Run:
+
+```bash
+./scripts/restart-dev-container.sh
+```
+
+This pulls the Home Assistant version pinned in `requirements.txt` and
+starts a container at [http://localhost:8123](http://localhost:8123) with
+the integration and this repo's automation blueprints mounted in. Home
+Assistant's own state (config entries, database, logs) persists across
+restarts in the gitignored `dev-config/` directory, which the script
+creates on first run.
+
+Configure the integration itself through the Home Assistant UI, the same
+way an end user would. Use this container for manual testing and UI
+verification, not for running the test suite.
+
+The script requires [podman](https://podman.io/). It is safe to re-run,
+it stops and removes any existing container before starting a fresh one.
 
 ## License
 

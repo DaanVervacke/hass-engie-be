@@ -97,6 +97,9 @@ debug*.log
 # -----------------------------------------------------------------------------
 # Local configuration and artifacts
 # -----------------------------------------------------------------------------
+# Live Home Assistant state for scripts/restart-dev-container.sh
+dev-config/
+
 # Configuration files that may contain secrets (keep configuration.yaml tracked)
 config/*
 !config/configuration.yaml
