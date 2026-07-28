@@ -66,6 +66,8 @@ from .const import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from homeassistant.core import HomeAssistant
 
 _LEVEL = "level"
@@ -84,9 +86,7 @@ class _BinaryOnCondition(EntityStateConditionBase):
     a single ENGIE binary sensor per entity class.
     """
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {
-        BINARY_SENSOR_DOMAIN: DomainSpec()
-    }
+    _domain_specs: Mapping[str, DomainSpec] = {BINARY_SENSOR_DOMAIN: DomainSpec()}
     _translation_key: ClassVar[str]
 
     def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
@@ -127,7 +127,7 @@ class _OptionBasedStateCondition(EntityStateConditionBase):
 
     _option_key: ClassVar[str]
     _translation_key: ClassVar[str]
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {SENSOR_DOMAIN: DomainSpec()}
+    _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
 
     def __init__(self, hass: HomeAssistant, config: ConditionConfig) -> None:
         """Initialise and set the expected state from config options."""
@@ -232,7 +232,7 @@ class _NumericalThresholdCondition(EntityNumericalConditionBase):
     a single sensor per entity class.
     """
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {SENSOR_DOMAIN: DomainSpec()}
+    _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
     _schema = NUMERICAL_CONDITION_SCHEMA
     _translation_key: ClassVar[str]
 

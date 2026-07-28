@@ -125,6 +125,8 @@ from .const import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from homeassistant.core import HomeAssistant
 
     from .coordinator import (
@@ -268,7 +270,7 @@ _TOU_SLOT_CHANGED_SCHEMA = ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR
 class SolarSurplusLevelChangedTrigger(EntityTriggerBase):
     """Trigger: solar surplus forecast level changed to any value."""
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {SENSOR_DOMAIN: DomainSpec()}
+    _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
     _schema = _SOLAR_SURPLUS_CHANGED_SCHEMA
 
     def entity_filter(self, entities: set[str]) -> set[str]:
@@ -282,7 +284,7 @@ class SolarSurplusLevelChangedTrigger(EntityTriggerBase):
 class OfftakeSlotChangedTrigger(EntityTriggerBase):
     """Trigger: TOU offtake slot changed to any value."""
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {SENSOR_DOMAIN: DomainSpec()}
+    _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
     _schema = _TOU_SLOT_CHANGED_SCHEMA
 
     def entity_filter(self, entities: set[str]) -> set[str]:
@@ -296,7 +298,7 @@ class OfftakeSlotChangedTrigger(EntityTriggerBase):
 class InjectionSlotChangedTrigger(EntityTriggerBase):
     """Trigger: TOU injection slot changed to any value."""
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {SENSOR_DOMAIN: DomainSpec()}
+    _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
     _schema = _TOU_SLOT_CHANGED_SCHEMA
 
     def entity_filter(self, entities: set[str]) -> set[str]:
@@ -345,7 +347,7 @@ class _OptionBasedStateTrigger(EntityTargetStateTriggerBase):
 
     _option_key: ClassVar[str]
     _translation_key: ClassVar[str]
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {SENSOR_DOMAIN: DomainSpec()}
+    _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
 
     def __init__(self, hass: HomeAssistant, config: TriggerConfig) -> None:
         """Initialise and set the target state from config options."""
@@ -484,7 +486,7 @@ class _ValueChangedTrigger(EntityTriggerBase):
     Subclasses only need to declare ``_translation_key``.
     """
 
-    _domain_specs: ClassVar[dict[str, DomainSpec]] = {SENSOR_DOMAIN: DomainSpec()}
+    _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
     _schema = _VALUE_CHANGED_SCHEMA
     _translation_key: ClassVar[str]
 

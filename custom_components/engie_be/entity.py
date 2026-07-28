@@ -224,7 +224,7 @@ class _EngieBeBaseEntity:
     type-arg suppression.
     """
 
-    _attr_attribution = ATTRIBUTION
+    _attr_attribution: str | None = ATTRIBUTION
     _attr_has_entity_name = True
 
 
