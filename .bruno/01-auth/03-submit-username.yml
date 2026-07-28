@@ -1,0 +1,60 @@
+info:
+  name: 03 Submit username
+  type: http
+  seq: 3
+  tags:
+  - auth
+  - sms
+  - email
+http:
+  method: POST
+  url: '{{authBaseUrl}}/u/login/identifier?state={{authorizeState}}&ui_locales=nl'
+  params:
+  - name: state
+    value: '{{authorizeState}}'
+    type: query
+  - name: ui_locales
+    value: nl
+    type: query
+  headers:
+  - name: Accept
+    value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+  - name: User-Agent
+    value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+  - name: sec-ch-ua
+    value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+  - name: sec-ch-ua-mobile
+    value: ?1
+  - name: sec-ch-ua-platform
+    value: '"Android"'
+  body:
+    type: form-urlencoded
+    data:
+    - name: state
+      value: '{{authorizeState}}'
+    - name: allow-passkeys
+      value: 'true'
+    - name: username
+      value: '{{ENGIE_USERNAME}}'
+    - name: js-available
+      value: 'true'
+    - name: webauthn-available
+      value: 'true'
+    - name: is-brave
+      value: 'false'
+    - name: webauthn-platform-available
+      value: 'true'
+    - name: ulp-remember-me-present
+      value: 'true'
+    - name: ulp-remember-me
+      value: 'on'
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Auth step 3. Submits the username.
+
+  Mirrors api.py::_run_auth_steps_1_to_7 step 3. The webauthn / passkey
+  form fields are sent verbatim as the Smart App sends them.

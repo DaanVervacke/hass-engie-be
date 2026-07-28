@@ -1,0 +1,91 @@
+info:
+  name: Solar surplus shown dashboard
+  type: http
+  seq: 2
+  tags:
+  - data
+  - live
+http:
+  method: POST
+  url: '{{featureFlagsUrl}}'
+  headers:
+  - name: User-Agent
+    value: Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.251205.006)
+  - name: Accept
+    value: application/json, application/problem+json
+  - name: Content-Type
+    value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "name": "solar-surplus-shown-dashboard",
+        "additionalContext": {
+          "contractAccountId": "{{ENGIE_BAN}}",
+          "platform": "android",
+          "platformVersion": "16",
+          "appVersion": "4.19.0.703"
+        }
+      }
+  auth: inherit
+runtime:
+  scripts:
+  - type: tests
+    code: |-
+      // Assertions compare derived facts (types, counts, status), never response
+      // values: this repo is public and Chai prints both sides of a failure.
+
+
+      test("responds 200", function () {
+        expect(res.getStatus()).to.equal(200);
+      });
+
+      test("path variables all resolved", function () {
+        const raw = req.getUrl();
+        // encodeUrl percent-encodes the braces, so an unresolved template
+        // arrives as %7B%7B rather than {{. Check both forms.
+        const path = raw.replace(/^https?:\/\//, '');
+        let problem = 'none';
+        if (path.indexOf('//') !== -1) { problem = 'empty path segment'; }
+        else if (raw.indexOf('{{') !== -1 || raw.indexOf('%7B%7B') !== -1) {
+          problem = 'unresolved variable';
+        }
+        expect(problem).to.equal('none');
+      });
+
+      test("responds with JSON", function () {
+        expect(String(res.getHeader('content-type') || '')).to.contain('json');
+      });
+
+      test("returns a boolean value", function () {
+        expect(typeof res.getBody().value).to.equal('boolean');
+      });
+
+      test("returns a reason", function () {
+        expect(typeof res.getBody().reason).to.equal('string');
+      });
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Queries the solar-surplus-shown-dashboard flag for one BAN.
+
+  Mirrors api.py::async_get_solar_surplus_shown_dashboard_flag, which delegates to
+  api.py::_async_query_boolean_feature_flag.
+
+  The flag gates the solar surplus tile in the Smart App. When it is
+  false the integration skips the per-EAN forecast fan-out entirely,
+  saving one GET per electricity EAN per refresh.
+
+  The flag name comes from the Android app's libapp.so, where it appears
+  as isSolarSurplusShownDashboard.
+
+  The targeted endpoint returns a flat {value, reason} object, not
+  the group envelope keyed by flag name.
+
+  additionalContext.contractAccountId takes the BAN. The
+  customerAccountNumber the Smart App also sends is accepted but
+  not required, and the integration omits it because the v5
+  subentry schema dropped the CAN.

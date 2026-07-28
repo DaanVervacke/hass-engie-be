@@ -1,0 +1,48 @@
+info:
+  name: 06 Resume authorize (triggers MFA)
+  type: http
+  seq: 6
+  tags:
+  - auth
+  - sms
+  - email
+http:
+  method: GET
+  url: '{{authBaseUrl}}/authorize/resume?state={{loginState}}'
+  params:
+  - name: state
+    value: '{{loginState}}'
+    type: query
+  headers:
+  - name: Accept
+    value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+  - name: User-Agent
+    value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+  - name: sec-ch-ua
+    value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+  - name: sec-ch-ua-mobile
+    value: ?1
+  - name: sec-ch-ua-platform
+    value: '"Android"'
+runtime:
+  scripts:
+  - type: after-response
+    code: |-
+      const m = res.getBody().match(/state=([a-zA-Z0-9_-]+)/);
+      bru.setVar('mfaChallengeState', m ? m[1] : null);
+  - type: tests
+    code: |-
+      test("extracted mfaChallengeState", function () {
+        expect(typeof bru.getVar('mfaChallengeState')).to.equal('string');
+      });
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Auth step 6. Resuming the authorize transaction makes Auth0 demand MFA.
+
+  Mirrors api.py::_run_auth_steps_1_to_7 step 6.
+
+  Sets: mfaChallengeState.

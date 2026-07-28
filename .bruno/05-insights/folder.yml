@@ -1,0 +1,10 @@
+info:
+  name: 05 Energy insights
+  type: folder
+  seq: 5
+request:
+  auth: inherit
+docs: |-
+  Peaks, Happy Hours, time-of-use schedules, solar surplus and historical
+  usage. Date windows are computed by each request's pre-request script,
+  so nothing needs editing before a run.

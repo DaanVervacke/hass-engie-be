@@ -1,0 +1,13 @@
+info:
+  name: 08 EPEX
+  type: folder
+  seq: 8
+request:
+  auth: inherit
+docs: |-
+  EPEX day-ahead wholesale prices, for dynamic-tariff customers.
+
+  These two requests take no BAN, because the market data is identical
+  for every customer. Both still send a bearer token, though the
+  endpoint does not appear to require one. See either request for the
+  detail.

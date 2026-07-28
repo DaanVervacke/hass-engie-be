@@ -1,0 +1,86 @@
+info:
+  name: Supplier energy prices
+  type: http
+  seq: 2
+  tags:
+  - data
+  - live
+http:
+  method: GET
+  url: '{{apiBaseUrl}}/business-agreements/{{ENGIE_BAN}}/supplier-energy-prices?maxGranularity=MONTHLY'
+  params:
+  - name: maxGranularity
+    value: MONTHLY
+    type: query
+  headers:
+  - name: User-Agent
+    value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+  - name: Accept
+    value: application/json, application/problem+json
+  auth: inherit
+runtime:
+  scripts:
+  - type: tests
+    code: |-
+      // Assertions compare derived facts (types, counts, status), never response
+      // values: this repo is public and Chai prints both sides of a failure.
+
+
+      test("responds 200", function () {
+        expect(res.getStatus()).to.equal(200);
+      });
+
+      test("path variables all resolved", function () {
+        const raw = req.getUrl();
+        // encodeUrl percent-encodes the braces, so an unresolved template
+        // arrives as %7B%7B rather than {{. Check both forms.
+        const path = raw.replace(/^https?:\/\//, '');
+        let problem = 'none';
+        if (path.indexOf('//') !== -1) { problem = 'empty path segment'; }
+        else if (raw.indexOf('{{') !== -1 || raw.indexOf('%7B%7B') !== -1) {
+          problem = 'unresolved variable';
+        }
+        expect(problem).to.equal('none');
+      });
+
+      test("responds with JSON", function () {
+        expect(String(res.getHeader('content-type') || '')).to.contain('json');
+      });
+
+      test("returns priced EANs", function () {
+        const value = res.getBody().items;
+        expect(Array.isArray(value) ? 'array' : typeof value).to.equal('array');
+      });
+
+      test("EANs carry an ean and a prices array", function () {
+        const rows = res.getBody().items || [];
+        const malformed = rows.filter(function (i) { return !(i.ean && Array.isArray(i.prices)); });
+        expect(malformed.length).to.equal(0);
+      });
+
+      test("price windows carry proportionalPriceConfigurations", function () {
+        const rows = (res.getBody().items || []).reduce(function (all, i) { return all.concat(i.prices || []); }, []) || [];
+        const malformed = rows.filter(function (p) { return !(p.proportionalPriceConfigurations); });
+        expect(malformed.length).to.equal(0);
+      });
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Per-EAN energy prices. The main price sensors read this.
+
+  Mirrors api.py::async_get_prices.
+
+  ENGIE_BAN must be the 12-digit businessAgreementNumber, NOT the shorter
+  customerAccountNumber (CAN). The endpoint validates the length and
+  returns HTTP 400 for anything else.
+
+  Parsed by sensor.py: items[].ean, items[].prices[] (the current
+  window is chosen by date), then
+  proportionalPriceConfigurations.{offtake,injection}[] with
+  priceValue and timeOfUseSlotCode. ENGIE already returns EUR/kWh here,
+  so sensor.py uses priceValue as-is and labels the unit. The only
+  conversion in the integration is on EPEX, which arrives in
+  EUR/MWh.

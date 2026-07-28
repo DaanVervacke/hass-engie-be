@@ -1,0 +1,7 @@
+info:
+  name: 06 Billing
+  type: folder
+  seq: 6
+request:
+  auth: inherit
+docs: Account balance and outstanding invoices.

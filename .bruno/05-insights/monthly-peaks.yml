@@ -1,0 +1,99 @@
+info:
+  name: Monthly peaks (captar)
+  type: http
+  seq: 1
+  tags:
+  - data
+  - live
+http:
+  method: GET
+  url: '{{peaksBaseUrl}}/private/customers/me/contract-accounts/{{ENGIE_BAN}}/energy-insights/peaks?year={{peaksYear}}&month={{peaksMonth}}'
+  params:
+  - name: year
+    value: '{{peaksYear}}'
+    type: query
+  - name: month
+    value: '{{peaksMonth}}'
+    type: query
+  headers:
+  - name: User-Agent
+    value: Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.251205.006)
+  - name: Accept
+    value: application/json, application/problem+json
+  auth: inherit
+runtime:
+  scripts:
+  - type: before-request
+    code: |-
+      // Current month in the runner's local zone, which is UTC on CI.
+      const now = new Date();
+      bru.setVar('peaksYear', String(now.getFullYear()));
+      bru.setVar('peaksMonth', String(now.getMonth() + 1));
+  - type: tests
+    code: |-
+      // Assertions compare derived facts (types, counts, status), never response
+      // values: this repo is public and Chai prints both sides of a failure.
+
+
+      test("responds 200", function () {
+        expect(res.getStatus()).to.equal(200);
+      });
+
+      test("path variables all resolved", function () {
+        const raw = req.getUrl();
+        // encodeUrl percent-encodes the braces, so an unresolved template
+        // arrives as %7B%7B rather than {{. Check both forms.
+        const path = raw.replace(/^https?:\/\//, '');
+        let problem = 'none';
+        if (path.indexOf('//') !== -1) { problem = 'empty path segment'; }
+        else if (raw.indexOf('{{') !== -1 || raw.indexOf('%7B%7B') !== -1) {
+          problem = 'unresolved variable';
+        }
+        expect(problem).to.equal('none');
+      });
+
+      test("responds with JSON", function () {
+        expect(String(res.getHeader('content-type') || '')).to.contain('json');
+      });
+
+      test("returns a year", function () {
+        expect(typeof res.getBody().year === 'undefined' ? 'missing' : 'present').to.equal('present');
+      });
+
+      test("returns a month", function () {
+        expect(typeof res.getBody().month === 'undefined' ? 'missing' : 'present').to.equal('present');
+      });
+
+      test("returns dailyPeaks", function () {
+        const value = res.getBody().dailyPeaks;
+        expect(Array.isArray(value) ? 'array' : typeof value).to.equal('array');
+      });
+
+      test("daily peaks carry start, end and both peak values", function () {
+        const rows = res.getBody().dailyPeaks || [];
+        const malformed = rows.filter(function (p) { return !(p.start && p.end && p.peakKW !== undefined && p.peakKWh !== undefined); });
+        expect(malformed.length).to.equal(0);
+      });
+
+      test("returns peakOfTheMonth", function () {
+        expect(typeof res.getBody().peakOfTheMonth === 'undefined' ? 'missing' : 'present').to.equal('present');
+      });
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Capacity-tariff (captar) peaks for the current month.
+
+  Mirrors api.py::async_get_monthly_peaks.
+
+  Despite the contract-accounts path segment this endpoint wants the
+  businessAgreementNumber. Passing a customerAccountNumber returns
+  HTTP 500 rather than the 400 the other endpoints return.
+
+  Returns year, month, a dailyPeaks array and a peakOfTheMonth
+  object, the last two both shaped {peakKWh, peakKW, start, end}.
+  sensor.py reads dailyPeaks directly. Note that _peaks.py talks
+  about a key called peaks: that is the name coordinator.py files
+  this whole response under, not a field ENGIE sends.

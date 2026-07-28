@@ -1,0 +1,86 @@
+info:
+  name: 09 Resume authorize (post-MFA, branches)
+  type: http
+  seq: 9
+  tags:
+  - auth
+  - sms
+  - email
+http:
+  method: GET
+  url: '{{authBaseUrl}}/authorize/resume?state={{loginState}}'
+  params:
+  - name: state
+    value: '{{loginState}}'
+    type: query
+  headers:
+  - name: Accept
+    value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+  - name: User-Agent
+    value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+  - name: sec-ch-ua
+    value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+  - name: sec-ch-ua-mobile
+    value: ?1
+  - name: sec-ch-ua-platform
+    value: '"Android"'
+runtime:
+  scripts:
+  - type: after-response
+    code: |-
+      const headers = res.getHeaders() || {};
+      const location = res.getHeader('location') || headers.location || headers.Location || '';
+
+      if (location.indexOf('be.engie.smart://login-callback') === 0) {
+        // Outcome A: the auth code is already in the Location header.
+        const codeMatch = location.match(/code=([a-zA-Z0-9_-]+)/);
+        bru.setVar('code', codeMatch ? codeMatch[1] : null);
+        bru.setVar('passKeyState', null);
+        bru.setVar('authOutcome', 'callback');
+
+        // Steps 10-12 would fail here: the Auth0 session is already finalised and a
+        // second /authorize/resume returns error=access_denied. Jump the runner
+        // straight to the token exchange. In the GUI, where one request runs at a
+        // time, this is a no-op and the log line below is the instruction.
+        bru.runner.setNextRequest("13 Get access token");
+        console.log('Outcome A (callback short-circuit): skipping steps 10-12, going to step 13.');
+      } else {
+        // Outcome B: passkey-enrollment interstitial.
+        const stateMatch = res.getBody().match(/state=([a-zA-Z0-9_-]+)/);
+        bru.setVar('passKeyState', stateMatch ? stateMatch[1] : null);
+        bru.setVar('code', null);
+        bru.setVar('authOutcome', 'passkey');
+        console.log('Outcome B (passkey interstitial): continuing with steps 10-12.');
+      }
+  - type: tests
+    code: |-
+      test("extracted authOutcome", function () {
+        expect(typeof bru.getVar('authOutcome')).to.equal('string');
+      });
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Auth step 9. Auth0 takes one of two paths here, chosen per session and
+  not controllable by the client. Mirrors the Location-first branch in
+  api.py::_run_auth_steps_8_to_13.
+
+  Outcome A, the callback short-circuit. Location is
+  be.engie.smart://login-callback/nl?code=...&state=... and the auth code
+  is already in hand. Steps 10-12 must be skipped: the Auth0 session is
+  finalised and a second resume returns error=access_denied. In a folder
+  run the script jumps to step 13 for you via bru.runner.setNextRequest.
+  Running requests one at a time in the GUI, skip to 13 yourself.
+
+  Outcome B, the passkey-enrollment interstitial. Location points at
+  /u/passkey-enrollment and the body carries a fresh passKeyState.
+  Continue with steps 10, 11, 12.
+
+  The script checks Location FIRST and only then falls back to the body.
+  Body-first parsing is wrong for outcome A: the body's state= is the
+  OAuth state from step 1, not a passKeyState, and using it as one
+  produces a stale-session error at step 12.
+
+  Sets: authOutcome ('callback' or 'passkey'), plus code or passKeyState.

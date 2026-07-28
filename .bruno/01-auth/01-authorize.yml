@@ -1,0 +1,137 @@
+info:
+  name: 01 Authorize
+  type: http
+  seq: 1
+  tags:
+  - auth
+  - sms
+  - email
+http:
+  method: GET
+  url: '{{authBaseUrl}}/authorize?redirect_uri=be.engie.smart://login-callback/nl&client_id={{ENGIE_CLIENT_ID}}&response_type=code&ui_locales=nl&state={{state}}&nonce={{nonce}}&scope=openid profile roles offline_access&code_challenge={{code_challenge}}&code_challenge_method=S256&audience=customer&app_scheme=be-engie-smart&cancel_redirect=be-engie-smart://cancel-registration-redirect'
+  params:
+  - name: redirect_uri
+    value: be.engie.smart://login-callback/nl
+    type: query
+  - name: client_id
+    value: '{{ENGIE_CLIENT_ID}}'
+    type: query
+  - name: response_type
+    value: code
+    type: query
+  - name: ui_locales
+    value: nl
+    type: query
+  - name: state
+    value: '{{state}}'
+    type: query
+  - name: nonce
+    value: '{{nonce}}'
+    type: query
+  - name: scope
+    value: openid profile roles offline_access
+    type: query
+  - name: code_challenge
+    value: '{{code_challenge}}'
+    type: query
+  - name: code_challenge_method
+    value: S256
+    type: query
+  - name: audience
+    value: customer
+    type: query
+  - name: app_scheme
+    value: be-engie-smart
+    type: query
+  - name: cancel_redirect
+    value: be-engie-smart://cancel-registration-redirect
+    type: query
+  headers:
+  - name: Accept
+    value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+  - name: User-Agent
+    value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+  - name: sec-ch-ua
+    value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+  - name: sec-ch-ua-mobile
+    value: ?1
+  - name: sec-ch-ua-platform
+    value: '"Android"'
+runtime:
+  scripts:
+  - type: before-request
+    code: |-
+      // Bruno runs scripts in a QuickJS sandbox. In its default safe mode node's
+      // crypto module does not exist, so require('crypto') throws "Cannot find
+      // module crypto" and the whole flow stops at step 1. Web Crypto's
+      // getRandomValues and the bundled crypto-js are both available there, so
+      // PKCE is built from those and the collection needs no sandbox change.
+      const CryptoJS = require('crypto-js');
+
+      function randomBytes(n) {
+        const bytes = new Uint8Array(n);
+        crypto.getRandomValues(bytes);
+        return bytes;
+      }
+
+      function toHex(bytes) {
+        let out = '';
+        for (let i = 0; i < bytes.length; i++) {
+          out += bytes[i].toString(16).padStart(2, '0');
+        }
+        return out;
+      }
+
+      // Base64URL, per PKCE (RFC 7636). Mirrors api.py::_base64url.
+      function base64Url(b64) {
+        return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      }
+
+      function bytesToBase64(bytes) {
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+      }
+
+      // 16 random bytes as hex, matching api.py::_generate_pkce.
+      const state = toHex(randomBytes(16));
+      const nonce = toHex(randomBytes(16));
+
+      // The verifier is 32 random bytes base64url encoded, which lands at 43
+      // characters, inside the 43 to 128 RFC 7636 allows. The challenge is
+      // BASE64URL(SHA256(ASCII(verifier))).
+      const code_verifier = base64Url(bytesToBase64(randomBytes(32)));
+      const code_challenge = base64Url(
+        CryptoJS.enc.Base64.stringify(CryptoJS.SHA256(code_verifier))
+      );
+
+      bru.setVar("state", state);
+      bru.setVar("nonce", nonce);
+      bru.setVar("code_verifier", code_verifier);
+      bru.setVar("code_challenge", code_challenge);
+  - type: after-response
+    code: |-
+      const m = res.getBody().match(/state=([a-zA-Z0-9_-]+)/);
+      bru.setVar('authorizeState', m ? m[1] : null);
+  - type: tests
+    code: |-
+      test("extracted authorizeState", function () {
+        expect(typeof bru.getVar('authorizeState')).to.equal('string');
+      });
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Auth step 1. Starts the PKCE flow and returns the Auth0 login page.
+
+  Mirrors api.py::_run_auth_steps_1_to_7 step 1.
+
+  The pre-request script generates state, nonce, code_verifier and
+  code_challenge exactly as api.py::_generate_pkce does. code_verifier
+  is kept for step 13 and must survive the whole run.
+
+  Sets: state, nonce, code_verifier, code_challenge, authorizeState.

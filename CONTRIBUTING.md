@@ -70,6 +70,10 @@ Optionally install the git pre-commit hooks so ruff runs on every commit:
 The hooks call the venv ruff, so they always match the pinned version.
 CI enforces the same checks either way.
 
+`./scripts/test` also checks the Bruno API collection in `.bruno/` against the
+HTTP client. If you add a method to `api.py`, add a matching request under
+`.bruno/` or the build fails. See `.bruno/README.md`.
+
 ### Running a live Home Assistant
 
 ```bash

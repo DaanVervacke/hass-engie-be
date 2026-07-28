@@ -1,0 +1,10 @@
+info:
+  name: 03 Accounts
+  type: folder
+  seq: 3
+request:
+  auth: inherit
+docs: |-
+  Where the config flow learns which business agreements a login can
+  see. Run this folder first: it is the only one that needs no BAN,
+  and it seeds ENGIE_BAN for everything else.

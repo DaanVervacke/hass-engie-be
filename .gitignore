@@ -129,3 +129,13 @@ docs/
 
 # Implementation plans (developer-only, not for the repo)
 plans/
+
+# Bruno run reports. A --reporter-json file from .bruno/02-token holds a live
+# access token and refresh token in clear text. The junit and html reporters
+# are covered too, since a future run could be pointed at either.
+.bruno/**/*.json
+.bruno/**/*.xml
+.bruno/**/*.html
+# bruno.json is Bruno's collection root for the classic .bru format, not a
+# report. Keep it committable in case the collection ever moves back.
+!.bruno/bruno.json

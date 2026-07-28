@@ -1,0 +1,53 @@
+name: Local
+variables:
+  - secret: true
+    name: ENGIE_USERNAME
+    description: ""
+  - secret: true
+    name: ENGIE_PASSWORD
+    description: ""
+  - secret: true
+    name: ENGIE_BAN
+    description: ""
+  - secret: true
+    name: ENGIE_EAN
+    description: ""
+  - name: MFA_CODE
+    value: ""
+    description: ""
+  - name: ENGIE_CLIENT_ID
+    value: R0PQyUdjO5B2tBaRnltgitVnnUmjGyld
+    description: ""
+  - name: authBaseUrl
+    value: https://account.engie.be
+    description: ""
+  - name: apiBaseUrl
+    value: https://www.engie.be/api/engie/be/ms/billing/customer/v1
+    description: ""
+  - name: premisesBaseUrl
+    value: https://www.engie.be/api/engie/be/ms/premises/customer/v1
+    description: ""
+  - name: peaksBaseUrl
+    value: https://api.engie.be/engie/ms/b2c-energy-insights/v1
+    description: ""
+  - name: accountsBaseUrl
+    value: https://api.engie.be/engie/ms/accounts/customer/v1
+    description: ""
+  - name: energyInsightsBaseUrl
+    value: https://api.engie.be/engie/ms/energy-insights/customer/v1
+    description: ""
+  - name: energyInsightsV2BaseUrl
+    value: https://www.engie.be/api/engie/be/ms/energy-insights/customer/v2
+    description: ""
+  - name: featureFlagsUrl
+    value: https://api.engie.be/engie/ms/feature-flags/customer/v1/boolean-feature-flags/_query
+    description: ""
+  - name: billingBaseUrl
+    value: https://api.engie.be/engie/ms/billing/customer/v1
+    description: ""
+  - name: businessAgreementsBaseUrl
+    value: https://www.engie.be/api/engie/be/ms/business-agreements/customer/v1
+    description: ""
+  - name: epexUrl
+    value: https://api.engie.be/engie/ms/pricing/v1/public/prices/epex
+    description: ""

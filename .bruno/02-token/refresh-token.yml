@@ -1,0 +1,89 @@
+info:
+  name: Refresh token
+  type: http
+  seq: 1
+  tags:
+  - token
+http:
+  method: POST
+  url: '{{authBaseUrl}}/oauth/token'
+  headers:
+  - name: Accept
+    value: application/json
+  - name: Content-Type
+    value: application/x-www-form-urlencoded
+  - name: User-Agent
+    value: Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.251205.006)
+  body:
+    type: form-urlencoded
+    data:
+    - name: refresh_token
+      value: '{{refreshToken}}'
+    - name: audience
+      value: customer
+    - name: grant_type
+      value: refresh_token
+    - name: scope
+      value: openid profile roles offline_access
+    - name: redirect_uri
+      value: be.engie.smart://login-callback/nl
+    - name: client_id
+      value: '{{ENGIE_CLIENT_ID}}'
+runtime:
+  scripts:
+  - type: after-response
+    code: |-
+      const body = res.getBody();
+      bru.setVar('accessToken', body.access_token);
+      bru.setVar('refreshToken', body.refresh_token);
+  - type: tests
+    code: |-
+      // Assertions compare derived facts (types, counts, status), never response
+      // values: this repo is public and Chai prints both sides of a failure.
+
+
+      test("responds 200", function () {
+        expect(res.getStatus()).to.equal(200);
+      });
+
+      test("path variables all resolved", function () {
+        const raw = req.getUrl();
+        // encodeUrl percent-encodes the braces, so an unresolved template
+        // arrives as %7B%7B rather than {{. Check both forms.
+        const path = raw.replace(/^https?:\/\//, '');
+        let problem = 'none';
+        if (path.indexOf('//') !== -1) { problem = 'empty path segment'; }
+        else if (raw.indexOf('{{') !== -1 || raw.indexOf('%7B%7B') !== -1) {
+          problem = 'unresolved variable';
+        }
+        expect(problem).to.equal('none');
+      });
+
+      test("responds with JSON", function () {
+        expect(String(res.getHeader('content-type') || '')).to.contain('json');
+      });
+
+      test("returns an access token", function () {
+        expect(typeof res.getBody().access_token).to.equal('string');
+      });
+
+      test("rotates the refresh token", function () {
+        expect(typeof res.getBody().refresh_token).to.equal('string');
+      });
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Refreshes the access token. Mirrors api.py::async_refresh_token.
+
+  Needs refreshToken to already be set, either by auth step 13 in this
+  session or seeded manually.
+
+  Rotation: the response carries a NEW refresh_token and the one you
+  sent is now dead. In CI the rotated value must be persisted back to
+  the ENGIE_REFRESH_TOKEN secret immediately. See
+  .github/workflows/bruno-live.yml.
+
+  Sets: accessToken, refreshToken.

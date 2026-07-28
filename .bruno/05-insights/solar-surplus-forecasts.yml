@@ -1,0 +1,91 @@
+info:
+  name: Solar surplus forecasts
+  type: http
+  seq: 5
+  tags:
+  - data
+  - live
+http:
+  method: GET
+  url: '{{energyInsightsBaseUrl}}/business-agreements/{{ENGIE_BAN}}/solar-surplus/{{ENGIE_EAN}}_ID1/forecasts'
+  headers:
+  - name: User-Agent
+    value: Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.251205.006)
+  - name: Accept
+    value: application/json, application/problem+json
+  auth: inherit
+runtime:
+  scripts:
+  - type: tests
+    code: |-
+      // Assertions compare derived facts (types, counts, status), never response
+      // values: this repo is public and Chai prints both sides of a failure.
+
+
+      test("responds 200", function () {
+        expect(res.getStatus()).to.equal(200);
+      });
+
+      test("path variables all resolved", function () {
+        const raw = req.getUrl();
+        // encodeUrl percent-encodes the braces, so an unresolved template
+        // arrives as %7B%7B rather than {{. Check both forms.
+        const path = raw.replace(/^https?:\/\//, '');
+        let problem = 'none';
+        if (path.indexOf('//') !== -1) { problem = 'empty path segment'; }
+        else if (raw.indexOf('{{') !== -1 || raw.indexOf('%7B%7B') !== -1) {
+          problem = 'unresolved variable';
+        }
+        expect(problem).to.equal('none');
+      });
+
+      test("responds with JSON", function () {
+        expect(String(res.getHeader('content-type') || '')).to.contain('json');
+      });
+
+      test("path carries an EAN, not a bare suffix", function () {
+        const seg = req.getUrl().split('/solar-surplus/')[1].split('/')[0];
+        expect(seg === '_ID1' ? 'suffix only' : 'has an EAN').to.equal('has an EAN');
+      });
+
+      test("returns forecasts", function () {
+        const value = res.getBody().forecasts;
+        expect(Array.isArray(value) ? 'array' : typeof value).to.equal('array');
+      });
+
+      test("forecast days carry a date and details", function () {
+        const rows = res.getBody().forecasts || [];
+        const malformed = rows.filter(function (f) { return !(f.forecastDate && Array.isArray(f.details)); });
+        expect(malformed.length).to.equal(0);
+      });
+
+      test("forecast slots carry startTime and level", function () {
+        const rows = (res.getBody().forecasts || []).reduce(function (all, f) { return all.concat(f.details || []); }, []) || [];
+        const malformed = rows.filter(function (d) { return !(d.startTime && d.level); });
+        expect(malformed.length).to.equal(0);
+      });
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Expected solar injection surplus per hour.
+
+  Mirrors api.py::async_get_solar_surplus_forecasts.
+
+  The path wants the ENGIE delivery-point id, which is the EAN plus
+  an _ID1 suffix, so the URL interpolates ENGIE_EAN and appends it.
+  Building it in a script would not work: bru.setVar writes a runtime
+  variable and bru.getEnvVar only reads environment ones, so a seeded
+  EAN would come back empty.
+
+  A customer with no solar still gets a well-formed response whose
+  level values are all NO_DATA, so the integration infers availability
+  from the response rather than probing a flag. It does check
+  solar-surplus-shown-dashboard first to skip the per-EAN fan-out.
+
+  coordinator.py stores the forecasts array as returned. The fields
+  forecasts[].{forecastDate,level,details} and
+  details[].{startTime,value,level} are read in sensor.py, energy.py
+  and diagnostics.py. Levels are in const.py::SOLAR_SURPLUS_LEVELS.

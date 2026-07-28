@@ -1,0 +1,12 @@
+info:
+  name: 02 Token
+  type: folder
+  seq: 2
+request:
+  auth: inherit
+docs: |-
+  Token refresh. Mirrors api.py::async_refresh_token.
+
+  ENGIE rotates the refresh token on EVERY call, so the response's
+  refresh_token replaces the one you sent. Replaying a consumed refresh
+  token returns HTTP 400.

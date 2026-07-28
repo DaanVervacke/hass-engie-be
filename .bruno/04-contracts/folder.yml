@@ -1,0 +1,10 @@
+info:
+  name: 04 Contracts
+  type: folder
+  seq: 4
+request:
+  auth: inherit
+docs: |-
+  Contracts and tariffs for one business agreement, all keyed on
+  ENGIE_BAN. Energy contracts seeds ENGIE_EAN, so the service-point
+  lookup that needs one runs last.

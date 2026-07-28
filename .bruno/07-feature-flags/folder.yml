@@ -1,0 +1,9 @@
+info:
+  name: 07 Feature flags
+  type: folder
+  seq: 7
+request:
+  auth: inherit
+docs: |-
+  Per-BAN boolean feature flags. One endpoint, one request per flag the
+  integration reads. Mirrors api.py::_async_query_boolean_feature_flag.

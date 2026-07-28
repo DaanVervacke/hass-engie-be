@@ -1,0 +1,15 @@
+info:
+  name: Email MFA
+  type: folder
+  seq: 14
+request:
+  auth: inherit
+docs: |-
+  Authenticator-switching detour for email MFA instead of SMS.
+
+  Mirrors api.py::_switch_to_email_mfa (ALT-1 to ALT-4) and
+  api.py::_submit_email_mfa (ALT-5).
+
+  Run 01-06 from the parent folder, then ALT-1 to ALT-4 here, then set
+  MFA_CODE from the email and run ALT-5, then rejoin the parent at step 9.
+  Step 07 is never run on this path, so no SMS is sent.

@@ -1,0 +1,14 @@
+opencollection: 1.0.0
+info:
+  name: ENGIE Belgium
+  version: '1'
+request:
+  auth:
+    type: bearer
+    token: '{{accessToken}}'
+bundled: false
+extensions:
+  bruno:
+    ignore:
+    - node_modules
+    - .git

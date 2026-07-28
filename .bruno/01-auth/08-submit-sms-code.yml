@@ -1,0 +1,61 @@
+info:
+  name: 08 Submit SMS code
+  type: http
+  seq: 8
+  tags:
+  - auth
+  - sms
+  - email
+http:
+  method: POST
+  url: '{{authBaseUrl}}/u/mfa-sms-challenge?state={{mfaChallengeState}}&ui_locales=nl'
+  params:
+  - name: state
+    value: '{{mfaChallengeState}}'
+    type: query
+  - name: ui_locales
+    value: nl
+    type: query
+  headers:
+  - name: Accept
+    value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+  - name: User-Agent
+    value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+  - name: sec-ch-ua
+    value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+  - name: sec-ch-ua-mobile
+    value: ?1
+  - name: sec-ch-ua-platform
+    value: '"Android"'
+  body:
+    type: form-urlencoded
+    data:
+    - name: state
+      value: '{{mfaChallengeState}}'
+    - name: code
+      value: '{{MFA_CODE}}'
+runtime:
+  scripts:
+  - type: after-response
+    code: |-
+      const m = res.getBody().match(/state=([a-zA-Z0-9_-]+)/);
+      if (!m) {
+        console.log('No state in response: the MFA code was probably wrong.');
+      }
+      bru.setVar('postMfaState', m ? m[1] : null);
+  - type: tests
+    code: |-
+      test("extracted postMfaState", function () {
+        expect(typeof bru.getVar('postMfaState')).to.equal('string');
+      });
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Auth step 8. Submits MFA_CODE.
+
+  Mirrors api.py::_submit_sms_mfa. A wrong code returns HTTP 400 and the
+  MFA form again, which is why api.py passes raise_on_error=False here
+  and infers failure from the missing state.

@@ -1,0 +1,55 @@
+info:
+  name: 12 Resume authorize (final)
+  type: http
+  seq: 12
+  tags:
+  - auth
+  - sms
+  - email
+http:
+  method: GET
+  url: '{{authBaseUrl}}/authorize/resume?state={{loginState}}'
+  params:
+  - name: state
+    value: '{{loginState}}'
+    type: query
+  headers:
+  - name: Accept
+    value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+  - name: User-Agent
+    value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+  - name: sec-ch-ua
+    value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+  - name: sec-ch-ua-mobile
+    value: ?1
+  - name: sec-ch-ua-platform
+    value: '"Android"'
+runtime:
+  scripts:
+  - type: after-response
+    code: |-
+      let m = res.getBody().match(/code=([a-zA-Z0-9_-]+)/);
+      if (!m) {
+        const headers = res.getHeaders() || {};
+        const location = headers.location || headers.Location || '';
+        m = location.match(/code=([a-zA-Z0-9_-]+)/);
+      }
+      bru.setVar('code', m ? m[1] : null);
+  - type: tests
+    code: |-
+      test("extracted code", function () {
+        expect(typeof bru.getVar('code')).to.equal('string');
+      });
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Auth step 12. Outcome B only. Yields the authorization code.
+
+  Mirrors api.py::_run_auth_steps_8_to_13 step 12. Uses loginState, not
+  passKeyState. The code arrives in the body on some accounts and only in
+  the Location header on others, so both are checked.
+
+  Sets: code.

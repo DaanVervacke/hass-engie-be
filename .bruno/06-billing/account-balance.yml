@@ -1,0 +1,79 @@
+info:
+  name: Account balance
+  type: http
+  seq: 1
+  tags:
+  - data
+  - live
+http:
+  method: GET
+  url: '{{billingBaseUrl}}/business-agreements/{{ENGIE_BAN}}/account-balance'
+  headers:
+  - name: User-Agent
+    value: Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.251205.006)
+  - name: Accept
+    value: application/json, application/problem+json
+  auth: inherit
+runtime:
+  scripts:
+  - type: tests
+    code: |-
+      // Assertions compare derived facts (types, counts, status), never response
+      // values: this repo is public and Chai prints both sides of a failure.
+
+
+      test("responds 200", function () {
+        expect(res.getStatus()).to.equal(200);
+      });
+
+      test("path variables all resolved", function () {
+        const raw = req.getUrl();
+        // encodeUrl percent-encodes the braces, so an unresolved template
+        // arrives as %7B%7B rather than {{. Check both forms.
+        const path = raw.replace(/^https?:\/\//, '');
+        let problem = 'none';
+        if (path.indexOf('//') !== -1) { problem = 'empty path segment'; }
+        else if (raw.indexOf('{{') !== -1 || raw.indexOf('%7B%7B') !== -1) {
+          problem = 'unresolved variable';
+        }
+        expect(problem).to.equal('none');
+      });
+
+      test("responds with JSON", function () {
+        expect(String(res.getHeader('content-type') || '')).to.contain('json');
+      });
+
+      test("returns a status", function () {
+        expect(typeof res.getBody().status).to.equal('string');
+      });
+
+      test("returns an overview", function () {
+        expect(typeof res.getBody().overview === 'undefined' ? 'missing' : 'present').to.equal('present');
+      });
+
+      test("returns financial transactions", function () {
+        const value = (res.getBody().details || {}).financialTransactions;
+        expect(Array.isArray(value) ? 'array' : typeof value).to.equal('array');
+      });
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Outstanding balance and per-invoice rows.
+
+  Mirrors api.py::async_get_account_balance.
+
+  status is CLEAR, OPEN_DEBIT, OPEN_OVERDUE and similar. Amounts are
+  EUR. No name, IBAN or address is returned.
+
+  Parsed by _billing.py: status, overview.dueAmount, and
+  details.financialTransactions[].{dueDate,openAmount}. Note that
+  dueAmount is read from overview, not from the per-invoice rows.
+  invoiceType is returned by ENGIE and documented in api.py, but no
+  parser reads it.
+
+  This endpoint returns financial data. The assertions compare types
+  and counts rather than values, so no amount can reach a public CI
+  log.

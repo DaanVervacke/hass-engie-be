@@ -1,0 +1,116 @@
+info:
+  name: EPEX prices (hourly)
+  type: http
+  seq: 1
+  tags:
+  - data
+  - live
+  - epex
+http:
+  method: GET
+  url: '{{epexUrl}}?from={{epexFrom}}&to={{epexTo}}'
+  params:
+  - name: from
+    value: '{{epexFrom}}'
+    type: query
+  - name: to
+    value: '{{epexTo}}'
+    type: query
+  headers:
+  - name: User-Agent
+    value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+  - name: Accept
+    value: application/json, application/problem+json
+  auth: inherit
+runtime:
+  scripts:
+  - type: before-request
+    code: |-
+      // Today 00:00 through end of tomorrow in the runner's local zone (UTC on
+      // CI), rendered as ISO-8601 UTC with millisecond precision and a literal Z.
+      // That exact shape is what the endpoint accepts. See api.py::_iso_ms_z.
+      function isoMsZ(d) { return d.toISOString().slice(0, 23) + 'Z'; }
+
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const end = new Date(start.getTime() + 2 * 24 * 60 * 60 * 1000);
+
+      bru.setVar('epexFrom', isoMsZ(start));
+      bru.setVar('epexTo', isoMsZ(end));
+  - type: tests
+    code: |
+      // Assertions compare derived facts (types, counts, status), never response
+      // values: this repo is public and Chai prints both sides of a failure.
+
+      // 404 is a soft state, not a failure: ENGIE returns it when day-ahead prices
+      // for the window are not published yet. api.py turns that into
+      // EpexNotPublishedError and callers retry later, so CI must not go red on it.
+      // Anything other than 200 or 404 is a genuine surprise and should fail loudly.
+      test("responds 200, or 404 when prices are not published yet", function () {
+        const status = res.getStatus();
+        expect([200, 404].indexOf(status) >= 0 ? 'expected' : String(status))
+          .to.equal('expected');
+      });
+
+      // The not-published signal is part of the contract too. api.py identifies it by
+      // the 404 alone, but ENGIE pairs it with {"detail": "No prices found ..."}. If
+      // that envelope changes, this is the early warning.
+      test("a 404 carries a detail message", function () {
+        if (res.getStatus() !== 404) { return; }
+        expect(typeof (res.getBody() || {}).detail).to.equal('string');
+      });
+
+      // marketDate and period are strings, value is a number.
+      test("published prices carry a non-empty timeSeries", function () {
+        if (res.getStatus() !== 200) { return; }
+        const series = (res.getBody() || {}).timeSeries;
+        expect(Array.isArray(series) ? 'array' : typeof series).to.equal('array');
+        expect(series.length > 0 ? 'non-empty' : 'empty').to.equal('non-empty');
+      });
+
+      test("every slot carries a period string and a numeric value", function () {
+        if (res.getStatus() !== 200) { return; }
+        const series = (res.getBody() || {}).timeSeries || [];
+        const malformed = series.filter(function (s) {
+          return typeof s.period !== 'string' || typeof s.value !== 'number';
+        });
+        expect(malformed.length).to.equal(0);
+      });
+
+      test("published prices carry marketDate and publicationTime", function () {
+        if (res.getStatus() !== 200) { return; }
+        const body = res.getBody() || {};
+        expect(typeof body.marketDate).to.equal('string');
+        expect(typeof body.publicationTime).to.equal('string');
+      });
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Day-ahead prices in hourly slots, 24 per day.
+
+  Omitting granularity gives hourly. EngieBeEpexCoordinator sends
+  granularity=HOURLY explicitly rather than relying on that default, so
+  this request exercises the endpoint default instead.
+
+  Mirrors api.py::async_get_epex_prices.
+
+  api.py sends a bearer token and treats 401 and 403 as a trigger
+  for reauth, and its docstring says the endpoint requires
+  authentication. It does not: both granularities answer 200 with
+  no Authorization header at all, at least from a Belgian consumer
+  connection (observed 2026-07-28). The request sends the token
+  anyway, because that costs nothing and matches the integration.
+
+  from and to must be ISO-8601 UTC with millisecond precision and a
+  literal Z, e.g. 2026-05-04T00:00:00.000Z. Other shapes are rejected.
+
+  404 with {"detail":"No prices found ..."} means the window is not
+  published yet. api.py turns that into EpexNotPublishedError, a soft
+  state, so the tests here accept it.
+
+  Parsed by coordinator.py::_parse_epex_response: publicationTime,
+  marketDate, timeSeries[].{period,value}. Raw values are EUR/MWh and
+  the integration divides by 1000 to get EUR/kWh.

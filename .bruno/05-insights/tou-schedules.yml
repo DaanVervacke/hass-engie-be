@@ -1,0 +1,85 @@
+info:
+  name: Time-of-use schedules
+  type: http
+  seq: 4
+  tags:
+  - data
+  - live
+http:
+  method: GET
+  url: '{{energyInsightsBaseUrl}}/business-agreements/{{ENGIE_BAN}}/tou-schedules'
+  headers:
+  - name: User-Agent
+    value: Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.251205.006)
+  - name: Accept
+    value: application/json, application/problem+json
+  auth: inherit
+runtime:
+  scripts:
+  - type: tests
+    code: |-
+      // Assertions compare derived facts (types, counts, status), never response
+      // values: this repo is public and Chai prints both sides of a failure.
+
+
+      test("responds 200", function () {
+        expect(res.getStatus()).to.equal(200);
+      });
+
+      test("path variables all resolved", function () {
+        const raw = req.getUrl();
+        // encodeUrl percent-encodes the braces, so an unresolved template
+        // arrives as %7B%7B rather than {{. Check both forms.
+        const path = raw.replace(/^https?:\/\//, '');
+        let problem = 'none';
+        if (path.indexOf('//') !== -1) { problem = 'empty path segment'; }
+        else if (raw.indexOf('{{') !== -1 || raw.indexOf('%7B%7B') !== -1) {
+          problem = 'unresolved variable';
+        }
+        expect(problem).to.equal('none');
+      });
+
+      test("responds with JSON", function () {
+        expect(String(res.getHeader('content-type') || '')).to.contain('json');
+      });
+
+      test("returns schedules", function () {
+        const value = res.getBody().items;
+        expect(Array.isArray(value) ? 'array' : typeof value).to.equal('array');
+      });
+
+      test("schedules carry eanWithSuffix", function () {
+        const rows = res.getBody().items || [];
+        const malformed = rows.filter(function (i) { return !(i.eanWithSuffix); });
+        expect(malformed.length).to.equal(0);
+      });
+
+      test("schedules carry a supplier or dgoTgo schedule", function () {
+        const rows = res.getBody().items || [];
+        const malformed = rows.filter(function (i) { return !(i.supplierSchedule || i.dgoTgoSchedule); });
+        expect(malformed.length).to.equal(0);
+      });
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Time-of-use tariff slots per EAN and direction.
+
+  Mirrors api.py::async_get_tou_schedules.
+
+  The endpoint responds even when the dgo-tou-is-active flag is false,
+  because the DGO/network schedule applies to every digital-meter
+  customer. The flag only gates the Smart App tile.
+
+  _tou.py reads items[].eanWithSuffix and the individual slots, each a
+  {startTime, endTime, slotCode}. The supplierSchedule and
+  dgoTgoSchedule wrappers around them are picked apart in sensor.py,
+  binary_sensor.py and _tou_calendar.py, each holding offtake /
+  injection maps of weekday to a list of slots. _tou_calendar.py
+  reads only supplierSchedule.
+
+  Wire slot codes are uppercase (PEAK, OFFPEAK, SUPEROFFPEAK,
+  EXCLUSIVE_NIGHT, DAY). Sensors expose the lowercase form, which is
+  what const.py::TOU_SLOT_CODES lists.

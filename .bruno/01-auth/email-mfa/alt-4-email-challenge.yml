@@ -1,0 +1,38 @@
+info:
+  name: ALT-4 Get email challenge (sends email)
+  type: http
+  seq: 4
+  tags:
+  - auth
+  - email
+http:
+  method: GET
+  url: '{{authBaseUrl}}/u/mfa-email-challenge?state={{mfaChallengeState}}&ui_locales=nl'
+  params:
+  - name: state
+    value: '{{mfaChallengeState}}'
+    type: query
+  - name: ui_locales
+    value: nl
+    type: query
+  headers:
+  - name: Accept
+    value: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+  - name: User-Agent
+    value: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36
+  - name: sec-ch-ua
+    value: '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"'
+  - name: sec-ch-ua-mobile
+    value: ?1
+  - name: sec-ch-ua-platform
+    value: '"Android"'
+settings:
+  encodeUrl: false
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+docs: |-
+  Email MFA ALT-4. Loading this page is what sends the email.
+
+  Mirrors api.py::_switch_to_email_mfa ALT-4. Set MFA_CODE from the email
+  and run ALT-5.
