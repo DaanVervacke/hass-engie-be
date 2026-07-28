@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, time, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .api import EngieBeApiClient
-    from .data import EngieBeConfigEntry
+    from .data import EngieBeConfigEntry, EngieBeData, EngieBeSubentryData
 
 # Per-flag metadata for the two thin coordinator helpers.
 # Maps the leaf field name on FeatureFlagState to (log_prefix, task_name_suffix).
@@ -737,9 +737,9 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=f"engie_be_reload_on_{task_name_suffix}_{self.config_entry.entry_id}",
         )
 
-    def _subentry_data(self) -> object | None:
+    def _subentry_data(self) -> EngieBeSubentryData | None:
         """Return the runtime subentry data for this subentry, or ``None``."""
-        runtime = getattr(self.config_entry, "runtime_data", None)
+        runtime: EngieBeData | None = getattr(self.config_entry, "runtime_data", None)
         if runtime is None:
             return None
         return runtime.subentry_data.get(self.subentry.subentry_id)
@@ -749,7 +749,10 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         subentry_data = self._subentry_data()
         if subentry_data is None:
             return None
-        return getattr(subentry_data.feature_flags, name)
+        # feature_flags' fields are looked up dynamically by name (the
+        # caller passes the flag's attribute name as a string), so this
+        # genuinely cannot be typed more precisely than a runtime cast.
+        return cast("bool | None", getattr(subentry_data.feature_flags, name))
 
     @callback
     def _async_apply_flag(

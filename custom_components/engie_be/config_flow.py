@@ -1068,7 +1068,7 @@ def _collect_configured_identifiers(
             continue
         if subentry.unique_id:
             configured.add(subentry.unique_id)
-        data = subentry.data or {}
+        data: Mapping[str, Any] = subentry.data or {}
         stored_ban = data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
         if stored_ban:
             configured.add(stored_ban)

@@ -69,6 +69,8 @@ from .diagnostics import _hash_ean
 from .store import EngieBeHappyHoursStore, EngieBePeaksStore
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant, ServiceCall
     from homeassistant.helpers.device_registry import DeviceEntry
@@ -304,7 +306,7 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
     # the coroutine closure does not hold a stale subentry or runtime_data
     # reference (those are torn down on reload/unload).
     for subentry in subentries:
-        subentry_data = subentry.data or {}
+        subentry_data: Mapping[str, Any] = subentry.data or {}
         if not subentry_data.get(CONF_IMPORT_HISTORY, False):
             continue
         raw_energy_types: list[str] = subentry_data.get(

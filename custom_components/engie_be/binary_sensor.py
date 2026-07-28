@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -548,7 +548,7 @@ class EngieBeTouIsOptimalSensor(
             )
         self._attr_translation_placeholders = {"ean": ean}
 
-    def _supplier_schedule(self) -> dict | None:
+    def _supplier_schedule(self) -> dict[str, Any] | None:
         """Return the supplier direction schedule, or None."""
         tou_data = tou_schedules_payload(self.coordinator)
         if tou_data is None:

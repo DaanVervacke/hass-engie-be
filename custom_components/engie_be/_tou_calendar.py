@@ -9,7 +9,7 @@ coordinator; no additional network calls.
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.util import dt as dt_util
@@ -95,7 +95,7 @@ def tou_slot_events(
 def _slots_to_events(
     *,
     direction: str,
-    schedule: dict,
+    schedule: dict[str, Any],
     start: datetime,
     horizon: datetime,
 ) -> list[CalendarEvent]:
