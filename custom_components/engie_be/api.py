@@ -11,7 +11,7 @@ from base64 import urlsafe_b64encode
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from http import HTTPStatus
-from typing import Any, NoReturn
+from typing import Any, Literal, NoReturn, overload
 
 import aiohttp
 
@@ -1357,6 +1357,57 @@ class EngieBeApiClient:
     # ------------------------------------------------------------------
     # Generic request wrapper
     # ------------------------------------------------------------------
+
+    @overload
+    async def _api_wrapper(
+        self,
+        *,
+        session: aiohttp.ClientSession,
+        method: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+        data: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, str] | None = None,
+        json_response: Literal[True],
+        allow_redirects: bool = False,
+        raise_on_error: bool = True,
+        include_headers: Literal[False] = False,
+    ) -> dict[str, Any]: ...
+
+    @overload
+    async def _api_wrapper(
+        self,
+        *,
+        session: aiohttp.ClientSession,
+        method: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+        data: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, str] | None = None,
+        json_response: Literal[False] = False,
+        allow_redirects: bool = False,
+        raise_on_error: bool = True,
+        include_headers: Literal[True],
+    ) -> tuple[str, dict[str, str]]: ...
+
+    @overload
+    async def _api_wrapper(
+        self,
+        *,
+        session: aiohttp.ClientSession,
+        method: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+        data: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, str] | None = None,
+        json_response: Literal[False] = False,
+        allow_redirects: bool = False,
+        raise_on_error: bool = True,
+        include_headers: Literal[False] = False,
+    ) -> str: ...
 
     async def _api_wrapper(  # noqa: PLR0912, PLR0913
         self,
