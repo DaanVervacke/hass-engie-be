@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-07-28
+
 ### Fixed
 
 - Happy Hours window announced, tomorrow EPEX prices published, and the
@@ -1386,7 +1388,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.2...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.3...HEAD
+[0.13.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0...v0.13.0
