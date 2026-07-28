@@ -7,7 +7,9 @@
 # requirements.txt, with the integration and blueprints mounted in.
 # State lives in the gitignored dev-config/ directory and survives restarts.
 
+# pipefail so a failing podman pull is not masked by the tail that follows it.
 set -e
+set -o pipefail
 
 CONTAINER_NAME="${1:-engie_be_dev}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,7 +22,9 @@ if ! command -v podman >/dev/null 2>&1; then
 fi
 
 REQUIREMENTS_FILE="$PROJECT_DIR/requirements.txt"
-HA_VERSION="$(grep -E '^homeassistant==' "$REQUIREMENTS_FILE" | sed -E 's/^homeassistant==([0-9.]+).*/\1/')"
+# The || true keeps a missing pin from aborting under pipefail, so the
+# empty-check below reports it instead of the script dying silently.
+HA_VERSION="$(grep -E '^homeassistant==' "$REQUIREMENTS_FILE" | sed -E 's/^homeassistant==([0-9.]+).*/\1/' || true)"
 
 if [[ -z "$HA_VERSION" ]]; then
     echo "Error: could not parse a homeassistant== pin from $REQUIREMENTS_FILE."
