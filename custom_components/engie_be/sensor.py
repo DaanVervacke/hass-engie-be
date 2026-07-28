@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from .coordinator import (
         EngieBeDataUpdateCoordinator,
         EngieBeEpexCoordinator,
+        EngieBeEpexCoordinatorBase,
         EngieBeEpexQuarterHourCoordinator,
     )
     from .data import EngieBeConfigEntry, EpexPayload
@@ -1079,7 +1080,7 @@ def _build_epex_sensors(
     subentry: ConfigSubentry,
 ) -> list[SensorEntity]:
     """Build the EPEX day-ahead sensors for one subentry."""
-    sensors = [
+    sensors: list[SensorEntity] = [
         EngieBeEpexCurrentSensor(epex_coordinator, subentry, _EPEX_CURRENT),
         EngieBeEpexExtremaSensor(
             epex_coordinator, subentry, _EPEX_LOW_TODAY, mode="min"
@@ -1138,7 +1139,7 @@ class _EngieBeEpexSensorBase(_BoundaryScheduleMixin, EngieBeEpexEntity, SensorEn
 
     def __init__(
         self,
-        coordinator: EngieBeEpexCoordinator,
+        coordinator: EngieBeEpexCoordinatorBase,
         subentry: ConfigSubentry,
         entity_description: SensorEntityDescription,
     ) -> None:
@@ -1313,7 +1314,7 @@ class EngieBeEpexExtremaSensor(_EngieBeEpexSensorBase):
 
     def __init__(
         self,
-        coordinator: EngieBeEpexCoordinator,
+        coordinator: EngieBeEpexCoordinatorBase,
         subentry: ConfigSubentry,
         entity_description: SensorEntityDescription,
         mode: str,

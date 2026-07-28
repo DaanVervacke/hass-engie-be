@@ -13,7 +13,11 @@ from homeassistant.util import dt as dt_util
 
 from .api import mask_identifier
 from .const import ATTRIBUTION, DOMAIN, LOGGER
-from .coordinator import EngieBeDataUpdateCoordinator, EngieBeEpexCoordinator
+from .coordinator import (
+    EngieBeDataUpdateCoordinator,
+    EngieBeEpexCoordinator,
+    EngieBeEpexCoordinatorBase,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -256,22 +260,27 @@ class EngieBeEntity(
 
 class EngieBeEpexEntity(
     _EngieBeBaseEntity,
-    CoordinatorEntity[EngieBeEpexCoordinator],
+    CoordinatorEntity[EngieBeEpexCoordinatorBase],
 ):
     """
     Base class for EPEX entities attached to a customer-account device.
 
     EPEX day-ahead prices are polled once per parent :class:`ConfigEntry`
-    by :class:`EngieBeEpexCoordinator`, but the entities themselves
-    surface under each subentry's device so the user sees the EPEX
-    sensors next to the supplier-price sensors for the matching account.
-    Entity creation is gated upstream on the per-subentry
-    ``is_dynamic`` flag, so users on fixed tariffs never see them.
+    by :class:`EngieBeEpexCoordinator` (or, for quarter-hourly entities,
+    :class:`EngieBeEpexQuarterHourCoordinator`), but the entities
+    themselves surface under each subentry's device so the user sees
+    the EPEX sensors next to the supplier-price sensors for the
+    matching account. Entity creation is gated upstream on the
+    per-subentry ``is_dynamic`` flag, so users on fixed tariffs never
+    see them. Typed against the shared
+    :class:`~.coordinator.EngieBeEpexCoordinatorBase` so both the
+    hourly and quarter-hourly concrete subclasses can back these
+    entities.
     """
 
     def __init__(
         self,
-        coordinator: EngieBeEpexCoordinator,
+        coordinator: EngieBeEpexCoordinatorBase,
         subentry: ConfigSubentry,
     ) -> None:
         """Initialise the EPEX entity bound to a subentry's device."""
@@ -282,7 +291,7 @@ class EngieBeEpexEntity(
 
 class EngieBeAuthEntity(
     _EngieBeBaseEntity,
-    CoordinatorEntity[EngieBeDataUpdateCoordinator],
+    CoordinatorEntity[EngieBeDataUpdateCoordinator | EngieBeEpexCoordinator],
 ):
     """
     Base class for the per-entry login state entity.
@@ -293,7 +302,11 @@ class EngieBeAuthEntity(
     the customer-account devices. The coordinator reference is required
     by :class:`CoordinatorEntity`; any per-subentry coordinator works
     because the entity does not consume coordinator data, it only
-    reflects ``runtime_data.authenticated``.
+    reflects ``runtime_data.authenticated``. The type parameter is
+    widened to the same union the one real call site
+    (:func:`binary_sensor.async_setup_entry`) actually constructs, since
+    that call site genuinely falls back from a per-subentry coordinator
+    to the entry-level EPEX coordinator when no subentries exist yet.
     """
 
     def __init__(

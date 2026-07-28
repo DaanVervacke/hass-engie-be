@@ -1495,7 +1495,7 @@ def _derive_has_solar(wrapper: dict[str, Any] | None) -> bool | None:
     return False
 
 
-class _EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
+class EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
     """
     Common base class for EPEX day-ahead coordinators.
 
@@ -1620,7 +1620,7 @@ class _EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
         return parsed
 
 
-class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
+class EngieBeEpexCoordinator(EngieBeEpexCoordinatorBase):
     """
     Coordinator for EPEX day-ahead wholesale prices.
 
@@ -1648,7 +1648,7 @@ class EngieBeEpexCoordinator(_EngieBeEpexCoordinatorBase):
         )
 
 
-class EngieBeEpexQuarterHourCoordinator(_EngieBeEpexCoordinatorBase):
+class EngieBeEpexQuarterHourCoordinator(EngieBeEpexCoordinatorBase):
     """
     Coordinator for EPEX day-ahead wholesale prices with quarter-hourly granularity.
 
