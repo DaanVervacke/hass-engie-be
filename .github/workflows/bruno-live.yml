@@ -1,0 +1,140 @@
+name: Bruno live contract check
+
+# Weekly canary against the real ENGIE API. No unit test can catch ENGIE
+# reshaping a payload, so this job exists to notice it before a user does.
+#
+# Required repository secrets:
+#   ENGIE_REFRESH_TOKEN   a valid refresh token, seeded by hand once
+#   ENGIE_BAN             the 12-digit business agreement number
+#   ENGIE_EAN             a bare EAN from that agreement
+#   TOKEN_WRITEBACK_PAT   PAT with Secrets:write, to store the rotated token
+#
+# See .bruno/README.md for how to seed the token and how to recover when a
+# run strands it.
+
+on:
+  schedule:
+    # Daily at 20:17 UTC, which is late evening in Brussels year round.
+    # Day-ahead prices for the next day appear around 13:10 CEST, and the EPEX
+    # requests ask for a window covering today and tomorrow, so an evening run
+    # sees a fully published window. A small-hours run would not: the whole
+    # window would 404, which these tests accept as a soft state, and the check
+    # would quietly stop telling us anything.
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+# ENGIE rotates the refresh token on every call, so two concurrent runs would
+# race for the same token and the loser would 400. Never cancel a run midway
+# either: a cancel between the refresh and the write-back strands the token.
+concurrency:
+  group: bruno-live
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: "ENGIE contract check"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # MFA needs a human, so CI can never log in from scratch. It refreshes
+      # an existing token instead. The access token is good for about two
+      # minutes, so the data step has to follow immediately.
+      - name: Refresh the access token
+        uses: usebruno/bruno-cli-action@104e180c2e7219a915dc48b6979ddbafe0940fcd # v1.0.0
+        with:
+          working-directory: .bruno
+          bru-version: "4.0.0"
+          command: "run 02-token/refresh-token.yml --env CI --reporter-json refresh.json"
+        env:
+          ENGIE_REFRESH_TOKEN: ${{ secrets.ENGIE_REFRESH_TOKEN }}
+
+      # Runs even when the step above failed. If the HTTP call succeeded but an
+      # assertion did not, the old token is already spent and the rotated one
+      # exists only in this report. Writing it back regardless is what keeps a
+      # failed run from stranding the token.
+      - name: Persist the rotated refresh token
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN_WRITEBACK_PAT }}
+        run: |
+          set -euo pipefail
+
+          if [ ! -f .bruno/refresh.json ]; then
+            echo "No report written, so the refresh never reached ENGIE."
+            echo "The stored token is untouched."
+            exit 0
+          fi
+
+          # Remove the file before parsing it. It holds both tokens in clear
+          # text, and under `set -e` a jq failure would otherwise abort the
+          # step and leave it on disk.
+          REPORT=$(cat .bruno/refresh.json)
+          rm -f .bruno/refresh.json
+
+          # A transport failure still writes a report, with an error and a null
+          # body. That is not a spent token, so say so accurately rather than
+          # sending someone off to re-seed a secret that is still good.
+          TRANSPORT_ERROR=$(printf '%s' "$REPORT" | jq -r '.[0].results[0].error // empty')
+          if [ -n "$TRANSPORT_ERROR" ]; then
+            echo "::error::The refresh never reached ENGIE. The stored token is untouched."
+            exit 1
+          fi
+
+          NEW_REFRESH=$(printf '%s' "$REPORT" | jq -r '.[0].results[0].response.data.refresh_token // empty')
+          NEW_ACCESS=$(printf '%s' "$REPORT" | jq -r '.[0].results[0].response.data.access_token // empty')
+
+          if [ -z "$NEW_REFRESH" ] || [ -z "$NEW_ACCESS" ]; then
+            echo "::error::Refresh returned no tokens. ENGIE_REFRESH_TOKEN is spent or expired and must be re-seeded by hand. See .bruno/README.md."
+            exit 1
+          fi
+
+          echo "::add-mask::$NEW_REFRESH"
+          echo "::add-mask::$NEW_ACCESS"
+
+          gh secret set ENGIE_REFRESH_TOKEN --body "$NEW_REFRESH"
+
+          # Heredoc form, not NAME=value: a newline in the value would let the
+          # single-line form inject arbitrary variables into later steps. A JWT
+          # contains no newline, so this is belt and braces rather than a fix.
+          {
+            echo "ENGIE_ACCESS_TOKEN<<ENGIE_TOKEN_EOF"
+            echo "$NEW_ACCESS"
+            echo "ENGIE_TOKEN_EOF"
+          } >> "$GITHUB_ENV"
+
+          echo "Rotated refresh token stored."
+
+      # Folders are listed explicitly and the tag filter is belt and braces:
+      # nothing in 01-auth carries the live tag, so no login attempt can fire
+      # from CI even if this list were wrong.
+      #
+      # This repo is public, so the log and any artifact are world readable.
+      # What actually keeps customer data out of them is the assertion style:
+      # the tests compare derived facts (status, type name, count of malformed
+      # rows) rather than response values, so a failure reads
+      # "expected 'undefined' to equal 'string'" and never prints a BAN, an EAN
+      # or a balance. Nothing is uploaded as an artifact either, because
+      # request URLs carry the BAN in the path.
+      #
+      # The --reporter-skip-* flags below are inert today. This step requests
+      # no json or html reporter, and the junit report the action auto-injects
+      # carries only test names and messages. They are kept so that adding a
+      # reporter later cannot quietly start writing bodies and headers.
+      - name: Run data requests against ENGIE
+        uses: usebruno/bruno-cli-action@104e180c2e7219a915dc48b6979ddbafe0940fcd # v1.0.0
+        with:
+          working-directory: .bruno
+          bru-version: "4.0.0"
+          command: >-
+            run 03-accounts 04-contracts 05-insights 06-billing 07-feature-flags 08-epex
+            --env CI --tags live
+            --reporter-skip-all-headers
+            --reporter-skip-request-body
+            --reporter-skip-response-body
+        env:
+          ENGIE_BAN: ${{ secrets.ENGIE_BAN }}
+          ENGIE_EAN: ${{ secrets.ENGIE_EAN }}

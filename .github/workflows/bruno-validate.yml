@@ -1,0 +1,37 @@
+name: Bruno collection
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  drift:
+    name: "Collection coverage of api.py"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+
+      # PyYAML alone, not requirements.txt: this check needs a YAML parser and
+      # nothing else, and a full Home Assistant install would dwarf it.
+      - name: Install PyYAML
+        run: python3 -m pip install "pyyaml==6.0.2"
+
+      # This needs no credentials and makes no network calls. It fails when an
+      # endpoint method lands in api.py with no matching Bruno request, when a
+      # base URL in const.py is missing from an environment, or when a request
+      # declares a query param that is not in its URL (which Bruno would
+      # silently drop).
+      - name: Check collection against the API client
+        run: python3 scripts/check-bruno-drift

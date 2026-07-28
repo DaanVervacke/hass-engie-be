@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""
+Fail when the Bruno collection has drifted away from the API client.
+
+Three checks, all cheap enough to run on every push and none of them
+needing credentials or a network call:
+
+1. Every public endpoint method on ``EngieBeApiClient`` is claimed by at
+   least one request in ``.bruno/``, via a ``Mirrors api.py::<method>``
+   line in that request's ``docs``.
+2. Every base URL ``api.py`` imports from ``const.py`` appears as a
+   variable value in each shipped environment (see CHECKED_ENVIRONMENTS).
+3. Every request file is structurally sound, and every ``type: query``
+   param also appears in that request's URL.
+
+The first catches a new endpoint landing in the client with no matching
+request. The second catches ENGIE moving a host, and keeps the Local
+and CI environments from drifting apart. Between them a change to the
+HTTP client cannot land without the collection following it.
+
+The third catches a Bruno-specific trap. Bruno sends the URL's query
+string and ignores any ``params`` entry that is not also in the URL, so a
+param declared only in the array is dropped without warning and the
+request goes out incomplete. Losing ``includeActions`` and
+``includeSapData`` that way strips ``productConfiguration`` out of the
+contracts response, and dynamic-tariff detection quietly stops working.
+
+What this does NOT check: whether a request's URL, method, or parameter
+*values* match what the api.py method actually sends. Changing
+``filter=ONLY_ACTIVE_ENERGY_CONTRACTS`` to something wrong, or flipping a
+GET to a POST, passes cleanly here. Verifying that would mean parsing the
+f-strings api.py builds its URLs from, which breaks on the next
+refactor. The live workflow is what catches a genuinely wrong request,
+by getting a non-200 back from ENGIE.
+"""
+
+# ruff: noqa: T201  (printing the findings is this script's whole interface)
+
+from __future__ import annotations
+
+import ast
+import re
+import sys
+from pathlib import Path
+
+import yaml
+
+REPO = Path(__file__).resolve().parent.parent
+API_PY = REPO / "custom_components" / "engie_be" / "api.py"
+CONST_PY = REPO / "custom_components" / "engie_be" / "const.py"
+BRUNO = REPO / ".bruno"
+ENV_DIR = BRUNO / "environments"
+# Only the shipped environments are held to the base-URL contract. A local
+# scratch or mock environment is an ordinary thing to add and must not fail
+# the build.
+CHECKED_ENVIRONMENTS = frozenset({"Local", "CI"})
+
+# Phase orchestrators, not endpoints: they drive the auth steps that the
+# 01-auth folder already covers request by request.
+EXEMPT_METHODS = frozenset(
+    {
+        "async_start_authentication",
+        "async_complete_authentication",
+    }
+)
+
+
+def public_api_methods() -> set[str]:
+    """Return the public method names on EngieBeApiClient."""
+    tree = ast.parse(API_PY.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == "EngieBeApiClient":
+            return {
+                item.name
+                for item in node.body
+                if isinstance(item, ast.AsyncFunctionDef)
+                and not item.name.startswith("_")
+                and item.name not in EXEMPT_METHODS
+            }
+    msg = "EngieBeApiClient not found in api.py"
+    raise SystemExit(msg)
+
+
+def api_imports() -> set[str]:
+    """Return the constant names api.py imports from const.py."""
+    tree = ast.parse(API_PY.read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "const":
+            names.update(alias.name for alias in node.names)
+    return names
+
+
+def base_urls() -> dict[str, str]:
+    """
+    Return the {constant: url} base URLs the HTTP client actually uses.
+
+    Scoped to what api.py imports rather than to every ``*_BASE_URL`` in
+    const.py, so adding a constant the client never calls (a docs link,
+    say) does not fail this check and send someone hunting for a Bruno
+    request that should not exist.
+    """
+    wanted = api_imports()
+    tree = ast.parse(CONST_PY.read_text(encoding="utf-8"))
+    urls: dict[str, str] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id not in wanted:
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except ValueError:
+            continue
+        if isinstance(value, str) and value.startswith("http"):
+            urls[target.id] = value
+    return urls
+
+
+def collection_files() -> list[Path]:
+    """Every collection file. Both extensions, because Bruno accepts either."""
+    return sorted([*BRUNO.rglob("*.yml"), *BRUNO.rglob("*.yaml")])
+
+
+def load(path: Path) -> tuple[dict | None, str | None]:
+    """Parse one collection file. Returns (mapping, error)."""
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as err:
+        return None, f"is not valid YAML: {err}"
+    if not isinstance(doc, dict):
+        return None, "does not contain a YAML mapping"
+    return doc, None
+
+
+def is_request(doc: dict) -> bool:
+    """Report whether this is a request file, not the root, a folder, or an env."""
+    info = doc.get("info")
+    return isinstance(info, dict) and info.get("type") == "http"
+
+
+def check_requests() -> list[str]:
+    """Structurally validate every request file. Returns a list of problems."""
+    problems: list[str] = []
+    for path in collection_files():
+        rel = path.relative_to(REPO)
+        doc, err = load(path)
+        if doc is None:
+            problems.append(f"{rel} {err}.")
+            continue
+
+        info = doc.get("info")
+        # A file with an info block but a type this script does not recognise
+        # must not be waved through: a typo like `type: HTTP` would otherwise
+        # silently disable every structural check below for that file.
+        if isinstance(info, dict) and "type" in info:
+            declared = info.get("type")
+            if declared not in ("http", "folder"):
+                problems.append(
+                    f"{rel} has info.type {declared!r}, which is neither "
+                    f"'http' nor 'folder'. A typo here skips validation."
+                )
+                continue
+
+        if not is_request(doc):
+            continue
+
+        http = doc.get("http")
+        if not isinstance(http, dict):
+            problems.append(f"{rel} has info.type http but no http block.")
+            continue
+
+        method = http.get("method")
+        if not isinstance(method, str) or method != method.upper():
+            problems.append(f"{rel} http.method must be uppercase, got {method!r}.")
+
+        url = http.get("url")
+        if not isinstance(url, str) or not url:
+            problems.append(f"{rel} has no http.url.")
+            continue
+
+        query_part = url.split("?", 1)[1] if "?" in url else ""
+        # Split on & so a param called "to" is not considered satisfied by an
+        # unrelated "Auto=" elsewhere in the query string.
+        present = {pair.split("=", 1)[0] for pair in query_part.split("&") if pair}
+        for param in http.get("params") or []:
+            if not isinstance(param, dict) or param.get("type") != "query":
+                continue
+            if param.get("disabled"):
+                continue
+            name = param.get("name")
+            if name and name not in present:
+                problems.append(
+                    f"{rel} declares query param {name!r} but it is missing from "
+                    f"the URL, so Bruno will not send it."
+                )
+    return problems
+
+
+def claimed_methods() -> set[str]:
+    """
+    Return the api.py methods claimed by an actual request file.
+
+    Only request files count. Reading folder or root docs too would let a
+    folder-level ``Mirrors api.py::x`` satisfy the check for a request that
+    has been deleted, which is exactly the drift this is meant to catch.
+    """
+    claimed: set[str] = set()
+    for path in collection_files():
+        doc, _ = load(path)
+        if doc is None or not is_request(doc):
+            continue
+        claimed.update(re.findall(r"api\.py::(\w+)", str(doc.get("docs") or "")))
+    return claimed
+
+
+def env_values() -> dict[Path, set[str]]:
+    """Return the declared variable values per environment file."""
+    out: dict[Path, set[str]] = {}
+    for path in sorted(ENV_DIR.glob("*.yml")) + sorted(ENV_DIR.glob("*.yaml")):
+        if path.stem not in CHECKED_ENVIRONMENTS:
+            continue
+        doc, _err = load(path)
+        if doc is None:
+            # Surfaced by check_requests, which reports the parse error itself.
+            # Skipping here keeps one broken file from also producing a base-URL
+            # complaint per constant.
+            continue
+        values: set[str] = set()
+        for var in doc.get("variables") or []:
+            if isinstance(var, dict) and isinstance(var.get("value"), str):
+                values.add(var["value"])
+        out[path] = values
+    return out
+
+
+def main() -> int:
+    """Run every check and report. Returns a process exit code."""
+    if not BRUNO.is_dir():
+        print(f"error: {BRUNO} not found")
+        return 1
+
+    failures: list[str] = []
+
+    claimed = claimed_methods()
+    failures.extend(
+        f"api.py::{method} has no Bruno request. Either add one under "
+        f".bruno/ whose docs say 'Mirrors api.py::{method}', or if it is not "
+        f"an endpoint method, add it to EXEMPT_METHODS in this script."
+        for method in sorted(public_api_methods() - claimed)
+    )
+
+    per_env = env_values()
+    if not per_env:
+        failures.append(f"no environment files under {ENV_DIR.relative_to(REPO)}.")
+    for env_file, values in per_env.items():
+        for name, url in sorted(base_urls().items()):
+            # Compared against declared variable values rather than the raw
+            # file text, so a URL sitting in a comment does not satisfy it.
+            # This does not check WHICH variable holds the URL, so repointing
+            # one variable while another still carries the old value passes.
+            if url not in values:
+                failures.append(
+                    f"const.py::{name} is {url}, which is not a variable value "
+                    f"in {env_file.relative_to(REPO)}."
+                )
+
+    failures.extend(check_requests())
+
+    if failures:
+        print("Bruno collection has drifted from the API client:\n")
+        for failure in failures:
+            print(f"  - {failure}")
+        print(f"\n{len(failures)} problem(s).")
+        return 1
+
+    print(
+        f"Bruno collection is in sync: {len(public_api_methods())} endpoint "
+        f"methods and {len(base_urls())} base URLs all accounted for."
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
