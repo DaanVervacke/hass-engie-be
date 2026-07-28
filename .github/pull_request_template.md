@@ -28,8 +28,9 @@ say which tests cover it. Confirm the suite still passes:
 
 <!--
 Manual verification steps you ran, or "N/A, covered by tests".
-For changes that touch the live integration, this might be: started the
-devcontainer, configured the integration, observed expected behavior.
+For changes that touch the live integration, this might be: ran
+./scripts/restart-dev-container.sh, configured the integration, observed
+expected behavior.
 -->
 
 ## Checklist

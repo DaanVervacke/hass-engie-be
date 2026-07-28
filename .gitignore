@@ -81,15 +81,14 @@ htmlcov/
 # -----------------------------------------------------------------------------
 # Home Assistant
 # -----------------------------------------------------------------------------
-home-assistant*.log*
-home-assistant_*.db
-home-assistant_*.db-shm
-home-assistant_*.db-wal
-.storage/
+# All live HA state lives here, see scripts/restart-dev-container.sh
+dev-config/
 
-# Home Assistant version tracking (devcontainer artifact)
-.HA_VERSION
-.ha_run.lock
+# Belt and braces: HA artifacts if anything is ever run from the repo root
+home-assistant*.log*
+home-assistant_*.db*
+.storage/
+/secrets.yaml
 
 # Debug logs
 debug*.log
@@ -97,16 +96,6 @@ debug*.log
 # -----------------------------------------------------------------------------
 # Local configuration and artifacts
 # -----------------------------------------------------------------------------
-# Live Home Assistant state for scripts/restart-dev-container.sh
-dev-config/
-
-# Configuration files that may contain secrets (keep configuration.yaml tracked)
-config/*
-!config/configuration.yaml
-config-bak*/
-config-pre-*/
-/secrets.yaml
-
 # Screenshots at repo root only; do NOT match tracked brand assets
 /*.png
 
@@ -114,11 +103,7 @@ config-pre-*/
 .swap-source/
 .v071-source/
 
-# Local HA runtime files written by the dev container at repo root
-/configuration.yaml
-/automations.yaml
-/scenes.yaml
-/scripts.yaml
+# Home Assistant ships its own script blueprints, we only author automation ones
 /blueprints/script/
 
 # Local tooling caches and agent docs (kept out of the repo by policy)
