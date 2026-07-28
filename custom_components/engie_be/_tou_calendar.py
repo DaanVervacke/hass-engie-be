@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.util import dt as dt_util
 
-from ._tou import _WEEKDAY_KEYS, _parse_hhmm, tou_schedules_payload
-from .const import BRUSSELS_TZ
+from ._tou import _parse_hhmm, tou_schedules_payload
+from .const import BRUSSELS_TZ, TOU_WEEKDAY_KEYS
 
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
@@ -105,7 +105,7 @@ def _slots_to_events(
     horizon_date = horizon.date()
     while day_cursor <= horizon_date:
         weekday_index = day_cursor.weekday()
-        key = _WEEKDAY_KEYS[weekday_index]
+        key = TOU_WEEKDAY_KEYS[weekday_index]
         day_slots = schedule.get(key, [])
         if isinstance(day_slots, list):
             for slot in day_slots:

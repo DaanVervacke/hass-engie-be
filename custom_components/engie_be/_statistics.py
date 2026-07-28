@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import (
     StatisticData,
     StatisticMeanType,
@@ -29,6 +28,7 @@ from homeassistant.components.recorder.statistics import (
 )
 from homeassistant.components.recorder.tasks import ClearStatisticsTask
 from homeassistant.const import UnitOfEnergy
+from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
 
