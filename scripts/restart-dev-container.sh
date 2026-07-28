@@ -3,9 +3,9 @@
 # restart-dev-container.sh - Restart the hass-engie-be development container
 # Usage: ./scripts/restart-dev-container.sh [container_name]
 #
-# Starts the official Home Assistant container, at the version pinned in
-# requirements.txt, with the integration and blueprints mounted read-write.
-# HA state persists across restarts in the gitignored dev-config/ directory.
+# Starts the official Home Assistant image at the version pinned in
+# requirements.txt, with the integration and blueprints mounted in.
+# State lives in the gitignored dev-config/ directory and survives restarts.
 
 set -e
 

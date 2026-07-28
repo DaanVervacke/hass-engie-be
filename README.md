@@ -859,9 +859,9 @@ since the last release live under the **[Unreleased]** section.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), including the
+See [CONTRIBUTING.md](CONTRIBUTING.md). The
 [Running a live Home Assistant](CONTRIBUTING.md#running-a-live-home-assistant)
-section for testing changes against a real instance.
+section covers testing changes against a real instance.
 
 ## License
 

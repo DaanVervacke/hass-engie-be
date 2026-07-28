@@ -72,25 +72,22 @@ CI enforces the same checks either way.
 
 ### Running a live Home Assistant
 
-Run:
-
 ```bash
 ./scripts/restart-dev-container.sh
 ```
 
-This pulls the Home Assistant version pinned in `requirements.txt` and
-starts a container at [http://localhost:8123](http://localhost:8123) with
-the integration and this repo's automation blueprints mounted in. Home
-Assistant's own state (config entries, database, logs) persists across
-restarts in the gitignored `dev-config/` directory, which the script
-creates on first run.
+The script pulls the Home Assistant version pinned in `requirements.txt`
+and starts a container on [http://localhost:8123](http://localhost:8123),
+with the integration and this repo's automation blueprints mounted into
+it. Home Assistant keeps its own state in the gitignored `dev-config/`
+directory, which the script creates on first run, so config entries and
+history survive a restart.
 
-Configure the integration itself through the Home Assistant UI, the same
-way an end user would. Use this container for manual testing and UI
-verification, not for running the test suite.
+Configure the integration through the Home Assistant UI. Use this
+container for manual testing and UI checks, not for the test suite.
 
-The script requires [podman](https://podman.io/). It is safe to re-run,
-it stops and removes any existing container before starting a fresh one.
+The script needs [podman](https://podman.io/). Re-running it is safe. It
+stops and removes any existing container first.
 
 ## License
 
