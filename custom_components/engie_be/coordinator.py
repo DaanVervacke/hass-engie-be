@@ -132,7 +132,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         contracts call failed at setup time, so the integration degrades
         gracefully on a contracts-endpoint outage.
         """
-        runtime = getattr(self.config_entry, "runtime_data", None)
+        runtime: EngieBeData | None = getattr(self.config_entry, "runtime_data", None)
         subentry_data = (
             runtime.subentry_data.get(self.subentry.subentry_id)
             if runtime is not None

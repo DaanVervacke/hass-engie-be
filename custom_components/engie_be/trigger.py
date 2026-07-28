@@ -580,12 +580,36 @@ async def _get_calendar_events(hass: HomeAssistant, entity_id: str) -> list[Any]
     now = dt_util.utcnow()
     end = now + timedelta(days=_CAL_LOOKAHEAD_DAYS)
     try:
-        return await calendar_entity.async_get_events(hass, now, end)
+        events = await calendar_entity.async_get_events(hass, now, end)
     except (HomeAssistantError, TimeoutError) as exc:
         LOGGER.debug(
             "Failed to fetch events from %s: %s", mask_identifier(entity_id), exc
         )
         return []
+    # ``hass.data[CALENDAR_DOMAIN]`` and Entity.async_get_events are both
+    # loosely typed (component lookups go through hass.data), so narrow
+    # with isinstance rather than trust the declared "Any" at runtime.
+    return events if isinstance(events, list) else []
+
+
+def _validated_dict_config(
+    schema: vol.Schema, config: dict[str, Any]
+) -> dict[str, Any]:
+    """
+    Validate ``config`` against a dict-based voluptuous schema.
+
+    ``vol.Schema.__call__`` is loosely typed and returns ``Any``. Every
+    schema used by this module's ``async_validate_config`` methods is
+    dict-based, so a successful validation always yields a dict;
+    narrow with isinstance rather than a cast so an accidentally
+    non-dict schema fails loudly instead of silently satisfying the
+    type checker.
+    """
+    validated = schema(config)
+    if not isinstance(validated, dict):  # pragma: no cover - defensive, unreachable
+        msg = f"{schema} did not validate {config!r} to a dict"
+        raise TypeError(msg)
+    return validated
 
 
 class _CalendarEventTrigger(Trigger, abc.ABC):
@@ -607,7 +631,7 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
         config: dict[str, Any],
     ) -> dict[str, Any]:
         """Validate config against the trigger schema."""
-        return cls._schema(config)
+        return _validated_dict_config(cls._schema, config)
 
     def __init__(self, hass: HomeAssistant, config: TriggerConfig) -> None:
         """Initialise the calendar trigger."""
@@ -712,7 +736,7 @@ class HappyHoursWindowStartedTrigger(_CalendarEventTrigger):
 
     def _matches_event(self, event: Any) -> bool:
         """Return True for Happy Hours events."""
-        return event.summary == HAPPY_HOUR_EVENT_SUMMARY
+        return bool(event.summary == HAPPY_HOUR_EVENT_SUMMARY)
 
 
 class HappyHoursWindowEndedTrigger(_CalendarEventTrigger):
@@ -722,7 +746,7 @@ class HappyHoursWindowEndedTrigger(_CalendarEventTrigger):
 
     def _matches_event(self, event: Any) -> bool:
         """Return True for Happy Hours events."""
-        return event.summary == HAPPY_HOUR_EVENT_SUMMARY
+        return bool(event.summary == HAPPY_HOUR_EVENT_SUMMARY)
 
 
 class TouSlotStartedTrigger(_CalendarEventTrigger):
@@ -737,7 +761,7 @@ class TouSlotStartedTrigger(_CalendarEventTrigger):
         slot = self._options.get(_SLOT, "")
         # Summary format: "{Label} ({direction})" - see format_tou_event_summary.
         expected = format_tou_event_summary(slot, direction)
-        return event.summary == expected
+        return bool(event.summary == expected)
 
 
 # ---------------------------------------------------------------------------
@@ -775,7 +799,7 @@ class TomorrowEpexPricesPublishedTrigger(Trigger):
         config: dict[str, Any],
     ) -> dict[str, Any]:
         """Validate config against the trigger schema."""
-        return cls._schema(config)
+        return _validated_dict_config(cls._schema, config)
 
     def __init__(self, hass: HomeAssistant, config: TriggerConfig) -> None:
         """Initialise the trigger with no prior fire recorded."""
@@ -904,7 +928,7 @@ class HappyHoursWindowAnnouncedTrigger(Trigger):
         config: dict[str, Any],
     ) -> dict[str, Any]:
         """Validate config against the trigger schema."""
-        return cls._schema(config)
+        return _validated_dict_config(cls._schema, config)
 
     def __init__(self, hass: HomeAssistant, config: TriggerConfig) -> None:
         """Initialise the trigger with no prior windows recorded."""

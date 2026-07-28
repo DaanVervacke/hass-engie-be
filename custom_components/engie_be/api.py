@@ -322,7 +322,7 @@ class EngieBeApiClient:
     # Data retrieval
     # ------------------------------------------------------------------
 
-    async def async_get_prices(self, business_agreement_number: str) -> Any:
+    async def async_get_prices(self, business_agreement_number: str) -> dict[str, Any]:
         """
         Fetch energy prices for a business agreement.
 

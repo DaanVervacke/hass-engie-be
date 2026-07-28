@@ -112,12 +112,12 @@ def subentry_title(account: dict[str, Any]) -> str:
     always renders something useful.
     """
     address = account.get(CONF_CONSUMPTION_ADDRESS)
-    if address:
+    if isinstance(address, str) and address:
         return address
     holder = account.get(CONF_ACCOUNT_HOLDER_NAME)
-    if holder:
+    if isinstance(holder, str) and holder:
         return holder
-    return account[CONF_BUSINESS_AGREEMENT_NUMBER]
+    return str(account[CONF_BUSINESS_AGREEMENT_NUMBER])
 
 
 def format_address(address: dict[str, Any]) -> str:
