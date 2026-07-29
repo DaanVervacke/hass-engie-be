@@ -144,7 +144,7 @@ _SLOT = "slot"
 # ---------------------------------------------------------------------------
 
 # _BinaryEdgeTrigger provides a single class to inherit from instead of
-# 10 separate factory-generated bases.  Subclasses declare _translation_key
+# 12 separate factory-generated bases.  Subclasses declare _translation_key
 # and _to_states; entity_filter is provided here.
 
 
@@ -389,7 +389,7 @@ class InjectionSlotBecameTrigger(_OptionBasedStateTrigger):
 # Phase B - Numerical threshold triggers
 # ---------------------------------------------------------------------------
 
-# _ThresholdTrigger collapses the 5 numerical threshold trigger classes.
+# _ThresholdTrigger collapses the 9 numerical threshold trigger classes.
 # Each factory call produced an EntityNumericalStateCrossedThresholdTriggerBase
 # subclass; we now share a single base and override _translation_key.
 
@@ -765,7 +765,7 @@ class TouSlotStartedTrigger(_CalendarEventTrigger):
 
 
 # ---------------------------------------------------------------------------
-# Phase F - Coordinator-data trigger
+# Phase F - Coordinator-data triggers
 # ---------------------------------------------------------------------------
 
 # Unlike every other trigger above, this one has no ENGIE entity to watch:
@@ -1088,7 +1088,7 @@ TRIGGERS: dict[str, type[Trigger]] = {
     "happy_hours_window_started": HappyHoursWindowStartedTrigger,
     "happy_hours_window_ended": HappyHoursWindowEndedTrigger,
     "tou_slot_started": TouSlotStartedTrigger,
-    # Phase F - coordinator-data trigger
+    # Phase F - coordinator-data triggers
     "tomorrow_epex_prices_published": TomorrowEpexPricesPublishedTrigger,
     "happy_hours_window_announced": HappyHoursWindowAnnouncedTrigger,
 }

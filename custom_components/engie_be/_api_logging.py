@@ -148,7 +148,7 @@ def _redact_text(value: str | None, keep: int = 4) -> str:
 
     Used for emails, EAN, customer-account numbers, and refresh-token
     tails so log lines remain greppable without leaking the secret.
-    ``None`` and empty values are passed through unchanged.
+    ``None`` renders as ``<none>``. Empty values pass through unchanged.
     """
     if value is None:
         return "<none>"

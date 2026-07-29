@@ -175,7 +175,7 @@ class EngieBeApiClient:
         # token twice and the second caller would 400 -> spurious reauth.
         # The lock + "did someone else refresh while I was waiting?" check
         # inside async_refresh_token make refresh idempotent under racing
-        # callers. See .opencode/audit-v0.10.0b1-prerelease.md CFG-4/CFG-5.
+        # callers.
         self._token_lock = asyncio.Lock()
         self._req_logger = RequestLogger()
 
@@ -258,7 +258,9 @@ class EngieBeApiClient:
         racing caller already rotated the pair while we were waiting on
         the lock, we return the freshly-rotated pair without issuing a
         second refresh request (which would 400 on the now-consumed
-        refresh token). See CFG-4/CFG-5 in the pre-release audit.
+        refresh token). If that rotation left the access token unset, we
+        raise an authentication error rather than hand back a ``None``
+        bearer token.
         """
         if not self.refresh_token:
             msg = "No refresh token available"
@@ -633,8 +635,9 @@ class EngieBeApiClient:
         The endpoint sits behind the Smart App's
         ``solar-surplus-shown-dashboard`` feature flag. Customers without a
         solar installation receive a well-formed response whose per-slot
-        ``level`` values are all ``NO_DATA``; callers infer availability
-        from the response rather than a separate flag probe.
+        ``level`` values are all ``NO_DATA``. The coordinator gates this
+        fetch on the feature flag first, then refines availability from
+        the returned levels.
         """
         ban = business_agreement_number.replace(" ", "")
         url = (
@@ -825,8 +828,10 @@ class EngieBeApiClient:
         precision and a literal ``Z`` suffix (the format the endpoint
         accepts; e.g. ``2026-05-04T00:00:00.000Z``).
 
-        The endpoint requires authentication.  401/403 errors WILL
-        trigger reauth via the standard OAuth flow through _api_wrapper.
+        The endpoint requires authentication. 401/403 raises
+        ``EngieBeApiClientAuthenticationError``. The EPEX coordinator
+        catches that and keeps the last-known payload, so a failure here
+        does not by itself start a reauth flow.
 
         The optional ``granularity`` parameter controls the resolution of
         the returned time series:
@@ -851,8 +856,9 @@ class EngieBeApiClient:
         if granularity is not None:
             params["granularity"] = granularity
 
-        # Endpoint requires auth; use _api_wrapper which handles bearer
-        # tokens and 401/403 reauth automatically. We still need to handle
+        # Endpoint requires auth. _api_wrapper turns 401/403 into an
+        # authentication error. 404 is handled separately below because
+        # it means the prices are not published yet. We still need to handle
         # 404 (not published yet) specially.
         try:
             headers = self._authenticated_headers(user_agent=USER_AGENT_BROWSER)
@@ -1350,7 +1356,7 @@ class EngieBeApiClient:
         """
         Return the standard authenticated JSON header dict.
 
-        Used by every ENGIE endpoint that requires a Bearer token. Pass
+        Used by most ENGIE endpoints that require a Bearer token. Pass
         ``extra`` to merge per-endpoint headers (e.g.
         ``Content-Type: application/json`` on POST bodies). Auth-flow methods use
         custom header dicts and do not go through this helper.

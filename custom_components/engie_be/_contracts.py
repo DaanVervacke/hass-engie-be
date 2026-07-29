@@ -130,6 +130,6 @@ def ean_with_delivery_point_suffix(ean: str) -> str:
     ENGIE delivery-point IDs observed in the wild are always
     ``{EAN}_ID1``. Multi-panel installations may expose ``_ID2``/
     ``_ID3`` but no service-points endpoint currently surfaces them;
-    extend this mapping when a real multi-ID sample appears.
+    extend this helper when a real multi-ID sample appears.
     """
     return f"{ean}{DELIVERY_POINT_SUFFIX}"

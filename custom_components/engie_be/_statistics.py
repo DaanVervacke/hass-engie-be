@@ -367,7 +367,7 @@ async def _last_stats(
     business_agreement_number: str,
     streams: frozenset[str],
 ) -> dict[str, StatisticsRow]:
-    """Return ``{stream: {"start": ts, "sum": s}}`` for each requested stream."""
+    """Return the newest recorder row per stream, omitting streams with none."""
     out: dict[str, StatisticsRow] = {}
     recorder = get_instance(hass)
     for stream in _STREAMS:

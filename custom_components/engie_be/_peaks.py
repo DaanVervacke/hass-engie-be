@@ -18,7 +18,8 @@ from .data import unwrap_dict_payload
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
 
-# Public: trigger.py uses this to identify captar events in the calendar.
+# Summary shown on captar calendar events. Module-local: nothing outside
+# _peaks.py reads it.
 CAPTAR_EVENT_SUMMARY = "Captar monthly peak"
 
 

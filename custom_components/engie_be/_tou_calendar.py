@@ -49,10 +49,9 @@ def tou_slot_events(
     """
     Return the next 7 days of TOU slot transitions as CalendarEvent objects.
 
-    One event per (EAN, direction, slot) with the supplier schedule as
-    the source of truth. When the supplier and DGO schedules match
-    (common case for Belgian bi-hourly), only supplier events are
-    emitted to keep the calendar readable.
+    One event per (EAN, direction, slot), built from the supplier
+    schedule only. The DGO/TGO schedule is never materialised into
+    events, so nothing here compares the two.
 
     Returns an empty list when the coordinator has no ``tou_schedules``
     wrapper (feature flag off) or when no items are present.
