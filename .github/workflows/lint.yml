@@ -51,3 +51,11 @@ jobs:
 
       - name: Typecheck
         run: python3 -m mypy custom_components/engie_be
+
+      # Ruff enforces that docstrings exist and are well formed. This
+      # enforces that they are still true: every symbol reference
+      # resolves, no comment cites a line number, and domain terms match
+      # the canonical spelling in CONTEXT.md. Needs the installed
+      # homeassistant to resolve references into core.
+      - name: Check documentation against the code
+        run: python3 scripts/check-docs-drift

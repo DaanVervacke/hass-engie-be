@@ -1,0 +1,452 @@
+#!/usr/bin/env python3
+"""
+Fail when in-code documentation has drifted away from the code.
+
+Ruff already enforces that docstrings exist and are well formed. Nothing
+enforces that they are still *true*. These four checks cover the part of
+that which a machine can prove, all without network or credentials:
+
+1. Every ``double-backtick`` reference that looks like a Python symbol
+   resolves, either in this package, in something it imports, or in the
+   installed Home Assistant. A reference that resolves nowhere is either
+   a renamed symbol or a value that belongs in KNOWN_VALUES.
+2. Every ``module.py:123`` reference points at a file that exists and is
+   at least that long. Line numbers rot, so these are discouraged
+   outright rather than repaired.
+3. Domain terms in prose match the canonical spellings in TERMINOLOGY
+   below. Code spans are stripped first, so a quoted wire value never
+   trips a rule about the product name it resembles.
+4. No reference names a module file that no longer exists.
+
+The interesting one is 3. Solar Surplus was capitalised across the
+README and strings.json by two separate plans, and the comments never
+caught up, because a naming decision with no home does not propagate.
+TERMINOLOGY is that home, and this check is what makes it stick.
+"""
+
+from __future__ import annotations
+
+import ast
+import builtins
+import keyword
+import re
+import sys
+import tokenize
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+PACKAGE = REPO / "custom_components" / "engie_be"
+DEFAULT_TREES = ("custom_components/engie_be", "tests", "scripts")
+
+# Double-backtick references do not all denote Python symbols. These are
+# the ones that denote something else: API wire values, Home Assistant
+# state strings, service and config keys, translation placeholders and
+# entity-id fragments. They can never "break", so flagging them is noise.
+#
+# Adding an entry here is a deliberate act. Ask first whether the name is
+# really a value and not a symbol that has quietly gone missing, because
+# an allowlist that absorbs real findings is worse than no checker.
+KNOWN_VALUES = frozenset(
+    {
+        # integration and platform identifiers
+        "engie_be",
+        "engie_belgium",
+        "libapp",
+        # Home Assistant state strings
+        "on",
+        "off",
+        "unknown",
+        "unavailable",
+        "numeric_state",
+        # service names and their option keys
+        "import_history",
+        "import_history_choice",
+        "import_options",
+        "import_energy_types",
+        "import_include_costs",
+        "import_start_date",
+        "import_end_date",
+        "clear_statistics",
+        "fetch_epex_prices",
+        # ENGIE API enum values
+        "PEAK",
+        "OFFPEAK",
+        "SUPEROFFPEAK",
+        "EXCLUSIVE_NIGHT",
+        "DAY",
+        "NO_DATA",
+        "NO_SURPLUS",
+        "HIGH_SURPLUS",
+        "HAPPY_HOUR_ACTIVE",
+        "HAPPY_HOUR_INACTIVE",
+        "offpeak",
+        "exclusive_night",
+        "superoffpeak",
+        "offtake",
+        "injection",
+        "period",
+        # translation placeholders and config-flow description keys
+        "ban_0",
+        "ban_1",
+        "title_0",
+        "title_1",
+        "readme_url",
+        "description_placeholders",
+        "setup_error",
+        "next_flow",
+        # EAN suffixes and statistic-id fragments
+        "_ID1",
+        "_ID2",
+        "_ID3",
+        "_2",
+        "_consumption_cost",
+        "_injection",
+        "_injection_cost",
+        "_gas",
+        "_gas_cost",
+        # entity-id and attribute fragments quoted in prose
+        "happy_hours_active",
+        "happy_hours_next_start",
+        "happy_hours_next_end",
+        "solar_surplus_forecast",
+        "tou_schedules",
+        "transaction_count",
+        "value_eur_per_mwh",
+        "forecasts_list",
+        "name_by_user",
+        "business_agreement",
+        "S_TOU1_OFFTAKE_PEAK",
+        "OFFTAKE_",
+        "INJECTION_",
+        "TOTAL_HOURS",
+        # miscellaneous quoted literals
+        "Z",
+        "sms",
+        "true",
+        "false",
+        "_solar_surplus",
+        "Location",
+        "core",
+        "Bearer",
+        "custom_components",
+        # entity-id, attribute, option and trigger keys quoted in tests
+        "epex_low_today",
+        "epex_high_today",
+        "next_hour",
+        "price_positive",
+        "price_negative",
+        "peak_is_fallback",
+        "level_changed",
+        "happy_hours_window_announced",
+        "expose_all_entities",
+        "select_accounts",
+        "vat_tariff",
+        "no_data",
+        "restored",
+        "lost",
+        "access_denied",
+        "customer_account_relations_sample",
+        "to",
+        # Deliberately names a thing that does NOT exist. Plan 176 removed
+        # the last_fetched attribute and several tests assert its absence,
+        # so their docstrings name it on purpose. A reference can be
+        # correct precisely because its target is gone, which this check
+        # cannot tell apart from a rename. Do not "fix" these.
+        "last_fetched",
+        # Dart/Flutter enums in the ENGIE Smart App, named as external
+        # references. They are not Python symbols and never will be.
+        "TimeSlotCategory",
+        "SolarSurplusForecastSunState",
+    }
+)
+
+PYTHON_LITERALS = frozenset({"None", "True", "False", "self", "cls"}) | frozenset(
+    keyword.kwlist
+)
+
+# ``_attr_*`` is Home Assistant's convention for entity attribute
+# overrides. They are class attributes rather than defs, so they do not
+# appear in a def/class scan of core, and comments legitimately name one
+# that does *not* exist in order to say it is not honoured. Skipping the
+# whole prefix is more honest than allowlisting them one at a time.
+HA_ATTR_PREFIX = "_attr_"
+
+# Canonical spellings of the domain terms. This tuple is the record:
+# a naming decision that lives only in a plan or a review comment does
+# not propagate, which is how the comments kept saying solar surplus
+# long after the README and strings.json settled on Solar Surplus.
+#
+# Prose only, code spans are stripped before these run, so a quoted
+# wire value never trips a rule about the product name.
+#
+# Two terms are deliberately absent. captar is correct in both cases,
+# lowercase as a common noun and capitalised where it starts an entity
+# name. TOU and Time-of-Use are both sanctioned, the abbreviation in
+# general use and the expansion on first mention.
+TERMINOLOGY = (
+    (re.compile(r"\bsolar surplus\b"), "Solar Surplus"),
+    (re.compile(r"\bHappy Hour\b"), "Happy Hours"),
+    (re.compile(r"\bhappy hours?\b"), "Happy Hours"),
+    (re.compile(r"\bEngie\b"), "ENGIE"),
+    (re.compile(r"\bquarter hourly\b"), "quarter-hourly"),
+)
+
+IDENTIFIER = re.compile(r"[A-Za-z_]\w*(\.[A-Za-z_]\w*)*(\(\))?$")
+BACKTICK_REF = re.compile(r"``([^`]+)``")
+SPHINX_REF = re.compile(r":(?:class|meth|func|attr|mod|data|exc):`~?([^`]+)`")
+LINE_REF = re.compile(r"\b([\w./-]+\.py):(\d+)")
+CAMEL_CASE = re.compile(r"^[a-z]\w*[A-Z]")
+CODE_SPAN = re.compile(r"``[^`]+``|`[^`]+`")
+DEF_OR_CLASS = re.compile(rb"^\s*(?:async\s+)?(?:def|class)\s+(\w+)", re.MULTILINE)
+
+
+def python_files(trees: tuple[str, ...]) -> list[Path]:
+    """Return every Python file under the given repo-relative trees."""
+    found: list[Path] = []
+    for tree in trees:
+        root = REPO / tree
+        if root.is_dir():
+            found.extend(sorted(root.rglob("*.py")))
+    return found
+
+
+def doc_blocks(path: Path) -> list[tuple[int, str]]:
+    """Return every docstring and comment in a file as (line, text)."""
+    blocks: list[tuple[int, str]] = []
+    try:
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return blocks
+
+    documented = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    for node in ast.walk(tree):
+        if isinstance(node, documented):
+            text = ast.get_docstring(node)
+            if text:
+                blocks.append((getattr(node, "lineno", 1), text))
+
+    try:
+        with path.open("rb") as handle:
+            for token in tokenize.tokenize(handle.readline):
+                if token.type == tokenize.COMMENT:
+                    blocks.append((token.start[0], token.string))
+    except (OSError, tokenize.TokenError, SyntaxError):
+        pass
+    return blocks
+
+
+def local_symbols(extra: list[Path] | None = None) -> set[str]:
+    """
+    Return every name defined or imported in the package.
+
+    ``extra`` adds the files currently being checked, so a docstring in
+    ``tests/`` may name a fixture or helper defined in its own module
+    without that reading as a broken reference.
+    """
+    names: set[str] = set()
+    for path in [*sorted(PACKAGE.rglob("*.py")), *(extra or [])]:
+        names.add(path.stem)
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+                names.add(node.name)
+            elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                names.add(node.id)
+            elif isinstance(node, ast.arg):
+                names.add(node.arg)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, ast.ImportFrom):
+                names.update(alias.asname or alias.name for alias in node.names)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    names.add((alias.asname or alias.name).split(".")[0])
+    return names
+
+
+def homeassistant_symbols() -> set[str]:
+    """
+    Return every def and class name in the installed Home Assistant.
+
+    Comments here legitimately cite HA internals such as
+    ``_async_process_on_unload``, so resolution has to reach into core.
+    A regex pass over roughly 9,600 files costs under two seconds, which
+    is cheap enough to run on every push.
+    """
+    try:
+        import homeassistant
+    except ImportError:
+        return set()
+    root = Path(homeassistant.__file__).resolve().parent
+    names: set[str] = set()
+    for path in root.rglob("*.py"):
+        try:
+            body = path.read_bytes()
+        except OSError:
+            continue
+        names.update(match.group(1).decode() for match in DEF_OR_CLASS.finditer(body))
+    return names
+
+
+def harvest_references(files: list[Path]) -> list[tuple[Path, int, str]]:
+    """Return every identifier-shaped reference as (path, line, name)."""
+    found: list[tuple[Path, int, str]] = []
+    for path in files:
+        for line, text in doc_blocks(path):
+            raw = [match.group(1) for match in BACKTICK_REF.finditer(text)]
+            raw += [match.group(1) for match in SPHINX_REF.finditer(text)]
+            for candidate in raw:
+                name = candidate.strip()
+                if IDENTIFIER.match(name):
+                    found.append((path, line, name))
+    return found
+
+
+def check_references(files: list[Path]) -> list[str]:
+    """Report references that resolve to no known symbol or value."""
+    known = local_symbols(files) | PYTHON_LITERALS | KNOWN_VALUES | set(dir(builtins))
+    unresolved: list[tuple[Path, int, str]] = []
+    for path, line, name in harvest_references(files):
+        base = name.split(".")[0].removesuffix("()")
+        if base in known or CAMEL_CASE.search(base):
+            continue
+        if base.startswith(HA_ATTR_PREFIX):
+            continue
+        unresolved.append((path, line, base))
+
+    if not unresolved:
+        return []
+
+    core = homeassistant_symbols()
+    return [
+        f"{path.relative_to(REPO)}:{line}: broken-reference: ``{base}`` "
+        f"resolves to no symbol in the package, its imports, or Home "
+        f"Assistant. Rename it, delete it, or add it to KNOWN_VALUES in "
+        f"scripts/check-docs-drift if it is a value rather than a symbol."
+        for path, line, base in unresolved
+        if base not in core
+    ]
+
+
+def check_line_references(files: list[Path]) -> list[str]:
+    """Report ``file.py:123`` references that no longer hold."""
+    failures: list[str] = []
+    for path in files:
+        for line, text in doc_blocks(path):
+            for match in LINE_REF.finditer(text):
+                target, number = match.group(1), int(match.group(2))
+                # Resolve against the package first, then the rest of the
+                # repo, and never into a dot-directory. Untracked scratch
+                # copies of the source live in .swap-source/ and
+                # .v071-source/, and matching one of those reports a
+                # wildly wrong line count for a file that is actually fine.
+                candidates = [
+                    found
+                    for found in [PACKAGE / target, *REPO.rglob(target)]
+                    if found.is_file()
+                    and not any(part.startswith(".") for part in found.parts)
+                ]
+                where = f"{path.relative_to(REPO)}:{line}"
+                if not candidates:
+                    failures.append(
+                        f"{where}: broken-reference: cites {target}, "
+                        f"which does not exist."
+                    )
+                    continue
+                # Any line reference is reported, not only out-of-range
+                # ones. A number that is merely stale still points at the
+                # wrong code and cannot be validated for content, so the
+                # rule is to name the symbol instead of the line.
+                length = len(candidates[0].read_text(encoding="utf-8").splitlines())
+                detail = (
+                    f"that file has {length} lines"
+                    if number > length
+                    else "line numbers go stale silently"
+                )
+                failures.append(
+                    f"{where}: line-reference: cites {target}:{number}, and "
+                    f"{detail}. Name the symbol rather than the line."
+                )
+    return failures
+
+
+def check_terminology(files: list[Path]) -> list[str]:
+    """Report prose that departs from the canonical spellings."""
+    failures = []
+    for path in files:
+        for line, text in doc_blocks(path):
+            prose = CODE_SPAN.sub("", text)
+            failures.extend(
+                f"{path.relative_to(REPO)}:{line}: terminology: found "
+                f"{pattern.pattern!r}, the canonical spelling is {canonical!r}."
+                for pattern, canonical in TERMINOLOGY
+                if pattern.search(prose)
+            )
+    return failures
+
+
+def check_vestigial(files: list[Path]) -> list[str]:
+    """Report references to module files that no longer exist."""
+    modules = {path.name for path in PACKAGE.rglob("*.py")}
+    # Comments legitimately cite Home Assistant's own modules, such as
+    # ``config_entries.py``. Only a name that is neither ours nor core's
+    # is actually vestigial.
+    try:
+        import homeassistant
+
+        core_root = Path(homeassistant.__file__).resolve().parent
+        modules |= {path.name for path in core_root.rglob("*.py")}
+    except ImportError:
+        pass
+    failures = []
+    for path in files:
+        for line, text in doc_blocks(path):
+            for match in BACKTICK_REF.finditer(text):
+                name = match.group(1).strip()
+                stem = name.removesuffix(".py")
+                if (
+                    name.endswith(".py")
+                    and stem
+                    and "/" not in name
+                    and name not in modules
+                ):
+                    failures.append(
+                        f"{path.relative_to(REPO)}:{line}: vestigial: names "
+                        f"``{name}``, which is not a module in the package."
+                    )
+    return failures
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run every check and report. Returns a process exit code."""
+    args = argv if argv is not None else sys.argv[1:]
+    trees = tuple(args) if args else DEFAULT_TREES
+
+    files = python_files(trees)
+    if not files:
+        print(f"error: no Python files under {', '.join(trees)}")
+        return 1
+
+    failures = [
+        *check_references(files),
+        *check_line_references(files),
+        *check_terminology(files),
+        *check_vestigial(files),
+    ]
+
+    if failures:
+        for failure in sorted(set(failures)):
+            print(failure)
+        print(f"\n{len(set(failures))} documentation drift finding(s).")
+        return 1
+
+    print(f"No documentation drift across {len(files)} files.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

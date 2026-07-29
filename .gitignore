@@ -112,6 +112,7 @@ debug*.log
 /uv.lock
 /CLAUDE.md
 /AGENTS.md
+/CONTEXT.md
 
 # -----------------------------------------------------------------------------
 # CLI Tools (Claude Code, etc.)
