@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "--cov=custom_components.engie_be --cov-report=term-missing --cov-fail-under=95"
+addopts = "--cov=custom_components.engie_be --cov-report=term-missing --cov-fail-under=96"
 
 [tool.mypy]
 python_version = "3.14"
