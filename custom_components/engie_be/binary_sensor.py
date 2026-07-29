@@ -65,7 +65,7 @@ AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
 # ``numeric_state``-free automations such as "run the dishwasher when
 # wholesale is paying me".  Reports ``unavailable`` during outages so
 # downstream automations don't fire on stale data.  Fixed-tariff
-# accounts never get the entity at all.
+# accounts only get the entity under the expose-all-entities option.
 EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key=TRANSLATION_KEY_EPEX_NEGATIVE,
     translation_key=TRANSLATION_KEY_EPEX_NEGATIVE,
@@ -186,8 +186,9 @@ async def async_setup_entry(
                 )
 
         # TOU "is optimal slot" binary sensors: created when the supplier
-        # contract is TOU-active OR when the per-EAN schedule has more than
+        # contract is TOU-active AND the per-EAN schedule has more than
         # one distinct slot code (i.e. not a flat all-OFFPEAK schedule).
+        # expose_all bypasses both gates.
         # The gate avoids spamming "is optimal" on flat-rate accounts
         # where every hour is OFFPEAK and the answer is always True.
         tou_entities = _build_tou_binary_sensors(
@@ -451,7 +452,9 @@ def _build_tou_binary_sensors(
     Gated on the ``dgo-tou-is-active`` feature flag mirroring the solar-
     surplus pattern: when the flag is off the coordinator skips the fetch
     entirely, so the wrapper is absent and there is nothing to key
-    against. Only ``is_tou_active is True`` accounts get the binary sensors.
+    against. ``is_tou_active is True`` accounts get the binary sensors, plus
+    every account when expose_all is on. A non-trivial per-EAN schedule is
+    required on top of that.
     """
     from .data import EngieBeSubentryData  # noqa: PLC0415, TC001 - avoid import cycle
 
@@ -520,8 +523,8 @@ class EngieBeTouIsOptimalSensor(
     flips at the exact slot boundary rather than the next coordinator
     refresh.
 
-    Created only when the schedule is non-trivial (has more than one
-    distinct slot code) or when the supplier contract is TOU-active.
+    Created only when the supplier contract is TOU-active and the schedule
+    is non-trivial (more than one distinct slot code).
     """
 
     def __init__(

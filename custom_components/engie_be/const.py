@@ -11,7 +11,7 @@ LOGGER: Logger = getLogger(__package__)
 DOMAIN = "engie_be"
 ATTRIBUTION = "Data provided by ENGIE Belgium"
 
-# OAuth / Auth0 endpoints
+# Auth0 endpoint, followed by the ENGIE service base URLs
 AUTH_BASE_URL = "https://account.engie.be"
 API_BASE_URL = "https://www.engie.be/api/engie/be/ms/billing/customer/v1"
 PREMISES_BASE_URL = "https://www.engie.be/api/engie/be/ms/premises/customer/v1"
@@ -198,8 +198,8 @@ EPEX_TZ = "Europe/Brussels"
 # module bucketing timestamps into local civil time agrees on the same
 # object instead of constructing its own ZoneInfo("Europe/Brussels").
 BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
-# Hourly slots today; carried as a constant so a future 15-min rollout
-# only requires touching one place.
+# Default slot length. Quarter-hourly already ships and is selected
+# per-coordinator via ``EpexGranularity``.
 EPEX_DEFAULT_SLOT_DURATION_MINUTES = 60
 
 # Raw EPEX values are EUR/MWh; the integration normalises everything

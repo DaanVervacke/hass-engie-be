@@ -87,9 +87,9 @@ def _accumulate_slots(
                 continue
             try:
                 # Validate the timestamp is parseable and timezone-aware
-                # so downstream cards can chart it, but keep the string
-                # form so the Energy dashboard renders the same instant
-                # ENGIE published.
+                # so downstream cards can chart it. The key is
+                # re-serialised from the parsed datetime, which
+                # normalises the offset (a trailing Z becomes +00:00).
                 parsed = datetime.fromisoformat(raw_start)
             except ValueError:
                 continue

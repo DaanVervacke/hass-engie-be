@@ -388,7 +388,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         Show one toggle per picked BAN to ask whether to backfill history.
 
-        Each BAN gets a collapsed section (``ban_0``, ``ban_1``, ...) with a
+        Each BAN gets its own section (``ban_0``, ``ban_1``, ...) with a
         single ``import_history`` boolean. On submit:
         - If all toggles are off, finish the flow immediately with every picked
           account stored using the import-history-off defaults.
@@ -1304,7 +1304,7 @@ def _build_import_options_schema(
     """
     Build a per-BAN sectioned schema for the import_options flow step.
 
-    Each business agreement gets its own collapsed section keyed by a
+    Each business agreement gets its own section keyed by a
     positional identifier (``ban_0``, ``ban_1``, ...) so strings.json can
     provide a ``name`` template for each slot. The consumption address is
     returned as step-level ``description_placeholders`` under the keys
@@ -1350,7 +1350,7 @@ def _build_import_history_choice_schema(
     """
     Build a per-BAN sectioned schema for the import_history_choice flow step.
 
-    Each business agreement gets its own collapsed section keyed by a positional
+    Each business agreement gets its own section keyed by a positional
     identifier (``ban_0``, ``ban_1``, ...) with a single ``import_history``
     boolean field. The consumption address is returned as step-level
     ``description_placeholders`` under the keys ``title_0``, ``title_1``, ...

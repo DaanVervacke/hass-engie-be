@@ -3,9 +3,10 @@ Calendar platform for the ENGIE Belgium integration.
 
 One calendar entity is created per business-agreement ConfigSubentry,
 attached to that subentry's device. Today this exposes the monthly
-capacity-tariff (captar) peak window for every agreement and the
-upcoming Happy Hours window for agreements that are enrolled in the
-ENGIE Happy Hours service. New event types can be added without
+capacity-tariff (captar) peak window for every agreement, the upcoming
+Happy Hours window for agreements enrolled in the ENGIE Happy Hours
+service, and TOU slot events for TOU-active agreements. New event types
+can be added without
 spawning a new calendar entity by registering an additional
 ``EventProvider`` below.
 
@@ -125,9 +126,10 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
             f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_calendar"
         )
         # Build the per-instance provider list. Baseline providers
-        # (captar) apply to every account; Happy Hours events are only
-        # surfaced for accounts that are enrolled in the ENGIE Happy
-        # Hours service. The parent entry is reloaded automatically
+        # (captar) apply to every account. Happy Hours events are only
+        # surfaced for accounts enrolled in the ENGIE Happy Hours
+        # service, and TOU slot events only for TOU-active accounts. The
+        # parent entry is reloaded automatically
         # when enrolment flips so this list always reflects the current
         # service status without needing a runtime re-check on every
         # event read.

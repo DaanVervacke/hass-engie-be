@@ -391,7 +391,7 @@ _CAPTAR_LATEST_DAILY_PEAK = SensorEntityDescription(
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=3,
     # Disabled by default: most users only care about the monthly peak;
-    # per-day detail is opt-in via ``daily_peaks``/``expose_all``.
+    # per-day detail is opt-in by enabling the entity, or via ``expose_all``.
     entity_registry_enabled_default=False,
 )
 

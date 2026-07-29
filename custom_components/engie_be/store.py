@@ -1,11 +1,11 @@
 """
 Persistent storage of historical captar peak windows and Happy Hours windows.
 
-ENGIE's peaks endpoint only returns the *current* month's
-``peakOfTheMonth``; once a new month rolls over, the previous month's
-peak is no longer available from the API. The Happy Hours endpoint only
-ever returns ``tomorrow``'s scheduled window (or ``{}``); windows that
-have already happened are not retrievable. Both stores persist every
+Each refresh queries only the current month's ``peakOfTheMonth``, plus a
+one-month fallback, so anything older survives only because this store
+kept it. The Happy Hours endpoint returns at most a ``today`` and a
+``tomorrow`` window (or ``{}``), so windows that have already passed are
+not retrievable. Both stores persist every
 window we observe so the calendar entity can keep surfacing the full
 history across restarts and so newly-installed integrations gradually
 build up their own local archive.
