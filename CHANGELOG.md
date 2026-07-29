@@ -13,6 +13,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   default, and a YAML example for each. Clearing an import previously read as
   if it deleted everything, and the required energy type was missing from the
   one-off import steps.
+- New Use cases and Data updates sections explain what the integration is
+  typically used for, how often it polls, and why the price sensors change on
+  the hour regardless of the update interval. The optional date window offered
+  during setup is documented too.
 
 ### Changed
 

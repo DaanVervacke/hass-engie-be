@@ -27,6 +27,7 @@ as sensors, binary sensors, events, and calendar events.
 
 ## Table of contents
 
+- [Use cases](#use-cases)
 - [Features](#features)
 - [Sensors](#sensors)
   - [Gas](#gas)
@@ -43,6 +44,7 @@ as sensors, binary sensors, events, and calendar events.
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Data updates](#data-updates)
 - [Multiple households](#multiple-households)
 - [Historical usage import (Energy dashboard)](#historical-usage-import-energy-dashboard)
 - [Actions](#actions)
@@ -54,6 +56,29 @@ as sensors, binary sensors, events, and calendar events.
 - [Changelog](#changelog)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Use cases
+
+- **Shift loads onto cheap or free electricity.** On a dynamic tariff, run the
+  dishwasher, the heat pump or the EV charger when the EPEX day-ahead price is
+  lowest, or when it goes negative and you are paid to consume. On any tariff,
+  do the same inside a Happy Hours window.
+- **Watch your capacity tariff.** The captar sensors expose this month's peak
+  window for each business agreement: how high it was, when it happened, and
+  how much energy went through it. Enable the daily-peak sensor to see the
+  running per-day picture. ENGIE publishes peaks after the fact, so this tells
+  you where you stand rather than warning you mid-peak.
+- **Use your own solar production.** The Solar Surplus forecast gives a
+  three-day hourly injection outlook, feeds the Energy dashboard, and can
+  start deferrable loads on the hours where surplus is expected.
+- **See what you are actually paying.** Price sensors carry your contract's
+  own rates per meter rather than a national average, and the billing sensors
+  surface your outstanding balance, overdue amount and next invoice due date.
+- **Backfill the Energy dashboard.** Import years of hourly usage from ENGIE
+  in one action, with or without per-hour costs.
+
+Ready-made automations for the first two are in
+[YAML-based examples](#yaml-based-examples) and in the blueprints.
 
 ## Features
 
@@ -659,6 +684,28 @@ your contract type or active feature flags. Entities for features your
 account does not have show as `unavailable`. This is useful for
 troubleshooting or exploring the full entity set.
 
+## Data updates
+
+The integration polls the ENGIE cloud API. There is no local connection and no
+push channel, so everything you see is as fresh as the last poll.
+
+One coordinator per business agreement fetches prices, peaks, Happy Hours,
+billing and Solar Surplus together on a single timer. EPEX day-ahead prices
+are fetched on their own coordinators, on the same timer. The interval is the
+**Update interval** option, 60 minutes by default and adjustable between 5 and
+1440 minutes.
+
+Time-of-Use and EPEX sensors do not wait for a poll to change value. They are
+scheduled to update on the exact slot boundary, so the current-price and
+current-slot sensors flip on the hour or quarter hour regardless of where the
+poll interval happens to fall. Lowering the update interval makes the
+underlying data fresher, it does not make these sensors more punctual.
+
+A shorter interval means more requests to ENGIE. The default of 60 minutes is
+already well ahead of how often the upstream data changes: contract prices
+change rarely, day-ahead prices are published once a day around 14:00 Brussels
+time, and hourly usage data lags by a few days.
+
 ## Multiple households
 
 A single ENGIE login can be linked to several households. This includes the
@@ -695,7 +742,11 @@ During the initial setup flow and when adding a new business agreement, a
 "Historical import options" step lets you turn on a one-time background import
 per business agreement. Enable "Import history", choose which energy types to
 include, and optionally turn on "Include costs" to also import per-hour EUR
-amounts. The import runs in the background after setup finishes and does not
+amounts. The same step offers an optional **Start date** and **End date**.
+Leave both empty to import everything from the business agreement's start date
+onwards, which is what most setups want. Fill them in to restrict the first
+import to a specific window. The import runs in the background after setup
+finishes and does not
 block the integration from loading. Reloading or restarting Home Assistant does
 not re-trigger the import once statistics are already present. To re-run an
 import later (or trigger one you skipped at setup), use the **Import historical
