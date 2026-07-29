@@ -1067,7 +1067,7 @@
         },
         "epex_price_is_below_threshold": {
             "name": "EPEX price is below threshold",
-            "description": "True when the current EPEX day-ahead price is below the configured threshold.",
+            "description": "True when the current EPEX day-ahead price meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::condition_threshold_name%]",
@@ -1077,7 +1077,7 @@
         },
         "epex_price_is_above_threshold": {
             "name": "EPEX price is above threshold",
-            "description": "True when the current EPEX day-ahead price is above the configured threshold.",
+            "description": "True when the current EPEX day-ahead price meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::condition_threshold_name%]",
@@ -1099,7 +1099,7 @@
         },
         "captar_peak_is_above_threshold": {
             "name": "Captar peak is above threshold",
-            "description": "True when the current captar monthly peak power is above the configured threshold.",
+            "description": "True when the current captar monthly peak power meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::condition_threshold_name%]",
@@ -1109,7 +1109,7 @@
         },
         "outstanding_balance_is_above_threshold": {
             "name": "Outstanding balance is above threshold",
-            "description": "True when the outstanding balance is above the configured threshold.",
+            "description": "True when the outstanding balance meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::condition_threshold_name%]",
@@ -1119,7 +1119,7 @@
         },
         "overdue_amount_is_above_threshold": {
             "name": "Overdue amount is above threshold",
-            "description": "True when the overdue amount is above the configured threshold.",
+            "description": "True when the overdue amount meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::condition_threshold_name%]",
@@ -1133,7 +1133,7 @@
         },
         "epex_price_is_below_threshold_quarter_hour": {
             "name": "EPEX quarter-hourly price is below threshold",
-            "description": "True when the current EPEX quarter-hourly day-ahead price is below the configured threshold.",
+            "description": "True when the current EPEX quarter-hourly day-ahead price meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",
@@ -1143,7 +1143,7 @@
         },
         "epex_price_is_above_threshold_quarter_hour": {
             "name": "EPEX quarter-hourly price is above threshold",
-            "description": "True when the current EPEX quarter-hourly day-ahead price is above the configured threshold.",
+            "description": "True when the current EPEX quarter-hourly day-ahead price meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",
@@ -1153,7 +1153,7 @@
         },
         "solar_surplus_is_above_threshold": {
             "name": "Solar Surplus is above threshold",
-            "description": "True when the current-hour Solar Surplus forecast is above the configured threshold.",
+            "description": "True when the current-hour Solar Surplus forecast meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::condition_threshold_name%]",
@@ -1163,7 +1163,7 @@
         },
         "solar_surplus_is_below_threshold": {
             "name": "Solar Surplus is below threshold",
-            "description": "True when the current-hour Solar Surplus forecast is below the configured threshold.",
+            "description": "True when the current-hour Solar Surplus forecast meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::condition_threshold_name%]",
