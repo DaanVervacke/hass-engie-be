@@ -901,7 +901,7 @@ class EngieBeHappyHourMonthRewardSensor(EngieBeHappyHourMonthSensor):
 class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
     """Sensor for an ENGIE Belgium energy price."""
 
-    def __init__(  # noqa: PLR0913 - sensor identity needs coord, subentry, descriptor, EAN, and slot/value keys
+    def __init__(  # noqa: PLR0913, PLR0917 - sensor identity needs coord, subentry, descriptor, EAN, and slot/value keys
         self,
         coordinator: EngieBeDataUpdateCoordinator,
         subentry: ConfigSubentry,

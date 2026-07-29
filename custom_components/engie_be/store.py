@@ -65,7 +65,7 @@ class EngieBePeaksStore:
             )
         return self._peaks_sorted
 
-    def upsert(  # noqa: PLR0913 - explicit args mirror the persisted schema
+    def upsert(  # noqa: PLR0913, PLR0917 - explicit args mirror the persisted schema
         self,
         year: int,
         month: int,

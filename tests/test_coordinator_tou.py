@@ -182,7 +182,7 @@ async def test_flag_probe_error_soft_fails_to_enabled(
     client.async_get_tou_schedules.assert_awaited_once()
 
 
-async def test_flag_flip_true_to_false_schedules_reload(  # noqa: PLR0913
+async def test_flag_flip_true_to_false_schedules_reload(  # noqa: PLR0913, PLR0917
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
@@ -216,7 +216,7 @@ async def test_flag_flip_true_to_false_schedules_reload(  # noqa: PLR0913
     reload_mock.assert_awaited_once_with(entry.entry_id)
 
 
-async def test_first_tou_observation_seeds_cache_without_reload(  # noqa: PLR0913
+async def test_first_tou_observation_seeds_cache_without_reload(  # noqa: PLR0913, PLR0917
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
@@ -245,7 +245,7 @@ async def test_first_tou_observation_seeds_cache_without_reload(  # noqa: PLR091
     reload_mock.assert_not_awaited()
 
 
-async def test_flag_no_flip_does_not_schedule_reload(  # noqa: PLR0913
+async def test_flag_no_flip_does_not_schedule_reload(  # noqa: PLR0913, PLR0917
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,

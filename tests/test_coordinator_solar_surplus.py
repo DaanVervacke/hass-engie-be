@@ -250,7 +250,7 @@ def test_derive_has_solar_returns_none_for_non_dict_wrapper() -> None:
     assert _derive_has_solar([]) is None  # type: ignore[arg-type]
 
 
-async def test_first_has_solar_observation_seeds_cache_without_reload(  # noqa: PLR0913
+async def test_first_has_solar_observation_seeds_cache_without_reload(  # noqa: PLR0913, PLR0917
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
@@ -279,7 +279,7 @@ async def test_first_has_solar_observation_seeds_cache_without_reload(  # noqa: 
     reload_mock.assert_not_awaited()
 
 
-async def test_has_solar_true_to_false_flip_schedules_reload(  # noqa: PLR0913
+async def test_has_solar_true_to_false_flip_schedules_reload(  # noqa: PLR0913, PLR0917
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
@@ -312,7 +312,7 @@ async def test_has_solar_true_to_false_flip_schedules_reload(  # noqa: PLR0913
     reload_mock.assert_awaited_once_with(entry.entry_id)
 
 
-async def test_has_solar_no_flip_does_not_schedule_reload(  # noqa: PLR0913
+async def test_has_solar_no_flip_does_not_schedule_reload(  # noqa: PLR0913, PLR0917
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
@@ -344,7 +344,7 @@ async def test_has_solar_no_flip_does_not_schedule_reload(  # noqa: PLR0913
     reload_mock.assert_not_awaited()
 
 
-async def test_simultaneous_happy_hour_and_solar_flips_debounce_to_one_reload(  # noqa: PLR0913
+async def test_simultaneous_happy_hour_and_solar_flips_debounce_to_one_reload(  # noqa: PLR0913, PLR0917
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
@@ -389,7 +389,7 @@ async def test_simultaneous_happy_hour_and_solar_flips_debounce_to_one_reload(  
     reload_mock.assert_awaited_once_with(entry.entry_id)
 
 
-async def test_reload_pending_blocks_second_flip_from_re_scheduling(  # noqa: PLR0913
+async def test_reload_pending_blocks_second_flip_from_re_scheduling(  # noqa: PLR0913, PLR0917
     hass: HomeAssistant,
     monkeypatch: pytest.MonkeyPatch,
     build_engie_entry: Callable,
