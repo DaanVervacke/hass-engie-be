@@ -636,7 +636,7 @@ def _build_happy_hour_sensors(
     coordinator: EngieBeDataUpdateCoordinator,
     subentry: ConfigSubentry,
 ) -> list[SensorEntity]:
-    """Build the start/end timestamp sensors for the next Happy Hour window."""
+    """Build the start/end timestamp sensors for the next Happy Hours window."""
     return [
         EngieBeHappyHourTimestampSensor(
             coordinator,
@@ -654,7 +654,7 @@ def _build_happy_hour_sensors(
 
 
 class EngieBeHappyHourTimestampSensor(EngieBeEntity, SensorEntity):
-    """Start or end of the next upcoming Happy Hour window."""
+    """Start or end of the next upcoming Happy Hours window."""
 
     def __init__(
         self,
@@ -1679,7 +1679,7 @@ class _EngieBeSolarSurplusHourlySensorBase(
 
 
 class EngieBeSolarSurplusCurrentSensor(_EngieBeSolarSurplusHourlySensorBase):
-    """Expected solar surplus in kWh for the slot covering the current hour."""
+    """Expected Solar Surplus in kWh for the slot covering the current hour."""
 
     def __init__(
         self,
@@ -1707,7 +1707,7 @@ class EngieBeSolarSurplusCurrentSensor(_EngieBeSolarSurplusHourlySensorBase):
 
 
 class EngieBeSolarSurplusNextHourSensor(_EngieBeSolarSurplusHourlySensorBase):
-    """Expected solar surplus in kWh for the slot starting one hour from now."""
+    """Expected Solar Surplus in kWh for the slot starting one hour from now."""
 
     def __init__(
         self,

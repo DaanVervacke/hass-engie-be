@@ -217,7 +217,12 @@ class TestRedactMapping:
         assert out == {"ban": f"{_REDACTED}0000"}
 
     def test_partial_masks_contract_account_id(self) -> None:
-        """``contractAccountId`` (feature-flag poll body, api.py:788) is masked."""
+        """
+        ``contractAccountId`` is masked.
+
+        It arrives in the feature-flag poll body sent by
+        ``_async_query_boolean_feature_flag``.
+        """
         out = _redact_mapping(
             {"additionalContext": {"contractAccountId": "002200001234"}},
             _REDACT_BODY_KEYS,

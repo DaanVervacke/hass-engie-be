@@ -268,7 +268,7 @@ _TOU_SLOT_CHANGED_SCHEMA = ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR
 
 
 class SolarSurplusLevelChangedTrigger(EntityTriggerBase):
-    """Trigger: solar surplus forecast level changed to any value."""
+    """Trigger: Solar Surplus forecast level changed to any value."""
 
     _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
     _schema = _SOLAR_SURPLUS_CHANGED_SCHEMA
@@ -362,7 +362,7 @@ class _OptionBasedStateTrigger(EntityTargetStateTriggerBase):
 
 
 class SolarSurplusBecameTrigger(_OptionBasedStateTrigger):
-    """Trigger: solar surplus forecast reached a specific level."""
+    """Trigger: Solar Surplus forecast reached a specific level."""
 
     _option_key = _LEVEL
     _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST
@@ -436,13 +436,13 @@ class EpexNextQuarterHourCrossedThresholdTrigger(_ThresholdTrigger):
 
 
 class SolarSurplusCurrentCrossedThresholdTrigger(_ThresholdTrigger):
-    """Trigger: solar surplus current-hour value crossed a threshold."""
+    """Trigger: Solar Surplus current-hour value crossed a threshold."""
 
     _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT
 
 
 class SolarSurplusNextHourCrossedThresholdTrigger(_ThresholdTrigger):
-    """Trigger: solar surplus next-hour value crossed a threshold."""
+    """Trigger: Solar Surplus next-hour value crossed a threshold."""
 
     _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_NEXT_HOUR
 

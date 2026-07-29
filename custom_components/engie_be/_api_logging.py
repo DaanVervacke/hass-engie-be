@@ -387,7 +387,7 @@ def _emit_request(  # noqa: PLR0913
     headers: Mapping[str, str] | None,
     body: Any,
 ) -> None:
-    """Emit the ``->`` line for an outgoing request."""
+    """Emit the ``→`` line for an outgoing request."""
     req_ct = (headers or {}).get("Content-Type") or (headers or {}).get("content-type")
     LOGGER.debug(
         "→ %s %s [req_id=%s] params=%s headers=%s body=%s",
@@ -410,7 +410,7 @@ def _emit_response(  # noqa: PLR0913
     ct: str | None,
     body: Any,
 ) -> None:
-    """Emit the ``<-`` line for a successful response."""
+    """Emit the ``←`` line for a successful response."""
     LOGGER.debug(
         "← %s %s [req_id=%s] status=%d in %.0fms ct=%s body=%s",
         method,
@@ -437,7 +437,7 @@ def _emit_error(  # noqa: PLR0913
     exc_info: bool = False,
 ) -> None:
     """
-    Emit the ``x`` line for any error path.
+    Emit the ``✗`` line for any error path.
 
     The format is built dynamically from whichever of *status* /
     *exc_name* / *body* / *suffix* is supplied so a single helper

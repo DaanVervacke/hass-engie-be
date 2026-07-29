@@ -767,8 +767,10 @@ def _async_register_services(hass: HomeAssistant) -> None:
 
     Services outlive individual config entries: multiple entries share
     the same registration and the handler routes to the entry that owns
-    the targeted device. Guarded so a second entry setup does not raise
-    ``ServiceRegistrationError``.
+    the targeted device. The ``has_service`` guard makes a second entry
+    setup a no-op. Home Assistant would not raise on a re-registration,
+    it would silently replace the handler, so the guard is about keeping
+    one owner rather than about avoiding an error.
     """
     if hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY):
         return

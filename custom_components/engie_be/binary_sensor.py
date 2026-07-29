@@ -356,7 +356,7 @@ class EngieBeHappyHourActiveSensor(
     _BoundaryScheduleMixin, EngieBeEntity, BinarySensorEntity
 ):
     """
-    Binary sensor that turns ``on`` during a scheduled Happy Hour window.
+    Binary sensor that turns ``on`` during a scheduled Happy Hours window.
 
     Backed by the per-subentry data coordinator (NOT the EPEX
     coordinator): the happy-hour endpoint is account-scoped and the

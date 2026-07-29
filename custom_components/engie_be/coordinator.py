@@ -913,7 +913,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         previous_wrapper: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
         """
-        Fetch the upcoming Happy Hour event for this business agreement.
+        Fetch the upcoming Happy Hours event for this business agreement.
 
         Returns a wrapper ``{"data": <payload-or-None>}``: ``data`` is the
         raw API payload when one is returned (including the empty ``{}``

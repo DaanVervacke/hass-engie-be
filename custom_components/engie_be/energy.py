@@ -5,7 +5,7 @@ Home Assistant's Energy dashboard auto-discovers integrations that implement
 ``async_get_solar_forecast(hass, config_entry_id) -> {"wh_hours": ...}`` and
 uses the response to render the "Solar production forecast" card. The hook
 lives at ``energy.py`` in the integration package; HA loads it lazily via
-``async_get_integration_platforms``.
+``async_process_integration_platforms``.
 
 This implementation aggregates the ENGIE Smart App's solar-surplus forecasts
 (injection expected to exceed household consumption) across every subentry

@@ -165,7 +165,7 @@ def test_is_on_returns_bool_not_none() -> None:
 # Instant-flip scheduler
 #
 # These tests exercise the point-in-time scheduler that makes the sensor
-# flip on/off at the exact second the Happy Hour window starts or ends,
+# flip on/off at the exact second the Happy Hours window starts or ends,
 # instead of waiting up to a full coordinator refresh interval.
 # ---------------------------------------------------------------------------
 

@@ -62,7 +62,7 @@ TOU_FLAG_KEY = "dgo-tou-is-active"
 # - ``day`` - Dart enum, not yet observed.
 # - ``superoffpeak`` - the app carries a ``"Super Offpeak"`` display label,
 #   and the integration already maps ``SUPEROFFPEAK`` for tri-rate PRICE
-#   sensors at ``sensor.py:81``. Tri-rate Belgian contracts extend the
+#   sensors via ``_SLOT_CODE_MAP`` in ``sensor.py``. Tri-rate contracts extend the
 #   binary peak/offpeak split; the same code is expected on the TOU
 #   schedule endpoint for those accounts.
 #

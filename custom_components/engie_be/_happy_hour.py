@@ -204,7 +204,7 @@ def happy_hour_events(
 
 
 def _build_event(start_raw: Any, end_raw: Any) -> CalendarEvent | None:
-    """Build a single Happy Hour ``CalendarEvent`` from raw fields."""
+    """Build a single Happy Hours ``CalendarEvent`` from raw fields."""
     if not isinstance(start_raw, str) or not isinstance(end_raw, str):
         LOGGER.debug(
             "Skipping malformed Happy Hour entry: start/end not strings "

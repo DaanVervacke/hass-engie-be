@@ -510,7 +510,7 @@ class EngieBeApiClient:
         business_agreement_number: str,
     ) -> dict[str, Any]:
         """
-        Fetch the upcoming Happy Hour event for a business agreement.
+        Fetch the upcoming Happy Hours event for a business agreement.
 
         ``business_agreement_number`` is the 12-digit BAN. Passing a
         ``customerAccountNumber`` / CAN here returns HTTP 400.
@@ -689,7 +689,7 @@ class EngieBeApiClient:
         Fetch the ``solar-surplus-shown-dashboard`` boolean feature flag for a BAN.
 
         Mirrors the Smart App's UI gate: ``value: true`` means the customer
-        has a qualifying contract and delivery point for solar surplus, so
+        has a qualifying contract and delivery point for Solar Surplus, so
         it is safe to fetch per-EAN forecasts. ``value: false`` means the
         app hides the surplus tile and we skip the per-EAN fan-out to
         keep the refresh cycle lean.

@@ -16,14 +16,14 @@ Supported conditions:
 - ``engie_be.epex_price_is_above_threshold_quarter_hour`` -> quarter-hourly above thresh
 - ``engie_be.offtake_is_optimal`` -> offtake binary sensor is ``on``
 - ``engie_be.injection_is_optimal`` -> injection binary sensor is ``on``
-- ``engie_be.happy_hours_is_active`` -> happy hours binary sensor is ``on``
+- ``engie_be.happy_hours_is_active`` -> Happy Hours binary sensor is ``on``
 - ``engie_be.captar_peak_is_above_threshold`` -> captar peak power above threshold
 - ``engie_be.outstanding_balance_is_above_threshold`` -> outstanding balance above
   threshold
 - ``engie_be.overdue_amount_is_above_threshold`` -> overdue amount above threshold
-- ``engie_be.solar_surplus_is_above_threshold`` -> current-hour solar surplus above
+- ``engie_be.solar_surplus_is_above_threshold`` -> current-hour Solar Surplus above
   threshold
-- ``engie_be.solar_surplus_is_below_threshold`` -> current-hour solar surplus below
+- ``engie_be.solar_surplus_is_below_threshold`` -> current-hour Solar Surplus below
   threshold
 """
 
@@ -155,7 +155,7 @@ _SOLAR_SURPLUS_SCHEMA = ENTITY_STATE_CONDITION_SCHEMA_ANY_ALL.extend(
 
 
 class SolarSurplusIsAtLevelCondition(_OptionBasedStateCondition):
-    """Condition: solar surplus forecast is at a specific level."""
+    """Condition: Solar Surplus forecast is at a specific level."""
 
     _option_key = _LEVEL
     _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST
@@ -285,13 +285,13 @@ class OverdueAmountIsAboveThresholdCondition(_NumericalThresholdCondition):
 
 
 class SolarSurplusIsAboveThresholdCondition(_NumericalThresholdCondition):
-    """Condition: current-hour solar surplus is above a configured threshold."""
+    """Condition: current-hour Solar Surplus is above a configured threshold."""
 
     _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT
 
 
 class SolarSurplusIsBelowThresholdCondition(_NumericalThresholdCondition):
-    """Condition: current-hour solar surplus is below a configured threshold."""
+    """Condition: current-hour Solar Surplus is below a configured threshold."""
 
     _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT
 
