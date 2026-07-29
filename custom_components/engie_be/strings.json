@@ -650,7 +650,7 @@
         },
         "clear_import_history": {
             "name": "Clear historical usage statistics",
-            "description": "Delete imported historical usage statistics for the selected business-agreement devices. All three energy types are selected by default, uncheck the ones you want to keep. Set 'Include costs' to also clear the matching cost streams. The next 'Import historical usage' call for the same device and energy type will backfill all history again from the business agreement's start date. Use this after ENGIE republishes historical data or if imported values are stale.",
+            "description": "Delete imported historical usage statistics for the selected business-agreement devices. All three energy types are selected by default, uncheck the ones you want to keep. Cost statistics are cleared along with their energy type. Turn off 'Include costs' to keep them. The next 'Import historical usage' call for the same device and energy type will backfill all history again from the business agreement's start date. Use this after ENGIE republishes historical data or if imported values are stale.",
             "fields": {
                 "energy_type": {
                     "name": "Energy type",
@@ -658,7 +658,7 @@
                 },
                 "include_costs": {
                     "name": "Include costs",
-                    "description": "Also clear the per-hour cost (EUR) streams."
+                    "description": "Also clear the matching cost streams. On by default, so clearing a type removes both its energy and its cost statistics."
                 }
             }
         }

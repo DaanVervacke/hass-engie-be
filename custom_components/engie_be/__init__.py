@@ -529,7 +529,7 @@ _CLEAR_IMPORT_HISTORY_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
         vol.Optional(ATTR_ENERGY_TYPE): _ENERGY_TYPE_LIST,
-        vol.Optional(ATTR_INCLUDE_COSTS, default=False): cv.boolean,
+        vol.Optional(ATTR_INCLUDE_COSTS, default=True): cv.boolean,
     },
 )
 
@@ -772,12 +772,19 @@ class _ClearImportHistoryCall:
 
     @classmethod
     def from_service_call(cls, call: ServiceCall) -> _ClearImportHistoryCall:
-        """Read fields off ``call.data``, preserving the handler's original defaults."""
+        """
+        Read fields off ``call.data``.
+
+        ``include_costs`` defaults to ``True`` here, unlike the import
+        path: clearing is a cleanup operation, and leaving a cost stream
+        behind whose energy stream was deleted is the one incoherent
+        outcome.
+        """
         data = call.data
         return cls(
             device_ids=list(data.get(ATTR_DEVICE_ID) or []),
             energy_type=data.get(ATTR_ENERGY_TYPE),
-            include_costs=bool(data.get(ATTR_INCLUDE_COSTS, False)),
+            include_costs=bool(data.get(ATTR_INCLUDE_COSTS, True)),
         )
 
 

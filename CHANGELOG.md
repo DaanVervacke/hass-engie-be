@@ -7,6 +7,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- Clearing historical usage statistics now also clears the matching cost
+  statistics unless you turn "Include costs" off. Previously it left them
+  behind, so a re-import wrote fresh usage data underneath stale costs.
+
 ### Fixed
 
 - A recorder statistics row with a null cumulative sum could raise a

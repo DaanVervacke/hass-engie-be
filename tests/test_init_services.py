@@ -28,7 +28,15 @@ from custom_components.engie_be.const import (
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-from custom_components.engie_be._statistics import streams_for_energy_types
+from custom_components.engie_be._statistics import (
+    STREAM_CONSUMPTION,
+    STREAM_CONSUMPTION_COST,
+    STREAM_GAS,
+    STREAM_GAS_COST,
+    STREAM_INJECTION,
+    STREAM_INJECTION_COST,
+    streams_for_energy_types,
+)
 from custom_components.engie_be.api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
@@ -433,6 +441,91 @@ async def test_clear_import_history_dispatches_expected_streams_across_bans(
     expected = streams_for_energy_types(["consumption"], include_costs=True)
     assert mock_clear.await_count == 2
     for call_args in mock_clear.await_args_list:
+        assert call_args.kwargs["streams"] == expected
+
+
+async def test_clear_import_history_clears_costs_by_default(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Omitting ``include_costs`` clears cost streams too.
+
+    Clearing used to default to energy-only, which left a cost stream
+    alive with no energy stream behind it. That is the one incoherent
+    outcome, so the default is on for clearing (and stays off for
+    importing, where costs are extra work rather than cleanup).
+    """
+    entry = await _setup_two_ban_entry(hass)
+    device_registry = dr.async_get(hass)
+    ban_devices = [
+        device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+        for subentry_id in entry.subentries
+    ]
+    assert all(d is not None for d in ban_devices)
+    device_ids = [d.id for d in ban_devices]
+
+    with patch(
+        "custom_components.engie_be.async_clear_usage_history",
+        new=AsyncMock(return_value=None),
+    ) as mock_clear:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CLEAR_IMPORT_HISTORY,
+            {"device_id": device_ids},
+            blocking=True,
+        )
+
+    expected = frozenset(
+        {
+            STREAM_CONSUMPTION,
+            STREAM_INJECTION,
+            STREAM_GAS,
+            STREAM_CONSUMPTION_COST,
+            STREAM_INJECTION_COST,
+            STREAM_GAS_COST,
+        }
+    )
+    assert mock_clear.await_count == 2
+    for call_args in mock_clear.await_args_list:
+        assert call_args.kwargs["streams"] == expected
+
+
+async def test_import_history_defaults_to_energy_streams_only(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Omitting ``include_costs`` on import stays energy-only.
+
+    Regression guard for the asymmetry with ``engie_be.clear_import_history``:
+    importing is additive and costs double the work against ENGIE's
+    API, so opting in stays required there. Do not "fix" this into
+    symmetry with clearing.
+    """
+    entry = await _setup_two_ban_entry(hass)
+    device_registry = dr.async_get(hass)
+    ban_devices = [
+        device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+        for subentry_id in entry.subentries
+    ]
+    assert all(d is not None for d in ban_devices)
+    device_ids = [d.id for d in ban_devices]
+
+    with patch(
+        "custom_components.engie_be.async_import_usage_history",
+        new=AsyncMock(return_value=42),
+    ) as mock_import:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": device_ids},
+            blocking=True,
+        )
+
+    expected = frozenset({STREAM_CONSUMPTION, STREAM_INJECTION, STREAM_GAS})
+    assert mock_import.await_count == 2
+    for call_args in mock_import.await_args_list:
         assert call_args.kwargs["streams"] == expected
 
 
