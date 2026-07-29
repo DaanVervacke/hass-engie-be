@@ -7,6 +7,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Documentation
+
+- The README now documents both actions in full, with every field and its
+  default, and a YAML example for each. Clearing an import previously read as
+  if it deleted everything, and the required energy type was missing from the
+  one-off import steps.
+
 ### Changed
 
 - Clearing historical usage statistics now also clears the matching cost

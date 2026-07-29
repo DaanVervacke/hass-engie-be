@@ -45,6 +45,7 @@ as sensors, binary sensors, events, and calendar events.
 - [Configuration](#configuration)
 - [Multiple households](#multiple-households)
 - [Historical usage import (Energy dashboard)](#historical-usage-import-energy-dashboard)
+- [Actions](#actions)
 - [Re-authentication](#re-authentication)
 - [Known limitations](#known-limitations)
 - [Removing the integration](#removing-the-integration)
@@ -725,9 +726,11 @@ month, or a re-import after ENGIE corrects some data:
 1. Open **Settings** > **Developer tools** > **Actions**.
 2. Pick **Import historical usage** under **ENGIE Belgium**.
 3. Select your business-agreement device as the target.
-4. Leave both dates empty to import everything from your first business
+4. Under **Energy type**, leave all three selected or uncheck the ones you do
+   not want.
+5. Leave both dates empty to import everything from your first business
    agreement onwards, or fill in a specific window.
-5. Click **Perform action**.
+6. Click **Perform action**.
 
 Running the same window again is safe, existing hours are overwritten.
 Turn on **Include costs** in the same dialog to also import what each
@@ -751,9 +754,13 @@ Save and give the dashboard a moment to refresh.
 
 ### Clear an import
 
-To wipe the imported data (e.g. before a full re-import), use
+To delete imported data, for example before a full re-import, use
 **Clear historical usage statistics** (under **ENGIE Belgium**) from the same
 **Developer tools** > **Actions** screen.
+
+Cost statistics are cleared along with their energy type. Uncheck
+**Include costs** if you want to keep them. See [Actions](#actions) for the
+full field list.
 
 ### Combining with a P1 meter
 
@@ -761,6 +768,75 @@ If you have a P1 meter for real-time data but still want accurate
 historical data from ENGIE, you can use both. The Energy dashboard lets
 you add multiple grid connections under **Grid consumption** (and the
 same for return-to-grid and gas consumption).
+
+## Actions
+
+The integration registers two actions. Both target one or more
+business-agreement devices and can be called from **Developer tools** >
+**Actions**, from a script, or from an automation. Every field is optional in
+YAML, so a call that omits one gets the default below.
+
+In the examples below, `{DEVICE_ID}` is the device ID of the business
+agreement you want to act on. Find it in **Settings** > **Devices & services**
+or pick the device in the UI and switch the dialog to YAML mode.
+
+### `engie_be.import_history`
+
+Fetches historical hourly usage from ENGIE and imports it into long-term
+statistics for the targeted business agreements.
+
+| Field | Default | Description |
+|---|---|---|
+| `energy_type` | all three | Which energy types to import: `consumption`, `injection`, `gas`. |
+| `include_costs` | `false` | Also import the per-hour cost in EUR for each selected energy type. |
+| `start_date` | auto | Start of the window. Leave empty to let the integration choose. |
+| `end_date` | auto | End of the window, inclusive. Leave empty to import through today. |
+
+Leave both dates empty for the normal case. The first run then goes back to
+the business agreement's start date, and later runs only fetch the hours added
+since the last import. Provide dates to re-import a specific window, where
+existing hours inside that window are overwritten in place.
+
+```yaml
+action: engie_be.import_history
+target:
+  device_id: "{DEVICE_ID}"
+data:
+  energy_type:
+    - consumption
+    - injection
+  include_costs: true
+```
+
+### `engie_be.clear_import_history`
+
+Deletes imported historical statistics for the targeted business agreements.
+There is no date range: clearing a stream clears all of it.
+
+| Field | Default | Description |
+|---|---|---|
+| `energy_type` | all three | Which energy types to clear: `consumption`, `injection`, `gas`. |
+| `include_costs` | `true` | Also clear the matching cost streams. On by default, so clearing a type removes both its energy and its cost statistics. |
+
+Note the difference from importing, where **Include costs** is off by default.
+Importing costs is extra work against the ENGIE API, so it is opt-in. Clearing
+is cleanup, so it is complete by default. Turn it off only if you specifically
+want to keep cost statistics for a type whose energy statistics you are
+deleting.
+
+```yaml
+action: engie_be.clear_import_history
+target:
+  device_id: "{DEVICE_ID}"
+data:
+  energy_type:
+    - consumption
+    - injection
+    - gas
+```
+
+The next **Import historical usage** call for the same device and energy type
+backfills everything again from the business agreement's start date.
 
 ## Re-authentication
 
