@@ -56,7 +56,7 @@ Set up a local Python virtual environment and run the test suite:
 ./scripts/setup       # creates .venv and installs dependencies
 ./scripts/lint        # ruff check + format check
 ./scripts/test        # pytest with coverage (target: 95%+)
-./scripts/typecheck   # mypy baseline (informational, does not gate)
+./scripts/typecheck   # mypy --strict, blocking (must report zero errors)
 ```
 
 All scripts use the `.venv` created by `scripts/setup`. You do
