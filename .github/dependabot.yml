@@ -1,15 +1,53 @@
-# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+#
+# Scope: pip and github-actions only.
+#
+# pre-commit is deliberately NOT configured. .pre-commit-config.yaml uses
+# repo: local with language: system hooks that call .venv/bin/ruff, so the
+# hook ruff always matches requirements.txt. There is no rev: for Dependabot
+# to update. The pre-commit package itself is covered by pip below.
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "daily"
-
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "daily"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # mypy is listed FIRST on purpose. A dependency lands in the first
+      # group it matches, so this keeps mypy isolated even if the
+      # exclude-pattern below is ever dropped. It is isolated because it
+      # gates CI since plan 099, and a mypy release that adds new checks
+      # would otherwise turn the whole batch red and hold up ruff bumps
+      # that were perfectly fine.
+      mypy:
+        patterns:
+          - "mypy"
+      python-tooling:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "mypy"
     ignore:
-      # Dependabot should not update Home Assistant as that should match the homeassistant key in hacs.json
+      # homeassistant must match the homeassistant key in hacs.json, and
+      # pytest-homeassistant-custom-component is pinned to a git ref that
+      # Dependabot cannot bump. The two must move together, so bump both
+      # by hand in one commit.
       - dependency-name: "homeassistant"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    commit-message:
+      prefix: "ci(actions)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    ignore:
+      # hassfest is pinned to a master SHA by HA convention. That repo's
+      # only tag is 1.0.0, so Dependabot would either re-pin to a stale
+      # tag or chase master HEAD and pull unreviewed commits into CI.
+      - dependency-name: "home-assistant/actions"
