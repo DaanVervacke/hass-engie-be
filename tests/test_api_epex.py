@@ -235,7 +235,7 @@ async def test_async_get_epex_prices_maps_timeout_to_communication_error(
     """A request timeout is mapped to the generic communication error."""
     client = _build_client_raising(TimeoutError())
 
-    # DEBUG-on exercises the debug ``_log_error`` branch inside the handler.
+    # DEBUG-on exercises the ``RequestLogger.error`` branch inside the handler.
     with (
         caplog.at_level(logging.DEBUG, logger="custom_components.engie_be"),
         pytest.raises(EngieBeApiClientCommunicationError),

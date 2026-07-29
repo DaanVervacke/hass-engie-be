@@ -171,6 +171,27 @@ PYTHON_LITERALS = frozenset({"None", "True", "False", "self", "cls"}) | frozense
 # whole prefix is more honest than allowlisting them one at a time.
 HA_ATTR_PREFIX = "_attr_"
 
+# A reference that resolves nowhere locally but does resolve somewhere in
+# Home Assistant core is usually a genuine citation of an HA internal, such
+# as ``_async_process_on_unload``. But core is roughly 29,600 names across
+# 9,600 files, broad enough that a *private* name can collide by accident,
+# which is how ``tests/test_api_epex.py`` once cited a nonexistent
+# ``_log_error`` and passed only because core happens to define a function
+# of that name in unrelated modules. Public core names are common enough
+# (``auth``, ``email``, ``forecast``) that the same collision risk does not
+# apply the same way, so only private names are held to this stricter bar.
+#
+# Adding an entry here is a claim that the name really is an HA internal
+# worth citing, not a stale local reference that got lucky. Verify it
+# against the installed homeassistant package before adding it.
+HA_INTERNALS = frozenset(
+    {
+        # custom_components/engie_be/__init__.py and tests/test_init.py
+        # both cite HA's own on-unload dispatch by name.
+        "_async_process_on_unload",
+    }
+)
+
 # Canonical spellings of the domain terms. This tuple is the record:
 # a naming decision that lives only in a plan or a review comment does
 # not propagate, which is how the comments kept saying solar surplus
@@ -322,14 +343,30 @@ def check_references(files: list[Path]) -> list[str]:
         return []
 
     core = homeassistant_symbols()
-    return [
-        f"{path.relative_to(REPO)}:{line}: broken-reference: ``{base}`` "
-        f"resolves to no symbol in the package, its imports, or Home "
-        f"Assistant. Rename it, delete it, or add it to KNOWN_VALUES in "
-        f"scripts/check-docs-drift if it is a value rather than a symbol."
-        for path, line, base in unresolved
-        if base not in core
-    ]
+    failures = []
+    for path, line, base in unresolved:
+        core_only = base in core
+        needs_allowlisting = (
+            core_only and base.startswith("_") and base not in HA_INTERNALS
+        )
+        if core_only and not needs_allowlisting:
+            continue
+        if needs_allowlisting:
+            reason = (
+                f"``{base}`` resolves only inside Home Assistant core, and "
+                f"is private. Rename it, delete it, or if it really is an "
+                f"HA internal, add it to HA_INTERNALS in "
+                f"scripts/check-docs-drift"
+            )
+        else:
+            reason = (
+                f"``{base}`` resolves to no symbol in the package, its "
+                f"imports, or Home Assistant. Rename it, delete it, or add "
+                f"it to KNOWN_VALUES in scripts/check-docs-drift if it is a "
+                f"value rather than a symbol"
+            )
+        failures.append(f"{path.relative_to(REPO)}:{line}: broken-reference: {reason}.")
+    return failures
 
 
 def check_line_references(files: list[Path]) -> list[str]:

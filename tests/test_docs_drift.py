@@ -100,6 +100,66 @@ def test_fails_on_a_line_number_reference(
     assert module.main(["custom_components/engie_be"]) == 1
 
 
+def test_fails_on_a_private_name_that_resolves_only_in_ha_core(
+    monkeypatch: pytest.MonkeyPatch, repo_copy: Path
+) -> None:
+    """
+    A private name found nowhere locally, only in core, is reported.
+
+    Core is broad enough (roughly 29,600 names) that a private name can
+    collide with it by accident. `homeassistant_symbols` is stubbed to
+    add one fake private name on top of the real scan, so the case does
+    not depend on which private names the installed HA version happens
+    to define, while genuine core citations elsewhere in the package
+    still resolve.
+    """
+    module = _load(monkeypatch, repo_copy)
+    real_homeassistant_symbols = module.homeassistant_symbols
+    monkeypatch.setattr(
+        module,
+        "homeassistant_symbols",
+        lambda: real_homeassistant_symbols() | {"_totally_fake_core_only_name"},
+    )
+    target = repo_copy / "custom_components" / "engie_be" / "_probe.py"
+    target.write_text(
+        '"""Probe module.\n\n'
+        "Mentions ``_totally_fake_core_only_name`` on purpose.\n"
+        '"""\n',
+        encoding="utf-8",
+    )
+    assert module.main(["custom_components/engie_be"]) == 1
+
+
+def test_passes_on_a_private_name_listed_in_ha_internals(
+    monkeypatch: pytest.MonkeyPatch, repo_copy: Path
+) -> None:
+    """
+    A private core-only name is not reported once it is in HA_INTERNALS.
+
+    Adding an entry there is a claim that the name really is an HA
+    internal worth citing, such as `_async_process_on_unload`, rather
+    than a stale local reference that got lucky.
+    """
+    module = _load(monkeypatch, repo_copy)
+    real_homeassistant_symbols = module.homeassistant_symbols
+    monkeypatch.setattr(
+        module,
+        "homeassistant_symbols",
+        lambda: real_homeassistant_symbols() | {"_totally_fake_core_only_name"},
+    )
+    monkeypatch.setattr(
+        module, "HA_INTERNALS", module.HA_INTERNALS | {"_totally_fake_core_only_name"}
+    )
+    target = repo_copy / "custom_components" / "engie_be" / "_probe.py"
+    target.write_text(
+        '"""Probe module.\n\n'
+        "Mentions ``_totally_fake_core_only_name`` on purpose.\n"
+        '"""\n',
+        encoding="utf-8",
+    )
+    assert module.main(["custom_components/engie_be"]) == 0
+
+
 def test_identifier_in_a_code_span_is_not_a_terminology_error(
     monkeypatch: pytest.MonkeyPatch, repo_copy: Path
 ) -> None:
