@@ -148,8 +148,8 @@ _SLOT = "slot"
 # and _to_states; entity_filter is provided here.
 
 
-class _BinaryEdgeTrigger(  # type: ignore[valid-type, misc]
-    make_entity_target_state_trigger({BINARY_SENSOR_DOMAIN: DomainSpec()}, set())
+class _BinaryEdgeTrigger(
+    make_entity_target_state_trigger({BINARY_SENSOR_DOMAIN: DomainSpec()}, set())  # type: ignore[misc]
 ):
     """
     Base for binary-sensor edge triggers restricted to a single ENGIE entity.
@@ -394,8 +394,8 @@ class InjectionSlotBecameTrigger(_OptionBasedStateTrigger):
 # subclass; we now share a single base and override _translation_key.
 
 
-class _ThresholdTrigger(  # type: ignore[valid-type, misc]
-    make_entity_numerical_state_crossed_threshold_trigger({SENSOR_DOMAIN: DomainSpec()})
+class _ThresholdTrigger(
+    make_entity_numerical_state_crossed_threshold_trigger({SENSOR_DOMAIN: DomainSpec()})  # type: ignore[misc]
 ):
     """
     Base for numerical threshold triggers restricted to a single ENGIE sensor.
