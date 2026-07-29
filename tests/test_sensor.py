@@ -465,7 +465,7 @@ def test_excl_vat_sensors_disabled_by_default(
 
 
 def test_captar_peak_energy_and_timestamps_disabled_by_default() -> None:
-    """Captar peak energy and timestamp sensors must be disabled by default."""
+    """Captar energy, timestamp and latest-daily sensors are disabled by default."""
     assert _CAPTAR_MONTHLY_PEAK_ENERGY.entity_registry_enabled_default is False
     assert _CAPTAR_MONTHLY_PEAK_START.entity_registry_enabled_default is False
     assert _CAPTAR_MONTHLY_PEAK_END.entity_registry_enabled_default is False
@@ -532,7 +532,7 @@ def test_build_sensor_descriptions_default_keeps_excl_vat_disabled() -> None:
 
 
 def test_build_peak_sensors_expose_all_enables_disabled_descriptions() -> None:
-    """Expose-all forces captar peak energy/start/end to enabled-by-default."""
+    """Expose-all enables the four disabled-by-default captar peak sensors."""
     coordinator = MagicMock()
     coordinator.config_entry = MagicMock()
     coordinator.config_entry.entry_id = "test_entry_id"

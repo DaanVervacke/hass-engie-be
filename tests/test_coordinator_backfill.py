@@ -314,8 +314,8 @@ async def test_backfill_refreshes_subentry_title_and_device_name(
     """
     Successful backfill must update the subentry title and rename the device.
 
-    Before backfill the subentry title is the bare BAN (the fallback used
-    when no relations data is available at creation time). After backfill
+    Before backfill the subentry title is the literal "placeholder" string it
+    was created with, standing in for the real label. After backfill
     the title falls through to the consumption address, and the matching
     device must be renamed in place so the registry reflects the new
     label without requiring the user to remove and re-add the entry.

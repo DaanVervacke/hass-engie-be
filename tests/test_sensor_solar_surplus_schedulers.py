@@ -88,7 +88,8 @@ def _make_coordinator(data: object) -> MagicMock:
     return coordinator
 
 
-# Three adjacent slots so next-hour has a value to read at 11:30 Brussels.
+# Three adjacent slots so next-hour still has a value after the
+# 11:00 Brussels boundary.
 _FORECAST = _make_forecast(((10, 0.8), (11, 2.5), (12, 3.4)))
 _SLOT_10_START_UTC = datetime(2026, 7, 8, 8, 0, tzinfo=UTC)  # 10:00 Brussels (+02:00)
 _BOUNDARY_UTC = datetime(2026, 7, 8, 9, 0, tzinfo=UTC)  # 11:00 Brussels

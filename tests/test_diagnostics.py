@@ -227,7 +227,7 @@ def test_redacted_title_is_deterministic_and_short() -> None:
     digest_c = _redacted_title("Other Address 9, 9999 Antwerp")
     assert digest_a == digest_b
     assert digest_a != digest_c
-    # "**REDACTED:" + N hex + "**" = 12 + N characters.
+    # "**REDACTED:" + N hex + "**" = 13 + N characters.
     assert len(digest_a) == len("**REDACTED:") + TITLE_HASH_LENGTH + len("**")
     assert _redacted_title(None) == REDACTED_MARKER
     assert _redacted_title("") == REDACTED_MARKER
@@ -763,7 +763,7 @@ def test_summarise_billing_clear_fixture() -> None:
 
 
 def test_summarise_billing_open_debit_fixture() -> None:
-    """_summarise_billing on open_debit counts transactions and reports no overdue."""
+    """_summarise_billing on open_debit reports the status and one transaction."""
     result = _summarise_billing(_billing_coord("open_debit"))
     assert result is not None
     assert result["has_data"] is True

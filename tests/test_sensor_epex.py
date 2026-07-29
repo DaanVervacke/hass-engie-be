@@ -156,7 +156,7 @@ def _make_epex_qh_coordinator(
 
 def test_build_epex_sensors_creates_four_entities() -> None:
     """
-    The builder always returns the four documented EPEX sensors.
+    With no quarter-hour coordinator the builder returns four hourly sensors.
 
     The set + count is part of the public contract; a regression here
     would break user dashboards. Unique IDs are subentry-scoped because
@@ -862,7 +862,7 @@ def test_qh_current_sensor_uses_lean_slot_shape_to_stay_under_recorder_limit() -
 
 
 def test_hourly_current_sensor_keeps_full_slot_shape() -> None:
-    """Hourly slots (48 slots at most) stay well under the limit as-is."""
+    """Hourly slots keep the full five-field slot shape."""
     payload = _build_payload(
         today=[(14, -0.0123), (15, 0.02565)],
         tomorrow=[(0, 0.08810)],

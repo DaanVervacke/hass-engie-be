@@ -197,8 +197,9 @@ async def test_async_get_epex_prices_raises_communication_error_on_non_auth_4xx_
     """
     Non-401/403 >=400 status codes are mapped to the generic comms error.
 
-    401/403 errors on the EPEX endpoint trigger OAuth reauth flow (via _api_wrapper),
-    so they are not tested here. Other >=400 errors are communication errors.
+    401/403 are mapped to EngieBeApiClientAuthenticationError by
+    _api_wrapper instead, so they are covered separately. Other >=400
+    errors are communication errors.
     """
     client = _build_client(_build_response(status, "boom"))
 
@@ -207,10 +208,9 @@ async def test_async_get_epex_prices_raises_communication_error_on_non_auth_4xx_
 
 
 async def test_async_get_epex_prices_401_triggers_reauth() -> None:
-    """401 on EPEX endpoint triggers OAuth reauth flow."""
-    # Endpoint requires auth; 401 should trigger reauth via _api_wrapper
-    # This is handled by the OAuth flow in _api_wrapper, which raises
-    # EngieBeApiClientAuthenticationError
+    """401 on the EPEX endpoint raises EngieBeApiClientAuthenticationError."""
+    # _api_wrapper maps 401/403 straight to
+    # EngieBeApiClientAuthenticationError, with no retry or refresh.
 
     client = _build_client(_build_response(401, "boom"))
 

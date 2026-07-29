@@ -102,7 +102,7 @@ def test_extract_business_agreements_keeps_account_holder_name_from_can() -> Non
 
 
 def test_extract_business_agreements_handles_single_active_ban() -> None:
-    """The bundled single-CAN fixture produces one entry per active BAN."""
+    """The bundled two-CAN fixture produces one entry per active BAN."""
     agreements = extract_business_agreements(_load_relations())
     bans = sorted(a[CONF_BUSINESS_AGREEMENT_NUMBER] for a in agreements)
     assert bans == ["002200000001", "002200000002"]

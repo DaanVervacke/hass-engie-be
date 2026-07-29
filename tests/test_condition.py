@@ -260,7 +260,7 @@ async def test_epex_negative_false_when_entity_missing(hass: HomeAssistant) -> N
 async def test_epex_negative_rejects_wrong_translation_key(
     hass: HomeAssistant,
 ) -> None:
-    """Entity from a different integration is excluded by entity_filter."""
+    """An entity with a different translation_key is excluded by entity_filter."""
     entry = _make_entry(hass)
     # Register with a different translation_key (not 'epex_negative').
     entity_id = _register_entity(

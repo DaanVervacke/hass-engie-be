@@ -253,7 +253,7 @@ def test_reward_sensor_attrs_empty_when_no_payload() -> None:
 
 
 def test_all_sensors_expose_report_month_and_is_fallback() -> None:
-    """All three sensors expose report_month and report_is_fallback attributes."""
+    """All six sensors expose report_month and report_is_fallback attributes."""
     coordinator = _make_coordinator(_wrap(_report(), is_fallback=False))
     subentry = _make_subentry()
     sensors = _build_happy_hour_month_report_sensors(coordinator, subentry)
@@ -281,11 +281,6 @@ def test_sensors_omit_report_month_when_wrapper_absent() -> None:
         attrs = sensor.extra_state_attributes
         assert "report_month" not in attrs
         assert "report_is_fallback" not in attrs
-
-
-# ---------------------------------------------------------------------------
-# entity_id slug
-# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------

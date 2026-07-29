@@ -155,8 +155,7 @@ async def test_async_get_customer_account_relations_raises_auth_error(
 
     The relations endpoint is bearer-authenticated and lives behind the
     user's ENGIE session. Auth-style failures here genuinely mean the
-    session is invalid and must trigger reauth, unlike the public EPEX
-    endpoint where the same status codes are coerced to comm errors.
+    session is invalid and must trigger reauth.
     """
     client = _build_client(_build_response(status, "denied"))
 

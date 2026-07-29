@@ -163,7 +163,7 @@ class TestRedactMapping:
         assert out == {"customerAccountNumber": f"{_REDACTED}7890"}
 
     def test_partial_mask_recurses_into_nested_pii(self) -> None:
-        """A PII key holding a dict (e.g. address) recurses, not collapses."""
+        """A non-PII key holding a dict still has its PII children masked."""
         out = _redact_mapping(
             {
                 "address": {
@@ -587,7 +587,7 @@ async def test_api_wrapper_logs_request_and_response_with_correlated_req_id(
 async def test_api_wrapper_redacts_secrets_in_request_and_response(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Tokens, passwords, and OAuth state are masked in DEBUG logs."""
+    """Refresh and access tokens are masked in DEBUG logs."""
     response = _make_response(
         status=200,
         json_body={"access_token": "eyJSECRETabc", "refresh_token": "v0.SECRETnew"},

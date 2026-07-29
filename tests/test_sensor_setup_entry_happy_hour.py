@@ -25,7 +25,7 @@ def _make_subentry(
     subentry_id: str = "sub_test",
     title: str = "Test Account",
 ) -> MagicMock:
-    """Build a MagicMock ConfigSubentry of the customer-account type."""
+    """Build a MagicMock ConfigSubentry of the business-agreement type."""
     subentry = MagicMock()
     subentry.subentry_id = subentry_id
     subentry.subentry_type = SUBENTRY_TYPE_BUSINESS_AGREEMENT

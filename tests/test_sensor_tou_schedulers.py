@@ -103,8 +103,8 @@ def _offtake_sensor(coordinator: MagicMock) -> EngieBeTouSlotSensor:
     )
 
 
-# Monday 2026-07-07 05:30 Brussels (UTC+02:00 CEST) = 03:30 UTC
-# Monday 2026-07-07 06:00 Brussels = 04:00 UTC - slot flips OFFPEAK -> PEAK.
+# Tuesday 2026-07-07 05:30 Brussels (UTC+02:00 CEST) = 03:30 UTC
+# Tuesday 2026-07-07 06:00 Brussels = 04:00 UTC - slot flips OFFPEAK -> PEAK.
 _MONDAY_05_30_UTC = datetime(2026, 7, 7, 3, 30, tzinfo=UTC)
 _MONDAY_06_00_UTC = datetime(2026, 7, 7, 4, 0, tzinfo=UTC)
 

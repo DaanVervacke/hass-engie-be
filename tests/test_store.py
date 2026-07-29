@@ -1,4 +1,4 @@
-"""Tests for the persistent peaks history store."""
+"""Tests for the persistent peaks history and Happy Hours window stores."""
 
 from __future__ import annotations
 

@@ -663,7 +663,7 @@ def test_earliest_contract_start_date_falls_back_to_startdate() -> None:
 
 
 def test_earliest_contract_start_date_returns_none_when_no_match() -> None:
-    """No matching active contracts -> None (caller falls back)."""
+    """No contract carrying a parseable start date -> None (caller falls back)."""
     assert earliest_contract_start_date(None, frozenset({STREAM_GAS})) is None
     assert earliest_contract_start_date({}, frozenset({STREAM_GAS})) is None
     assert (

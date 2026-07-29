@@ -45,14 +45,15 @@ _BRUSSELS = ZoneInfo(EPEX_TZ)
 _NOW_BRUSSELS = datetime(2026, 5, 4, 15, 30, 0, tzinfo=_BRUSSELS)
 _NOW_UTC = _NOW_BRUSSELS.astimezone(UTC)
 
-# Anchor "now" inside the 96h (quarter-hourly) fixture window.
+# Anchor "now" inside the epex_96h fixture window: 96 quarter-hourly
+# slots, so a single Brussels day rather than 96 hours.
 # 2026-05-04 15:30 Brussels is aligned with a 15-minute slot boundary.
 _NOW_BRUSSELS_QH = datetime(2026, 5, 4, 15, 30, 0, tzinfo=_BRUSSELS)
 _NOW_UTC_QH = _NOW_BRUSSELS_QH.astimezone(UTC)
 
 
 def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Build a v4 parent ConfigEntry. EPEX coord doesn't need subentries."""
+    """Build a v5 parent ConfigEntry. EPEX coord doesn't need subentries."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         version=5,

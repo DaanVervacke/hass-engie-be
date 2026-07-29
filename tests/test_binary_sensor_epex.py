@@ -459,7 +459,7 @@ def _make_entry(
     subentries: dict[str, MagicMock],
     sub_runtime: dict[str, MagicMock],
 ) -> MagicMock:
-    """Build a MagicMock parent ConfigEntry exposing the v3 runtime layout."""
+    """Build a MagicMock parent ConfigEntry exposing the v5 runtime layout."""
     entry = MagicMock()
     entry.entry_id = "test_entry_id"
     entry.options = {}

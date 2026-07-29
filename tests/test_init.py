@@ -1770,7 +1770,11 @@ async def test_populate_dynamic_flags_skips_when_no_business_agreement(
 async def test_populate_dynamic_flags_skips_subentry_without_runtime_data(
     hass: HomeAssistant,
 ) -> None:
-    """A subentry missing from runtime_data is skipped without writing state."""
+    """
+    A subentry missing from runtime_data still triggers the contracts lookup.
+
+    The result is fetched and then discarded, so the call happens either way.
+    """
     entry = _build_entry(hass)
     entry.runtime_data = EngieBeData(
         client=MagicMock(),

@@ -66,9 +66,10 @@ def _build_entry(
                 title="placeholder",
                 unique_id=business_agreement_number,
                 data={
-                    # Provide all relations-backfillable keys so the
-                    # coordinator's one-shot backfill stays disabled and
-                    # we don't need to mock the relations endpoint.
+                    # Provide the display fields the assertions read back.
+                    # Backfill itself is neutralised by
+                    # the autouse _disable_relations_backfill fixture in
+                    # conftest, so the relations endpoint is never called.
                     CONF_BUSINESS_AGREEMENT_NUMBER: business_agreement_number,
                     CONF_PREMISES_NUMBER: "P-0001",
                     CONF_CONSUMPTION_ADDRESS: "Test 1, 1000 Brussels",

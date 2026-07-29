@@ -1,4 +1,4 @@
-"""Direct tests for ``_tou_calendar._slots_to_events`` date-math edges."""
+"""Direct tests for ``_tou_calendar`` date-math edges and payload guards."""
 
 from __future__ import annotations
 
@@ -253,7 +253,7 @@ def test_slots_to_events_non_dict_slot_is_skipped() -> None:
     ],
 )
 def test_slots_to_events_incomplete_slot_is_skipped(slot: dict[str, object]) -> None:
-    """A slot missing/malformed start, end, or code is skipped rather than raising."""
+    """A slot missing/malformed start or code is skipped rather than raising."""
     schedule = {"monday": [slot]}
     events = _slots_to_events(
         direction="offtake",

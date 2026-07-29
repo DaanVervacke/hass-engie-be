@@ -134,7 +134,7 @@ async def test_coordinator_update_rearms_on_new_payload(
     hass: HomeAssistant,
     add_sensor: AddSensor,
 ) -> None:
-    """A coordinator refresh swaps the timer to the new slot boundary."""
+    """A coordinator refresh replaces the timer instead of stacking a second one."""
     coordinator = _make_coordinator(_PAYLOAD)
     sensor = EngieBeEpexNegativeSensor(coordinator, _make_subentry())
     inside = _NEG_SLOT_START_UTC + timedelta(minutes=30)

@@ -70,7 +70,7 @@ def test_parse_hhmm_accepts_normal_values() -> None:
 
 
 def test_current_slot_skips_malformed_slot() -> None:
-    """A slot with missing startTime is skipped; the next valid one wins."""
+    """An unparseable startTime is skipped and the next valid slot wins."""
     schedule = {
         "monday": [
             {"startTime": "bogus", "endTime": "06:00", "slotCode": "PEAK"},

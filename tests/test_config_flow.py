@@ -1862,7 +1862,7 @@ async def test_import_options_gas_only_ban_hides_elec(
     """
     A BAN with only GAS contracts exposes only gas.
 
-    Submitting consumption or injection must be rejected by the schema.
+    Submitting consumption must be rejected by the schema.
     """
     relations = _load_relations_fixture()
     first_ban = relations["items"][0]["customerAccount"]["businessAgreements"][0][
