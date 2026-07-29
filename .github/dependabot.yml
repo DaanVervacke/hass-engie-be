@@ -15,20 +15,29 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
-      # mypy is listed FIRST on purpose. A dependency lands in the first
-      # group it matches, so this keeps mypy isolated even if the
-      # exclude-pattern below is ever dropped. It is isolated because it
-      # gates CI since plan 099, and a mypy release that adds new checks
-      # would otherwise turn the whole batch red and hold up ruff bumps
-      # that were perfectly fine.
+      # mypy and ruff are listed FIRST on purpose. A dependency lands in
+      # the first group it matches, so this keeps both isolated even if
+      # the exclude-patterns below are ever dropped.
+      #
+      # Both gate CI, so a release that tightens either one must fail on
+      # its own rather than reddening a batch and holding up bumps that
+      # were perfectly fine. mypy gates via scripts/typecheck since plan
+      # 099. ruff gates via the Lint workflow and is the worse offender:
+      # .ruff.toml uses select = ["ALL"], so every rule ruff ever ships
+      # is active on arrival. Ruff 0.16.0 proved this immediately by
+      # promoting CPY001 and failing 108 test files.
       mypy:
         patterns:
           - "mypy"
+      ruff:
+        patterns:
+          - "ruff"
       python-tooling:
         patterns:
           - "*"
         exclude-patterns:
           - "mypy"
+          - "ruff"
     ignore:
       # homeassistant must match the homeassistant key in hacs.json, and
       # pytest-homeassistant-custom-component is pinned to a git ref that
