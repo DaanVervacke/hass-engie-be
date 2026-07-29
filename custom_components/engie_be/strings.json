@@ -609,7 +609,7 @@
             "message": "None of the selected devices belong to an active ENGIE Belgium business agreement."
         },
         "service_entry_reloading": {
-            "message": "The ENGIE Belgium integration is reloading (entry {entry_id}). Try again in a few seconds."
+            "message": "The ENGIE Belgium entry {entry_id} is not loaded. If it is reloading, try again in a few seconds. Otherwise check Settings -> Devices & Services for a setup error and re-authenticate if prompted."
         },
         "service_no_energy_type_selected": {
             "message": "Select at least one energy type."

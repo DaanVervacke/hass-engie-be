@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components import persistent_notification as pn
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import ATTR_DEVICE_ID, Platform
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
@@ -74,6 +75,7 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant, ServiceCall
     from homeassistant.helpers.device_registry import DeviceEntry
+    from homeassistant.helpers.typing import ConfigType
 
     from .data import EngieBeConfigEntry
 
@@ -83,6 +85,24 @@ PLATFORMS: list[Platform] = [
     Platform.EVENT,
     Platform.SENSOR,
 ]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa: ARG001
+    """
+    Register domain-level services once, independently of any config entry.
+
+    Services are registered here rather than in ``async_setup_entry`` so
+    they still exist when every entry fails to load, which is the common
+    case when the stored ENGIE refresh token has expired. Without this,
+    an automation calling ``engie_be.import_history`` would fail with
+    "service not found" and give the user no hint about the real cause.
+    With it, the call reaches ``_resolve_targets``, which raises a
+    translated ``ServiceValidationError`` naming the unloaded entry.
+    """
+    _async_register_services(hass)
+    return True
 
 
 async def async_migrate_entry(
@@ -293,8 +313,6 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _async_reenable_expose_all_entities(hass, entry)
-
-    _async_register_services(hass)
 
     # Spawn setup-time background import tasks for subentries that have
     # ``import_history = True`` and have not yet accumulated any statistics.
@@ -525,13 +543,10 @@ def _resolve_targets(
     Resolve service ``device_id`` targets to (entry, subentry) pairs.
 
     Skips (with a warning) any device that is not a business-agreement
-    device or whose owning entry is not currently loaded. Setup order
-    guarantees that any entry returned here has ``runtime_data.client``
-    populated: ``_async_register_services`` runs only after
-    ``async_setup_entry`` has forwarded platforms, which itself runs
-    after the parent ``EngieBeData`` (holding the client) is assigned to
-    ``entry.runtime_data``. Callers can dereference the client without a
-    further None check.
+    device. Raises a translated ``ServiceValidationError`` when the
+    owning entry is not in the ``LOADED`` state, so callers can
+    dereference ``runtime_data.client`` on any entry returned here
+    without a further None check.
     """
     device_reg = dr.async_get(hass)
     resolved: list[tuple[EngieBeConfigEntry, ConfigSubentry]] = []
@@ -563,14 +578,19 @@ def _resolve_targets(
             subentry = entry.subentries.get(subentry_id)
             if subentry is None:
                 continue
-            # Guard against the narrow reload window where ``runtime_data``
-            # can be transiently unset between the old teardown and the new
-            # setup. Callers dereference ``.client`` right after, so a stale
-            # entry would AttributeError. Raise a translated
-            # ``ServiceValidationError`` so the user sees an actionable
-            # message and can retry once the reload settles.
-            runtime = getattr(entry, "runtime_data", None)
-            if runtime is None or getattr(runtime, "client", None) is None:
+            # Gate on entry state, not on ``runtime_data``. Services are
+            # registered from ``async_setup``, so an entry reached here can
+            # be mid-reload, unloaded, or one that never set up at all
+            # (expired refresh token). ``runtime_data`` does not detect the
+            # last case: ``async_setup_entry`` assigns it before the token
+            # refresh that raises, and HA only deletes it on a real unload
+            # (``config_entries.py::ConfigEntry.async_unload``), so a failed
+            # setup leaves a live-looking client behind and the import would
+            # silently no-op against an unauthenticated client. Entry state
+            # is accurate for all three cases, and ``LOADED`` guarantees
+            # ``async_setup_entry`` ran to completion, so callers can
+            # dereference ``runtime_data.client`` without a None check.
+            if entry.state is not ConfigEntryState.LOADED:
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,
                     translation_key="service_entry_reloading",
@@ -763,17 +783,13 @@ class _ClearImportHistoryCall:
 
 def _async_register_services(hass: HomeAssistant) -> None:
     """
-    Register domain-level services once per HA startup.
+    Register the domain-level services.
 
-    Services outlive individual config entries: multiple entries share
-    the same registration and the handler routes to the entry that owns
-    the targeted device. The ``has_service`` guard makes a second entry
-    setup a no-op. Home Assistant would not raise on a re-registration,
-    it would silently replace the handler, so the guard is about keeping
-    one owner rather than about avoiding an error.
+    Called once from ``async_setup``, before any config entry is set up.
+    Services outlive individual config entries: every entry shares the
+    same registration and the handler routes to the entry that owns
+    the targeted device, resolving it at call time via ``_resolve_targets``.
     """
-    if hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY):
-        return
 
     async def _handle_import_history(call: ServiceCall) -> None:
         payload = _ImportHistoryCall.from_service_call(call)

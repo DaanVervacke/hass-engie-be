@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from homeassistant.config_entries import ConfigSubentryData
+from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import device_registry as dr
@@ -211,11 +211,11 @@ async def test_clear_service_raises_when_energy_type_is_explicitly_empty(
     assert exc_info.value.translation_key == "service_no_energy_type_selected"
 
 
-async def test_service_raises_when_entry_is_reloading(
+async def test_service_raises_when_entry_is_not_loaded(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
-    """Targeting a BAN device while runtime_data.client is None raises service_entry_reloading."""  # noqa: E501
+    """Targeting a BAN device on an unloaded entry raises service_entry_reloading."""
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
 
@@ -224,8 +224,13 @@ async def test_service_raises_when_entry_is_reloading(
     )
     assert ban_device is not None
 
-    # Simulate the reload race: client is transiently None.
-    entry.runtime_data.client = None
+    # Unload the entry. This is the state HA passes through mid-reload and
+    # the one it rests in after a manual disable. Nothing in the
+    # integration ever sets ``runtime_data.client`` to None, so unloading
+    # is the real way to reach this guard rather than nulling the client.
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.NOT_LOADED
 
     with pytest.raises(ServiceValidationError) as exc_info:
         await hass.services.async_call(
@@ -523,3 +528,77 @@ async def test_import_history_continues_when_one_ban_auth_rejected(
     warning_call: call = mock_logger.warning.call_args
     assert "authentication rejected" in warning_call.args[0]
     mock_logger.exception.assert_not_called()
+
+
+async def test_services_registered_when_entry_fails_to_setup(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Services exist even when no config entry loads successfully.
+
+    Regression guard for the ``action-setup`` quality-scale rule: services
+    used to be registered at the end of ``async_setup_entry``, so an entry
+    that failed on expired credentials left automations calling
+    ``engie_be.import_history`` with a bare "service not found".
+    """
+    entry = _build_entry(hass)
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient.async_refresh_token",
+        side_effect=EngieBeApiClientAuthenticationError("token expired"),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is not ConfigEntryState.LOADED
+    assert hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY)
+    assert hass.services.has_service(DOMAIN, SERVICE_CLEAR_IMPORT_HISTORY)
+
+
+async def test_import_history_on_failed_entry_reports_not_loaded(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Calling a service against a never-loaded entry raises, it does not no-op.
+
+    ``runtime_data`` is not a usable liveness signal here: it is assigned
+    early in ``async_setup_entry``, before the token refresh that fails,
+    and HA only deletes it on a real unload. Gating on it would let the
+    import proceed against an unauthenticated client, where the handler
+    swallows the auth error as a log warning and the user sees a silent
+    success. ``_resolve_targets`` gates on entry state instead.
+    """
+    entry = _build_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    # Platforms never load on a failed setup, so no device is created for
+    # us. Register the business-agreement device directly, matching the
+    # identifier scheme ``_resolve_targets`` looks for.
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        config_subentry_id=subentry_id,
+        identifiers={(DOMAIN, subentry_id)},
+        name="Rue de la Loi 16, 1000 Brussels",
+    )
+
+    with patch(
+        "custom_components.engie_be.EngieBeApiClient.async_refresh_token",
+        side_effect=EngieBeApiClientAuthenticationError("token expired"),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is not ConfigEntryState.LOADED
+    # The entry kept a live-looking client despite never loading, which is
+    # exactly the trap this guard exists for.
+    assert getattr(entry.runtime_data, "client", None) is not None
+
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": [device.id]},
+            blocking=True,
+        )
+    assert err.value.translation_key == "service_entry_reloading"

@@ -16,6 +16,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - A racing token refresh could, in a narrow edge case, hand back an unset
   access token instead of a real one. It now fails with an authentication
   error rather than leaking that empty token to a caller.
+- The import history and clear import history actions are now available even
+  when the integration fails to start, for example after the stored login
+  expired. Automations that call them now report what is actually wrong
+  instead of failing with an unknown action error.
 
 ## [0.13.3] - 2026-07-28
 
