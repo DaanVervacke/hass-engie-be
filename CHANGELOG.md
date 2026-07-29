@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.14.0b1] - 2026-07-29
+
 ### Documentation
 
 - The README now documents both actions in full, with every field and its
@@ -31,6 +33,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
+- Two EPEX triggers showed the same description in the automation editor,
+  hiding which one was current hour and which next hour. The wording now
+  differs again, and a test pins the editor strings to the translation file
+  so they cannot drift apart silently.
+- Threshold condition descriptions no longer promise an "above" or "below"
+  direction the condition does not enforce.
 - A recorder statistics row with a null cumulative sum could raise a
   TypeError during historical usage import, aborting a resume or a
   re-import. It now falls back to 0.0 the same way a missing row already
@@ -1428,7 +1436,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.3...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b1...HEAD
+[0.14.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.3...v0.14.0b1
 [0.13.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0...v0.13.1
