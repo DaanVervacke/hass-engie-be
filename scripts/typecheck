@@ -15,6 +15,4 @@ else
 fi
 
 cd "$REPO_DIR"
-# Baseline mode: report but never fail the build. Plan 099 flips this
-# to a hard gate once the error count reaches zero.
-$MYPY custom_components/engie_be || true
+$MYPY custom_components/engie_be

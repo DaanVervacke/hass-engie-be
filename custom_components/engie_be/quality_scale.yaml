@@ -66,4 +66,4 @@ rules:
   inject-websession:
     status: exempt
     comment: Main EngieBeApiClient accepts an injected session (see api.py:578-586); the pre-token OAuth/MFA flow creates an isolated aiohttp.ClientSession at api.py:620 to prevent cookie leakage across concurrent logins. The requirement is met for the client that HA integrations extend; the auth-flow scratch session is intentional isolation.
-  strict-typing: todo
+  strict-typing: done

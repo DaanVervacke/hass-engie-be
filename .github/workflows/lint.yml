@@ -34,9 +34,8 @@ jobs:
         run: python3 -m ruff format . --check
 
   mypy:
-    name: "Mypy (non-blocking baseline)"
+    name: "Mypy"
     runs-on: "ubuntu-latest"
-    continue-on-error: true
     steps:
       - name: Checkout the repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -50,5 +49,5 @@ jobs:
       - name: Install requirements
         run: python3 -m pip install -r requirements.txt
 
-      - name: Typecheck (baseline, does not gate)
+      - name: Typecheck
         run: python3 -m mypy custom_components/engie_be

@@ -7,6 +7,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- A recorder statistics row with a null cumulative sum could raise a
+  TypeError during historical usage import, aborting a resume or a
+  re-import. It now falls back to 0.0 the same way a missing row already
+  did.
+- A racing token refresh could, in a narrow edge case, hand back an unset
+  access token instead of a real one. It now fails with an authentication
+  error rather than leaking that empty token to a caller.
+
 ## [0.13.3] - 2026-07-28
 
 ### Fixed
