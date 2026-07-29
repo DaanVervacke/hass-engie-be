@@ -1257,7 +1257,7 @@
         },
         "epex_current_crossed_threshold": {
             "name": "EPEX current hour price crossed threshold",
-            "description": "Fires when the EPEX hour day-ahead price crosses into the configured threshold range.",
+            "description": "Fires when the current EPEX hour price crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",
@@ -1267,7 +1267,7 @@
         },
         "epex_next_hour_crossed_threshold": {
             "name": "EPEX next hour price crossed threshold",
-            "description": "Fires when the EPEX hour day-ahead price crosses into the configured threshold range.",
+            "description": "Fires when the next EPEX hour price crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
                     "name": "Threshold",

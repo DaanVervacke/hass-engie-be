@@ -860,13 +860,13 @@
                 "name": "Happy Hours monthly reward vs last month"
             },
             "epex_current": {
-                "name": "EPEX current price"
+                "name": "EPEX current hour price"
             },
             "epex_low_today": {
-                "name": "EPEX lowest price today"
+                "name": "EPEX lowest hour price today"
             },
             "epex_high_today": {
-                "name": "EPEX highest price today"
+                "name": "EPEX highest hour price today"
             },
             "epex_next_hour": {
                 "name": "EPEX next hour price"
@@ -1032,8 +1032,8 @@
     },
     "conditions": {
         "epex_price_is_negative": {
-            "name": "EPEX price is negative",
-            "description": "True when the current EPEX day-ahead price is negative (you are paid to consume)."
+            "name": "EPEX hour price is negative",
+            "description": "True when the current EPEX hour day-ahead price is negative (you are paid to consume)."
         },
         "solar_surplus_is_at_level": {
             "name": "Solar Surplus is at level",
@@ -1066,8 +1066,8 @@
             }
         },
         "epex_price_is_below_threshold": {
-            "name": "EPEX price is below threshold",
-            "description": "True when the current EPEX day-ahead price meets the configured threshold. The direction is set in the threshold field.",
+            "name": "EPEX hour price is below threshold",
+            "description": "True when the current EPEX hour day-ahead price meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::condition_threshold_name%]",
@@ -1076,8 +1076,8 @@
             }
         },
         "epex_price_is_above_threshold": {
-            "name": "EPEX price is above threshold",
-            "description": "True when the current EPEX day-ahead price meets the configured threshold. The direction is set in the threshold field.",
+            "name": "EPEX hour price is above threshold",
+            "description": "True when the current EPEX hour day-ahead price meets the configured threshold. The direction is set in the threshold field.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::condition_threshold_name%]",
@@ -1174,12 +1174,12 @@
     },
     "triggers": {
         "epex_became_negative": {
-            "name": "EPEX price became negative",
-            "description": "Fires when the EPEX day-ahead price turns negative (you are paid to consume)."
+            "name": "EPEX hour price became negative",
+            "description": "Fires when the EPEX hour day-ahead price turns negative (you are paid to consume)."
         },
         "epex_no_longer_negative": {
-            "name": "EPEX price no longer negative",
-            "description": "Fires when the EPEX day-ahead price returns to zero or positive."
+            "name": "EPEX hour price no longer negative",
+            "description": "Fires when the EPEX hour day-ahead price returns to zero or positive."
         },
         "offtake_became_optimal": {
             "name": "Offtake became optimal",
@@ -1256,8 +1256,8 @@
             }
         },
         "epex_current_crossed_threshold": {
-            "name": "EPEX current price crossed threshold",
-            "description": "Fires when the current-hour EPEX price crosses into the configured threshold range.",
+            "name": "EPEX current hour price crossed threshold",
+            "description": "Fires when the current EPEX hour price crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::trigger_threshold_name%]",
@@ -1266,8 +1266,8 @@
             }
         },
         "epex_next_hour_crossed_threshold": {
-            "name": "EPEX next-hour price crossed threshold",
-            "description": "Fires when the next-hour EPEX price crosses into the configured threshold range.",
+            "name": "EPEX next hour price crossed threshold",
+            "description": "Fires when the next EPEX hour price crosses into the configured threshold range.",
             "fields": {
                 "threshold": {
                     "name": "[%key:component::engie_be::common::trigger_threshold_name%]",
@@ -1330,12 +1330,12 @@
             "description": "Fires when the captar monthly peak power value changes."
         },
         "epex_high_today_updated": {
-            "name": "EPEX highest price today updated",
-            "description": "Fires when today's EPEX highest price changes."
+            "name": "EPEX highest hour price today updated",
+            "description": "Fires when the highest EPEX hour price for today changes."
         },
         "epex_low_today_updated": {
-            "name": "EPEX lowest price today updated",
-            "description": "Fires when today's EPEX lowest price changes."
+            "name": "EPEX lowest hour price today updated",
+            "description": "Fires when the lowest EPEX hour price for today changes."
         },
         "epex_became_negative_quarter_hour": {
             "name": "EPEX quarter-hourly price became negative",
