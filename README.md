@@ -59,23 +59,21 @@ as sensors, binary sensors, events, and calendar events.
 
 ## Use cases
 
-- On a dynamic tariff, run the dishwasher, the heat pump or the EV charger
-  when the EPEX day-ahead price is lowest, or when it goes negative and you
-  are paid to consume. On any tariff, do the same inside a Happy Hours window.
-- Track the capacity tariff. The captar sensors report this month's peak
-  window per business agreement: its power, its energy, and when it started
-  and ended. ENGIE publishes peaks after the fact, so a peak has already been
-  set by the time the sensors show it. Enable the daily-peak sensor for the
-  per-day picture.
-- Start deferrable loads on the hours where the Solar Surplus forecast expects
-  surplus. The same three-day forecast feeds the Energy dashboard.
-- Read your own contract's rates per meter instead of a national average, and
-  see your outstanding balance, overdue amount and next invoice due date.
-- Import years of hourly usage into the Energy dashboard in one action, with
-  or without per-hour costs.
+- Run the dishwasher, the heat pump or the EV charger when electricity is
+  cheapest: on a dynamic tariff when the EPEX day-ahead price is lowest or
+  turns negative, on any tariff inside a Happy Hours window.
+- Hold back high-draw appliances once this month's captar peak is already
+  high, so a new peak does not raise your capacity tariff. ENGIE publishes
+  peaks after the fact, so the trigger tells you a peak has been set rather
+  than warning you while one is forming.
+- Start deferrable loads on the hours where surplus solar is forecast instead
+  of exporting it.
+- Get notified when your outstanding balance or overdue amount crosses an
+  amount you choose.
 
-Automations for the first two are in
-[YAML-based examples](#yaml-based-examples) and in the blueprints.
+Each of these is built in the automation editor from the ENGIE triggers and
+conditions. See [Automations](#automations). If you prefer YAML, there are
+worked examples under [YAML-based examples](#yaml-based-examples).
 
 ## Features
 
@@ -688,9 +686,8 @@ push channel, so a value is only as recent as the last poll.
 
 One coordinator per business agreement fetches prices, peaks, Happy Hours,
 billing and Solar Surplus on a single timer. EPEX day-ahead prices are fetched
-on their own coordinators, on the same timer. The interval is the **Update
-interval** option, 60 minutes by default and adjustable between 5 and 1440
-minutes.
+on their own coordinators, on the same timer. The interval is the
+**Update interval** option, set under [Options](#options).
 
 Time-of-Use and EPEX sensors do not wait for a poll to change value. They are
 scheduled to update on the exact slot boundary, so the current-price and
@@ -698,10 +695,10 @@ current-slot sensors change on the hour or quarter hour wherever the poll
 interval happens to fall. Lowering the interval fetches newer data. It does
 not change when these sensors update.
 
-A shorter interval means more requests to ENGIE. The upstream data changes
-less often than the 60 minute default already allows for: contract prices
-change rarely, day-ahead prices are published once a day around 14:00 Brussels
-time, and hourly usage data lags by a few days.
+A shorter interval means more requests to ENGIE, and the upstream data changes
+less often than the default already allows for: contract prices change rarely,
+day-ahead prices are published once a day around 14:00 Brussels time, and
+hourly usage data lags by a few days.
 
 ## Multiple households
 
@@ -782,7 +779,8 @@ month, or a re-import after ENGIE corrects some data:
 
 Running the same window again is safe, existing hours are overwritten.
 Turn on **Include costs** in the same dialog to also import what each
-hour cost you in EUR.
+hour cost you in EUR. The full field reference for both actions is under
+[Actions](#actions).
 
 ### Add to the Energy dashboard
 
