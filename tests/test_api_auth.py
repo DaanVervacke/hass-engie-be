@@ -127,11 +127,49 @@ class _MutatingLock:
         return False
 
 
+class _MutatingLockNoAccessToken:
+    """
+    Async-lock stand-in that rotates only ``refresh_token`` on enter.
+
+    Simulates a racing caller that mutated the refresh token without ever
+    setting ``access_token`` (this cannot happen through
+    :meth:`EngieBeApiClient.async_refresh_token` itself, which always
+    assigns both together, but guards against a caller that mutates the
+    tokens directly).
+    """
+
+    def __init__(self, client: EngieBeApiClient) -> None:
+        self._client = client
+
+    async def __aenter__(self) -> Self:
+        """Rotate only the refresh token, leaving access_token unset."""
+        self._client.access_token = None
+        self._client.refresh_token = "racer-refresh"  # noqa: S105
+        return self
+
+    async def __aexit__(self, *_args: object) -> bool:
+        """Do not suppress exceptions from the guarded block."""
+        return False
+
+
 async def test_refresh_token_without_token_raises() -> None:
     """Refreshing with no refresh token is an authentication error."""
     client = EngieBeApiClient(session=MagicMock(), client_id="client-1")
     with pytest.raises(EngieBeApiClientAuthenticationError):
         await client.async_refresh_token()
+
+
+async def test_refresh_token_racing_caller_without_access_token_raises() -> None:
+    """A racing rotation that left access_token unset never leaks None as a token."""
+    client = _make_client()
+    wrapper = AsyncMock()
+    client._api_wrapper = wrapper  # type: ignore[method-assign]
+    client._token_lock = _MutatingLockNoAccessToken(client)  # type: ignore[assignment]
+
+    with pytest.raises(EngieBeApiClientAuthenticationError):
+        await client.async_refresh_token()
+
+    wrapper.assert_not_awaited()
 
 
 async def test_refresh_token_returns_fresh_pair_when_racing_caller_rotated() -> None:

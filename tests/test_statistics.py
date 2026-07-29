@@ -452,6 +452,44 @@ async def test_sums_before_preserves_legitimate_zero_sum(hass) -> None:  # noqa:
     assert result == {STREAM_CONSUMPTION: 0.0}
 
 
+async def test_sums_before_handles_null_recorder_sum(hass) -> None:  # noqa: ANN001
+    """
+    A recorder row whose ``sum`` key is present but ``None`` must not crash.
+
+    Regression test: ``entries[-1].get("sum", 0.0)`` only falls back to the
+    default when the key is *absent*, not when its value is null, so a
+    genuinely-null ``sum`` (e.g. a row written before any delta was ever
+    computed) reached ``float(None)`` and raised ``TypeError``, aborting
+    the reseed this feeds into.
+    """
+    stat_id = statistic_id("000000000000", STREAM_CONSUMPTION)
+    before_utc = datetime(2026, 7, 2, tzinfo=UTC)
+
+    async def _fake_executor(fn, *args: Any):  # noqa: ANN001, ANN202
+        if fn is statistics_during_period:
+            _hass, _start, _end, stat_ids, _period, _units, _types = args
+            if stat_id in stat_ids:
+                return {stat_id: [{"start": before_utc.timestamp(), "sum": None}]}
+            return {}
+        raise AssertionError(f"unexpected executor call: {fn}")
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = _fake_executor
+
+    with patch(
+        "custom_components.engie_be._statistics.get_instance",
+        return_value=recorder,
+    ):
+        result = await _sums_before(
+            hass,
+            "000000000000",
+            frozenset({STREAM_CONSUMPTION}),
+            before_utc,
+        )
+
+    assert result == {STREAM_CONSUMPTION: 0.0}
+
+
 async def test_orchestrator_explicit_reimport_keeps_full_series_monotonic(hass) -> None:  # noqa: ANN001
     """
     Explicit re-import of an older window must not corrupt the surrounding sum series.

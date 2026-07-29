@@ -489,7 +489,7 @@ def _business_agreement_numbers(entry: EngieBeConfigEntry) -> set[str]:
     for sub in entry.subentries.values():
         if sub.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
             continue
-        ban = sub.unique_id or (sub.data or {}).get(CONF_BUSINESS_AGREEMENT_NUMBER)
+        ban = sub.unique_id or sub.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
         if ban:
             bans.add(ban)
     return bans
@@ -634,7 +634,7 @@ async def _async_guarded_import(  # noqa: PLR0913
     Token rotation and coordinator polling continue normally in parallel
     with this task.
     """
-    ban = (subentry.data or {}).get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+    ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
     masked = ban[-4:] if ban else "????"
     address = subentry.title or f"BAN ***{masked}"
     notification_id = f"engie_be_import_{subentry.subentry_id}"

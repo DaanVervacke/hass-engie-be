@@ -22,6 +22,7 @@ from homeassistant.components.recorder.models import (
     StatisticMetaData,
 )
 from homeassistant.components.recorder.statistics import (
+    StatisticsRow,
     async_add_external_statistics,
     get_last_statistics,
     statistics_during_period,
@@ -345,13 +346,29 @@ def usage_items_to_statistics(
     return result
 
 
+def _sum_or_zero(row: StatisticsRow) -> float:
+    """
+    Return a statistics row's cumulative sum, or ``0.0`` when it is null.
+
+    The recorder can legitimately return a row whose ``sum`` key is
+    present but whose value is ``None`` (e.g. a row written before any
+    delta was ever computed). ``StatisticsRow.get("sum", 0.0)`` does not
+    guard against this: the default only applies when the key is
+    missing, not when its value is null, so a bare ``float(...)`` on
+    that result raises ``TypeError`` and aborts the resume/reseed it
+    feeds into.
+    """
+    value = row.get("sum")
+    return value if value is not None else 0.0
+
+
 async def _last_stats(
     hass: HomeAssistant,
     business_agreement_number: str,
     streams: frozenset[str],
-) -> dict[str, dict[str, float | int]]:
+) -> dict[str, StatisticsRow]:
     """Return ``{stream: {"start": ts, "sum": s}}`` for each requested stream."""
-    out: dict[str, dict[str, float | int]] = {}
+    out: dict[str, StatisticsRow] = {}
     recorder = get_instance(hass)
     for stream in _STREAMS:
         if stream not in streams:
@@ -411,7 +428,7 @@ async def _sums_before(
         )
         entries = rows.get(stat_id) if rows else None
         if entries:
-            out[stream] = float(entries[-1].get("sum", 0.0))
+            out[stream] = _sum_or_zero(entries[-1])
     return out
 
 
@@ -542,7 +559,7 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     # newest existing row per stream so a resumed import continues the
     # lifetime total rather than starting over.
     running_sums: dict[str, float] = {
-        stream: float(entry.get("sum", 0.0)) for stream, entry in last.items()
+        stream: _sum_or_zero(entry) for stream, entry in last.items()
     }
     last_stats_time_utc: datetime | None = None
     if last:

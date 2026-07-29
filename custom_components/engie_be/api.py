@@ -273,11 +273,21 @@ class EngieBeApiClient:
                 # Another caller rotated the pair while we were waiting.
                 # Return the fresh pair instead of replaying our (now
                 # consumed) refresh token.
+                racing_access_token = self.access_token
+                if racing_access_token is None:
+                    # refresh_token rotated but access_token was never set:
+                    # not reachable via this method's own success path
+                    # (both are assigned together below), but a caller that
+                    # mutates the tokens directly could leave this
+                    # inconsistent. Fail loudly instead of handing back
+                    # None as a bearer token.
+                    msg = "Racing token refresh left access_token unset"
+                    raise EngieBeApiClientAuthenticationError(msg)
                 LOGGER.debug(
                     "Token refresh: racing caller already rotated tokens; "
                     "returning fresh pair without re-issuing request"
                 )
-                return self.access_token, self.refresh_token
+                return racing_access_token, self.refresh_token
 
             data = {
                 "refresh_token": self.refresh_token,

@@ -609,11 +609,11 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return previous_wrapper
 
         ban_masked = mask_identifier(business_agreement_number)
-        previous_per_ean = (
-            previous_wrapper.get("data")
-            if isinstance(previous_wrapper, dict)
-            and isinstance(previous_wrapper.get("data"), dict)
-            else {}
+        previous_data = (
+            previous_wrapper.get("data") if isinstance(previous_wrapper, dict) else None
+        )
+        previous_per_ean: dict[str, Any] = (
+            previous_data if isinstance(previous_data, dict) else {}
         )
 
         async def _fetch_one(ean: str) -> tuple[str, Any, bool]:

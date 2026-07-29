@@ -133,8 +133,8 @@ async def async_setup_entry(
         if subentry.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
             continue
 
-        sub_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
-        if sub_data is None:
+        runtime_data = entry.runtime_data.subentry_data.get(subentry.subentry_id)
+        if runtime_data is None:
             LOGGER.warning(
                 "No runtime data for subentry %s; skipping binary_sensor setup",
                 subentry.subentry_id,
@@ -148,16 +148,16 @@ async def async_setup_entry(
         # coordinator's first refresh; the parent entry is reloaded
         # automatically when enrolment flips so entities track the
         # service status.
-        if sub_data.feature_flags.happy_hour_enrolled or expose_all:
+        if runtime_data.feature_flags.happy_hour_enrolled or expose_all:
             LOGGER.debug(
                 "Subentry %s (BAN %s): enrolled in Happy Hours, "
                 "registering happy_hours_active binary sensor",
                 subentry.subentry_id,
-                mask_identifier(sub_data.coordinator.business_agreement_number),
+                mask_identifier(runtime_data.coordinator.business_agreement_number),
             )
             subentry_entities.append(
                 EngieBeHappyHourActiveSensor(
-                    coordinator=sub_data.coordinator, subentry=subentry
+                    coordinator=runtime_data.coordinator, subentry=subentry
                 ),
             )
         else:
@@ -165,9 +165,9 @@ async def async_setup_entry(
                 "Subentry %s (BAN %s): not enrolled in Happy Hours, "
                 "skipping happy_hours_active binary sensor",
                 subentry.subentry_id,
-                mask_identifier(sub_data.coordinator.business_agreement_number),
+                mask_identifier(runtime_data.coordinator.business_agreement_number),
             )
-        if sub_data.coordinator.is_dynamic or expose_all:
+        if runtime_data.coordinator.is_dynamic or expose_all:
             subentry_entities.append(
                 EngieBeEpexNegativeSensor(
                     coordinator=epex_coordinator, subentry=subentry
@@ -191,7 +191,7 @@ async def async_setup_entry(
         # The gate avoids spamming "is optimal" on flat-rate accounts
         # where every hour is OFFPEAK and the answer is always True.
         tou_entities = _build_tou_binary_sensors(
-            sub_data.coordinator, subentry, expose_all=expose_all
+            runtime_data.coordinator, subentry, expose_all=expose_all
         )
         subentry_entities.extend(tou_entities)
 
