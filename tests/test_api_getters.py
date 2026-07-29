@@ -19,7 +19,7 @@ from custom_components.engie_be.const import (
     USER_AGENT_NATIVE,
 )
 
-_BAN = "002200000001"
+_BAN = "000000000001"
 _EAN = "541448000000000001"
 
 
@@ -112,7 +112,7 @@ async def test_async_get_happy_hour_event_strips_whitespace_in_ban() -> None:
         "_api_wrapper",
         AsyncMock(return_value={}),
     ) as mocked:
-        await client.async_get_happy_hour_event("0022 0000 0001")
+        await client.async_get_happy_hour_event("0000 0000 0001")
 
     url = mocked.await_args.kwargs["url"]
     assert _BAN in url
@@ -159,7 +159,7 @@ async def test_happy_hours_flag_strips_ban_whitespace() -> None:
         "_api_wrapper",
         AsyncMock(return_value={}),
     ) as mocked:
-        await client.async_get_happy_hours_service_enabled_flag("0022 0000 0001")
+        await client.async_get_happy_hours_service_enabled_flag("0000 0000 0001")
 
     body = mocked.await_args.kwargs["json_body"]
     assert body["additionalContext"]["contractAccountId"] == _BAN

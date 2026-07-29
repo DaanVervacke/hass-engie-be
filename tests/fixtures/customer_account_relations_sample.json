@@ -11,7 +11,7 @@
         "name": "Test Customer One",
         "businessAgreements": [
           {
-            "businessAgreementNumber": "002200000001",
+            "businessAgreementNumber": "000000000001",
             "active": true,
             "consumptionAddress": {
               "postalCode": "1000",
@@ -48,7 +48,7 @@
         "name": "Test Customer Two",
         "businessAgreements": [
           {
-            "businessAgreementNumber": "002200000002",
+            "businessAgreementNumber": "000000000002",
             "active": true,
             "consumptionAddress": {
               "postalCode": "2000",

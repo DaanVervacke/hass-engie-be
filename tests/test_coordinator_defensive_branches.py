@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _RELATIONS_FIXTURE = _FIXTURES / "customer_account_relations_sample.json"
-_FIXTURE_BAN = "002200000001"
+_FIXTURE_BAN = "000000000001"
 
 
 # ---------------------------------------------------------------------------

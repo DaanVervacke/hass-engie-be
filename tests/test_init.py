@@ -64,7 +64,7 @@ _TEST_SUBENTRY_TITLE = "Rue de la Loi 16, 1000 Brussels"
 def _build_entry(
     hass: HomeAssistant,
     *,
-    business_agreement_number: str = "002200000001",
+    business_agreement_number: str = "000000000001",
 ) -> MockConfigEntry:
     """
     Build a v5 MockConfigEntry with credentials, tokens, and one subentry.
@@ -704,12 +704,12 @@ async def test_subentry_added_after_setup_triggers_reload(
     new_subentry = ConfigSubentry(
         data=MappingProxyType(
             {
-                CONF_BUSINESS_AGREEMENT_NUMBER: "002200000002",
+                CONF_BUSINESS_AGREEMENT_NUMBER: "000000000002",
             },
         ),
         subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
         title="Second Account",
-        unique_id="002200000002",
+        unique_id="000000000002",
     )
     hass.config_entries.async_add_subentry(entry, new_subentry)
 
@@ -1164,7 +1164,7 @@ async def test_setup_entry_populates_service_points_from_contracts_for_dynamic_a
         energy_contracts_return={
             "items": [
                 {
-                    "businessAgreementNumber": "002200000001",
+                    "businessAgreementNumber": "000000000001",
                     "servicePointNumber": "541448820000000001_ID1",
                     "division": "ELECTRICITY",
                     "status": "ACTIVE",
@@ -1204,7 +1204,7 @@ async def test_setup_entry_contracts_fallback_never_overrides_prices_derived_ent
         energy_contracts_return={
             "items": [
                 {
-                    "businessAgreementNumber": "002200000001",
+                    "businessAgreementNumber": "000000000001",
                     "servicePointNumber": "541448820000000001_ID1",
                     # Deliberately mismatched division to prove the
                     # prices-derived entry is never overwritten.
@@ -1399,12 +1399,12 @@ async def test_setup_entry_populates_dynamic_override_from_contracts(
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
     """Dynamic electricity contracts must set ``is_dynamic_override=True``."""
-    entry = _build_entry(hass, business_agreement_number="002200000001")
+    entry = _build_entry(hass, business_agreement_number="000000000001")
     client = _make_client(
         energy_contracts_return={
             "items": [
                 {
-                    "businessAgreementNumber": "002200000001",
+                    "businessAgreementNumber": "000000000001",
                     "servicePointNumber": "541448820000000001_ID1",
                     "division": "ELECTRICITY",
                     "status": "ACTIVE",
@@ -1436,7 +1436,7 @@ async def test_setup_entry_populates_dynamic_override_from_contracts(
     # Endpoint must have been called exactly once with the BAN (include_inactive
     # ensures recently-ended contracts are included in the cached payload).
     client.async_get_energy_contracts.assert_awaited_once_with(
-        "002200000001", include_inactive=True
+        "000000000001", include_inactive=True
     )
 
 
@@ -1450,14 +1450,14 @@ async def test_setup_entry_dynamic_override_handles_mixed_fuel(
         energy_contracts_return={
             "items": [
                 {
-                    "businessAgreementNumber": "002200000001",
+                    "businessAgreementNumber": "000000000001",
                     "servicePointNumber": "541448820000000001_ID1",
                     "division": "ELECTRICITY",
                     "status": "ACTIVE",
                     "productConfiguration": {"energyProduct": "DYNAMIC"},
                 },
                 {
-                    "businessAgreementNumber": "002200000001",
+                    "businessAgreementNumber": "000000000001",
                     "servicePointNumber": "541448820000000002_ID2",
                     "division": "GAS",
                     "status": "ACTIVE",
@@ -1491,7 +1491,7 @@ async def test_setup_entry_dynamic_override_false_for_fixed_account(
         energy_contracts_return={
             "items": [
                 {
-                    "businessAgreementNumber": "002200000001",
+                    "businessAgreementNumber": "000000000001",
                     "servicePointNumber": "541448820000000001_ID1",
                     "division": "ELECTRICITY",
                     "status": "ACTIVE",
@@ -1785,7 +1785,7 @@ async def test_populate_dynamic_flags_skips_subentry_without_runtime_data(
     await _async_populate_dynamic_flags(client, entry)
 
     client.async_get_energy_contracts.assert_awaited_once_with(
-        "002200000001", include_inactive=True
+        "000000000001", include_inactive=True
     )
 
 

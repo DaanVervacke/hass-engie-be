@@ -701,7 +701,7 @@ async def test_subentry_picker_creates_first_and_appends_extras(
             # v4 picker offers BANs, not CANs. The shared fixture has one
             # active BAN per customer account, so the BANs map 1:1 to the
             # legacy CANs the v3 picker used to expose.
-            {CONF_SELECTED_ACCOUNTS: ["002200000001", "002200000002"]},
+            {CONF_SELECTED_ACCOUNTS: ["000000000001", "000000000002"]},
         )
 
         # user step routes into import_history_choice.
@@ -711,7 +711,7 @@ async def test_subentry_picker_creates_first_and_appends_extras(
         # All toggles off: flow finishes directly without an import_options step.
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            _history_choice_all_off(["002200000001", "002200000002"]),
+            _history_choice_all_off(["000000000001", "000000000002"]),
         )
 
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
@@ -719,7 +719,7 @@ async def test_subentry_picker_creates_first_and_appends_extras(
     # second auto-added by the picker via async_add_subentry.
     assert len(entry.subentries) == 2
     business_agreements = {sub.unique_id for sub in entry.subentries.values()}
-    assert business_agreements == {"002200000001", "002200000002"}
+    assert business_agreements == {"000000000001", "000000000002"}
 
 
 async def test_subentry_picker_multi_pick_collapses_to_single_reload(
@@ -780,12 +780,12 @@ async def test_subentry_picker_multi_pick_collapses_to_single_reload(
         result = await _init_subentry_flow(hass, entry)
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            {CONF_SELECTED_ACCOUNTS: ["002200000001", "002200000002"]},
+            {CONF_SELECTED_ACCOUNTS: ["000000000001", "000000000002"]},
         )
         assert result["step_id"] == "import_history_choice"
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            _history_choice_all_off(["002200000001", "002200000002"]),
+            _history_choice_all_off(["000000000001", "000000000002"]),
         )
         await hass.async_block_till_done()
 
@@ -832,12 +832,12 @@ async def test_subentry_picker_single_pick_reloads_once(
         result = await _init_subentry_flow(hass, entry)
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            {CONF_SELECTED_ACCOUNTS: ["002200000001"]},
+            {CONF_SELECTED_ACCOUNTS: ["000000000001"]},
         )
         assert result["step_id"] == "import_history_choice"
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            _history_choice_all_off(["002200000001"]),
+            _history_choice_all_off(["000000000001"]),
         )
         await hass.async_block_till_done()
 
@@ -855,14 +855,14 @@ async def test_subentry_picker_skips_already_configured(
     # v5 subentry: business_agreement_number is the canonical BAN identifier.
     existing = ConfigSubentryData(
         data={
-            CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+            CONF_BUSINESS_AGREEMENT_NUMBER: "000000000001",
             CONF_PREMISES_NUMBER: "5100000001",
             CONF_ACCOUNT_HOLDER_NAME: "Test Customer One",
             CONF_CONSUMPTION_ADDRESS: "TESTSTRAAT 1, 1000 BRUSSELS",
         },
         subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
         title="TESTSTRAAT 1, 1000 BRUSSELS",
-        unique_id="002200000001",
+        unique_id="000000000001",
     )
     entry = _build_parent_entry(hass, subentries=(existing,))
     relations = _load_relations_fixture()
@@ -877,12 +877,12 @@ async def test_subentry_picker_skips_already_configured(
         # Only the second BAN should be selectable now.
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            {CONF_SELECTED_ACCOUNTS: ["002200000002"]},
+            {CONF_SELECTED_ACCOUNTS: ["000000000002"]},
         )
         assert result["step_id"] == "import_history_choice"
         result = await hass.config_entries.subentries.async_configure(
             result["flow_id"],
-            _history_choice_all_off(["002200000002"]),
+            _history_choice_all_off(["000000000002"]),
         )
 
     assert result["type"] is data_entry_flow.FlowResultType.CREATE_ENTRY
@@ -898,19 +898,19 @@ async def test_subentry_picker_aborts_when_all_configured(
     existing = (
         ConfigSubentryData(
             data={
-                CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+                CONF_BUSINESS_AGREEMENT_NUMBER: "000000000001",
             },
             subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
             title="One",
-            unique_id="002200000001",
+            unique_id="000000000001",
         ),
         ConfigSubentryData(
             data={
-                CONF_BUSINESS_AGREEMENT_NUMBER: "002200000002",
+                CONF_BUSINESS_AGREEMENT_NUMBER: "000000000002",
             },
             subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
             title="Two",
-            unique_id="002200000002",
+            unique_id="000000000002",
         ),
     )
     entry = _build_parent_entry(hass, subentries=existing)
@@ -2077,7 +2077,7 @@ async def test_fetch_ban_divisions_masks_ban_on_failure(
     client.async_get_energy_contracts = AsyncMock(
         side_effect=EngieBeApiClientError("boom")
     )
-    ban = "002200001234"
+    ban = "000000001234"
 
     with caplog.at_level("DEBUG"):
         result = await _fetch_ban_divisions(client, [ban])

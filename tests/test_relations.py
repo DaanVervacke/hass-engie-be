@@ -60,7 +60,7 @@ def test_extract_business_agreements_fans_out_per_active_ban() -> None:
     bans = [a[CONF_BUSINESS_AGREEMENT_NUMBER] for a in agreements]
     # The fixture has two active BANs and one inactive BAN under a single
     # CAN. Only the actives surface.
-    assert bans == ["002200005001", "002200005002"]
+    assert bans == ["000000005001", "000000005002"]
 
 
 def test_extract_business_agreements_emits_v5_shape() -> None:
@@ -83,12 +83,12 @@ def test_extract_business_agreements_surfaces_per_ban_address() -> None:
     agreements = extract_business_agreements(_load_multi_ban_relations())
     by_ban = {a[CONF_BUSINESS_AGREEMENT_NUMBER]: a for a in agreements}
 
-    first = by_ban["002200005001"]
+    first = by_ban["000000005001"]
     assert "FIRSTSTRAAT 1" in first[CONF_CONSUMPTION_ADDRESS]
     assert "1000 BRUSSELS" in first[CONF_CONSUMPTION_ADDRESS]
     assert first[CONF_PREMISES_NUMBER] == "5100005001"
 
-    second = by_ban["002200005002"]
+    second = by_ban["000000005002"]
     assert "SECONDLAAN 2" in second[CONF_CONSUMPTION_ADDRESS]
     assert "2000 ANTWERP" in second[CONF_CONSUMPTION_ADDRESS]
     assert second[CONF_PREMISES_NUMBER] == "5100005002"
@@ -105,7 +105,7 @@ def test_extract_business_agreements_handles_single_active_ban() -> None:
     """The bundled two-CAN fixture produces one entry per active BAN."""
     agreements = extract_business_agreements(_load_relations())
     bans = sorted(a[CONF_BUSINESS_AGREEMENT_NUMBER] for a in agreements)
-    assert bans == ["002200000001", "002200000002"]
+    assert bans == ["000000000001", "000000000002"]
 
 
 def test_extract_business_agreements_skips_accounts_without_can() -> None:
@@ -116,7 +116,7 @@ def test_extract_business_agreements_skips_accounts_without_can() -> None:
                 "customerAccount": {
                     "customerAccountNumber": None,
                     "businessAgreements": [
-                        {"businessAgreementNumber": "002200009999", "active": True},
+                        {"businessAgreementNumber": "000000009999", "active": True},
                     ],
                 }
             },
@@ -136,7 +136,7 @@ def test_extract_business_agreements_skips_bans_without_number() -> None:
                     "businessAgreements": [
                         {"businessAgreementNumber": "", "active": True},
                         {"businessAgreementNumber": None, "active": True},
-                        {"businessAgreementNumber": "002200005050", "active": True},
+                        {"businessAgreementNumber": "000000005050", "active": True},
                     ],
                 }
             },
@@ -144,7 +144,7 @@ def test_extract_business_agreements_skips_bans_without_number() -> None:
     }
     agreements = extract_business_agreements(payload)
     assert [a[CONF_BUSINESS_AGREEMENT_NUMBER] for a in agreements] == [
-        "002200005050",
+        "000000005050",
     ]
 
 
@@ -164,8 +164,8 @@ def test_extract_business_agreements_handles_account_with_no_active_ban() -> Non
                     "customerAccountNumber": "1500000060",
                     "name": "All Inactive",
                     "businessAgreements": [
-                        {"businessAgreementNumber": "002200006001", "active": False},
-                        {"businessAgreementNumber": "002200006002", "active": False},
+                        {"businessAgreementNumber": "000000006001", "active": False},
+                        {"businessAgreementNumber": "000000006002", "active": False},
                     ],
                 }
             },
@@ -206,15 +206,15 @@ def test_extract_business_agreements_yields_titles_that_disambiguate() -> None:
 
 def test_find_agreement_for_ban_returns_matching_row() -> None:
     """A known active BAN resolves to its flattened row."""
-    match = find_agreement_for_ban(_load_relations(), "002200000001")
+    match = find_agreement_for_ban(_load_relations(), "000000000001")
     assert match is not None
-    assert match[CONF_BUSINESS_AGREEMENT_NUMBER] == "002200000001"
+    assert match[CONF_BUSINESS_AGREEMENT_NUMBER] == "000000000001"
     assert match[CONF_ACCOUNT_HOLDER_NAME] == "Test Customer One"
 
 
 def test_find_agreement_for_ban_returns_none_for_unknown_ban() -> None:
     """Unknown BANs yield ``None``, not a crash."""
-    assert find_agreement_for_ban(_load_relations(), "002200999999") is None
+    assert find_agreement_for_ban(_load_relations(), "000000999999") is None
 
 
 def test_find_agreement_for_ban_returns_none_for_empty_ban() -> None:
@@ -224,14 +224,14 @@ def test_find_agreement_for_ban_returns_none_for_empty_ban() -> None:
 
 def test_find_agreement_for_ban_skips_inactive() -> None:
     """An inactive BAN is invisible to backfill (extract drops it first)."""
-    # The multi-BAN fixture has one inactive BAN, "002200005003".
-    assert find_agreement_for_ban(_load_multi_ban_relations(), "002200005003") is None
+    # The multi-BAN fixture has one inactive BAN, "000000005003".
+    assert find_agreement_for_ban(_load_multi_ban_relations(), "000000005003") is None
 
 
 def test_find_agreement_for_ban_handles_empty_payload() -> None:
     """Empty payload yields ``None`` cleanly."""
-    assert find_agreement_for_ban({}, "002200000001") is None
-    assert find_agreement_for_ban({"items": []}, "002200000001") is None
+    assert find_agreement_for_ban({}, "000000000001") is None
+    assert find_agreement_for_ban({"items": []}, "000000000001") is None
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +248,7 @@ def test_subentry_title_prefers_consumption_address() -> None:
     account = {
         CONF_CONSUMPTION_ADDRESS: "FIRSTSTRAAT 1, 1000 BRUSSELS",
         CONF_ACCOUNT_HOLDER_NAME: "Jane Doe",
-        CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+        CONF_BUSINESS_AGREEMENT_NUMBER: "000000000001",
     }
     assert subentry_title(account) == "FIRSTSTRAAT 1, 1000 BRUSSELS"
 
@@ -258,7 +258,7 @@ def test_subentry_title_falls_back_to_holder_when_address_blank() -> None:
     account = {
         CONF_CONSUMPTION_ADDRESS: "",
         CONF_ACCOUNT_HOLDER_NAME: "Jane Doe",
-        CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+        CONF_BUSINESS_AGREEMENT_NUMBER: "000000000001",
     }
     assert subentry_title(account) == "Jane Doe"
 
@@ -268,6 +268,6 @@ def test_subentry_title_falls_back_to_ban_when_address_and_holder_blank() -> Non
     account = {
         CONF_CONSUMPTION_ADDRESS: None,
         CONF_ACCOUNT_HOLDER_NAME: "",
-        CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+        CONF_BUSINESS_AGREEMENT_NUMBER: "000000000001",
     }
-    assert subentry_title(account) == "002200000001"
+    assert subentry_title(account) == "000000000001"

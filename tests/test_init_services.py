@@ -52,9 +52,9 @@ def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
                 title="Rue de la Loi 16, 1000 Brussels",
-                unique_id="002200000001",
+                unique_id="000000000001",
                 data={
-                    CONF_BUSINESS_AGREEMENT_NUMBER: "002200000001",
+                    CONF_BUSINESS_AGREEMENT_NUMBER: "000000000001",
                     CONF_PREMISES_NUMBER: "P-0001",
                     CONF_CONSUMPTION_ADDRESS: "Rue de la Loi 16, 1000 Brussels",
                 },

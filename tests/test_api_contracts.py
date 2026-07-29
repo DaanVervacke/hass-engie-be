@@ -17,7 +17,7 @@ from custom_components.engie_be.const import BUSINESS_AGREEMENTS_BASE_URL
 _FIXTURE_PATH = (
     Path(__file__).parent / "fixtures" / "energy_contracts_dynamic_plus_fixed_gas.json"
 )
-_BAN = "002200000001"
+_BAN = "000000000001"
 
 
 def _build_client() -> EngieBeApiClient:
@@ -71,7 +71,7 @@ async def test_async_get_energy_contracts_strips_whitespace_in_ban() -> None:
         "_api_wrapper",
         AsyncMock(return_value={"items": []}),
     ) as mocked:
-        await client.async_get_energy_contracts("0022 0000 0001")
+        await client.async_get_energy_contracts("0000 0000 0001")
 
     call_kwargs = mocked.await_args.kwargs
     assert _BAN in call_kwargs["url"]

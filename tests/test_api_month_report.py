@@ -12,7 +12,7 @@ from custom_components.engie_be.api import (
 )
 from custom_components.engie_be.const import HAPPY_HOUR_BASE_URL, USER_AGENT_NATIVE
 
-_BAN = "002200000001"
+_BAN = "000000000001"
 
 
 def _build_client() -> EngieBeApiClient:
@@ -72,7 +72,7 @@ async def test_async_get_month_report_strips_whitespace_in_ban() -> None:
         "_api_wrapper",
         AsyncMock(return_value={}),
     ) as mocked:
-        await client.async_get_month_report("0022 0000 0001", 2026, 7)
+        await client.async_get_month_report("0000 0000 0001", 2026, 7)
 
     url = mocked.await_args.kwargs["url"]
     assert _BAN in url

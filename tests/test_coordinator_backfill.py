@@ -53,7 +53,7 @@ _RELATIONS_FIXTURE = (
 )
 
 # BAN present in the fixture under the first active customer account.
-_FIXTURE_BAN = "002200000001"
+_FIXTURE_BAN = "000000000001"
 
 
 def _build_entry_with_subentry(

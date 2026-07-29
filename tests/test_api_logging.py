@@ -224,7 +224,7 @@ class TestRedactMapping:
         ``_async_query_boolean_feature_flag``.
         """
         out = _redact_mapping(
-            {"additionalContext": {"contractAccountId": "002200001234"}},
+            {"additionalContext": {"contractAccountId": "000000001234"}},
             _REDACT_BODY_KEYS,
             _PARTIAL_MASK_BODY_KEYS,
         )

@@ -68,9 +68,9 @@ def _build_entry(hass: HomeAssistant) -> MockConfigEntry:
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
                 title=_TEST_SUBENTRY_TITLE,
-                unique_id="002200000999",
+                unique_id="000000000999",
                 data={
-                    CONF_BUSINESS_AGREEMENT_NUMBER: "002200000999",
+                    CONF_BUSINESS_AGREEMENT_NUMBER: "000000000999",
                     CONF_PREMISES_NUMBER: "5100009999",
                     CONF_ACCOUNT_HOLDER_NAME: _TEST_HOLDER,
                     CONF_CONSUMPTION_ADDRESS: _TEST_SUBENTRY_TITLE,
@@ -198,7 +198,7 @@ async def test_payload_structure_and_ean_hashing(hass: HomeAssistant) -> None:
     assert "541448820000000001_ID1" not in serialised
     assert "541448820000000002_ID1" not in serialised
     assert "hunter2" not in serialised
-    assert "002200000999" not in serialised
+    assert "000000000999" not in serialised
     assert "v1.fake_refresh_token" not in serialised
 
 
@@ -274,8 +274,8 @@ def _build_entry_without_runtime(hass: HomeAssistant) -> MockConfigEntry:
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
                 title=_TEST_SUBENTRY_TITLE,
-                unique_id="002200000999",
-                data={CONF_BUSINESS_AGREEMENT_NUMBER: "002200000999"},
+                unique_id="000000000999",
+                data={CONF_BUSINESS_AGREEMENT_NUMBER: "000000000999"},
             ),
         ],
     )
@@ -581,8 +581,8 @@ async def test_diagnostics_skips_non_business_agreement_subentries(
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
                 title=_TEST_SUBENTRY_TITLE,
-                unique_id="002200000999",
-                data={CONF_BUSINESS_AGREEMENT_NUMBER: "002200000999"},
+                unique_id="000000000999",
+                data={CONF_BUSINESS_AGREEMENT_NUMBER: "000000000999"},
             ),
             ConfigSubentryData(
                 subentry_type="some_other_type",
