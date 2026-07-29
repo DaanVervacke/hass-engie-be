@@ -59,4 +59,10 @@ updates:
       # hassfest is pinned to a master SHA by HA convention. That repo's
       # only tag is 1.0.0, so Dependabot would either re-pin to a stale
       # tag or chase master HEAD and pull unreviewed commits into CI.
-      - dependency-name: "home-assistant/actions"
+      #
+      # The trailing wildcard is required. Dependabot names this
+      # dependency by its full action path, "home-assistant/actions/
+      # hassfest", so a bare "home-assistant/actions" never matches and
+      # the rule silently does nothing. The wildcard also covers any
+      # sibling action pulled from that repo later.
+      - dependency-name: "home-assistant/actions*"
