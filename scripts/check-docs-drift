@@ -138,6 +138,8 @@ KNOWN_VALUES = frozenset(
         "peak_is_fallback",
         "level_changed",
         "happy_hours_window_announced",
+        "epex_current_crossed_threshold",
+        "epex_next_hour_crossed_threshold",
         "expose_all_entities",
         "select_accounts",
         "vat_tariff",
