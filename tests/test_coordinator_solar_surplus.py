@@ -10,11 +10,11 @@ from unittest.mock import AsyncMock
 import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
+from custom_components.engie_be._solar import derive_has_solar
 from custom_components.engie_be.api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
 )
-from custom_components.engie_be.coordinator import _derive_has_solar
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -241,13 +241,13 @@ def test_derive_has_solar_returns_false_for_empty_per_ean() -> None:
     return False so callers can reconcile entity presence, not None
     (which means 'no signal').
     """
-    assert _derive_has_solar({"data": {}, "fetched_at": "x"}) is False
+    assert derive_has_solar({"data": {}, "fetched_at": "x"}) is False
 
 
 def test_derive_has_solar_returns_none_for_non_dict_wrapper() -> None:
     """A non-dict wrapper (or None) is the 'no signal' case."""
-    assert _derive_has_solar(None) is None
-    assert _derive_has_solar([]) is None  # type: ignore[arg-type]
+    assert derive_has_solar(None) is None
+    assert derive_has_solar([]) is None  # type: ignore[arg-type]
 
 
 async def test_first_has_solar_observation_seeds_cache_without_reload(  # noqa: PLR0913, PLR0917

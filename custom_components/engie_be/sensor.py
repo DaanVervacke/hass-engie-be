@@ -27,6 +27,14 @@ from ._contracts import bare_ean, ean_with_delivery_point_suffix
 from ._epex import _slot_duration_minutes, epex_payload, next_epex_slot_boundary
 from ._happy_hour import happy_hour_window
 from ._peaks import peaks_meta, peaks_payload
+from ._solar import (
+    flat_slots,
+    next_hour_boundary,
+    parse_slot_start,
+    slot_covering,
+    slots_for_local_date,
+    solar_surplus_payload,
+)
 from ._tou import current_slot as tou_current_slot
 from ._tou import schedule_for_ean, tou_schedules_payload
 from .api import mask_identifier
@@ -1444,75 +1452,6 @@ def _build_solar_surplus_sensors(
     return entities
 
 
-def _parse_solar_slot_start(raw: Any) -> datetime | None:
-    """Parse a ``startTime`` string into a timezone-aware datetime, or None."""
-    if not isinstance(raw, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo is not None else None
-
-
-def _solar_slots(forecasts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Flatten a per-EAN forecasts list into a list of hourly slot dicts."""
-    flat: list[dict[str, Any]] = []
-    for day in forecasts:
-        if not isinstance(day, dict):
-            continue
-        details = day.get("details")
-        if not isinstance(details, list):
-            continue
-        for slot in details:
-            if not isinstance(slot, dict):
-                continue
-            flat.append(slot)
-    return flat
-
-
-def _solar_slot_covering(
-    slots: list[dict[str, Any]], instant: datetime
-) -> dict[str, Any] | None:
-    """Return the slot whose [start, start+1h) interval covers ``instant``."""
-    for slot in slots:
-        start = _parse_solar_slot_start(slot.get("startTime"))
-        if start is None:
-            continue
-        if start <= instant < start + timedelta(hours=1):
-            return slot
-    return None
-
-
-def _solar_slots_for_local_date(
-    slots: list[dict[str, Any]], target_date: date
-) -> list[dict[str, Any]]:
-    """Return every slot whose Brussels-local date matches ``target_date``."""
-    matching: list[dict[str, Any]] = []
-    for slot in slots:
-        start = _parse_solar_slot_start(slot.get("startTime"))
-        if start is None:
-            continue
-        if start.astimezone(BRUSSELS_TZ).date() == target_date:
-            matching.append(slot)
-    return matching
-
-
-def _solar_next_hour_boundary(
-    slots: list[dict[str, Any]], now: datetime
-) -> datetime | None:
-    """Return the next slot-start strictly after ``now``, in UTC."""
-    future_starts = [
-        start
-        for slot in slots
-        if (start := _parse_solar_slot_start(slot.get("startTime"))) is not None
-        and start > now
-    ]
-    if not future_starts:
-        return None
-    return min(future_starts).astimezone(UTC)
-
-
 class _EngieBePerEanBase(EngieBeEntity, SensorEntity):
     """
     Shared per-EAN wiring: unique_id, entity_id, and translation placeholders.
@@ -1572,13 +1511,13 @@ class _EngieBeSolarSurplusBase(_EngieBePerEanBase):
         key = id(forecasts)
         if self._slots_cache is not None and self._slots_cache[0] == key:
             return self._slots_cache[1]
-        flat = _solar_slots(forecasts)
+        flat = flat_slots(forecasts)
         self._slots_cache = (key, flat)
         return flat
 
     def _forecasts_for_ean(self) -> list[dict[str, Any]] | None:
         """Return the raw ``forecasts`` list for this EAN, or ``None``."""
-        per_ean = unwrap_dict_payload(self.coordinator, "solar_surplus")
+        per_ean = solar_surplus_payload(self.coordinator)
         if per_ean is None:
             return None
         forecasts = per_ean.get(self._ean)
@@ -1675,7 +1614,7 @@ class _EngieBeSolarSurplusHourlySensorBase(
         slots = self._cached_flat_slots()
         if not slots:
             return None
-        return _solar_next_hour_boundary(slots, dt_util.utcnow())
+        return next_hour_boundary(slots, dt_util.utcnow())
 
 
 class EngieBeSolarSurplusCurrentSensor(_EngieBeSolarSurplusHourlySensorBase):
@@ -1696,7 +1635,7 @@ class EngieBeSolarSurplusCurrentSensor(_EngieBeSolarSurplusHourlySensorBase):
         slots = self._cached_flat_slots()
         if not slots:
             return None
-        slot = _solar_slot_covering(slots, dt_util.utcnow())
+        slot = slot_covering(slots, dt_util.utcnow())
         if slot is None:
             return None
         value = slot.get("value")
@@ -1725,7 +1664,7 @@ class EngieBeSolarSurplusNextHourSensor(_EngieBeSolarSurplusHourlySensorBase):
         if not slots:
             return None
         target = dt_util.utcnow() + timedelta(hours=1)
-        slot = _solar_slot_covering(slots, target)
+        slot = slot_covering(slots, target)
         if slot is None:
             return None
         value = slot.get("value")
@@ -1756,7 +1695,7 @@ class EngieBeSolarSurplusTodayTotalSensor(_EngieBeSolarSurplusBase):
         today = dt_util.now(BRUSSELS_TZ).date()
         total = 0.0
         seen = False
-        for slot in _solar_slots_for_local_date(slots, today):
+        for slot in slots_for_local_date(slots, today):
             value = slot.get("value")
             try:
                 total += float(value) if value is not None else 0.0
@@ -1787,8 +1726,8 @@ class EngieBeSolarSurplusTodayPeakSensor(_EngieBeSolarSurplusBase):
             return []
         today = dt_util.now(BRUSSELS_TZ).date()
         parsed: list[tuple[datetime, float]] = []
-        for slot in _solar_slots_for_local_date(slots, today):
-            start = _parse_solar_slot_start(slot.get("startTime"))
+        for slot in slots_for_local_date(slots, today):
+            start = parse_slot_start(slot.get("startTime"))
             value = slot.get("value")
             if start is None or value is None:
                 continue

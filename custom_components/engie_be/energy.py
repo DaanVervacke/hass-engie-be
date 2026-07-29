@@ -16,10 +16,9 @@ hour, so a multi-EAN household sees a single household-level forecast.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from .data import unwrap_dict_payload
+from ._solar import flat_slots, parse_slot_start, solar_surplus_payload
 
 if TYPE_CHECKING:
     from homeassistant.components.energy.types import SolarForecastType
@@ -54,7 +53,7 @@ async def async_get_solar_forecast(
         if not sub_data.feature_flags.solar:
             continue
         coordinator = sub_data.coordinator
-        per_ean = unwrap_dict_payload(coordinator, "solar_surplus")
+        per_ean = solar_surplus_payload(coordinator)
         if per_ean is None:
             continue
         for forecasts in per_ean.values():
@@ -72,37 +71,21 @@ def _accumulate_slots(
     into: dict[str, float],
 ) -> None:
     """Fold every hourly slot in ``forecasts`` into the ``into`` accumulator."""
-    for day in forecasts:
-        if not isinstance(day, dict):
+    for slot in flat_slots(forecasts):
+        raw_value = slot.get("value")
+        # The key is re-serialised from the parsed datetime, which
+        # normalises the offset (a trailing Z becomes +00:00).
+        parsed = parse_slot_start(slot.get("startTime"))
+        if parsed is None:
             continue
-        details = day.get("details")
-        if not isinstance(details, list):
+        try:
+            value_kwh = float(raw_value) if raw_value is not None else 0.0
+        except TypeError, ValueError:
             continue
-        for slot in details:
-            if not isinstance(slot, dict):
-                continue
-            raw_start = slot.get("startTime")
-            raw_value = slot.get("value")
-            if not isinstance(raw_start, str):
-                continue
-            try:
-                # Validate the timestamp is parseable and timezone-aware
-                # so downstream cards can chart it. The key is
-                # re-serialised from the parsed datetime, which
-                # normalises the offset (a trailing Z becomes +00:00).
-                parsed = datetime.fromisoformat(raw_start)
-            except ValueError:
-                continue
-            if parsed.tzinfo is None:
-                continue
-            try:
-                value_kwh = float(raw_value) if raw_value is not None else 0.0
-            except TypeError, ValueError:
-                continue
-            if value_kwh <= 0.0:
-                # HA renders the forecast as a positive area; slots ENGIE
-                # marks as ``NO_DATA`` / ``NO_SURPLUS`` carry ``value: 0``
-                # and add no signal, so skip them to keep the payload lean.
-                continue
-            iso = parsed.isoformat()
-            into[iso] = into.get(iso, 0.0) + value_kwh * _KWH_TO_WH
+        if value_kwh <= 0.0:
+            # HA renders the forecast as a positive area; slots ENGIE
+            # marks as ``NO_DATA`` / ``NO_SURPLUS`` carry ``value: 0``
+            # and add no signal, so skip them to keep the payload lean.
+            continue
+        iso = parsed.isoformat()
+        into[iso] = into.get(iso, 0.0) + value_kwh * _KWH_TO_WH

@@ -22,6 +22,7 @@ from ._relations import (
     find_agreement_for_ban,
     subentry_title,
 )
+from ._solar import derive_has_solar
 from .api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
@@ -386,7 +387,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if solar_shown and solar_wrapper is not None:
             data["solar_surplus"] = solar_wrapper
         new_has_solar = (
-            _derive_has_solar(
+            derive_has_solar(
                 solar_wrapper if solar_wrapper is not None else previous_solar_wrapper,
             )
             if solar_shown
@@ -1463,39 +1464,6 @@ def _find_history_fallback(
         "month": best_month,
         "is_fallback": True,
     }
-
-
-def _derive_has_solar(wrapper: dict[str, Any] | None) -> bool | None:
-    """
-    Infer whether the customer has a solar installation from a wrapper.
-
-    Returns ``True`` when any hourly slot across any EAN and any day
-    carries a level other than ``NO_DATA``, ``False`` when the wrapper
-    is present but every slot is ``NO_DATA`` (the shape ENGIE returns
-    for customers without solar), and ``None`` when no wrapper is
-    available so callers know to preserve the last-known value.
-    """
-    if not isinstance(wrapper, dict):
-        return None
-    per_ean = wrapper.get("data")
-    if not isinstance(per_ean, dict):
-        return None
-    for forecasts in per_ean.values():
-        if not isinstance(forecasts, list):
-            continue
-        for day in forecasts:
-            if not isinstance(day, dict):
-                continue
-            details = day.get("details")
-            if not isinstance(details, list):
-                continue
-            for slot in details:
-                if not isinstance(slot, dict):
-                    continue
-                level = slot.get("level")
-                if isinstance(level, str) and level.upper() != "NO_DATA":
-                    return True
-    return False
 
 
 class EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
