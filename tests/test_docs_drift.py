@@ -74,6 +74,32 @@ def test_fails_on_a_reference_that_resolves_nowhere(
     assert module.main(["custom_components/engie_be"]) == 1
 
 
+def test_resolves_a_translation_key_named_in_en_json(
+    monkeypatch: pytest.MonkeyPatch, repo_copy: Path
+) -> None:
+    """
+    A docstring may name a trigger key without it reading as a broken symbol.
+
+    The key is a value defined in en.json, not a Python name, so hand-copying
+    it into KNOWN_VALUES was the old workaround. The paired assertion is the
+    load-bearing half: a key that is NOT in en.json must still be reported,
+    otherwise this rule would resolve any lowercase word at all.
+    """
+    module = _load(monkeypatch, repo_copy)
+    target = repo_copy / "custom_components" / "engie_be" / "_probe.py"
+    target.write_text(
+        '"""Probe module.\n\nMentions ``epex_became_negative`` on purpose.\n"""\n',
+        encoding="utf-8",
+    )
+    assert module.main(["custom_components/engie_be"]) == 0
+
+    target.write_text(
+        '"""Probe module.\n\nMentions ``epex_became_fictional`` on purpose.\n"""\n',
+        encoding="utf-8",
+    )
+    assert module.main(["custom_components/engie_be"]) == 1
+
+
 def test_fails_on_lowercase_solar_surplus_in_prose(
     monkeypatch: pytest.MonkeyPatch, repo_copy: Path
 ) -> None:

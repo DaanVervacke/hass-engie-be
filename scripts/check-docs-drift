@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import json
 import keyword
 import re
 import sys
@@ -105,10 +106,6 @@ KNOWN_VALUES = frozenset(
         "_gas",
         "_gas_cost",
         # entity-id and attribute fragments quoted in prose
-        "happy_hours_active",
-        "happy_hours_next_start",
-        "happy_hours_next_end",
-        "solar_surplus_forecast",
         "tou_schedules",
         "transaction_count",
         "value_eur_per_mwh",
@@ -130,16 +127,11 @@ KNOWN_VALUES = frozenset(
         "Bearer",
         "custom_components",
         # entity-id, attribute, option and trigger keys quoted in tests
-        "epex_low_today",
-        "epex_high_today",
         "next_hour",
         "price_positive",
         "price_negative",
         "peak_is_fallback",
         "level_changed",
-        "happy_hours_window_announced",
-        "epex_current_crossed_threshold",
-        "epex_next_hour_crossed_threshold",
         "expose_all_entities",
         "select_accounts",
         "vat_tariff",
@@ -291,6 +283,33 @@ def local_symbols(extra: list[Path] | None = None) -> set[str]:
     return names
 
 
+def translation_keys() -> set[str]:
+    """
+    Return every trigger, condition and entity key named in en.json.
+
+    These are values rather than Python symbols, so they resolve nowhere in
+    the package and used to be hand-copied into KNOWN_VALUES one at a time.
+    Reading them from the file that defines them means a renamed key stops
+    resolving the moment it is renamed, which is the whole point of the gate.
+    """
+    path = PACKAGE / "translations" / "en.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    keys: set[str] = set()
+    for section in ("triggers", "conditions"):
+        block = data.get(section)
+        if isinstance(block, dict):
+            keys.update(block)
+    entity = data.get("entity")
+    if isinstance(entity, dict):
+        for platform in entity.values():
+            if isinstance(platform, dict):
+                keys.update(platform)
+    return keys
+
+
 def homeassistant_symbols() -> set[str]:
     """
     Return every def and class name in the installed Home Assistant.
@@ -331,7 +350,13 @@ def harvest_references(files: list[Path]) -> list[tuple[Path, int, str]]:
 
 def check_references(files: list[Path]) -> list[str]:
     """Report references that resolve to no known symbol or value."""
-    known = local_symbols(files) | PYTHON_LITERALS | KNOWN_VALUES | set(dir(builtins))
+    known = (
+        local_symbols(files)
+        | PYTHON_LITERALS
+        | KNOWN_VALUES
+        | translation_keys()
+        | set(dir(builtins))
+    )
     unresolved: list[tuple[Path, int, str]] = []
     for path, line, name in harvest_references(files):
         base = name.split(".")[0].removesuffix("()")
