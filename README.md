@@ -59,25 +59,22 @@ as sensors, binary sensors, events, and calendar events.
 
 ## Use cases
 
-- **Shift loads onto cheap or free electricity.** On a dynamic tariff, run the
-  dishwasher, the heat pump or the EV charger when the EPEX day-ahead price is
-  lowest, or when it goes negative and you are paid to consume. On any tariff,
-  do the same inside a Happy Hours window.
-- **Watch your capacity tariff.** The captar sensors expose this month's peak
-  window for each business agreement: how high it was, when it happened, and
-  how much energy went through it. Enable the daily-peak sensor to see the
-  running per-day picture. ENGIE publishes peaks after the fact, so this tells
-  you where you stand rather than warning you mid-peak.
-- **Use your own solar production.** The Solar Surplus forecast gives a
-  three-day hourly injection outlook, feeds the Energy dashboard, and can
-  start deferrable loads on the hours where surplus is expected.
-- **See what you are actually paying.** Price sensors carry your contract's
-  own rates per meter rather than a national average, and the billing sensors
-  surface your outstanding balance, overdue amount and next invoice due date.
-- **Backfill the Energy dashboard.** Import years of hourly usage from ENGIE
-  in one action, with or without per-hour costs.
+- On a dynamic tariff, run the dishwasher, the heat pump or the EV charger
+  when the EPEX day-ahead price is lowest, or when it goes negative and you
+  are paid to consume. On any tariff, do the same inside a Happy Hours window.
+- Track the capacity tariff. The captar sensors report this month's peak
+  window per business agreement: its power, its energy, and when it started
+  and ended. ENGIE publishes peaks after the fact, so a peak has already been
+  set by the time the sensors show it. Enable the daily-peak sensor for the
+  per-day picture.
+- Start deferrable loads on the hours where the Solar Surplus forecast expects
+  surplus. The same three-day forecast feeds the Energy dashboard.
+- Read your own contract's rates per meter instead of a national average, and
+  see your outstanding balance, overdue amount and next invoice due date.
+- Import years of hourly usage into the Energy dashboard in one action, with
+  or without per-hour costs.
 
-Ready-made automations for the first two are in
+Automations for the first two are in
 [YAML-based examples](#yaml-based-examples) and in the blueprints.
 
 ## Features
@@ -687,22 +684,22 @@ troubleshooting or exploring the full entity set.
 ## Data updates
 
 The integration polls the ENGIE cloud API. There is no local connection and no
-push channel, so everything you see is as fresh as the last poll.
+push channel, so a value is only as recent as the last poll.
 
 One coordinator per business agreement fetches prices, peaks, Happy Hours,
-billing and Solar Surplus together on a single timer. EPEX day-ahead prices
-are fetched on their own coordinators, on the same timer. The interval is the
-**Update interval** option, 60 minutes by default and adjustable between 5 and
-1440 minutes.
+billing and Solar Surplus on a single timer. EPEX day-ahead prices are fetched
+on their own coordinators, on the same timer. The interval is the **Update
+interval** option, 60 minutes by default and adjustable between 5 and 1440
+minutes.
 
 Time-of-Use and EPEX sensors do not wait for a poll to change value. They are
 scheduled to update on the exact slot boundary, so the current-price and
-current-slot sensors flip on the hour or quarter hour regardless of where the
-poll interval happens to fall. Lowering the update interval makes the
-underlying data fresher, it does not make these sensors more punctual.
+current-slot sensors change on the hour or quarter hour wherever the poll
+interval happens to fall. Lowering the interval fetches newer data. It does
+not change when these sensors update.
 
-A shorter interval means more requests to ENGIE. The default of 60 minutes is
-already well ahead of how often the upstream data changes: contract prices
+A shorter interval means more requests to ENGIE. The upstream data changes
+less often than the 60 minute default already allows for: contract prices
 change rarely, day-ahead prices are published once a day around 14:00 Brussels
 time, and hourly usage data lags by a few days.
 
@@ -870,10 +867,9 @@ There is no date range: clearing a stream clears all of it.
 | `include_costs` | `true` | Also clear the matching cost streams. On by default, so clearing a type removes both its energy and its cost statistics. |
 
 Note the difference from importing, where **Include costs** is off by default.
-Importing costs is extra work against the ENGIE API, so it is opt-in. Clearing
-is cleanup, so it is complete by default. Turn it off only if you specifically
-want to keep cost statistics for a type whose energy statistics you are
-deleting.
+Importing costs adds requests to the ENGIE API, so it is opt-in. Turn it off
+here only if you want to keep cost statistics for a type whose energy
+statistics you are deleting.
 
 ```yaml
 action: engie_be.clear_import_history
