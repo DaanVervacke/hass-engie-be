@@ -34,7 +34,6 @@ def test_midnight_rollover_end_lands_on_next_day() -> None:
     event = events[0]
     assert event.start == datetime(2026, 7, 14, 20, 0, tzinfo=UTC)
     assert event.end == datetime(2026, 7, 14, 22, 0, tzinfo=UTC)
-    assert event.end.date() == event.start.date()
 
 
 def test_active_event_straddling_start_is_included() -> None:

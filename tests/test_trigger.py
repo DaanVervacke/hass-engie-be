@@ -335,7 +335,7 @@ async def test_async_get_triggers_matches_dict(hass: HomeAssistant) -> None:
     assert triggers is TRIGGERS
 
 
-def test_trigger_count_at_least_20() -> None:
+def test_trigger_count_at_least_29() -> None:
     """TRIGGERS dict has at least 29 entries (plan done criteria)."""
     assert len(TRIGGERS) >= 29
 

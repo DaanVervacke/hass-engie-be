@@ -157,7 +157,7 @@ async def test_enrolled_ban_fetches_month_report(
     assert "happy_hour_month_report" in result
     wrapper = result["happy_hour_month_report"]
     assert isinstance(wrapper["data"], dict)
-    assert wrapper["year"] == result.get("happy_hour_month_report", {}).get("year")
+    assert isinstance(wrapper["year"], int)
 
 
 # ---------------------------------------------------------------------------

@@ -105,8 +105,8 @@ def _offtake_sensor(coordinator: MagicMock) -> EngieBeTouSlotSensor:
 
 # Tuesday 2026-07-07 05:30 Brussels (UTC+02:00 CEST) = 03:30 UTC
 # Tuesday 2026-07-07 06:00 Brussels = 04:00 UTC - slot flips OFFPEAK -> PEAK.
-_MONDAY_05_30_UTC = datetime(2026, 7, 7, 3, 30, tzinfo=UTC)
-_MONDAY_06_00_UTC = datetime(2026, 7, 7, 4, 0, tzinfo=UTC)
+_TUESDAY_05_30_UTC = datetime(2026, 7, 7, 3, 30, tzinfo=UTC)
+_TUESDAY_06_00_UTC = datetime(2026, 7, 7, 4, 0, tzinfo=UTC)
 
 
 async def test_offtake_slot_flips_at_boundary(
@@ -118,16 +118,16 @@ async def test_offtake_slot_flips_at_boundary(
     sensor = _offtake_sensor(coordinator)
     with patch(
         "custom_components.engie_be.sensor.dt_util.utcnow",
-        return_value=_MONDAY_05_30_UTC,
+        return_value=_TUESDAY_05_30_UTC,
     ):
         await add_sensor(hass, sensor)
         assert sensor.native_value == "offpeak"
         assert sensor._unsub_boundary is not None
     with patch(
         "custom_components.engie_be.sensor.dt_util.utcnow",
-        return_value=_MONDAY_06_00_UTC,
+        return_value=_TUESDAY_06_00_UTC,
     ):
-        async_fire_time_changed(hass, _MONDAY_06_00_UTC)
+        async_fire_time_changed(hass, _TUESDAY_06_00_UTC)
         await hass.async_block_till_done()
         assert sensor.native_value == "peak"
         assert sensor._unsub_boundary is not None
@@ -156,10 +156,10 @@ async def test_scheduler_arms_on_flat_schedule(
     """
     coordinator = _make_coordinator(_wrap(_load(_TOU_FLAT)))
     sensor = _offtake_sensor(coordinator)
-    monday_noon_utc = datetime(2026, 7, 7, 10, 0, tzinfo=UTC)  # 12:00 Brussels
+    tuesday_noon_utc = datetime(2026, 7, 7, 10, 0, tzinfo=UTC)  # 12:00 Brussels
     with patch(
         "custom_components.engie_be.sensor.dt_util.utcnow",
-        return_value=monday_noon_utc,
+        return_value=tuesday_noon_utc,
     ):
         await add_sensor(hass, sensor)
         # Flat schedule entries have endTime "00:00" which resolves to
@@ -177,7 +177,7 @@ async def test_remove_cancels_pending_timer(
     sensor = _offtake_sensor(coordinator)
     with patch(
         "custom_components.engie_be.sensor.dt_util.utcnow",
-        return_value=_MONDAY_05_30_UTC,
+        return_value=_TUESDAY_05_30_UTC,
     ):
         await add_sensor(hass, sensor)
         assert sensor._unsub_boundary is not None
@@ -200,7 +200,7 @@ async def test_injection_slot_uses_injection_schedule(
     )
     with patch(
         "custom_components.engie_be.sensor.dt_util.utcnow",
-        return_value=_MONDAY_05_30_UTC,
+        return_value=_TUESDAY_05_30_UTC,
     ):
         await add_sensor(hass, sensor)
         # Injection schedule mirrors offtake in the bihoraire fixture:
