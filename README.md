@@ -172,7 +172,7 @@ Customers on ENGIE's dynamic (EPEX-indexed) electricity contract get sensors tha
 | EPEX highest quarter-hourly price today | `sensor.engie_belgium_{BAN}_epex_high_today_quarter_hour` | Highest EPEX quarter-hourly price of today (EUR/kWh) |
 
 All four sensors are in **EUR/kWh** (4 decimals). Tomorrow's prices appear
-once ENGIE publishes them, typically around 14:00 Europe/Brussels.
+once ENGIE publishes them, typically around 14:00 Brussels time.
 
 The current-price sensor exposes the full today / tomorrow slate as
 attributes, which is convenient for plotting:
@@ -445,9 +445,9 @@ editor.
 | Solar Surplus level changed | Aggregate surplus level transitions to any different code |
 | Offtake slot changed | Current offtake slot transitions to any different code |
 | Injection slot changed | Current injection slot transitions to any different code |
-| Solar Surplus became `<level>` | Aggregate surplus level enters a chosen code |
-| Offtake slot became `<code>` | Current offtake slot enters a chosen code |
-| Injection slot became `<code>` | Current injection slot enters a chosen code |
+| Solar Surplus reached level | Aggregate surplus level enters a level you choose |
+| Offtake slot entered | Current offtake slot enters a slot code you choose |
+| Injection slot entered | Current injection slot enters a slot code you choose |
 
 **Threshold triggers**:
 
@@ -459,7 +459,7 @@ editor.
 | EPEX next quarter-hourly price crossed threshold | Next quarter-hourly EPEX price crosses a chosen EUR/kWh threshold |
 | Solar Surplus current hour crossed threshold | Current-hour surplus crosses a chosen kWh threshold |
 | Solar Surplus next hour crossed threshold | Next-hour surplus crosses a chosen kWh threshold |
-| Captar peak crossed threshold | Monthly captar peak crosses a chosen kW threshold |
+| Captar monthly peak crossed threshold | Monthly captar peak crosses a kW threshold you choose |
 | Outstanding balance crossed threshold | Outstanding balance crosses a chosen EUR threshold |
 | Overdue amount crossed threshold | Overdue amount crosses a chosen EUR threshold |
 
@@ -467,12 +467,12 @@ editor.
 
 | Trigger | Fires when |
 |---|---|
-| Captar peak updated | Monthly captar peak value or window changes |
+| Captar monthly peak updated | Monthly captar peak value or window changes |
 | EPEX highest hour price today updated | Highest hourly EPEX price of today changes |
 | EPEX lowest hour price today updated | Lowest hourly EPEX price of today changes |
 | EPEX highest quarter-hourly price today updated | Highest quarter-hourly EPEX price of today changes |
 | EPEX lowest quarter-hourly price today updated | Lowest quarter-hourly EPEX price of today changes |
-| Tomorrow EPEX prices published | Tomorrow's EPEX day-ahead slate becomes available (fires once per day) |
+| Tomorrow's EPEX prices published | Tomorrow's EPEX day-ahead slate becomes available (fires once per day) |
 | Happy Hours window announced | ENGIE announces a new Happy Hours window or revises an announced one |
 
 **Calendar-slot triggers**:
@@ -485,16 +485,43 @@ editor.
 
 ### Conditions
 
-Binary state conditions check if EPEX hour price is negative, EPEX quarter-hourly price is negative, offtake is optimal, injection is optimal, or Happy Hours is active.
+**Binary state conditions**:
 
-Enum state conditions check if Solar Surplus is at a chosen level, or TOU slot is a chosen code.
+| Condition | True when |
+|---|---|
+| EPEX hour price is negative | The current hourly EPEX price is below zero (you are paid to consume) |
+| EPEX quarter-hourly price is negative | The current quarter-hourly EPEX price is below zero |
+| Offtake is at optimal slot | The current offtake slot is the schedule's optimal slot |
+| Injection is at optimal slot | The current injection slot is the schedule's optimal slot |
+| Happy Hours is active | A Happy Hours window is running right now |
 
-Threshold conditions compare a sensor against a value you set. EPEX hour and quarter-hourly prices and current-hour Solar Surplus can be checked in both directions, below or above the threshold. Captar peak, outstanding balance, and overdue amount check the above direction only.
+**Enum state conditions**:
 
-No template YAML is required for any of the above. Dropdown
-options track `SOLAR_SURPLUS_LEVELS` and `TOU_SLOT_CODES` in
-`const.py` automatically, so new codes added by ENGIE appear in
-the editor without a code change.
+| Condition | True when |
+|---|---|
+| Solar Surplus is at level | The current-hour surplus forecast matches a level you choose |
+| Offtake slot is | The current offtake slot matches a slot code you choose |
+| Injection slot is | The current injection slot matches a slot code you choose |
+
+**Threshold conditions** compare a sensor against a value you set:
+
+| Condition | True when |
+|---|---|
+| EPEX hour price is below threshold | The current hourly EPEX price is under your threshold |
+| EPEX hour price is above threshold | The current hourly EPEX price is over your threshold |
+| EPEX quarter-hourly price is below threshold | The current quarter-hourly EPEX price is under your threshold |
+| EPEX quarter-hourly price is above threshold | The current quarter-hourly EPEX price is over your threshold |
+| Solar Surplus is below threshold | The current-hour surplus forecast is under your threshold (kWh) |
+| Solar Surplus is above threshold | The current-hour surplus forecast is over your threshold (kWh) |
+| Captar peak is above threshold | This month's captar peak is over your threshold (kW) |
+| Outstanding balance is above threshold | The outstanding balance is over your threshold (EUR) |
+| Overdue amount is above threshold | The overdue amount is over your threshold (EUR) |
+
+EPEX prices and Solar Surplus can be checked in both directions. Captar peak,
+outstanding balance and overdue amount are above-only.
+
+No template YAML is required for any of the above. If ENGIE adds a new Solar
+Surplus level or tariff slot code, it appears in the dropdown automatically.
 
 ### YAML-based examples
 
@@ -588,7 +615,7 @@ their transitions as HA events with timestamps.
 Event entities are created per business agreement, except for the
 Authentication events entity which is created once per login. The TOU
 and Solar Surplus event entities only appear when the corresponding
-feature flag is active on the account.
+ENGIE has enabled that feature on your account.
 
 ## Prerequisites
 
@@ -599,7 +626,8 @@ feature flag is active on the account.
 > the integration's refresh token, which forces Home Assistant to
 > prompt you for re-authentication. Create a separate user via the
 > [ENGIE user management page](https://www.engie.be/nl/energiedesk/usermanagement/manage-access/)
-> and grant it access to your customer number.
+> (requires signing in to your ENGIE account) and grant it access to
+> your customer number.
 
 - Home Assistant **2026.7.0** or newer
 - A dedicated [ENGIE Belgium](https://www.engie.be/) account for this
@@ -641,7 +669,7 @@ first:
 
 Configuration is done entirely through the Home Assistant UI. New ENGIE
 accounts created via the [user management page](https://www.engie.be/nl/energiedesk/usermanagement/manage-access/)
-have 2FA enabled by default. The integration only supports accounts
+(requires signing in to your ENGIE account) have 2FA enabled by default. The integration only supports accounts
 where 2FA via SMS or email is enabled.
 
 If you haven't reached the credential form yet, use the **Add integration**
@@ -675,7 +703,7 @@ After setup, you can change the price update interval:
 
 You can also toggle **Expose all entities** (off by default). When enabled,
 the integration creates entities for all supported features regardless of
-your contract type or active feature flags. Entities for features your
+your contract type or which features ENGIE has enabled. Entities for features your
 account does not have show as `unavailable`. This is useful for
 troubleshooting or exploring the full entity set.
 
@@ -684,9 +712,9 @@ troubleshooting or exploring the full entity set.
 The integration polls the ENGIE cloud API. There is no local connection and no
 push channel, so a value is only as recent as the last poll.
 
-One coordinator per business agreement fetches prices, peaks, Happy Hours,
-billing and Solar Surplus on a single timer. EPEX day-ahead prices are fetched
-on their own coordinators, on the same timer. The interval is the
+Each business agreement is refreshed on one timer, covering prices, peaks,
+Happy Hours, billing and Solar Surplus together. EPEX day-ahead prices are
+fetched on their own timer, at the same interval. The interval is the
 **Update interval** option, set under [Options](#options).
 
 Time-of-Use and EPEX sensors do not wait for a poll to change value. They are
@@ -697,7 +725,7 @@ not change when these sensors update.
 
 A shorter interval means more requests to ENGIE, and the upstream data changes
 less often than the default already allows for: contract prices change rarely,
-day-ahead prices are published once a day around 14:00 Brussels time, and
+day-ahead prices are published once a day, and
 hourly usage data lags by a few days.
 
 ## Multiple households
@@ -712,9 +740,9 @@ with its own sensors and its own captar peaks history.
 
 To add another household later, open the ENGIE Belgium card in
 **Settings** > **Devices & services** and click **Add business agreement**.
-To remove one, delete its subentry.
+To remove one, delete that business agreement.
 
-> Each subentry is keyed on its business-agreement number (BAN), so the
+> Each business agreement is identified by its BAN, so the
 > picker hides every BAN you have already added. If you replace the EAN
 > on an existing BAN (for example after a meter swap or a move), the
 > integration picks up the new metering point automatically on the next
@@ -743,8 +771,8 @@ import to a specific window. The import runs in the background after setup
 finishes and does not
 block the integration from loading. Reloading or restarting Home Assistant does
 not re-trigger the import once statistics are already present. To re-run an
-import later (or trigger one you skipped at setup), use the **Import historical
-usage** action from **Settings** > **Developer tools** > **Actions**.
+import later (or trigger one you skipped at setup), use the
+**Import historical usage** action from **Settings** > **Developer tools** > **Actions**.
 
 ### Set up a daily sync
 
@@ -904,9 +932,11 @@ removed and no history is lost.
 
 Historical usage data lags a few days. ENGIE only publishes hourly usage once a day is finalised, so today and yesterday are not available yet. For real-time consumption you need a separate P1-port digital-meter reader.
 No historical price retrieval. ENGIE does not expose historical energy prices through the API. The integration can only report the currently active price period. Historical sensor data is what Home Assistant's own recorder stores.
-Happy Hours history starts when the integration is installed. ENGIE's Smart App and API surface only the next upcoming Happy Hours window. The integration records each window it observes locally, so past windows are recoverable inside HA only from the point of install onwards. ENGIE also publishes a public archive of all past Happy Hours at [engie.be/nl/happyhours/overzicht](https://www.engie.be/nl/happyhours/overzicht) if you need older data.
-Happy Hours enrolment is paused until 2027. ENGIE closed new enrolments on 1 June 2026 via the Smart App and states enrolments will reopen in 2027. Existing enrolments continue automatically. See [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/).
-EPEX prices are published around 14:00 Brussels time. ENGIE publishes the next day's dynamic prices each afternoon after the EPEX day-ahead auction settles. Before that time, only today's prices are available and tomorrow's sensors show `unknown`. See [engie.be/nl/dynamic-tarief/dagelijks-gebruik](https://www.engie.be/nl/dynamic-tarief/dagelijks-gebruik/).
+Happy Hours history starts when the integration is installed. ENGIE's Smart App and API surface only the next upcoming Happy Hours window. The integration records each window it observes locally, so past windows are recoverable inside HA only from the point of install onwards. ENGIE also publishes an archive of past Happy Hours at [engie.be/nl/happyhours/overzicht](https://www.engie.be/nl/happyhours/overzicht). It currently covers the 2026 season only, and the page needs JavaScript to display.
+Happy Hours enrolment is paused until 2027. ENGIE closed new enrolments on 1 June 2026 via the Smart App and states enrolments will reopen in 2027. Existing enrolments continue automatically. If you were enrolled before and the service was later deactivated, for example because your grid operator's data was missing, you can still re-enrol. See [engie.be/nl/happyhours](https://www.engie.be/nl/happyhours/).
+EPEX prices are published around 14:00 Brussels time. Before that, only today's prices are available and tomorrow's sensors show `unknown`. See [engie.be/nl/dynamic-tarief/dagelijks-gebruik](https://www.engie.be/nl/dynamic-tarief/dagelijks-gebruik/).
+Solar Surplus is still being rolled out. ENGIE states it is testing the feature with a small group before releasing it to all customers who meet the criteria. If you have solar panels but no Solar Surplus entities, your account is most likely not in the rollout yet. See [engie.be/nl/solar-surplus](https://www.engie.be/nl/solar-surplus).
+
 EPEX sensors: Both hourly and quarter-hourly sensors are created for all dynamic contracts. The actual billing granularity of your contract may differ from what these sensors report.
 Dedicated account required. The same ENGIE credentials cannot be shared with engie.be or the ENGIE Smart App without triggering frequent re-authentication prompts. This is an ENGIE platform constraint, not a Home Assistant limitation. See [Prerequisites](#prerequisites).
 Two-factor authentication required. The integration requires MFA to be enabled on the ENGIE account. Accounts without MFA (e.g. older sub-accounts) are not supported.
@@ -925,8 +955,8 @@ imported into the Energy dashboard. Re-adding the integration and running
 agreement's start date.
 
 If you remove a single business agreement rather than the whole integration,
-its imported statistics are left behind. Run **Clear historical usage
-statistics** against that business agreement first. Cost statistics are
+its imported statistics are left behind. Run
+**Clear historical usage statistics** against that business agreement first. Cost statistics are
 included by default.
 
 No cleanup is required on your ENGIE account. The integration only reads data
@@ -938,8 +968,8 @@ If the integration is misbehaving, work through these steps before filing an
 issue:
 
 1. **Enable debug logging.** Open **Settings** > **Devices & services**, click
-   the three-dot menu on the ENGIE Belgium entry, and select **Enable debug
-   logging**. Reproduce the issue, then choose **Disable debug logging** from
+   the three-dot menu on the ENGIE Belgium entry, and select
+   **Enable debug logging**. Reproduce the issue, then choose **Disable debug logging** from
    the same menu, and Home Assistant will offer to download the captured log.
 
    If the issue happens *before* you can add the integration (for example
@@ -957,8 +987,8 @@ issue:
    Reproduce the failing setup step, then check **Settings** > **System** >
    **Logs** for the `custom_components.engie_be` entries.
 
-2. **Download diagnostics.** From the same three-dot menu, choose **Download
-   diagnostics**. The resulting JSON redacts your password, tokens, and EAN
+2. **Download diagnostics.** From the same three-dot menu, choose
+   **Download diagnostics**. The resulting JSON redacts your password, tokens, and EAN
    identifiers, and is safe to attach to a GitHub issue.
 
 3. **Common errors.**
@@ -979,8 +1009,8 @@ issue:
 
 ## Credential storage
 
-The integration stores your ENGIE credentials and OAuth tokens in Home
-Assistant's standard config-entry storage. The **Download diagnostics** payload
+The integration stores your ENGIE credentials and OAuth tokens with Home
+Assistant's other integration settings. The **Download diagnostics** file
 redacts all of these fields and is safe to share.
 
 ## Changelog
