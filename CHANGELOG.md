@@ -26,6 +26,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   when the integration fails to start, for example after the stored login
   expired. Automations that call them now report what is actually wrong
   instead of failing with an unknown action error.
+- Deleting the integration now also deletes the historical usage statistics it
+  imported and the stored peaks and Happy Hours history. Previously those
+  stayed behind forever, with the statistics still selectable in the Energy
+  dashboard and nothing left to update them.
 
 ## [0.13.3] - 2026-07-28
 

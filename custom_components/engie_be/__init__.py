@@ -438,6 +438,52 @@ async def async_remove_config_entry_device(
     )
 
 
+async def async_remove_entry(
+    hass: HomeAssistant,
+    entry: EngieBeConfigEntry,
+) -> None:
+    """
+    Delete everything this integration persisted outside its config entry.
+
+    Two kinds of leftovers, neither owned by Home Assistant:
+
+    - External statistics imported by ``engie_be.import_history``. Recorder
+      owns only ``recorder``-sourced statistics, so every ``engie_be:{ban}_*``
+      stream would otherwise survive deletion, stay selectable in the Energy
+      dashboard, and be unreachable through any supported UI.
+    - The per-subentry ``.storage`` files holding captar peaks history and
+      the Happy Hours window archive.
+
+    Reads only ``entry.subentries``, never ``entry.runtime_data``: HA calls
+    this for entries that never finished setting up, where no runtime data
+    exists. That is also why the stores are constructed here rather than
+    taken from ``runtime_data``.
+
+    Re-adding the integration and running ``engie_be.import_history`` again
+    rebuilds the statistics from the business agreement's start date, so
+    this is recoverable rather than a one-way door.
+    """
+    for subentry_id in entry.subentries:
+        await EngieBePeaksStore(hass, subentry_id).async_remove()
+        await EngieBeHappyHoursStore(hass, subentry_id).async_remove()
+
+    streams = streams_for_energy_types(None, include_costs=True)
+    for subentry in entry.subentries.values():
+        ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+        if not ban:
+            continue
+        try:
+            await async_clear_usage_history(hass, ban, streams=streams)
+        except KeyError:
+            LOGGER.warning(
+                "Could not clear imported statistics for BAN ***%s: the "
+                "recorder is not available. Any imported history remains "
+                "in the database.",
+                ban[-4:],
+            )
+            return
+
+
 async def async_reload_entry(
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,

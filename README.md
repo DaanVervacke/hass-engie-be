@@ -798,6 +798,16 @@ Read-only. The integration only reads data from the ENGIE API and never modifies
 2. Find the **ENGIE Belgium** card and click the three-dot menu.
 3. Select **Delete**.
 
+Deleting the integration also deletes the historical usage statistics it
+imported into the Energy dashboard. Re-adding the integration and running
+**Import historical usage** again rebuilds them from your business
+agreement's start date.
+
+If you remove a single business agreement rather than the whole integration,
+its imported statistics are left behind. Run **Clear historical usage
+statistics** against that business agreement first. Cost statistics are
+included by default.
+
 No cleanup is required on your ENGIE account. The integration only reads data
 and never modifies anything upstream.
 

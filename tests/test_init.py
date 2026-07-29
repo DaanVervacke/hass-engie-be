@@ -26,8 +26,10 @@ from custom_components.engie_be import (
     async_migrate_entry,
     async_reload_entry,
     async_remove_config_entry_device,
+    async_remove_entry,
     async_setup_entry,
 )
+from custom_components.engie_be._statistics import streams_for_energy_types
 from custom_components.engie_be.api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
@@ -2247,3 +2249,95 @@ async def test_setup_import_reuses_cached_contracts_payload(
 
     assert ok is True
     assert captured_kwargs.get("contracts_payload") == cached_payload
+
+
+# ---------------------------------------------------------------------------
+# async_remove_entry - clears orphaned statistics and persisted stores
+# ---------------------------------------------------------------------------
+
+
+async def test_remove_entry_clears_imported_statistics(
+    hass: HomeAssistant,
+) -> None:
+    """
+    Deleting the config entry deletes its external statistics.
+
+    Regression guard: external statistics are not owned by recorder, so
+    without ``async_remove_entry`` every ``engie_be:{ban}_*`` stream
+    survived deletion and stayed selectable in the Energy dashboard.
+    """
+    entry = _build_entry(hass, business_agreement_number="000000000001")
+    second_subentry = ConfigSubentry(
+        data=MappingProxyType(
+            {
+                CONF_BUSINESS_AGREEMENT_NUMBER: "000000000002",
+            },
+        ),
+        subentry_type=SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+        title="Second Account",
+        unique_id="000000000002",
+    )
+    hass.config_entries.async_add_subentry(entry, second_subentry)
+
+    with patch(
+        "custom_components.engie_be.async_clear_usage_history",
+        new=AsyncMock(return_value=[]),
+    ) as mock_clear:
+        await async_remove_entry(hass, entry)
+
+    assert mock_clear.await_count == 2
+    called_bans = {call.args[1] for call in mock_clear.await_args_list}
+    assert called_bans == {"000000000001", "000000000002"}
+    expected_streams = streams_for_energy_types(None, include_costs=True)
+    for call in mock_clear.await_args_list:
+        assert call.kwargs["streams"] == expected_streams
+
+
+async def test_remove_entry_removes_persisted_stores(
+    hass: HomeAssistant,
+    hass_storage: dict[str, Any],
+) -> None:
+    """
+    Deleting the config entry deletes its ``.storage`` files.
+
+    Regression guard: ``store.py`` writes one peaks-history and one Happy
+    Hours file per subentry and nothing ever removed them, so a deleted
+    integration left them behind in ``.storage`` forever.
+
+    ``hass_storage`` is the in-memory dict the test harness substitutes
+    for the real ``.storage`` files: the ``hass`` fixture already patches
+    ``Store`` loading, writing, and removal at the framework level for
+    every test, so no test using ``hass`` ever touches a real file
+    regardless of what this test does. Asserting against ``hass_storage``
+    still exercises the production call chain
+    (``EngieBePeaksStore.async_remove`` -> ``Store.async_remove``) end to
+    end rather than mocking our own code.
+    """
+    entry = _build_entry(hass)
+    subentry_id = _only_subentry_id(entry)
+    peaks_key = f"{DOMAIN}.peaks_history.{subentry_id}"
+    happy_hours_key = f"{DOMAIN}.happy_hours_history.{subentry_id}"
+    hass_storage[peaks_key] = {"version": 1, "data": {"peaks": []}}
+    hass_storage[happy_hours_key] = {"version": 1, "data": {"windows": []}}
+
+    with patch(
+        "custom_components.engie_be.async_clear_usage_history",
+        new=AsyncMock(return_value=[]),
+    ):
+        await async_remove_entry(hass, entry)
+
+    assert peaks_key not in hass_storage
+    assert happy_hours_key not in hass_storage
+
+
+async def test_remove_entry_survives_missing_recorder(
+    hass: HomeAssistant,
+) -> None:
+    """Removal must not raise when the recorder is unavailable."""
+    entry = _build_entry(hass)
+
+    with patch(
+        "custom_components.engie_be.async_clear_usage_history",
+        new=AsyncMock(side_effect=KeyError("recorder_instance")),
+    ):
+        await async_remove_entry(hass, entry)

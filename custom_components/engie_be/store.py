@@ -123,6 +123,20 @@ class EngieBePeaksStore:
             "latest_peakKW": newest.get("peakKW"),
         }
 
+    async def async_remove(self) -> None:
+        """
+        Delete this subentry's persisted peaks-history store from disk.
+
+        Called when the config entry is removed. ``Store.async_remove``
+        already suppresses ``FileNotFoundError``, so this is safe for a
+        subentry whose store was never written.
+        """
+        await self._store.async_remove()
+        LOGGER.debug(
+            "Subentry %s: removed persisted peaks-history store",
+            self._subentry_id,
+        )
+
 
 def _is_valid_peak(peak: Any) -> bool:
     """Return True if ``peak`` has the minimum shape we require."""
@@ -231,6 +245,20 @@ class EngieBeHappyHoursStore:
             "oldest": sorted_windows[0]["start"],
             "newest": sorted_windows[-1]["start"],
         }
+
+    async def async_remove(self) -> None:
+        """
+        Delete this subentry's persisted Happy Hours store from disk.
+
+        Called when the config entry is removed. ``Store.async_remove``
+        already suppresses ``FileNotFoundError``, so this is safe for a
+        subentry whose store was never written.
+        """
+        await self._store.async_remove()
+        LOGGER.debug(
+            "Subentry %s: removed persisted Happy Hours store",
+            self._subentry_id,
+        )
 
 
 def _is_valid_happy_hour(window: Any) -> bool:
