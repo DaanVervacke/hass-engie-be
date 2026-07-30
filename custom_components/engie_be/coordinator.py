@@ -1286,14 +1286,14 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         ``DeviceInfo`` is only consulted by HA when an entity is added or
         re-added; updating ``subentry.title`` does not by itself rename
-        the device. We look the device up by its stable subentry-scoped
-        identifier and update its ``name`` field directly. ``name_by_user``
-        is preserved by HA's update logic, so a user-customised name is
-        never clobbered.
+        the device. We look the device up, scoped to this config entry, by
+        its stable subentry-scoped identifier and update its ``name`` field
+        directly. ``name_by_user`` is preserved by HA's update logic, so a
+        user-customised name is never clobbered.
         """
         device_reg = dr.async_get(self.hass)
-        device = device_reg.async_get_device(
-            identifiers={(DOMAIN, self.subentry.subentry_id)},
+        device = device_reg.async_get_device_by_identifier(
+            (DOMAIN, self.subentry.subentry_id), self.config_entry.entry_id
         )
         if device is None:
             return

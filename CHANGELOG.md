@@ -7,6 +7,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- The minimum supported Home Assistant version is now 2026.8.0. Device
+  renaming after a backfill now uses the config-entry-scoped device registry
+  lookup that HA 2026.8 introduces, ahead of the old lookup's removal in
+  2027.8.
+
+### Documentation
+
+- Home Assistant renamed its Developer Tools panel to Tools in 2026.8. The
+  README and setup text now use the new name.
+
 ## [0.14.0b1] - 2026-07-29
 
 ### Documentation
@@ -373,7 +385,7 @@ Assistant's long-term statistics.
 
 - **Historical usage import.** You can now backfill your historical energy data. A
   new **Import historical usage** action (under **ENGIE Belgium** in
-  **Developer tools** > **Actions**) pulls every hour of electricity
+  **Tools** > **Actions**) pulls every hour of electricity
   consumption, electricity injection and gas consumption that ENGIE has
   on record for your business agreements and adds it to Home Assistant's
   long-term statistics. Ready to use in the Energy dashboard. Run the action again
@@ -405,7 +417,7 @@ accounts and settings carry over as is.
 
 Want to try the historical import yourself?
 
-1. Go to **Settings** > **Developer tools** > **Actions**.
+1. Go to **Settings** > **Tools** > **Actions**.
 2. Select **Import historical usage** under **ENGIE Belgium**.
 3. Choose your business agreement device as the target.
 4. Click **Perform action**.
@@ -458,14 +470,14 @@ for instructions. If anything looks off, check **Settings** > **System** >
 ### Docs
 
 - Setup-flow step descriptions cleaned up: drop the duplicate sub-description under **Import history** (the step description already covers it), drop the "Each section below is one BAN" filler, add a "Leave everything off to skip" hint on the first screen, and switch the misleading "auto-select from the contract start date" phrasing on **Start date** to "walk back to the earliest known contract on this business agreement".
-- README paragraph on the setup-time historical import no longer points users at a removed **Edit** dialog. The **Import historical usage** action from **Developer tools** > **Actions** is now the documented way to re-run.
+- README paragraph on the setup-time historical import no longer points users at a removed **Edit** dialog. The **Import historical usage** action from **Tools** > **Actions** is now the documented way to re-run.
 - Every README link in the setup-flow strings uses the same **[README](...)** anchor so users get a consistent path from every step.
 
 ## [0.12.0b7] - 2026-07-07
 
 ### Added
 
-- **Historical import option in the setup flow.** After picking a business agreement in setup or in **Add business agreement**, a new step lets you pick per-household which BANs to backfill, then a second step exposes energy types, an optional date window, and cost tracking for the ones you ticked. When the toggle is on for a BAN, the integration runs the import in a background task after setup completes. The guard on existing statistics prevents a re-run on reload or restart. Failures land in **Settings** > **Repairs** as a per-BAN card. Use the **Import historical usage** service action from **Developer tools** > **Actions** to re-run an import later.
+- **Historical import option in the setup flow.** After picking a business agreement in setup or in **Add business agreement**, a new step lets you pick per-household which BANs to backfill, then a second step exposes energy types, an optional date window, and cost tracking for the ones you ticked. When the toggle is on for a BAN, the integration runs the import in a background task after setup completes. The guard on existing statistics prevents a re-run on reload or restart. Failures land in **Settings** > **Repairs** as a per-BAN card. Use the **Import historical usage** service action from **Tools** > **Actions** to re-run an import later.
 - Persistent notifications during the setup-time historical import: one when it starts, replaced by a completion notification when it finishes. Failures still surface via **Settings** > **Repairs**.
 - Section headers on the setup-time historical-import step show the consumption address, and the section now includes optional **Start date** / **End date** pickers matching the import service action.
 
@@ -486,7 +498,7 @@ for instructions. If anything looks off, check **Settings** > **System** >
 
 - README "Add to the Energy Dashboard" section rewritten with the real HA UI labels: **Grid connections**, **Add grid connection**, **Configure grid connection**, **Energy imported from grid**, **Energy exported to grid**, **Use an entity tracking the total costs**, **Export compensation**, **Add gas source**, **Configure gas consumption**.
 - Retitled "Import a specific date range" to "Run a one-off import" and led with the first-time-backfill use case.
-- UI capitalization corrected across README, service strings, and blueprint: **Devices & services**, **Developer tools**, **Automations & scenes**, **Add integration**, **Repairs**.
+- UI capitalization corrected across README, service strings, and blueprint: **Devices & services**, **Tools**, **Automations & scenes**, **Add integration**, **Repairs**.
 
 ## [0.12.0b4] - 2026-07-07
 
@@ -513,7 +525,7 @@ for instructions. If anything looks off, check **Settings** > **System** >
 
 ### Changed
 
-- **`energy_type` and `include_costs` fields on both services are now required.** The per-field checkbox in the Developer Tools UI is gone: `energy_type` must have at least one selection (validated) and `include_costs` is already a boolean toggle. Defaults preserved (all three energy types pre-selected, costs off).
+- **`energy_type` and `include_costs` fields on both services are now required.** The per-field checkbox in the Tools UI is gone: `energy_type` must have at least one selection (validated) and `include_costs` is already a boolean toggle. Defaults preserved (all three energy types pre-selected, costs off).
 
 ### Added
 
@@ -523,7 +535,7 @@ for instructions. If anything looks off, check **Settings** > **System** >
 
 ### Added
 
-- **Import historical usage into the Energy Dashboard** via the `engie_be.import_history` service action (Developer Tools > Actions > *Import historical usage* under **ENGIE Belgium**, or from an automation). Target one or more business-agreement devices. Optional `energy_type` field (consumption / injection / gas consumption / any combination), `start_date`, and `end_date`. Omit all fields for auto mode: first call pulls hourly usage from ENGIE back to the business agreement's start date and writes it into Home Assistant's long-term statistics under per-BAN external statistic IDs (`engie_be:{BAN}_consumption`, `_injection`, `_gas`). Subsequent calls only fetch new hours since the last run. Provide dates to re-import a specific window, overwriting existing hourly rows in place. The values appear in the Energy Dashboard's electricity and gas source pickers.
+- **Import historical usage into the Energy Dashboard** via the `engie_be.import_history` service action (Tools > Actions > *Import historical usage* under **ENGIE Belgium**, or from an automation). Target one or more business-agreement devices. Optional `energy_type` field (consumption / injection / gas consumption / any combination), `start_date`, and `end_date`. Omit all fields for auto mode: first call pulls hourly usage from ENGIE back to the business agreement's start date and writes it into Home Assistant's long-term statistics under per-BAN external statistic IDs (`engie_be:{BAN}_consumption`, `_injection`, `_gas`). Subsequent calls only fetch new hours since the last run. Provide dates to re-import a specific window, overwriting existing hourly rows in place. The values appear in the Energy Dashboard's electricity and gas source pickers.
 - **`engie_be.clear_import_history` service** deletes imported statistic streams for the targeted business-agreement device. Optional energy-type field to clear only the selected streams. The next `Import historical usage` call for the same device and energy type backfills again from the business agreement's start date. Useful when ENGIE republishes historical data after the fact.
 - **Blueprint: daily historical data sync** (`blueprints/automation/DaanVervacke/engie_be_daily_history_sync.yaml`) - import from the README, pick a device, a time, and one or more energy types. Home Assistant then runs `engie_be.import_history` once per day for users without a P1 meter.
 - **`include_costs` field on `import_history` and `clear_import_history` services** - set to `true` to also import or clear per-hour cost (EUR) statistics alongside kWh streams. Adds three new per-BAN statistic IDs: `engie_be:{BAN}_consumption_cost`, `engie_be:{BAN}_injection_cost`, and `engie_be:{BAN}_gas_cost`. Cost data is sourced from the same `usage-details` payload. No additional API calls. Off by default. The blueprint also exposes the new input.
