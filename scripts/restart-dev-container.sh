@@ -24,7 +24,7 @@ fi
 REQUIREMENTS_FILE="$PROJECT_DIR/requirements.txt"
 # The || true keeps a missing pin from aborting under pipefail, so the
 # empty-check below reports it instead of the script dying silently.
-HA_VERSION="$(grep -E '^homeassistant==' "$REQUIREMENTS_FILE" | sed -E 's/^homeassistant==([0-9.]+).*/\1/' || true)"
+HA_VERSION="$(grep -E '^homeassistant==' "$REQUIREMENTS_FILE" | sed -E 's/^homeassistant==([^[:space:]]+).*/\1/' || true)"
 
 if [[ -z "$HA_VERSION" ]]; then
     echo "Error: could not parse a homeassistant== pin from $REQUIREMENTS_FILE."

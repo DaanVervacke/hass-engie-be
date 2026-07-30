@@ -7,6 +7,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- The minimum supported Home Assistant version is now 2026.8.0. Device
+  renaming after a backfill now uses the config-entry-scoped device registry
+  lookup that HA 2026.8 introduces, ahead of the old lookup's removal in
+  2027.8.
+
 ## [0.14.0b1] - 2026-07-29
 
 ### Documentation
