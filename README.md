@@ -789,6 +789,11 @@ Or manually:
 4. Under **Automations**, click **Create automation** on the imported blueprint.
 5. Pick your business agreement, a time to run, and save.
 
+If a night's import fails, for example because ENGIE rejected the stored
+login, you'll see a Repairs card in **Settings** > **System** > **Repairs**
+rather than a silent gap in your dashboard. See [Common errors](#troubleshooting)
+if one shows up.
+
 If you have multiple households, repeat once per business agreement.
 
 ### Run a one-off import
@@ -870,6 +875,12 @@ Leave both dates empty for the normal case. The first run then goes back to
 the business agreement's start date, and later runs only fetch the hours added
 since the last import. Provide dates to re-import a specific window, where
 existing hours inside that window are overwritten in place.
+
+If a targeted business agreement fails (an expired login, an ENGIE
+outage), the action raises an error for that call and leaves a Repairs
+card behind so a scheduled call (for example from the daily-sync
+blueprint) doesn't fail silently. Other targets in the same call still
+run to completion.
 
 ```yaml
 action: engie_be.import_history
@@ -1001,6 +1012,11 @@ issue:
      interval.
    - *Invalid verification code*: re-trigger the MFA step and enter the latest
      code.
+   - *ENGIE Belgium: scheduled import failed*: a business agreement's
+     historical usage import failed, most often from an expired login.
+     Check **Settings** > **System** > **Repairs** for the card - it
+     names which business agreement and clears itself on the next
+     successful import.
 
 4. **File an issue.** If the problem persists, open one at
    [github.com/DaanVervacke/hass-engie-be/issues](https://github.com/DaanVervacke/hass-engie-be/issues)
