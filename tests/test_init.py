@@ -17,6 +17,8 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be import (
@@ -49,6 +51,7 @@ from custom_components.engie_be.const import (
     CONF_UPDATE_INTERVAL,
     DOMAIN,
     ENERGY_TYPE_OPTIONS,
+    HISTORY_BACKFILL_STALE_DAYS,
     SIGNAL_AUTHENTICATION_STATE_CHANGED,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
 )
@@ -2121,27 +2124,39 @@ async def test_setup_skips_background_task_when_import_history_false(
     mock_import.assert_not_awaited()
 
 
-async def test_setup_background_task_skipped_when_stats_exist(
+async def test_setup_background_task_skipped_when_stats_are_fresh(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
 ) -> None:
     """
-    Background import skipped when statistics already exist for the target streams.
+    Background import skipped when the newest recorded stat is recent.
 
-    The _last_stats guard suppresses the import even when import_history=True.
+    Guard 1 checks freshness, not mere presence: a stat recorded within
+    HISTORY_BACKFILL_STALE_DAYS is treated as a completed backfill. The
+    subentry is scoped to a single contracted stream (consumption) so
+    the per-stream, contract-aware freshness check has exactly one
+    stream to be satisfied by.
     """
-    entry = _build_entry_with_import(hass, import_history=True)
-    client = _make_client()
+    entry = _build_entry_with_import(
+        hass, import_history=True, energy_types=["consumption"]
+    )
+    client = _make_client(
+        energy_contracts_return={"items": [{"division": "ELECTRICITY"}]}
+    )
+    fresh_start = dt_util.utcnow().timestamp()
 
     p1, p2, p3 = _setup_patches(client)
     with (
         p1,
         p2,
         p3,
-        # Existing stats: _last_stats returns data for one stream
+        # Existing, fresh stats: _last_stats returns data for the one
+        # contracted stream.
         patch(
             "custom_components.engie_be._last_stats",
-            AsyncMock(return_value={"consumption": {"start": 1000, "sum": 42.0}}),
+            AsyncMock(
+                return_value={"consumption": {"start": fresh_start, "sum": 42.0}}
+            ),
         ),
         patch(
             "custom_components.engie_be.async_import_usage_history",
@@ -2153,6 +2168,284 @@ async def test_setup_background_task_skipped_when_stats_exist(
 
     assert ok is True
     mock_import.assert_not_awaited()
+
+
+async def test_setup_background_task_retries_when_stats_are_stale(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Background import retried when the newest recorded stat is stale.
+
+    A stat older than HISTORY_BACKFILL_STALE_DAYS is treated as an
+    interrupted backfill, not a completed one, so the import proceeds and
+    resumes internally. Scoped to a single contracted stream so this
+    tests the freshness comparison itself, not the per-stream presence
+    check exercised by the "missing" test below.
+    """
+    entry = _build_entry_with_import(
+        hass, import_history=True, energy_types=["consumption"]
+    )
+    client = _make_client(
+        energy_contracts_return={"items": [{"division": "ELECTRICITY"}]}
+    )
+    stale_start = (
+        dt_util.utcnow() - timedelta(days=HISTORY_BACKFILL_STALE_DAYS + 1)
+    ).timestamp()
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(
+                return_value={"consumption": {"start": stale_start, "sum": 42.0}}
+            ),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(return_value=42),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_awaited_once()
+
+
+async def test_setup_background_task_retries_when_stats_are_missing(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    No stats at all still proceeds to import.
+
+    Both electricity and gas are contracted, so all requested streams
+    count towards the per-stream freshness check; none have any data.
+    """
+    entry = _build_entry_with_import(hass, import_history=True)
+    client = _make_client(
+        energy_contracts_return={
+            "items": [{"division": "ELECTRICITY"}, {"division": "GAS"}]
+        }
+    )
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(return_value={}),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(return_value=42),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_awaited_once()
+
+
+async def test_setup_background_task_retries_when_one_of_several_streams_missing(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    A fresh sibling stream must not mask a stream that never got backfilled.
+
+    Regression test for CORRECTNESS-01: the old ``max()``-across-existing-
+    only check would see the fresh "consumption" entry and skip, even
+    though "gas" (also contracted) has zero rows. The per-stream check
+    must catch this and retry.
+    """
+    entry = _build_entry_with_import(
+        hass, import_history=True, energy_types=["consumption", "gas"]
+    )
+    client = _make_client(
+        energy_contracts_return={
+            "items": [{"division": "ELECTRICITY"}, {"division": "GAS"}]
+        }
+    )
+    fresh_start = dt_util.utcnow().timestamp()
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        # "gas" has no key at all - the exact shape that fooled the old
+        # max()-only check.
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(
+                return_value={"consumption": {"start": fresh_start, "sum": 42.0}}
+            ),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(return_value=42),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_awaited_once()
+
+
+async def test_setup_background_task_skips_when_uncontracted_stream_missing(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    A missing stream the BAN has no contract for is not "never backfilled".
+
+    Same shape as the regression test above ("consumption" fresh, "gas"
+    absent from ``_last_stats``), except this BAN has no gas contract at
+    all. The missing gas stream is correctly explained by "no contract",
+    so the import must not be retried.
+    """
+    entry = _build_entry_with_import(
+        hass, import_history=True, energy_types=["consumption", "gas"]
+    )
+    client = _make_client(
+        energy_contracts_return={"items": [{"division": "ELECTRICITY"}]}
+    )
+    fresh_start = dt_util.utcnow().timestamp()
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(
+                return_value={"consumption": {"start": fresh_start, "sum": 42.0}}
+            ),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_not_awaited()
+
+
+async def test_setup_background_task_skips_at_exact_stale_boundary(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    A stat exactly HISTORY_BACKFILL_STALE_DAYS old is still "fresh".
+
+    The ``<=`` comparison in the freshness check means exactly-N-days-old
+    counts as current, not stale. Pins the boundary side that the
+    existing "stale" test (N days + 1) does not cover.
+    """
+    entry = _build_entry_with_import(
+        hass, import_history=True, energy_types=["consumption"]
+    )
+    client = _make_client(
+        energy_contracts_return={"items": [{"division": "ELECTRICITY"}]}
+    )
+    # Freeze "now" for the duration of the guard so the elapsed wall-clock
+    # time between computing boundary_start and the guard's own utcnow()
+    # call cannot push the age a few milliseconds past the threshold and
+    # flake this boundary test.
+    frozen_now = dt_util.utcnow()
+    boundary_start = (
+        frozen_now - timedelta(days=HISTORY_BACKFILL_STALE_DAYS)
+    ).timestamp()
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be.dt_util.utcnow",
+            return_value=frozen_now,
+        ),
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(
+                return_value={"consumption": {"start": boundary_start, "sum": 42.0}}
+            ),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_not_awaited()
+
+
+async def test_setup_background_task_clears_issue_when_stats_are_fresh(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A stale setup-time Repairs issue is cleared once stats prove fresh."""
+    entry = _build_entry_with_import(
+        hass, import_history=True, energy_types=["consumption"]
+    )
+    subentry_id = next(iter(entry.subentries))
+    issue_id = f"setup_import_failed_{subentry_id}"
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="setup_import_failed",
+        translation_placeholders={"title": "stale issue"},
+    )
+    issue_registry = ir.async_get(hass)
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+
+    client = _make_client(
+        energy_contracts_return={"items": [{"division": "ELECTRICITY"}]}
+    )
+    fresh_start = dt_util.utcnow().timestamp()
+
+    p1, p2, p3 = _setup_patches(client)
+    with (
+        p1,
+        p2,
+        p3,
+        patch(
+            "custom_components.engie_be._last_stats",
+            AsyncMock(
+                return_value={"consumption": {"start": fresh_start, "sum": 42.0}}
+            ),
+        ),
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            AsyncMock(),
+        ) as mock_import,
+    ):
+        ok = await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert ok is True
+    mock_import.assert_not_awaited()
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
 
 
 async def test_setup_background_task_failure_does_not_fail_setup(

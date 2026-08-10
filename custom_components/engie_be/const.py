@@ -229,6 +229,12 @@ HISTORY_BACKFILL_YEARS = 3
 # each response to 168 hourly items and caps the amount of unpersisted
 # work lost to a mid-import failure at one week of rows.
 HISTORY_CHUNK_DAYS = 7
+# A setup-time backfill whose newest recorded statistic is older than this
+# is treated as interrupted, not complete, and retried on the next reload
+# or restart. A healthy, actively-synced account should never be this far
+# behind; ENGIE has no publication lag anywhere close to this. See Guard 1
+# in _async_guarded_import (__init__.py) for the full reasoning.
+HISTORY_BACKFILL_STALE_DAYS = 30
 
 # Service name for the ``import_history`` service. Exposes optional
 # ``start_date`` / ``end_date`` for explicit windows; omit both for

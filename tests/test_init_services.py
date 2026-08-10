@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -9,8 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.engie_be.const import (
@@ -561,8 +563,8 @@ async def test_import_history_continues_when_one_ban_fails(
             side_effect=_fake_import,
         ) as mock_import,
         patch("custom_components.engie_be.LOGGER") as mock_logger,
+        pytest.raises(HomeAssistantError) as exc_info,
     ):
-        # Must not raise.
         await hass.services.async_call(
             DOMAIN,
             SERVICE_IMPORT_HISTORY,
@@ -570,6 +572,7 @@ async def test_import_history_continues_when_one_ban_fails(
             blocking=True,
         )
 
+    assert exc_info.value.translation_key == "import_history_failed"
     assert mock_import.await_count == 2
     # LOGGER.exception must have been called exactly once for the failing BAN.
     assert mock_logger.exception.call_count == 1
@@ -607,8 +610,8 @@ async def test_import_history_continues_when_one_ban_auth_rejected(
             side_effect=_fake_import,
         ) as mock_import,
         patch("custom_components.engie_be.LOGGER") as mock_logger,
+        pytest.raises(HomeAssistantError) as exc_info,
     ):
-        # Must not raise.
         await hass.services.async_call(
             DOMAIN,
             SERVICE_IMPORT_HISTORY,
@@ -616,6 +619,7 @@ async def test_import_history_continues_when_one_ban_auth_rejected(
             blocking=True,
         )
 
+    assert exc_info.value.translation_key == "import_history_failed"
     assert mock_import.await_count == 2
     assert mock_logger.warning.call_count == 1
     warning_call: call = mock_logger.warning.call_args
@@ -695,3 +699,296 @@ async def test_import_history_on_failed_entry_reports_not_loaded(
             blocking=True,
         )
     assert err.value.translation_key == "service_entry_reloading"
+
+
+async def test_import_history_creates_repairs_issue_on_failure(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A failing target raises HomeAssistantError and creates a Repairs issue."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    device_registry = dr.async_get(hass)
+    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    assert ban_device is not None
+
+    with (
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            side_effect=RuntimeError("boom"),
+        ),
+        pytest.raises(HomeAssistantError) as exc_info,
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    assert exc_info.value.translation_key == "import_history_failed"
+    issue_registry = ir.async_get(hass)
+    issue = issue_registry.async_get_issue(
+        DOMAIN, f"service_import_failed_{subentry_id}"
+    )
+    assert issue is not None
+    assert issue.translation_key == "service_import_failed"
+
+
+async def test_import_history_clears_repairs_issue_on_success(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A prior Repairs issue is cleared once the target succeeds."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    device_registry = dr.async_get(hass)
+    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    assert ban_device is not None
+
+    issue_id = f"service_import_failed_{subentry_id}"
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="service_import_failed",
+        translation_placeholders={"title": "stale issue"},
+    )
+    issue_registry = ir.async_get(hass)
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+
+    with patch(
+        "custom_components.engie_be.async_import_usage_history",
+        new=AsyncMock(return_value=42),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_import_history_auth_failure_creates_issue(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """An authentication rejection also creates the Repairs issue."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    device_registry = dr.async_get(hass)
+    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    assert ban_device is not None
+
+    with (
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            side_effect=EngieBeApiClientAuthenticationError("expired"),
+        ),
+        pytest.raises(HomeAssistantError),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    issue_registry = ir.async_get(hass)
+    issue = issue_registry.async_get_issue(
+        DOMAIN, f"service_import_failed_{subentry_id}"
+    )
+    assert issue is not None
+
+
+async def test_import_history_partial_failure_processes_all_targets_and_raises(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """One BAN failing does not short-circuit the other, and only it gets an issue."""
+    entry = await _setup_two_ban_entry(hass)
+    subentry_ids = list(entry.subentries)
+    device_registry = dr.async_get(hass)
+    ban_devices = [
+        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        for sid in subentry_ids
+    ]
+    assert all(d is not None for d in ban_devices)
+    device_ids = [d.id for d in ban_devices]
+
+    call_count = 0
+
+    async def _fake_import(*_args: object, **_kwargs: object) -> int:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("boom")
+        return 42
+
+    with (
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            side_effect=_fake_import,
+        ) as mock_import,
+        pytest.raises(HomeAssistantError),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": device_ids},
+            blocking=True,
+        )
+
+    assert mock_import.await_count == 2
+    issue_registry = ir.async_get(hass)
+    issues = [
+        issue_registry.async_get_issue(DOMAIN, f"service_import_failed_{sid}")
+        for sid in subentry_ids
+    ]
+    present = [issue for issue in issues if issue is not None]
+    assert len(present) == 1
+
+
+async def test_import_history_cancelled_error_reraised_without_issue(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A CancelledError propagates as-is, without creating a Repairs issue."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    device_registry = dr.async_get(hass)
+    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    assert ban_device is not None
+
+    with (
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            side_effect=asyncio.CancelledError(),
+        ),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    issue_registry = ir.async_get(hass)
+    issue = issue_registry.async_get_issue(
+        DOMAIN, f"service_import_failed_{subentry_id}"
+    )
+    assert issue is None
+
+
+async def test_import_history_all_targets_fail_with_mixed_exceptions(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    Two failing targets of different exception types each get their own issue.
+
+    Regression test for the aggregate path being previously only ever
+    exercised with exactly one failing target: target 1 fails with the
+    warning-level auth branch, target 2 with the exception-level generic
+    branch, and both must independently raise an issue and be reflected
+    in the aggregate error.
+    """
+    entry = await _setup_two_ban_entry(hass)
+    subentry_ids = list(entry.subentries)
+    device_registry = dr.async_get(hass)
+    ban_devices = [
+        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        for sid in subentry_ids
+    ]
+    assert all(d is not None for d in ban_devices)
+    device_ids = [d.id for d in ban_devices]
+
+    call_count = 0
+
+    async def _fake_import(*_args: object, **_kwargs: object) -> int:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise EngieBeApiClientAuthenticationError("expired")
+        raise RuntimeError("boom")
+
+    with (
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            side_effect=_fake_import,
+        ),
+        patch("custom_components.engie_be.LOGGER") as mock_logger,
+        pytest.raises(HomeAssistantError) as exc_info,
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": device_ids},
+            blocking=True,
+        )
+
+    error_message = exc_info.value.translation_placeholders["error"]
+    assert "2 of 2" in error_message
+    assert "***0001" in error_message
+    assert "***0002" in error_message
+
+    issue_registry = ir.async_get(hass)
+    issues = [
+        issue_registry.async_get_issue(DOMAIN, f"service_import_failed_{sid}")
+        for sid in subentry_ids
+    ]
+    assert all(issue is not None for issue in issues)
+
+    assert mock_logger.warning.call_count == 1
+    assert mock_logger.exception.call_count == 1
+
+
+async def test_import_history_success_clears_setup_time_issue_too(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    A successful service call also clears a prior setup-time backfill issue.
+
+    ``setup_import_failed_{id}``'s own text tells the user to retry via
+    this exact service action - a success here must clear it too, not
+    just this call path's own ``service_import_failed_{id}``.
+    """
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    device_registry = dr.async_get(hass)
+    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    assert ban_device is not None
+
+    setup_issue_id = f"setup_import_failed_{subentry_id}"
+    service_issue_id = f"service_import_failed_{subentry_id}"
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        setup_issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="setup_import_failed",
+        translation_placeholders={"title": "stale setup-time issue"},
+    )
+    issue_registry = ir.async_get(hass)
+    assert issue_registry.async_get_issue(DOMAIN, setup_issue_id) is not None
+
+    with patch(
+        "custom_components.engie_be.async_import_usage_history",
+        new=AsyncMock(return_value=42),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    assert issue_registry.async_get_issue(DOMAIN, setup_issue_id) is None
+    assert issue_registry.async_get_issue(DOMAIN, service_issue_id) is None

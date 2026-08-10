@@ -7,6 +7,28 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- A failed `import_history` service call (including the one the daily-sync
+  blueprint uses) previously only logged the failure. It now raises and
+  creates a Repairs issue per failed business agreement, so a broken
+  nightly sync is visible instead of silently doing nothing.
+- The setup-time historical backfill could get interrupted by a reload
+  (for example right after adding a business agreement with "expose all
+  entities" on) and then never resume, because it only checked whether
+  any statistics existed rather than whether the backfill had finished.
+  It now retries when the newest recorded statistic is more than 30 days
+  old.
+- The setup-time backfill's freshness check could still miss a stream that
+  never received any data while a sibling stream stayed current, since it
+  only looked at the single most-recent statistic across all streams. It
+  now requires every stream the business agreement is actually contracted
+  for to be present and current, not just one of them.
+- A successful `import_history` service call only cleared its own Repairs
+  issue, not the one raised by a failed setup-time backfill even though
+  that issue's own text tells you to run this action to retry. It now
+  clears both, so following that instruction actually removes the card.
+
 ## [0.14.0b2] - 2026-08-10
 
 ### Changed

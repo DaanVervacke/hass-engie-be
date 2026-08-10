@@ -14,6 +14,7 @@ from homeassistant.const import ATTR_DEVICE_ID, Platform
 from homeassistant.exceptions import (
     ConfigEntryAuthFailed,
     ConfigEntryNotReady,
+    HomeAssistantError,
     ServiceValidationError,
 )
 from homeassistant.helpers import config_validation as cv
@@ -23,9 +24,11 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.util import dt as dt_util
 
 from ._contracts import bare_ean, is_account_dynamic, service_points_by_ean
 from ._statistics import (
+    _filter_by_contract,
     _last_stats,
     async_clear_usage_history,
     async_import_usage_history,
@@ -53,6 +56,7 @@ from .const import (
     DEFAULT_CLIENT_ID,
     DOMAIN,
     ENERGY_TYPE_OPTIONS,
+    HISTORY_BACKFILL_STALE_DAYS,
     LOGGER,
     SERVICE_CLEAR_IMPORT_HISTORY,
     SERVICE_IMPORT_HISTORY,
@@ -678,10 +682,18 @@ async def _async_guarded_import(  # noqa: PLR0913
     """
     Run a setup-time historical import with two guards.
 
-    Guard 1 - ``_last_stats`` check: if any statistic already exists for
-    the target streams we skip the import entirely. This suppresses re-
-    imports on reload, HA restart, and options-flow saves without requiring
-    any persistent flag.
+    Guard 1 - freshness check: ``streams`` is first narrowed to the
+    streams the BAN is actually contracted for (via ``_filter_by_contract``,
+    fail-open on a missing/malformed ``contracts_payload``). The backfill
+    is treated as complete and skipped only when every contracted stream
+    has a recorded statistic no older than HISTORY_BACKFILL_STALE_DAYS.
+    Any contracted stream missing entirely, or whose newest statistic is
+    older than that, is treated as an interrupted or never-run backfill
+    and the import proceeds - it resumes from ``_last_stats`` internally
+    via ``async_import_usage_history``, so this is cheap even when most
+    of the data is already there. A stream the BAN has no contract for is
+    never treated as "never backfilled" - it is simply excluded from the
+    freshness check, since there is nothing ENGIE would ever return for it.
 
     Guard 2 - broad try/except: a failure in the import does NOT fail entry
     setup (the background task is entry-scoped and runs after
@@ -706,22 +718,60 @@ async def _async_guarded_import(  # noqa: PLR0913
     notification_id = f"engie_be_import_{subentry.subentry_id}"
     issue_id = f"setup_import_failed_{subentry.subentry_id}"
     try:
-        existing = await _last_stats(hass, ban, streams)
-        if existing:
+        contracted_streams = _filter_by_contract(streams, contracts_payload)
+        existing = (
+            await _last_stats(hass, ban, contracted_streams)
+            if contracted_streams
+            else {}
+        )
+        if contracted_streams and existing.keys() >= contracted_streams:
+            ages = {
+                stream: dt_util.utcnow()
+                - dt_util.utc_from_timestamp(float(existing[stream]["start"]))
+                for stream in contracted_streams
+            }
+            oldest = max(ages.values())
+            if oldest <= timedelta(days=HISTORY_BACKFILL_STALE_DAYS):
+                LOGGER.debug(
+                    "Setup-time import skipped for BAN ***%s: all %d contracted "
+                    "stream(s) present and current, oldest as of %s ago "
+                    "(streams: %s)",
+                    masked,
+                    len(contracted_streams),
+                    oldest,
+                    sorted(contracted_streams),
+                )
+                ir.async_delete_issue(hass, DOMAIN, issue_id)
+                return
             LOGGER.debug(
-                "Setup-time import skipped for BAN ***%s: stats already present "
-                "(streams with data: %s)",
+                "Setup-time import retrying for BAN ***%s: oldest contracted "
+                "stream's stat is %s old (>%d days), treating as an "
+                "interrupted backfill rather than a completed one",
                 masked,
-                sorted(existing.keys()),
+                oldest,
+                HISTORY_BACKFILL_STALE_DAYS,
             )
-            ir.async_delete_issue(hass, DOMAIN, issue_id)
-            return
-        pn.async_create(
-            hass,
-            (
+        elif contracted_streams:
+            LOGGER.debug(
+                "Setup-time import retrying for BAN ***%s: %d of %d contracted "
+                "stream(s) have never been imported (%s)",
+                masked,
+                len(contracted_streams - existing.keys()),
+                len(contracted_streams),
+                sorted(contracted_streams - existing.keys()),
+            )
+        is_retry = bool(existing)
+        message = (
+            f"Resuming historical usage import for {address}."
+            if is_retry
+            else (
                 f"Importing historical usage for {address}. "
                 "This can take a few minutes for a multi-year window."
-            ),
+            )
+        )
+        pn.async_create(
+            hass,
+            message,
             title="ENGIE Belgium: importing historical data",
             notification_id=notification_id,
         )
@@ -834,7 +884,7 @@ class _ClearImportHistoryCall:
         )
 
 
-def _async_register_services(hass: HomeAssistant) -> None:
+def _async_register_services(hass: HomeAssistant) -> None:  # noqa: PLR0915 - two service handlers, branches are all irreducible
     """
     Register the domain-level services.
 
@@ -906,22 +956,71 @@ def _async_register_services(hass: HomeAssistant) -> None:
             return_exceptions=True,
         )
 
+        failed: list[str] = []  # masked BANs, for the aggregate message
+
+        def _flag_failed(subentry: ConfigSubentry, masked: str) -> None:
+            """Raise the service-failure Repairs issue and record the BAN."""
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                f"service_import_failed_{subentry.subentry_id}",
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="service_import_failed",
+                translation_placeholders={
+                    "title": subentry.title or f"BAN ***{masked}"
+                },
+            )
+            failed.append(f"BAN ***{masked}")
+
         for (_entry, subentry), result in zip(targets, results, strict=True):
+            ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+            masked = ban[-4:] if ban else "????"
+
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+
             if isinstance(result, EngieBeApiClientAuthenticationError):
-                ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
                 LOGGER.warning(
                     "import_history: authentication rejected for BAN ***%s; "
                     "reauth will be triggered by the next token refresh",
-                    ban[-4:] if ban else "????",
+                    masked,
                 )
+                _flag_failed(subentry, masked)
                 continue
             if isinstance(result, BaseException):
-                ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
                 LOGGER.exception(
                     "import_history: unexpected error for BAN ***%s",
-                    ban[-4:] if ban else "????",
+                    masked,
                     exc_info=result,
                 )
+                _flag_failed(subentry, masked)
+                continue
+
+            # Clear both this call path's own issue and the one-shot
+            # setup-time backfill's issue: the latter's own text tells the
+            # user to retry via this exact service, so a success here must
+            # also clear it or that instruction never actually resolves
+            # anything. Deleting a non-existent issue id is a no-op.
+            ir.async_delete_issue(
+                hass, DOMAIN, f"service_import_failed_{subentry.subentry_id}"
+            )
+            ir.async_delete_issue(
+                hass, DOMAIN, f"setup_import_failed_{subentry.subentry_id}"
+            )
+
+        if failed:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="import_history_failed",
+                translation_placeholders={
+                    "error": (
+                        f"{len(failed)} of {len(targets)} target(s) failed "
+                        f"({', '.join(failed)}); see Settings -> Repairs and the "
+                        "log for details."
+                    ),
+                },
+            )
 
     async def _handle_clear_import_history(call: ServiceCall) -> None:
         payload = _ClearImportHistoryCall.from_service_call(call)

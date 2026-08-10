@@ -191,6 +191,35 @@ def _wanted_divisions(streams: frozenset[str]) -> set[str]:
     return {_stream_division(s) for s in streams}
 
 
+def _filter_by_contract(
+    streams: frozenset[str],
+    contracts_payload: dict[str, Any] | None,
+) -> frozenset[str]:
+    """
+    Narrow ``streams`` to those whose division has a contract on this BAN.
+
+    Fail-open: returns ``streams`` unchanged when ``contracts_payload``
+    is ``None`` or malformed (no ``items`` list), matching the existing
+    policy that an ENGIE outage on the contracts endpoint must not block
+    an import. Shared between ``async_import_usage_history`` (which
+    fetches or reuses a payload before calling this) and Guard 1 in
+    ``_async_guarded_import`` (``__init__.py``), which only ever reuses
+    an already-cached payload and never fetches - see that call site for
+    why.
+    """
+    if not isinstance(contracts_payload, dict):
+        return streams
+    items_list = contracts_payload.get("items")
+    if not isinstance(items_list, list):
+        return streams
+    contracted_divisions = {
+        item["division"]
+        for item in items_list
+        if isinstance(item, dict) and "division" in item
+    }
+    return frozenset(s for s in streams if _stream_division(s) in contracted_divisions)
+
+
 def earliest_contract_start_date(
     contracts_payload: dict[str, Any] | None,
     streams: frozenset[str],
@@ -516,41 +545,22 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     # all-zero statistic streams for divisions the BAN has never had.
     # Fail-open: if the fetch failed or the payload is malformed, skip
     # filtering so an ENGIE outage does not kill an import.
-    contracted_divisions: set[str] | None = None
-    if isinstance(contracts_payload, dict):
-        items_list = contracts_payload.get("items")
-        if isinstance(items_list, list):
-            contracted_divisions = {
-                item["division"]
-                for item in items_list
-                if isinstance(item, dict) and "division" in item
-            }
-
-    if contracted_divisions is None:
+    filtered = _filter_by_contract(active_streams, contracts_payload)
+    if filtered != active_streams:
+        dropped = sorted(active_streams - filtered)
         LOGGER.debug(
-            "BAN ***%s: division filter skipped "
-            "(contracts payload unavailable or malformed)",
+            "BAN ***%s: dropping streams with no contract on this BAN: %s",
+            masked_ban,
+            dropped,
+        )
+        active_streams = filtered
+    if not active_streams:
+        LOGGER.debug(
+            "BAN ***%s: no contracted streams remain after division filter; "
+            "nothing to import",
             masked_ban,
         )
-    else:
-        filtered = frozenset(
-            s for s in active_streams if _stream_division(s) in contracted_divisions
-        )
-        if filtered != active_streams:
-            dropped = sorted(active_streams - filtered)
-            LOGGER.debug(
-                "BAN ***%s: dropping streams with no contract on this BAN: %s",
-                masked_ban,
-                dropped,
-            )
-            active_streams = filtered
-        if not active_streams:
-            LOGGER.debug(
-                "BAN ***%s: no contracted streams remain after division filter; "
-                "nothing to import",
-                masked_ban,
-            )
-            return 0
+        return 0
 
     last = await _last_stats(hass, business_agreement_number, active_streams)
 
