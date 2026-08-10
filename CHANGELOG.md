@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.14.0b3] - 2026-08-10
+
 ### Fixed
 
 - A failed `import_history` service call (including the one the daily-sync
@@ -1472,7 +1474,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b2...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b3...HEAD
+[0.14.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b2...v0.14.0b3
 [0.14.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b1...v0.14.0b2
 [0.14.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.3...v0.14.0b1
 [0.13.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.2...v0.13.3
