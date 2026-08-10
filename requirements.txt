@@ -1,5 +1,5 @@
 homeassistant==2026.8.1
-ruff==0.16.1
+ruff==0.16.2
 
 # Test dependencies
 # pytest-homeassistant-custom-component is published only on GitHub for 0.13.x
