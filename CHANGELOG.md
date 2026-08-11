@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.14.0b4] - 2026-08-11
+
 ### Fixed
 
 - Resuming an import used the single most-recently-synced energy stream
@@ -1493,7 +1495,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b3...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b4...HEAD
+[0.14.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b3...v0.14.0b4
 [0.14.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b2...v0.14.0b3
 [0.14.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b1...v0.14.0b2
 [0.14.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.3...v0.14.0b1
