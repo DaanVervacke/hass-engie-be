@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.components.recorder.models import (
     StatisticData,
@@ -29,6 +29,7 @@ from homeassistant.components.recorder.statistics import (
 )
 from homeassistant.components.recorder.tasks import ClearStatisticsTask
 from homeassistant.const import UnitOfEnergy
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
@@ -311,7 +312,7 @@ def _dig(payload: dict[str, Any] | None, path: tuple[str, ...]) -> float:
 def usage_items_to_statistics(
     items: list[dict[str, Any]],
     initial_sums: dict[str, float],
-    last_stats_time_utc: datetime | None,
+    cutoffs: dict[str, datetime | None],
 ) -> dict[str, list[StatisticData]]:
     """
     Convert ENGIE usage items to per-stream hour-aligned StatisticData.
@@ -322,9 +323,14 @@ def usage_items_to_statistics(
       though the values are final, so a plain ``partialData`` filter
       would drop real historical data. ``end > now`` catches only the
       truly not-yet-finalised rows.
-    - Rows at or before ``last_stats_time_utc`` are skipped so re-runs
-      don't double-count. ENGIE bucket starts equal the last recorded
-      start on the boundary hour, so ``<=`` (not ``<``) is correct.
+    - Each stream is checked against its own entry in ``cutoffs``
+      (``None`` means the stream has no prior data, so nothing is
+      skipped for it) rather than one shared value, so a stream that is
+      behind its siblings does not have its still-missing rows silently
+      dropped just because another stream in the same call is already
+      caught up through that point. ENGIE bucket starts equal the last
+      recorded start on the boundary hour, so ``<=`` (not ``<``) is
+      correct.
     - Sums are running cumulative totals seeded from ``initial_sums``;
       HA's Energy dashboard reads the ``sum`` column, not per-bucket
       ``state``, so the running total is what matters.
@@ -358,9 +364,10 @@ def usage_items_to_statistics(
             malformed += 1
             continue
         start_utc = dt_util.as_utc(start_local)
-        if last_stats_time_utc is not None and start_utc <= last_stats_time_utc:
-            continue
         for stream, spec in _STREAM_SPECS.items():
+            stream_cutoff = cutoffs.get(stream)
+            if stream_cutoff is not None and start_utc <= stream_cutoff:
+                continue
             delta = _dig(item, spec.item_path)
             sums[stream] += delta
             result[stream].append(
@@ -571,14 +578,33 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     running_sums: dict[str, float] = {
         stream: _sum_or_zero(entry) for stream, entry in last.items()
     }
-    last_stats_time_utc: datetime | None = None
+
+    # Each stream's own resume point. Absent from ``last`` means never
+    # imported: no cutoff, everything in the (widened, see below) window
+    # is new. A stream present in ``last`` keeps its own timestamp so it
+    # only skips rows it has actually already recorded, not whatever its
+    # freshest sibling happens to have.
+    cutoffs: dict[str, datetime | None] = {
+        stream: dt_util.utc_from_timestamp(float(entry["start"]))
+        for stream, entry in last.items()
+    }
+    for stream in active_streams:
+        cutoffs.setdefault(stream, None)
+
+    any_stream_missing = any(cutoffs[stream] is None for stream in active_streams)
+
     if last:
-        newest = max(float(entry["start"]) for entry in last.values())
-        last_stats_time_utc = dt_util.utc_from_timestamp(newest)
         LOGGER.debug(
-            "BAN ***%s: resuming from last_stats at %s, running_sums seed=%s",
+            "BAN ***%s: per-stream resume cutoffs=%s, running_sums seed=%s",
             masked_ban,
-            last_stats_time_utc.isoformat(),
+            {
+                s: (
+                    cutoff_value.isoformat()
+                    if (cutoff_value := cutoffs[s]) is not None
+                    else None
+                )
+                for s in active_streams
+            },
             {s: round(v, 4) for s, v in running_sums.items()},
         )
 
@@ -618,17 +644,20 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
             masked_ban,
             window_start_date.isoformat(),
         )
-    elif last_stats_time_utc is None:
-        # First import: prefer the earliest contract start date so we
-        # don't waste API calls on pre-contract empty windows. Fall back
-        # to a fixed HISTORY_BACKFILL_YEARS-year default only when the
-        # contracts endpoint failed or returned nothing usable.
-        # Reuse the already-fetched contracts_payload; no second API call.
+    elif any_stream_missing:
+        # At least one requested stream has never been imported (this
+        # subsumes the old "no prior stats at all" case). Widen the whole
+        # window to first-import scope so that stream gets full history.
+        # Streams that already have data keep their own cutoff (set
+        # above), so they just re-skip their own already-covered rows
+        # instead of double-counting - see the per-stream-cutoff note
+        # above for why that is required, not optional.
         contract_start = earliest_contract_start_date(contracts_payload, active_streams)
         if contract_start is not None:
             window_start_date = contract_start
             LOGGER.debug(
-                "BAN ***%s: using contract start %s as import window start",
+                "BAN ***%s: using contract start %s as import window start "
+                "(at least one requested stream has never been imported)",
                 masked_ban,
                 contract_start.isoformat(),
             )
@@ -637,22 +666,31 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
                 now_local - timedelta(days=365 * HISTORY_BACKFILL_YEARS)
             ).date()
             LOGGER.debug(
-                "BAN ***%s: no contract start found; using %d-year fallback start %s",
+                "BAN ***%s: no contract start found; using %d-year fallback "
+                "start %s (at least one requested stream has never been "
+                "imported)",
                 masked_ban,
                 HISTORY_BACKFILL_YEARS,
                 window_start_date.isoformat(),
             )
     else:
-        # Round down to the day containing the last recorded bucket; the
-        # ``<=`` guard in the pure converter drops the already-imported
-        # rows without another API round trip.
+        # Every requested stream already has some data: resume from the
+        # EARLIEST of their cutoffs (not the latest) so no stream's own
+        # gap gets skipped just because a sibling is more current.
+        # ``any_stream_missing`` is False here, so every entry is a real
+        # datetime, not None - narrow explicitly for the type checker.
+        known_cutoffs = [
+            cutoffs[stream] for stream in active_streams if cutoffs[stream] is not None
+        ]
+        earliest_cutoff = min(cast("list[datetime]", known_cutoffs))
         window_start_date = dt_util.as_local(
-            last_stats_time_utc + timedelta(hours=1)
+            earliest_cutoff + timedelta(hours=1)
         ).date()
         LOGGER.debug(
-            "BAN ***%s: resuming from last recorded hour; window start set to %s",
+            "BAN ***%s: resuming from the earliest per-stream cutoff %s "
+            "(all requested streams have prior data)",
             masked_ban,
-            window_start_date.isoformat(),
+            earliest_cutoff.isoformat(),
         )
 
     # endDate is exclusive; when auto, include tomorrow so today's
@@ -660,6 +698,24 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     window_end_date = (
         end_date if end_date is not None else (now_local + timedelta(days=1)).date()
     )
+
+    # Only reject when the *user's own two inputs* are contradictory.
+    # Keyed on ``start_date is not None``, NOT ``explicit_window``: an
+    # ``end_date``-only call gets its ``window_start_date`` from the
+    # resume logic above, not from the caller, so a caught-up account
+    # landing on an empty window there is the same legitimate "nothing
+    # left to import through that date" outcome as auto mode, not a user
+    # mistake to scold them for.
+    if start_date is not None and window_start_date >= window_end_date:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="import_window_empty",
+            translation_placeholders={
+                "start": window_start_date.isoformat(),
+                "end": window_end_date.isoformat(),
+            },
+        )
+
     LOGGER.debug(
         "BAN ***%s: import window %s..%s (explicit_window=%s)",
         masked_ban,
@@ -668,12 +724,18 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
         explicit_window,
     )
 
-    # In explicit mode, let ENGIE's rows overwrite (statistic_id, start)
-    # collisions instead of dropping them at the cutoff.  In auto mode,
-    # the cutoff only matters for the first chunk (which may overlap the
-    # last already-recorded hour); later chunks are all strictly newer,
-    # so re-applying the same cutoff is harmless.
-    cutoff = None if explicit_window else last_stats_time_utc
+    # When the caller named the window start themselves, let ENGIE's rows
+    # overwrite (statistic_id, start) collisions instead of dropping them
+    # at a cutoff - this is also exactly when ``_sums_before`` reseeds the
+    # sums from the row preceding the window (above), so the two must
+    # stay keyed on the same condition or the sums inflate: an
+    # ``end_date``-only call would otherwise both disable the cutoff and
+    # keep the newest-row seed, double-counting the boundary day.
+    # Deliberately keyed on ``start_date is not None``, NOT on
+    # ``explicit_window``.
+    cutoffs_for_converter: dict[str, datetime | None] = (
+        dict.fromkeys(active_streams) if start_date is not None else cutoffs
+    )
 
     total = 0
     cursor_date = window_start_date
@@ -696,7 +758,9 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
         if not isinstance(items, list):
             items = []
 
-        per_stream = usage_items_to_statistics(items, running_sums, cutoff)
+        per_stream = usage_items_to_statistics(
+            items, running_sums, cutoffs_for_converter
+        )
         for stream, rows in per_stream.items():
             if stream not in active_streams or not rows:
                 continue

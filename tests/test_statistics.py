@@ -14,6 +14,7 @@ from homeassistant.components.recorder.statistics import (
     get_last_statistics,
     statistics_during_period,
 )
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.util import dt as dt_util
 
 from custom_components.engie_be._statistics import (
@@ -56,9 +57,7 @@ def test_statistic_id_format() -> None:
 def test_converter_produces_row_per_hour_per_stream() -> None:
     """Every non-partial input row yields exactly one row per stream (all six)."""
     items = _load_items()
-    per_stream = usage_items_to_statistics(
-        items, initial_sums={}, last_stats_time_utc=None
-    )
+    per_stream = usage_items_to_statistics(items, initial_sums={}, cutoffs={})
 
     assert set(per_stream) == {
         STREAM_CONSUMPTION,
@@ -75,9 +74,7 @@ def test_converter_produces_row_per_hour_per_stream() -> None:
 def test_converter_totals_match_engie_totals() -> None:
     """Final running sum for each stream equals the ENGIE-reported total."""
     items = _load_items()
-    per_stream = usage_items_to_statistics(
-        items, initial_sums={}, last_stats_time_utc=None
-    )
+    per_stream = usage_items_to_statistics(items, initial_sums={}, cutoffs={})
 
     consumption_total = per_stream[STREAM_CONSUMPTION][-1]["sum"]
     injection_total = per_stream[STREAM_INJECTION][-1]["sum"]
@@ -92,9 +89,7 @@ def test_converter_totals_match_engie_totals() -> None:
 def test_converter_running_sum_is_monotonic() -> None:
     """Cumulative ``sum`` never decreases (all streams are non-negative)."""
     items = _load_items()
-    per_stream = usage_items_to_statistics(
-        items, initial_sums={}, last_stats_time_utc=None
-    )
+    per_stream = usage_items_to_statistics(items, initial_sums={}, cutoffs={})
 
     for rows in per_stream.values():
         sums = [row["sum"] for row in rows]
@@ -104,9 +99,7 @@ def test_converter_running_sum_is_monotonic() -> None:
 def test_converter_normalises_timestamps_to_utc() -> None:
     """Brussels-local ``+02:00`` starts are converted to UTC before storage."""
     items = _load_items()
-    per_stream = usage_items_to_statistics(
-        items, initial_sums={}, last_stats_time_utc=None
-    )
+    per_stream = usage_items_to_statistics(items, initial_sums={}, cutoffs={})
 
     first_utc = per_stream[STREAM_CONSUMPTION][0]["start"]
     # 2026-07-03T00:00:00+02:00 == 2026-07-02T22:00:00 UTC
@@ -123,7 +116,7 @@ def test_converter_seeds_from_initial_sums() -> None:
             STREAM_INJECTION: 200.0,
             STREAM_GAS: 50.0,
         },
-        last_stats_time_utc=None,
+        cutoffs={},
     )
 
     assert per_stream[STREAM_CONSUMPTION][-1]["sum"] == pytest.approx(100.003)
@@ -151,9 +144,7 @@ def test_converter_drops_rows_with_future_end() -> None:
             },
         },
     ]
-    per_stream = usage_items_to_statistics(
-        poisoned, initial_sums={}, last_stats_time_utc=None
-    )
+    per_stream = usage_items_to_statistics(poisoned, initial_sums={}, cutoffs={})
 
     # Same row count as the clean fixture; the future row was dropped.
     assert len(per_stream[STREAM_CONSUMPTION]) == len(items)
@@ -177,7 +168,7 @@ def test_converter_keeps_partial_data_from_past() -> None:
         },
     }
     per_stream = usage_items_to_statistics(
-        [past_row, *items], initial_sums={}, last_stats_time_utc=None
+        [past_row, *items], initial_sums={}, cutoffs={}
     )
 
     assert len(per_stream[STREAM_CONSUMPTION]) == len(items) + 1
@@ -204,9 +195,7 @@ def test_converter_drops_future_end_regardless_of_partial_flag() -> None:
             },
         },
     ]
-    per_stream = usage_items_to_statistics(
-        simulated, initial_sums={}, last_stats_time_utc=None
-    )
+    per_stream = usage_items_to_statistics(simulated, initial_sums={}, cutoffs={})
 
     assert len(per_stream[STREAM_CONSUMPTION]) == len(items)
     assert per_stream[STREAM_CONSUMPTION][-1]["sum"] == pytest.approx(0.003)
@@ -218,11 +207,42 @@ def test_converter_skips_rows_at_or_before_last_stats_time() -> None:
     # Second row in the fixture starts at 2026-07-03T01:00:00+02:00 == 23:00 UTC.
     cutoff = datetime(2026, 7, 2, 23, 0, tzinfo=UTC)
     per_stream = usage_items_to_statistics(
-        items, initial_sums={}, last_stats_time_utc=cutoff
+        items,
+        initial_sums={},
+        cutoffs={
+            STREAM_CONSUMPTION: cutoff,
+            STREAM_INJECTION: cutoff,
+            STREAM_GAS: cutoff,
+            STREAM_CONSUMPTION_COST: cutoff,
+            STREAM_INJECTION_COST: cutoff,
+            STREAM_GAS_COST: cutoff,
+        },
     )
 
     # First two rows are at or before the cutoff; only the last two remain.
     assert len(per_stream[STREAM_CONSUMPTION]) == len(items) - 2
+
+
+def test_converter_skips_rows_at_or_before_cutoff_per_stream() -> None:
+    """Each stream's cutoff only affects that stream, not its siblings."""
+    items = _load_items()
+    # Second row starts at 2026-07-03T01:00:00+02:00 == 23:00 UTC.
+    consumption_cutoff = datetime(2026, 7, 2, 23, 0, tzinfo=UTC)
+    per_stream = usage_items_to_statistics(
+        items,
+        initial_sums={},
+        cutoffs={
+            STREAM_CONSUMPTION: consumption_cutoff
+        },  # gas: no cutoff (absent -> None)
+    )
+
+    # Consumption drops the first two rows (at/before its own cutoff).
+    assert len(per_stream[STREAM_CONSUMPTION]) == len(items) - 2
+    # Gas has no cutoff of its own: every row survives, even the ones
+    # consumption dropped. This is the actual bug this plan fixes - the
+    # old shared-cutoff code could not express "consumption is caught up
+    # but gas is not" in one call.
+    assert len(per_stream[STREAM_GAS]) == len(items)
 
 
 def test_converter_tolerates_malformed_rows() -> None:
@@ -236,9 +256,7 @@ def test_converter_tolerates_malformed_rows() -> None:
             "energy": {"electricity": {"offtake": {"kWhSum": "oops"}}},
         },
     ]
-    per_stream = usage_items_to_statistics(
-        items, initial_sums={}, last_stats_time_utc=None
-    )
+    per_stream = usage_items_to_statistics(items, initial_sums={}, cutoffs={})
 
     # Only the third row survives; its bad kWhSum is coerced to 0.
     assert len(per_stream[STREAM_CONSUMPTION]) == 1
@@ -413,6 +431,399 @@ async def test_orchestrator_explicit_window_bypasses_cutoff(hass) -> None:  # no
     assert count == 12
     # Per-chunk persistence: 1 chunk * 3 streams == 3 writes.
     assert mocked_add.call_count == 3
+
+
+async def test_orchestrator_rejects_equal_start_and_end_date(hass) -> None:  # noqa: ANN001
+    """Equal start/end dates would silently import nothing; raise instead."""
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock()
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+    )
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        pytest.raises(ServiceValidationError) as exc_info,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 1),
+        )
+
+    assert exc_info.value.translation_key == "import_window_empty"
+    client.async_get_usage_details.assert_not_awaited()
+
+
+async def test_orchestrator_rejects_backwards_window(hass) -> None:  # noqa: ANN001
+    """``start_date`` after ``end_date`` is rejected the same way as an equal pair."""
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock()
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+    )
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        pytest.raises(ServiceValidationError) as exc_info,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 1),
+        )
+
+    assert exc_info.value.translation_key == "import_window_empty"
+    client.async_get_usage_details.assert_not_awaited()
+
+
+async def test_orchestrator_allows_valid_one_day_window(hass) -> None:  # noqa: ANN001
+    """The correct way to ask for one day (end one day after start) does not raise."""
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+    )
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ),
+    ):
+        count = await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 1, 2),
+        )
+
+    assert client.async_get_usage_details.await_count == 1
+    assert count > 0
+
+
+async def test_orchestrator_auto_mode_empty_window_does_not_raise(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """Auto mode's normal "already caught up" empty window must not raise."""
+    # Test hass instances default to US/Pacific (see pytest-homeassistant-
+    # custom-component's ``hass`` fixture), so the window-start/window-end
+    # civil-date arithmetic below is worked out against that zone, not UTC.
+    freezer.move_to("2026-07-11T06:00:00Z")
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock()
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
+    # The last recorded hour's cutoff+1h and "now"+1day land on the same
+    # local civil date, so window_start_date == window_end_date - the
+    # everyday "nothing new since last night" shape, not a bug.
+    last_ts = datetime(2026, 7, 11, 7, 0, tzinfo=UTC).timestamp()
+    fake_last = {
+        "engie_be:000000000000_consumption": [{"start": last_ts, "sum": 5.0}],
+        "engie_be:000000000000_injection": [{"start": last_ts, "sum": 6.0}],
+        "engie_be:000000000000_gas": [{"start": last_ts, "sum": 7.0}],
+    }
+    recorder = MagicMock()
+
+    async def _fake_executor(_fn, _hass, _n, sid, _c, _t):  # noqa: ANN001, ANN202
+        return {sid: fake_last[sid]}
+
+    recorder.async_add_executor_job = _fake_executor
+    with patch(
+        "custom_components.engie_be._statistics.get_instance",
+        return_value=recorder,
+    ):
+        count = await async_import_usage_history(hass, client, _mock_subentry())
+
+    assert count == 0
+    client.async_get_usage_details.assert_not_awaited()
+
+
+async def test_orchestrator_end_only_past_date_returns_zero_without_raising(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """An end-only call capped before an already-caught-up point returns 0, no raise."""
+    freezer.move_to("2026-07-10T18:00:00Z")
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock()
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
+    # All streams equally caught up (does not depend on plan 209's
+    # missing-vs-lagging ordering) through 2026-07-01.
+    last_ts = datetime(2026, 7, 1, 10, 0, tzinfo=UTC).timestamp()
+    fake_last = {
+        "engie_be:000000000000_consumption": [{"start": last_ts, "sum": 5.0}],
+        "engie_be:000000000000_injection": [{"start": last_ts, "sum": 6.0}],
+        "engie_be:000000000000_gas": [{"start": last_ts, "sum": 7.0}],
+    }
+    recorder = MagicMock()
+
+    async def _fake_executor(_fn, _hass, _n, sid, _c, _t):  # noqa: ANN001, ANN202
+        return {sid: fake_last[sid]}
+
+    recorder.async_add_executor_job = _fake_executor
+    with patch(
+        "custom_components.engie_be._statistics.get_instance",
+        return_value=recorder,
+    ):
+        count = await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            end_date=date(2024, 1, 2),  # already-shifted/exclusive, well in the past
+        )
+
+    assert count == 0
+    client.async_get_usage_details.assert_not_awaited()
+
+
+async def test_orchestrator_resumes_from_earliest_stream_not_freshest(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """Resume uses a lagging stream's own cutoff, not a fresher sibling's."""
+    freezer.move_to("2026-07-10T12:00:00Z")
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
+
+    # Consumption/injection are current through today; gas fell behind five
+    # days ago (an earlier partial failure, or Include costs just enabled).
+    recent_ts = datetime(2026, 7, 10, 8, 0, tzinfo=UTC).timestamp()
+    gas_ts = datetime(2026, 7, 5, 10, 0, tzinfo=UTC).timestamp()
+    fake_last = {
+        "engie_be:000000000000_consumption": [{"start": recent_ts, "sum": 100.0}],
+        "engie_be:000000000000_injection": [{"start": recent_ts, "sum": 200.0}],
+        "engie_be:000000000000_gas": [{"start": gas_ts, "sum": 50.0}],
+    }
+    recorder = MagicMock()
+
+    async def _fake_executor(_fn, _hass, _n, sid, _c, _t):  # noqa: ANN001, ANN202
+        return {sid: fake_last[sid]}
+
+    recorder.async_add_executor_job = _fake_executor
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ),
+    ):
+        await async_import_usage_history(hass, client, _mock_subentry())
+
+    # The fetch window must start from gas's resume point (its cutoff +
+    # 1 hour), not consumption's/injection's more recent one.
+    first_call_kwargs = client.async_get_usage_details.await_args_list[0].kwargs
+    expected_start = dt_util.as_local(datetime(2026, 7, 5, 11, 0, tzinfo=UTC)).date()
+    assert first_call_kwargs["start_date"] == expected_start
+
+
+async def test_orchestrator_widens_window_when_one_stream_never_imported(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """A never-imported stream widens the window without inflating siblings."""
+    freezer.move_to("2026-07-06T12:00:00Z")
+    payload = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    contract_start = "2026-06-06"
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "legalContractStartDate": contract_start,
+                },
+                {
+                    "division": "GAS",
+                    "status": "ACTIVE",
+                    "legalContractStartDate": contract_start,
+                },
+            ]
+        }
+    )
+
+    # Consumption/injection already have recent data; gas is entirely
+    # absent (never imported). All fixture rows (dated 2026-07-03) sit
+    # strictly before consumption/injection's own cutoff, so even though
+    # the widened window causes them to be re-fetched every chunk, they
+    # must not be re-added to consumption's/injection's running sum.
+    recent_ts = datetime(2026, 7, 6, 10, 0, tzinfo=UTC).timestamp()
+    fake_last = {
+        "engie_be:000000000000_consumption": [{"start": recent_ts, "sum": 100.0}],
+        "engie_be:000000000000_injection": [{"start": recent_ts, "sum": 200.0}],
+    }
+    recorder = MagicMock()
+
+    async def _fake_executor(_fn, _hass, _n, sid, _c, _t):  # noqa: ANN001, ANN202
+        return {sid: fake_last[sid]} if sid in fake_last else {}
+
+    recorder.async_add_executor_job = _fake_executor
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(hass, client, _mock_subentry())
+
+    # The window widens to the contract start, not consumption/injection's
+    # own (more recent) resume point.
+    first_call_kwargs = client.async_get_usage_details.await_args_list[0].kwargs
+    assert first_call_kwargs["start_date"] == date.fromisoformat(contract_start)
+
+    # Consumption's running sum must never exceed its seed: every fixture
+    # row it sees across the widened window predates its own cutoff.
+    consumption_calls = [
+        call
+        for call in mocked_add.call_args_list
+        if call.args[1].get("statistic_id") == "engie_be:000000000000_consumption"
+    ]
+    assert consumption_calls == []
+    # Gas, which had no cutoff at all, does get the fixture rows written.
+    gas_calls = [
+        call
+        for call in mocked_add.call_args_list
+        if call.args[1].get("statistic_id") == "engie_be:000000000000_gas"
+    ]
+    assert len(gas_calls) > 0
+
+
+async def test_orchestrator_end_only_call_does_not_double_count_boundary_day(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """An end-only call resumes per stream, no boundary re-append."""
+    freezer.move_to("2026-07-10T20:00:00Z")
+    cutoff = datetime(2026, 7, 10, 10, 0, tzinfo=UTC)
+    cutoff_ts = cutoff.timestamp()
+    fake_last = {
+        "engie_be:000000000000_consumption": [{"start": cutoff_ts, "sum": 50.0}],
+        "engie_be:000000000000_injection": [{"start": cutoff_ts, "sum": 60.0}],
+        "engie_be:000000000000_gas": [{"start": cutoff_ts, "sum": 70.0}],
+    }
+
+    def _item(start_local: str, kwh: float) -> dict[str, Any]:
+        return {
+            "start": start_local,
+            "end": start_local,
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": kwh},
+                    "injection": {"kWhSum": 0.0},
+                },
+                "gas": {"kWh": 0.0},
+            },
+        }
+
+    items = [
+        # At the boundary hour itself (== cutoff): already recorded.
+        _item("2026-07-10T12:00:00+02:00", 1.0),
+        # After the cutoff: genuinely new.
+        _item("2026-07-10T13:00:00+02:00", 2.0),
+        _item("2026-07-10T14:00:00+02:00", 3.0),
+    ]
+    # ``end`` must be <= now for the row not to be dropped as in-progress;
+    # reuse each item's own start plus one hour.
+    for item in items:
+        start_dt = datetime.fromisoformat(item["start"])
+        item["end"] = (start_dt + timedelta(hours=1)).isoformat()
+
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value={"items": items})
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
+
+    recorder = MagicMock()
+
+    async def _fake_executor(_fn, _hass, _n, sid, _c, _t):  # noqa: ANN001, ANN202
+        return {sid: fake_last[sid]}
+
+    recorder.async_add_executor_job = _fake_executor
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            end_date=date(2026, 7, 13),  # already-shifted/exclusive, capped end
+        )
+
+    consumption_calls = [
+        call
+        for call in mocked_add.call_args_list
+        if call.args[1].get("statistic_id") == "engie_be:000000000000_consumption"
+    ]
+    written_rows = consumption_calls[-1].args[2]
+
+    # The at-cutoff row is not re-appended: only the two genuinely-new
+    # rows are written, and none of them starts at or before the cutoff.
+    assert len(written_rows) == 2
+    assert all(row["start"] > cutoff for row in written_rows)
+    # Tail sum is the seed plus only the new deltas (1.0's at-cutoff row
+    # must not have been double-counted on top of the seed).
+    assert written_rows[-1]["sum"] == pytest.approx(50.0 + 2.0 + 3.0)
 
 
 async def test_sums_before_preserves_legitimate_zero_sum(hass) -> None:  # noqa: ANN001
@@ -951,9 +1362,7 @@ def test_converter_handles_spring_forward_missing_hour() -> None:
             },
         },
     ]
-    per_stream = usage_items_to_statistics(
-        items, initial_sums={}, last_stats_time_utc=None
-    )
+    per_stream = usage_items_to_statistics(items, initial_sums={}, cutoffs={})
 
     rows = per_stream[STREAM_CONSUMPTION]
     assert len(rows) == 2
@@ -990,9 +1399,7 @@ def test_converter_handles_fall_back_doubled_hour() -> None:
             },
         },
     ]
-    per_stream = usage_items_to_statistics(
-        items, initial_sums={}, last_stats_time_utc=None
-    )
+    per_stream = usage_items_to_statistics(items, initial_sums={}, cutoffs={})
 
     rows = per_stream[STREAM_CONSUMPTION]
     assert len(rows) == 2
@@ -1051,7 +1458,7 @@ def test_converter_writes_cost_streams_when_costs_paths_populated() -> None:
             STREAM_INJECTION_COST: 0.5,
             STREAM_GAS_COST: 0.0,
         },
-        last_stats_time_utc=None,
+        cutoffs={},
     )
 
     # Cost streams appear in output and running sum starts from initial_sums.

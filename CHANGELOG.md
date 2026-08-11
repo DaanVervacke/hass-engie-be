@@ -7,6 +7,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- Resuming an import used the single most-recently-synced energy stream
+  to decide where to continue from, for every stream in the same call.
+  If one stream (for example gas) fell behind its siblings, whether from
+  an earlier partial failure or from `Include costs` being turned on
+  after the fact, its gap was never fetched again by any later sync.
+  Each stream now tracks and resumes from its own history instead of the
+  freshest one.
+- Calling `import_history` with only an end date re-imported the last
+  already-recorded day on top of itself, permanently inflating the
+  cumulative totals the Energy dashboard shows by up to one day of
+  usage. An end-only call now resumes from where each stream left off
+  and stops at the given date, without touching what was already
+  recorded.
+- Calling `import_history` with an end date before the start date
+  silently imported nothing and reported success. It now rejects that
+  combination with a clear error instead.
+
 ## [0.14.0b3] - 2026-08-10
 
 ### Fixed

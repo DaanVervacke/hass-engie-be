@@ -613,6 +613,9 @@
         },
         "service_no_energy_type_selected": {
             "message": "Select at least one energy type."
+        },
+        "import_window_empty": {
+            "message": "The start date ({start}) must be before the end date ({end}). The end date is exclusive, so importing a single day needs an end date one day after the start date."
         }
     },
     "issues": {
