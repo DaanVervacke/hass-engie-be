@@ -19,14 +19,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   Each stream now tracks and resumes from its own history instead of the
   freshest one.
 - Calling `import_history` with only an end date re-imported the last
-  already-recorded day on top of itself, permanently inflating the
+  already-recorded day on top of itself. That permanently inflated the
   cumulative totals the Energy dashboard shows by up to one day of
   usage. An end-only call now resumes from where each stream left off
-  and stops at the given date, without touching what was already
-  recorded.
+  and stops at the given date.
 - Calling `import_history` with an end date before the start date
-  silently imported nothing and reported success. It now rejects that
-  combination with a clear error instead.
+  silently imported nothing and reported success. It now fails with an
+  error naming both dates.
 
 ## [0.14.0b3] - 2026-08-10
 
