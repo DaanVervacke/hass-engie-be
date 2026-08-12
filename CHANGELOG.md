@@ -7,6 +7,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.14.0b6] - 2026-08-12
+
 ### Fixed
 
 - Clearing historical usage statistics returned before the delete had
@@ -1520,7 +1522,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b5...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b6...HEAD
+[0.14.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b5...v0.14.0b6
 [0.14.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b4...v0.14.0b5
 [0.14.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b3...v0.14.0b4
 [0.14.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b2...v0.14.0b3
