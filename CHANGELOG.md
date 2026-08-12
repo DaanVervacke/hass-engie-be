@@ -11,15 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
-- ENGIE returns placeholder rows for hours it has no data for yet, and
-  the import recorded them as real zero values instead of skipping them.
-  ENGIE's published data usually runs a day or two behind. Recording
-  those placeholders pushed the sync's resume point past data ENGIE had
-  not published, so the real values were never fetched once they
-  arrived. The dashboard could then freeze at whatever the first import
-  covered. Placeholder rows are now skipped. If your dashboard is stuck
-  like this, update and run Import historical usage once with a start
-  date before the gap.
+- ENGIE returns placeholder rows for hours it has not published data
+  for yet, and the import recorded them as real zero values instead of
+  skipping them. Recording those placeholders pushed the sync's resume
+  point past the hours ENGIE had actually published, so the real values
+  were never fetched once they arrived. The dashboard could then freeze
+  at whatever the first import covered. Placeholder rows are now
+  skipped. If your dashboard is stuck like this, update and run Import
+  historical usage once with a start date before the gap.
 
 ## [0.14.0b4] - 2026-08-11
 
