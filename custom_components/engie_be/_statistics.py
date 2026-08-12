@@ -12,6 +12,7 @@ gas source pickers.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
@@ -29,13 +30,14 @@ from homeassistant.components.recorder.statistics import (
 )
 from homeassistant.components.recorder.tasks import ClearStatisticsTask
 from homeassistant.const import UnitOfEnergy
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
 
 from .api import EngieBeApiClientError
 from .const import (
+    CLEAR_STATISTICS_TIMEOUT_SECONDS,
     CONF_BUSINESS_AGREEMENT_NUMBER,
     DOMAIN,
     ENERGY_TYPE_CONSUMPTION,
@@ -818,6 +820,12 @@ async def async_clear_usage_history(
     gas). Pass cost streams explicitly to also clear those. The next import
     for the same BAN and cleared streams will do a full backfill again.
     Returns the list of cleared statistic IDs.
+
+    Awaits the recorder's delete before returning, so a caller that clears
+    and then re-imports never races a not-yet-applied delete, and a delete
+    that fails on the recorder thread surfaces as an error instead of a
+    silent success. Raises ``HomeAssistantError`` if the recorder does not
+    signal completion within ``CLEAR_STATISTICS_TIMEOUT_SECONDS``.
     """
     active_streams = streams or frozenset(_ENERGY_STREAMS)
     stat_ids = [
@@ -827,6 +835,7 @@ async def async_clear_usage_history(
     ]
     if not stat_ids:
         return []
+    masked_ban = business_agreement_number[-4:]
     LOGGER.debug(
         "async_clear_usage_history: clearing %d statistic_id(s): %s",
         len(stat_ids),
@@ -837,11 +846,36 @@ async def async_clear_usage_history(
     # on the recorder's own thread; the recorder asserts this and raises
     # ``RuntimeError: Detected unsafe call not in recorder thread`` when
     # invoked via ``async_add_executor_job``. Queue a ``ClearStatisticsTask``
-    # so the recorder itself dequeues it on the correct thread.
-    recorder.queue_task(ClearStatisticsTask(on_done=None, statistic_ids=stat_ids))
+    # so the recorder itself dequeues it on the correct thread, and bridge
+    # its ``on_done`` callback (fired on the recorder thread after the
+    # delete) back to this event loop so we can await completion.
+    future: asyncio.Future[None] = hass.loop.create_future()
+
+    def _on_done() -> None:
+        if not future.done():
+            hass.loop.call_soon_threadsafe(future.set_result, None)
+
+    recorder.queue_task(ClearStatisticsTask(on_done=_on_done, statistic_ids=stat_ids))
+    try:
+        async with asyncio.timeout(CLEAR_STATISTICS_TIMEOUT_SECONDS):
+            await future
+    except TimeoutError as err:
+        # ``on_done`` is skipped when ``clear_statistics`` raises on the
+        # recorder thread, so a hang here means the delete failed or the
+        # recorder queue is wedged. Surface it rather than block forever.
+        LOGGER.error(
+            "Clearing statistics for BAN ***%s did not complete within %ds",
+            masked_ban,
+            CLEAR_STATISTICS_TIMEOUT_SECONDS,
+        )
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="clear_history_timeout",
+            translation_placeholders={"ban": masked_ban},
+        ) from err
     LOGGER.info(
         "Cleared %d statistic streams for BAN ***%s",
         len(stat_ids),
-        business_agreement_number[-4:],
+        masked_ban,
     )
     return stat_ids

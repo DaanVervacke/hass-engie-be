@@ -14,7 +14,7 @@ from homeassistant.components.recorder.statistics import (
     get_last_statistics,
     statistics_during_period,
 )
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.util import dt as dt_util
 
 from custom_components.engie_be._statistics import (
@@ -1441,9 +1441,28 @@ async def test_orchestrator_writes_cost_streams_when_include_costs(hass) -> None
     }
 
 
+def _recorder_completing_clear() -> MagicMock:
+    """
+    Build a recorder mock whose ``queue_task`` fires the task's ``on_done``.
+
+    Mirrors the real recorder: the delete runs and the completion callback
+    is invoked, which lets ``async_clear_usage_history``'s awaited future
+    resolve instead of hanging.
+    """
+    recorder = MagicMock()
+
+    def _queue_task(task: object) -> None:
+        on_done = getattr(task, "on_done", None)
+        if on_done is not None:
+            on_done()
+
+    recorder.queue_task.side_effect = _queue_task
+    return recorder
+
+
 async def test_clear_usage_history_streams_filter(hass) -> None:  # noqa: ANN001
     """Clear helper only queues the requested streams."""
-    recorder = MagicMock()
+    recorder = _recorder_completing_clear()
 
     with patch(
         "custom_components.engie_be._statistics.get_instance",
@@ -1465,7 +1484,7 @@ async def test_clear_usage_history_streams_filter(hass) -> None:  # noqa: ANN001
 
 async def test_clear_usage_history_deletes_three_streams(hass) -> None:  # noqa: ANN001
     """Clear helper queues a ClearStatisticsTask for the three per-BAN IDs."""
-    recorder = MagicMock()
+    recorder = _recorder_completing_clear()
 
     with patch(
         "custom_components.engie_be._statistics.get_instance",
@@ -1481,7 +1500,30 @@ async def test_clear_usage_history_deletes_three_streams(hass) -> None:  # noqa:
     recorder.queue_task.assert_called_once()
     task = recorder.queue_task.call_args.args[0]
     assert task.statistic_ids == cleared
-    assert task.on_done is None
+    # The helper now bridges completion through a real callback, not None.
+    assert callable(task.on_done)
+
+
+async def test_clear_usage_history_times_out_when_on_done_never_fires(
+    hass,  # noqa: ANN001
+) -> None:
+    """A recorder that never signals completion raises instead of hanging."""
+    recorder = MagicMock()  # queue_task does nothing -> on_done never fires
+
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.CLEAR_STATISTICS_TIMEOUT_SECONDS",
+            0.05,
+        ),
+        pytest.raises(HomeAssistantError) as exc_info,
+    ):
+        await async_clear_usage_history(hass, "000000000000")
+
+    assert exc_info.value.translation_key == "clear_history_timeout"
 
 
 async def test_orchestrator_falls_back_to_3y_when_contracts_endpoint_fails(

@@ -7,6 +7,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- Clearing historical usage statistics returned before the delete had
+  actually run. A clear followed immediately by an import could still see
+  the old data, and a delete that failed on the recorder was never
+  reported. The clear action now waits for the delete to finish and
+  reports a failure instead of silently succeeding.
+- Calling `import_history` with a backwards or empty date window logged a
+  full error traceback and raised a Repairs issue, as though the import
+  had failed. A bad date range is a user input error, so it now reports
+  the problem back to the caller without logging a traceback or creating
+  a Repairs card.
+
 ## [0.14.0b5] - 2026-08-12
 
 ### Fixed

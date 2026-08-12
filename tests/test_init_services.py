@@ -493,6 +493,161 @@ async def test_clear_import_history_clears_costs_by_default(
         assert call_args.kwargs["streams"] == expected
 
 
+async def test_clear_import_history_creates_repairs_issue_on_failure(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A failing clear raises HomeAssistantError and creates a Repairs issue."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    device_registry = dr.async_get(hass)
+    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    assert ban_device is not None
+
+    with (
+        patch(
+            "custom_components.engie_be.async_clear_usage_history",
+            side_effect=RuntimeError("boom"),
+        ),
+        pytest.raises(HomeAssistantError) as exc_info,
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CLEAR_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    assert exc_info.value.translation_key == "clear_history_failed"
+    issue_registry = ir.async_get(hass)
+    issue = issue_registry.async_get_issue(
+        DOMAIN, f"service_clear_failed_{subentry_id}"
+    )
+    assert issue is not None
+    assert issue.translation_key == "service_clear_failed"
+
+
+async def test_clear_import_history_clears_repairs_issue_on_success(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A prior clear-failure Repairs issue is cleared once the clear succeeds."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    device_registry = dr.async_get(hass)
+    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    assert ban_device is not None
+
+    issue_id = f"service_clear_failed_{subentry_id}"
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="service_clear_failed",
+        translation_placeholders={"title": "stale issue"},
+    )
+    issue_registry = ir.async_get(hass)
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is not None
+
+    with patch(
+        "custom_components.engie_be.async_clear_usage_history",
+        new=AsyncMock(return_value=None),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CLEAR_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    assert issue_registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+async def test_clear_import_history_partial_failure_processes_all_and_raises(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """One failing target does not abort the other, only it gets an issue."""
+    entry = await _setup_two_ban_entry(hass)
+    subentry_ids = list(entry.subentries)
+    device_registry = dr.async_get(hass)
+    ban_devices = [
+        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        for sid in subentry_ids
+    ]
+    assert all(d is not None for d in ban_devices)
+    device_ids = [d.id for d in ban_devices]
+
+    call_count = 0
+
+    async def _fake_clear(*_args: object, **_kwargs: object) -> None:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("boom")
+
+    with (
+        patch(
+            "custom_components.engie_be.async_clear_usage_history",
+            side_effect=_fake_clear,
+        ) as mock_clear,
+        pytest.raises(HomeAssistantError) as exc_info,
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CLEAR_IMPORT_HISTORY,
+            {"device_id": device_ids},
+            blocking=True,
+        )
+
+    # Both targets were attempted despite the first failing.
+    assert mock_clear.await_count == 2
+    assert "1 of 2" in exc_info.value.translation_placeholders["error"]
+
+    issue_registry = ir.async_get(hass)
+    present = [
+        sid
+        for sid in subentry_ids
+        if issue_registry.async_get_issue(DOMAIN, f"service_clear_failed_{sid}")
+        is not None
+    ]
+    assert len(present) == 1
+
+
+async def test_clear_import_history_cancelled_error_reraised_without_issue(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """A CancelledError propagates and does not create a Repairs issue."""
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    device_registry = dr.async_get(hass)
+    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    assert ban_device is not None
+
+    with (
+        patch(
+            "custom_components.engie_be.async_clear_usage_history",
+            side_effect=asyncio.CancelledError,
+        ),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CLEAR_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    issue_registry = ir.async_get(hass)
+    assert (
+        issue_registry.async_get_issue(DOMAIN, f"service_clear_failed_{subentry_id}")
+        is None
+    )
+
+
 async def test_import_history_defaults_to_energy_streams_only(
     hass: HomeAssistant,
     enable_custom_integrations: object,  # noqa: ARG001
@@ -733,6 +888,58 @@ async def test_import_history_creates_repairs_issue_on_failure(
     )
     assert issue is not None
     assert issue.translation_key == "service_import_failed"
+
+
+async def test_import_history_validation_error_raises_without_repairs_or_traceback(
+    hass: HomeAssistant,
+    enable_custom_integrations: object,  # noqa: ARG001
+) -> None:
+    """
+    A user-input error propagates clean, with no Repairs card and no traceback.
+
+    The window check (backwards or empty explicit window) raises
+    ``ServiceValidationError`` from inside the orchestrator. That is a
+    form-level input error, not an import failure, so the handler must
+    re-raise it as-is rather than log an exception traceback and create a
+    service_import_failed Repairs card.
+    """
+    entry = await _setup_entry(hass)
+    subentry_id = next(iter(entry.subentries))
+    device_registry = dr.async_get(hass)
+    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    assert ban_device is not None
+
+    validation_error = ServiceValidationError(
+        translation_domain=DOMAIN,
+        translation_key="import_window_empty",
+        translation_placeholders={"start": "2026-06-10", "end": "2026-06-02"},
+    )
+
+    with (
+        patch(
+            "custom_components.engie_be.async_import_usage_history",
+            side_effect=validation_error,
+        ),
+        patch("custom_components.engie_be.LOGGER") as mock_logger,
+        pytest.raises(ServiceValidationError) as exc_info,
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_IMPORT_HISTORY,
+            {"device_id": [ban_device.id]},
+            blocking=True,
+        )
+
+    # The specific validation message survives, not the generic aggregate.
+    assert exc_info.value.translation_key == "import_window_empty"
+    # No Repairs card for a form-level input error.
+    issue_registry = ir.async_get(hass)
+    assert (
+        issue_registry.async_get_issue(DOMAIN, f"service_import_failed_{subentry_id}")
+        is None
+    )
+    # No ERROR-level traceback logged for a user typo.
+    assert mock_logger.exception.call_count == 0
 
 
 async def test_import_history_clears_repairs_issue_on_success(

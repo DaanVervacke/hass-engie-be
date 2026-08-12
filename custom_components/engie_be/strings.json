@@ -616,6 +616,12 @@
         },
         "import_window_empty": {
             "message": "The start date ({start}) must be before the end date ({end}). The end date is exclusive, so importing a single day needs an end date one day after the start date."
+        },
+        "clear_history_failed": {
+            "message": "Clearing historical usage statistics failed: {error}"
+        },
+        "clear_history_timeout": {
+            "message": "Clearing statistics for business agreement ***{ban} timed out. The recorder may be busy. Try again in a moment."
         }
     },
     "issues": {
@@ -630,6 +636,10 @@
         "service_import_failed": {
             "title": "ENGIE Belgium: scheduled import failed",
             "description": "The historical usage import for {title} failed. Check the Home Assistant log for details. If ENGIE rejected the login, re-authenticate from Settings -> Devices & services."
+        },
+        "service_clear_failed": {
+            "title": "ENGIE Belgium: clearing statistics failed",
+            "description": "Clearing historical usage statistics for {title} failed. Check the Home Assistant log for details."
         }
     },
     "services": {

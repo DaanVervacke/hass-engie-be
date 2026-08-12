@@ -980,6 +980,14 @@ def _async_register_services(hass: HomeAssistant) -> None:  # noqa: PLR0915 - tw
             if isinstance(result, asyncio.CancelledError):
                 raise result
 
+            if isinstance(result, ServiceValidationError):
+                # A user-input error (e.g. a backwards date window). It is
+                # not a system fault: propagate it as-is so the frontend
+                # shows its message, without an ERROR-level traceback or a
+                # Repairs card. The window check is call-level, so the
+                # first such error represents the whole call.
+                raise result
+
             if isinstance(result, EngieBeApiClientAuthenticationError):
                 LOGGER.warning(
                     "import_history: authentication rejected for BAN ***%s; "
@@ -1045,17 +1053,69 @@ def _async_register_services(hass: HomeAssistant) -> None:  # noqa: PLR0915 - tw
             payload.energy_type,
             payload.include_costs,
         )
-        for _entry, subentry in _resolve_targets(
-            hass, payload.device_ids, "engie_be.clear_import_history"
-        ):
+        targets = list(
+            _resolve_targets(hass, payload.device_ids, "engie_be.clear_import_history")
+        )
+
+        async def _clear_one(subentry: ConfigSubentry) -> None:
             ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
-            if ban:
-                LOGGER.debug(
-                    "clear_import_history: dispatching to BAN ***%s title=%r",
-                    ban[-4:],
-                    subentry.title,
+            if not ban:
+                return
+            LOGGER.debug(
+                "clear_import_history: dispatching to BAN ***%s title=%r",
+                ban[-4:],
+                subentry.title,
+            )
+            await async_clear_usage_history(hass, ban, streams=streams)
+
+        results = await asyncio.gather(
+            *(_clear_one(subentry) for _entry, subentry in targets),
+            return_exceptions=True,
+        )
+
+        failed: list[str] = []  # masked BANs, for the aggregate message
+        for (_entry, subentry), result in zip(targets, results, strict=True):
+            ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
+            masked = ban[-4:] if ban else "????"
+            issue_id = f"service_clear_failed_{subentry.subentry_id}"
+
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+
+            if isinstance(result, BaseException):
+                LOGGER.exception(
+                    "clear_import_history: unexpected error for BAN ***%s",
+                    masked,
+                    exc_info=result,
                 )
-                await async_clear_usage_history(hass, ban, streams=streams)
+                ir.async_create_issue(
+                    hass,
+                    DOMAIN,
+                    issue_id,
+                    is_fixable=False,
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="service_clear_failed",
+                    translation_placeholders={
+                        "title": subentry.title or f"BAN ***{masked}"
+                    },
+                )
+                failed.append(f"BAN ***{masked}")
+                continue
+
+            ir.async_delete_issue(hass, DOMAIN, issue_id)
+
+        if failed:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="clear_history_failed",
+                translation_placeholders={
+                    "error": (
+                        f"{len(failed)} of {len(targets)} target(s) failed "
+                        f"({', '.join(failed)}); see Settings -> Repairs and the "
+                        "log for details."
+                    ),
+                },
+            )
 
     hass.services.async_register(
         DOMAIN,

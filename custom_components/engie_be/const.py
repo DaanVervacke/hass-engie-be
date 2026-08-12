@@ -235,6 +235,13 @@ HISTORY_CHUNK_DAYS = 7
 # behind; ENGIE has no publication lag anywhere close to this. See Guard 1
 # in _async_guarded_import (__init__.py) for the full reasoning.
 HISTORY_BACKFILL_STALE_DAYS = 30
+# How long to wait for the recorder to finish a statistics delete before
+# treating the clear as failed. The delete itself is a few milliseconds;
+# this budget only covers recorder-queue backpressure. It also guards
+# against a delete that raises on the recorder thread, which would skip
+# the completion callback and otherwise hang the awaiting caller forever.
+# See async_clear_usage_history in _statistics.py.
+CLEAR_STATISTICS_TIMEOUT_SECONDS = 60
 
 # Service name for the ``import_history`` service. Exposes optional
 # ``start_date`` / ``end_date`` for explicit windows; omit both for
