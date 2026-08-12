@@ -296,17 +296,24 @@ def _metadata(
     )
 
 
-def _dig(payload: dict[str, Any] | None, path: tuple[str, ...]) -> float:
-    """Walk ``path`` through nested dicts, returning 0.0 on any miss."""
+def _dig(payload: dict[str, Any] | None, path: tuple[str, ...]) -> float | None:
+    """
+    Walk ``path`` through nested dicts, returning the leaf as a float.
+
+    Returns ``None`` when the path is missing, a node along it is not a
+    dict, the value is null, or the value cannot be parsed as a float -
+    this distinguishes ENGIE's placeholder rows (no data published yet)
+    from genuine zero-value hours, so only the latter get recorded.
+    """
     node: Any = payload
     for key in path:
         if not isinstance(node, dict):
-            return 0.0
+            return None
         node = node.get(key)
     try:
-        return float(node) if node is not None else 0.0
+        return float(node) if node is not None else None
     except TypeError, ValueError:
-        return 0.0
+        return None
 
 
 def usage_items_to_statistics(
@@ -323,6 +330,13 @@ def usage_items_to_statistics(
       though the values are final, so a plain ``partialData`` filter
       would drop real historical data. ``end > now`` catches only the
       truly not-yet-finalised rows.
+    - A stream is skipped for a row when ``_dig`` returns ``None`` (its
+      value is missing, null, or unparseable), which is how ENGIE marks
+      an hour it has not published data for yet. Skipping means no row
+      is written and the running sum does not advance, so the resume
+      cutoff can never move past unpublished data. A leaf that is
+      present with a ``0.0`` value is a genuine zero and is still
+      recorded.
     - Each stream is checked against its own entry in ``cutoffs``
       (``None`` means the stream has no prior data, so nothing is
       skipped for it) rather than one shared value, so a stream that is
@@ -369,6 +383,8 @@ def usage_items_to_statistics(
             if stream_cutoff is not None and start_utc <= stream_cutoff:
                 continue
             delta = _dig(item, spec.item_path)
+            if delta is None:
+                continue
             sums[stream] += delta
             result[stream].append(
                 StatisticData(start=start_utc, state=delta, sum=sums[stream])

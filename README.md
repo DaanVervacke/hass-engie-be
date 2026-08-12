@@ -1012,6 +1012,12 @@ issue:
      interval.
    - *Invalid verification code*: re-trigger the MFA step and enter the latest
      code.
+   - *The daily sync reports success but no new data appears since you
+     installed the integration*: earlier versions recorded ENGIE's
+     not-yet-published hours as zeros, which stopped later syncs from
+     fetching the real values. Update to the latest version, then run
+     **Import historical usage** once with a start date before the gap.
+     Nightly syncs continue from there.
    - *ENGIE Belgium: scheduled import failed*: a business agreement's
      historical usage import failed, most often from an expired login.
      Check **Settings** > **System** > **Repairs** for the card - it

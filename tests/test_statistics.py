@@ -246,7 +246,7 @@ def test_converter_skips_rows_at_or_before_cutoff_per_stream() -> None:
 
 
 def test_converter_tolerates_malformed_rows() -> None:
-    """Missing/mistyped fields degrade to a zero contribution, not a crash."""
+    """A bad timestamp drops the row, an unparseable leaf is skipped not zeroed."""
     items = [
         {"start": "not-a-date", "partialData": False, "energy": {}},
         {"partialData": False, "energy": {}},  # no start
@@ -258,9 +258,95 @@ def test_converter_tolerates_malformed_rows() -> None:
     ]
     per_stream = usage_items_to_statistics(items, initial_sums={}, cutoffs={})
 
-    # Only the third row survives; its bad kWhSum is coerced to 0.
+    # The third row has a valid timestamp, but its unparseable kWhSum is
+    # untrustworthy, not a real zero, so it is skipped rather than
+    # coerced to 0 - a skipped value can never advance the resume cutoff.
+    assert per_stream[STREAM_CONSUMPTION] == []
+
+
+def test_converter_skips_placeholder_rows_per_stream() -> None:
+    """Placeholder rows (keys present but empty) write no rows, don't move the sum."""
+    placeholders = [
+        {
+            "start": "2026-07-03T00:00:00+02:00",
+            "end": "2026-07-03T01:00:00+02:00",
+            "partialData": True,
+            "energy": {},
+            "simulatedEnergy": {},
+        },
+        {
+            "start": "2026-07-03T01:00:00+02:00",
+            "end": "2026-07-03T02:00:00+02:00",
+            "partialData": True,
+            "energy": {},
+            "simulatedEnergy": {},
+        },
+    ]
+    real = {
+        "start": "2026-07-03T02:00:00+02:00",
+        "end": "2026-07-03T03:00:00+02:00",
+        "partialData": False,
+        "energy": {"electricity": {"offtake": {"kWhSum": 0.5}}},
+    }
+    per_stream = usage_items_to_statistics(
+        [*placeholders, real], initial_sums={STREAM_CONSUMPTION: 10.0}, cutoffs={}
+    )
+
+    # No rows at all for either placeholder hour.
     assert len(per_stream[STREAM_CONSUMPTION]) == 1
-    assert per_stream[STREAM_CONSUMPTION][0]["sum"] == 0.0
+    # The one written row's sum reflects only the real delta on top of the
+    # seed - the placeholders never touched the running total.
+    assert per_stream[STREAM_CONSUMPTION][0]["sum"] == pytest.approx(10.5)
+
+
+def test_converter_writes_genuine_zero_values() -> None:
+    """Leaf keys present with 0.0 values are genuine zeros and still get written."""
+    items = [
+        {
+            "start": "2026-07-03T00:00:00+02:00",
+            "end": "2026-07-03T01:00:00+02:00",
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": 0.0},
+                    "injection": {"kWhSum": 0.0},
+                },
+                "gas": {"kWh": 0.0},
+            },
+        },
+    ]
+    per_stream = usage_items_to_statistics(
+        items, initial_sums={STREAM_CONSUMPTION: 5.0}, cutoffs={}
+    )
+
+    assert len(per_stream[STREAM_CONSUMPTION]) == 1
+    assert per_stream[STREAM_CONSUMPTION][0]["state"] == 0.0
+    # The seed carries through unchanged, but the row is still written -
+    # this is the regression guard against over-skipping real zero hours.
+    assert per_stream[STREAM_CONSUMPTION][0]["sum"] == pytest.approx(5.0)
+
+
+def test_converter_mixed_row_writes_present_streams_only() -> None:
+    """A row with electricity data but no gas node writes electricity, skips gas."""
+    items = [
+        {
+            "start": "2026-07-03T00:00:00+02:00",
+            "end": "2026-07-03T01:00:00+02:00",
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": 1.2},
+                    "injection": {"kWhSum": 0.3},
+                },
+                # no "gas" key at all
+            },
+        },
+    ]
+    per_stream = usage_items_to_statistics(items, initial_sums={}, cutoffs={})
+
+    assert len(per_stream[STREAM_CONSUMPTION]) == 1
+    assert len(per_stream[STREAM_INJECTION]) == 1
+    assert per_stream[STREAM_GAS] == []
 
 
 def _mock_subentry(ban: str = "000000000000") -> MagicMock:
@@ -734,6 +820,101 @@ async def test_orchestrator_widens_window_when_one_stream_never_imported(
         if call.args[1].get("statistic_id") == "engie_be:000000000000_gas"
     ]
     assert len(gas_calls) > 0
+
+
+async def test_orchestrator_placeholder_tail_does_not_advance_resume(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """A placeholder tail is skipped so the resume cutoff stops at real data."""
+    freezer.move_to("2026-07-06T12:00:00Z")
+    real_rows = [
+        {
+            "start": "2026-07-03T00:00:00+02:00",
+            "end": "2026-07-03T01:00:00+02:00",
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": 0.5},
+                    "injection": {"kWhSum": 0.1},
+                },
+                "gas": {"kWh": 0.2},
+            },
+        },
+        {
+            "start": "2026-07-03T01:00:00+02:00",
+            "end": "2026-07-03T02:00:00+02:00",
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": 0.5},
+                    "injection": {"kWhSum": 0.1},
+                },
+                "gas": {"kWh": 0.2},
+            },
+        },
+    ]
+    # Hours ENGIE has not published yet - the exact shape confirmed
+    # against the real API (issue #107, see plan 211).
+    placeholder_rows = [
+        {
+            "start": "2026-07-03T02:00:00+02:00",
+            "end": "2026-07-03T03:00:00+02:00",
+            "partialData": True,
+            "energy": {},
+            "simulatedEnergy": {},
+        },
+        {
+            "start": "2026-07-03T03:00:00+02:00",
+            "end": "2026-07-03T04:00:00+02:00",
+            "partialData": True,
+            "energy": {},
+            "simulatedEnergy": {},
+        },
+    ]
+    payload = {"items": [*real_rows, *placeholder_rows]}
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value=payload)
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {
+                    "division": "ELECTRICITY",
+                    "status": "ACTIVE",
+                    "legalContractStartDate": "2026-07-02",
+                },
+            ]
+        }
+    )
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = AsyncMock(return_value={})
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass, client, _mock_subentry(), streams=frozenset({STREAM_CONSUMPTION})
+        )
+
+    consumption_calls = [
+        call
+        for call in mocked_add.call_args_list
+        if call.args[1].get("statistic_id") == "engie_be:000000000000_consumption"
+    ]
+    written_rows = [row for call in consumption_calls for row in call.args[2]]
+
+    # Only the two real hours are written; the placeholder tail never
+    # produces rows, so the newest written row is the last real hour, not
+    # the last placeholder hour - the resume cutoff can never move past
+    # unpublished data.
+    assert len(written_rows) == 2
+    assert written_rows[-1]["start"] == datetime(2026, 7, 2, 23, 0, tzinfo=UTC)
 
 
 async def test_orchestrator_end_only_call_does_not_double_count_boundary_day(
