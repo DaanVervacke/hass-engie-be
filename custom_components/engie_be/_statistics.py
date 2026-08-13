@@ -45,6 +45,7 @@ from .const import (
     ENERGY_TYPE_INJECTION,
     HISTORY_BACKFILL_YEARS,
     HISTORY_CHUNK_DAYS,
+    HISTORY_HEAL_LOOKBACK_DAYS,
     LOGGER,
 )
 
@@ -503,8 +504,15 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     the earliest ``legalContractStartDate`` across active and inactive
     contracts returned by the ENGIE energy-contracts endpoint. Falls back to a
     ``HISTORY_BACKFILL_YEARS``-year window only if that endpoint fails or
-    returns no usable date. Subsequent runs only fetch the delta since
-    the last recorded statistic.
+    returns no usable date. Subsequent runs, once every requested stream is
+    caught up, fetch from ``today - HISTORY_HEAL_LOOKBACK_DAYS`` rather than
+    strictly from the last recorded statistic, and overwrite the rows in
+    that rolling window in place. This heals a value ENGIE published or
+    corrected after the previous sync already ran (and a placeholder zero a
+    pre-v0.14.0b5 version once recorded) without needing a manual re-import,
+    at the cost of re-writing a few days of rows on every run. An account
+    that is behind by more than the lookback resumes from its own cutoff
+    instead, so no history is skipped.
 
     Explicit mode (any date supplied): imports exactly the requested
     window. The last-stats cutoff is bypassed so re-imports overwrite
@@ -517,6 +525,11 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     tail's sums may still understate or overstate the true lifetime
     total from that point on; only the window itself and the boundary
     into it are guaranteed correct.
+
+    Both the rolling heal and an explicit re-import share the same
+    ``overwrite_in_place`` flag, which pairs the running-sum reseed with
+    disabling the per-stream cutoff in the converter. The two must stay
+    enabled together or the cumulative sums double-count.
 
     Chunks the fetch by ``HISTORY_CHUNK_DAYS`` and **persists each chunk
     immediately** rather than accumulating and writing at the end.  A
@@ -626,35 +639,16 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
             {s: round(v, 4) for s, v in running_sums.items()},
         )
 
-    if start_date is not None:
-        # Explicit re-import with an explicit start: reseed running_sums
-        # from the row immediately preceding the window instead of the
-        # lifetime-newest row above. If the window lies at or after the
-        # newest existing row, this resolves to the same value (no-op);
-        # if it lies before (a re-import patching an older gap), this
-        # keeps the sum series monotonic across the window boundary.
-        # Streams with nothing recorded before the window default to 0.0,
-        # matching a first-ever import of that range.
-        window_start_utc = dt_util.as_utc(dt_util.start_of_local_day(start_date))
-        seeded = await _sums_before(
-            hass, business_agreement_number, active_streams, window_start_utc
-        )
-        for stream in active_streams:
-            running_sums[stream] = seeded.get(stream, 0.0)
-        LOGGER.debug(
-            "BAN ***%s: explicit re-import starting %s; running_sums reseeded "
-            "from row preceding window=%s",
-            masked_ban,
-            window_start_utc.isoformat(),
-            {s: round(v, 4) for s, v in running_sums.items()},
-        )
-
     # Query in local (Brussels) civil dates because ENGIE's startDate /
     # endDate params are civil-day boundaries; the response items carry
     # their own explicit +02:00 / +01:00 offsets so DST is handled
     # correctly downstream in ``usage_items_to_statistics``.
     now_local = dt_util.now()
     explicit_window = start_date is not None or end_date is not None
+    # Hoisted so it survives past the if/elif/else below: only set inside
+    # the resume (``else``) branch, but ``heal_active`` needs it afterward
+    # to tell a heal-pulled-back window apart from a genuine resume.
+    resume_start_date: date | None = None
     if start_date is not None:
         window_start_date = start_date
         LOGGER.debug(
@@ -701,15 +695,37 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
             cutoffs[stream] for stream in active_streams if cutoffs[stream] is not None
         ]
         earliest_cutoff = min(cast("list[datetime]", known_cutoffs))
-        window_start_date = dt_util.as_local(
+        resume_start_date = dt_util.as_local(
             earliest_cutoff + timedelta(hours=1)
         ).date()
-        LOGGER.debug(
-            "BAN ***%s: resuming from the earliest per-stream cutoff %s "
-            "(all requested streams have prior data)",
-            masked_ban,
-            earliest_cutoff.isoformat(),
-        )
+        # Pull the window back to the rolling heal floor so a caught-up
+        # account still re-fetches (and overwrites in place, see
+        # ``overwrite_in_place`` below) the last few days on every run -
+        # that is what lets a stale placeholder zero or a late ENGIE
+        # correction inside that window self-heal. ``min(...)`` means a
+        # behind account (resume point older than the heal floor, e.g.
+        # after a missed sync) is unaffected: its own, earlier
+        # resume_start_date wins and no history is skipped.
+        heal_floor_date = (
+            now_local - timedelta(days=HISTORY_HEAL_LOOKBACK_DAYS)
+        ).date()
+        window_start_date = min(resume_start_date, heal_floor_date)
+        if window_start_date < resume_start_date:
+            LOGGER.debug(
+                "BAN ***%s: rolling-heal re-import from %s (resume point was %s, "
+                "re-fetching the last %d days to overwrite stale or late data)",
+                masked_ban,
+                window_start_date.isoformat(),
+                resume_start_date.isoformat(),
+                HISTORY_HEAL_LOOKBACK_DAYS,
+            )
+        else:
+            LOGGER.debug(
+                "BAN ***%s: resuming from the earliest per-stream cutoff %s "
+                "(all requested streams have prior data)",
+                masked_ban,
+                earliest_cutoff.isoformat(),
+            )
 
     # endDate is exclusive; when auto, include tomorrow so today's
     # completed hours land regardless of the caller's civil day.
@@ -742,17 +758,56 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
         explicit_window,
     )
 
-    # When the caller named the window start themselves, let ENGIE's rows
-    # overwrite (statistic_id, start) collisions instead of dropping them
-    # at a cutoff - this is also exactly when ``_sums_before`` reseeds the
-    # sums from the row preceding the window (above), so the two must
-    # stay keyed on the same condition or the sums inflate: an
-    # ``end_date``-only call would otherwise both disable the cutoff and
-    # keep the newest-row seed, double-counting the boundary day.
-    # Deliberately keyed on ``start_date is not None``, NOT on
-    # ``explicit_window``.
+    # ``overwrite_in_place`` is true for an explicit re-import (the caller
+    # named the window start themselves) and for an auto-mode heal (the
+    # resume window got pulled back to the rolling heal floor above). In
+    # both cases ENGIE's rows must overwrite (statistic_id, start)
+    # collisions instead of being skipped at a cutoff, and running_sums
+    # must be reseeded from the row preceding the window (``_sums_before``)
+    # rather than kept at the lifetime-newest seed from ``last`` above.
+    # These two effects are two sides of the same coin and MUST stay
+    # paired on this one flag: reseeding without disabling the cutoff
+    # would skip the very rows we reseeded for, and disabling the cutoff
+    # without reseeding would re-add already-counted rows on top of the
+    # newest-row seed, double-counting. See "Why the sums stay correct"
+    # in plans/214-auto-heal-rolling-reimport-window.md for the full
+    # argument. Deliberately keyed on ``start_date is not None`` /
+    # ``heal_active``, NOT on ``explicit_window``: an ``end_date``-only
+    # call must not trip either effect, or it double-counts the boundary
+    # day.
+    heal_active = (
+        start_date is None
+        and not any_stream_missing
+        and resume_start_date is not None
+        and window_start_date < resume_start_date
+    )
+    overwrite_in_place = start_date is not None or heal_active
+
+    if overwrite_in_place:
+        # Reseed running_sums from the row immediately preceding the
+        # window instead of the lifetime-newest row above. If the window
+        # lies at or after the newest existing row, this resolves to the
+        # same value (no-op); if it lies before (an explicit re-import
+        # patching an older gap, or a heal pulling the window back), this
+        # keeps the sum series monotonic across the window boundary.
+        # Streams with nothing recorded before the window default to 0.0,
+        # matching a first-ever import of that range.
+        window_start_utc = dt_util.as_utc(dt_util.start_of_local_day(window_start_date))
+        seeded = await _sums_before(
+            hass, business_agreement_number, active_streams, window_start_utc
+        )
+        for stream in active_streams:
+            running_sums[stream] = seeded.get(stream, 0.0)
+        LOGGER.debug(
+            "BAN ***%s: overwrite-in-place from %s; running_sums reseeded from "
+            "the row preceding the window=%s",
+            masked_ban,
+            window_start_utc.isoformat(),
+            {s: round(v, 4) for s, v in running_sums.items()},
+        )
+
     cutoffs_for_converter: dict[str, datetime | None] = (
-        dict.fromkeys(active_streams) if start_date is not None else cutoffs
+        dict.fromkeys(active_streams) if overwrite_in_place else cutoffs
     )
 
     total = 0

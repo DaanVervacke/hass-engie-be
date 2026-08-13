@@ -789,6 +789,12 @@ Or manually:
 4. Under **Automations**, click **Create automation** on the imported blueprint.
 5. Pick your business agreement, a time to run, and save.
 
+Each run also re-checks the last few days and overwrites them with
+whatever ENGIE currently reports, so a value published or corrected a day
+or two late is picked up automatically on the next sync. If your
+dashboard is stuck further back than that, run
+[a one-off import](#run-a-one-off-import) with an early start date.
+
 If a night's import fails, for example because ENGIE rejected the stored
 login, you'll see a Repairs card in **Settings** > **System** > **Repairs**
 rather than a silent gap in your dashboard. See [Common errors](#troubleshooting)
@@ -1015,9 +1021,11 @@ issue:
    - *The daily sync reports success but no new data appears since you
      installed the integration*: earlier versions recorded ENGIE's
      not-yet-published hours as zeros, which stopped later syncs from
-     fetching the real values. Update to the latest version, then run
-     **Import historical usage** once with a start date before the gap.
-     Nightly syncs continue from there.
+     fetching the real values. The current version re-checks the last few
+     days on every sync, so a gap from the past few days clears itself
+     automatically once you update. For an older or deeper gap that
+     predates that window, run **Import historical usage** once with a
+     start date before the gap. Nightly syncs continue from there.
    - *ENGIE Belgium: scheduled import failed*: a business agreement's
      historical usage import failed, most often from an expired login.
      Check **Settings** > **System** > **Repairs** for the card - it

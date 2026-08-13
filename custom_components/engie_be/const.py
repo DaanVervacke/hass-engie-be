@@ -235,6 +235,14 @@ HISTORY_CHUNK_DAYS = 7
 # behind; ENGIE has no publication lag anywhere close to this. See Guard 1
 # in _async_guarded_import (__init__.py) for the full reasoning.
 HISTORY_BACKFILL_STALE_DAYS = 30
+# Auto-mode re-imports this many days back from today on every run and
+# overwrites them in place, so a value ENGIE published late (or a zero a
+# pre-v0.14.0b5 version wrote for a not-yet-published hour) is corrected
+# on the next sync rather than staying frozen behind the resume point.
+# Must comfortably exceed ENGIE's 1-2 day publication lag. Deeper stale
+# data (from a long stint on an old version) still needs a one-time
+# explicit re-import. See async_import_usage_history in _statistics.py.
+HISTORY_HEAL_LOOKBACK_DAYS = 3
 # How long to wait for the recorder to finish a statistics delete before
 # treating the clear as failed. The delete itself is a few milliseconds;
 # this budget only covers recorder-queue backpressure. It also guards

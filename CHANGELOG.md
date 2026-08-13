@@ -7,6 +7,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- The daily sync only ever moved forward from the last hour it had, so a
+  value ENGIE published or corrected a day or two late was never picked
+  up, and a dashboard that recorded zeros on an older version stayed
+  stuck. Each run now re-checks the last few days and overwrites them
+  with what ENGIE currently reports. A dashboard stuck further back than
+  that still needs one Import historical usage run with an early start
+  date.
+
 ## [0.14.0b6] - 2026-08-12
 
 ### Fixed

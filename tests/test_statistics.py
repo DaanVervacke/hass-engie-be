@@ -36,6 +36,7 @@ from custom_components.engie_be.api import (
     EngieBeApiClientCommunicationError,
     EngieBeApiClientError,
 )
+from custom_components.engie_be.const import HISTORY_HEAL_LOOKBACK_DAYS
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "usage_details_hourly.json"
 
@@ -606,11 +607,21 @@ async def test_orchestrator_allows_valid_one_day_window(hass) -> None:  # noqa: 
     assert count > 0
 
 
-async def test_orchestrator_auto_mode_empty_window_does_not_raise(
+async def test_orchestrator_auto_mode_caught_up_heals_instead_of_empty_window(
     hass,  # noqa: ANN001
     freezer,  # noqa: ANN001
 ) -> None:
-    """Auto mode's normal "already caught up" empty window must not raise."""
+    """
+    Auto mode's "already caught up" case now heals rather than sitting empty.
+
+    Before plan 214, the last recorded hour's cutoff+1h landing on the same
+    local civil date as "now"+1day produced an empty window
+    (``window_start_date == window_end_date``) and no fetch. The rolling
+    heal (plan 214) pulls a caught-up window back to
+    ``today - HISTORY_HEAL_LOOKBACK_DAYS`` instead, so that shape can no
+    longer occur in auto mode: the call must still not raise, and it now
+    issues a fetch for the heal window rather than skipping it.
+    """
     # Test hass instances default to US/Pacific (see pytest-homeassistant-
     # custom-component's ``hass`` fixture), so the window-start/window-end
     # civil-date arithmetic below is worked out against that zone, not UTC.
@@ -625,9 +636,6 @@ async def test_orchestrator_auto_mode_empty_window_does_not_raise(
             ]
         }
     )
-    # The last recorded hour's cutoff+1h and "now"+1day land on the same
-    # local civil date, so window_start_date == window_end_date - the
-    # everyday "nothing new since last night" shape, not a bug.
     last_ts = datetime(2026, 7, 11, 7, 0, tzinfo=UTC).timestamp()
     fake_last = {
         "engie_be:000000000000_consumption": [{"start": last_ts, "sum": 5.0}],
@@ -636,8 +644,15 @@ async def test_orchestrator_auto_mode_empty_window_does_not_raise(
     }
     recorder = MagicMock()
 
-    async def _fake_executor(_fn, _hass, _n, sid, _c, _t):  # noqa: ANN001, ANN202
-        return {sid: fake_last[sid]}
+    async def _fake_executor(fn, *args: Any):  # noqa: ANN001, ANN202
+        if fn is get_last_statistics:
+            _hass, _n, sid, _convert, _types = args
+            return {sid: fake_last[sid]}
+        if fn is statistics_during_period:
+            # No statistic recorded before the heal window in this
+            # scenario; every stream reseeds to 0.0.
+            return {}
+        raise AssertionError(f"unexpected executor call: {fn}")
 
     recorder.async_add_executor_job = _fake_executor
     with patch(
@@ -646,8 +661,12 @@ async def test_orchestrator_auto_mode_empty_window_does_not_raise(
     ):
         count = await async_import_usage_history(hass, client, _mock_subentry())
 
+    # The client's default (non-dict) return value carries no items, so
+    # nothing is written, but the fetch itself now happens - this is the
+    # "no crash" guarantee this test exists for, updated for the new
+    # rolling-heal behaviour.
     assert count == 0
-    client.async_get_usage_details.assert_not_awaited()
+    client.async_get_usage_details.assert_awaited()
 
 
 async def test_orchestrator_end_only_past_date_returns_zero_without_raising(
@@ -917,12 +936,346 @@ async def test_orchestrator_placeholder_tail_does_not_advance_resume(
     assert written_rows[-1]["start"] == datetime(2026, 7, 2, 23, 0, tzinfo=UTC)
 
 
+async def test_orchestrator_auto_reimports_rolling_window(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """
+    A caught-up auto-mode account re-fetches the rolling heal window.
+
+    Plan 214: instead of resuming strictly from the last recorded hour
+    (which would be an empty fetch for a caught-up account), auto mode
+    pulls the window back to ``today - HISTORY_HEAL_LOOKBACK_DAYS`` and
+    overwrites (statistic_id, start) collisions inside it, so a value
+    ENGIE published or corrected after the previous sync is picked up.
+    """
+    stat_id = "engie_be:000000000000_consumption"
+    freezer.move_to("2026-07-13T12:00:00Z")
+    now_local = dt_util.now()
+    expected_start = (now_local - timedelta(days=HISTORY_HEAL_LOOKBACK_DAYS)).date()
+
+    # Caught up as of an hour ago: every stream's cutoff sits well inside
+    # the heal lookback, so the resume point alone would produce a near-
+    # empty window - the heal must pull it back regardless.
+    last_ts = (now_local - timedelta(hours=1)).timestamp()
+    fake_last = {
+        "engie_be:000000000000_consumption": [{"start": last_ts, "sum": 100.0}],
+    }
+
+    # A row inside the heal window that the recorder already has (per the
+    # cutoff above, the resume path would normally skip anything at or
+    # before it - but this row's own hour is unrelated to the cutoff, it
+    # only has to fall inside the pulled-back window to prove the window
+    # itself moved).
+    heal_row_start = (now_local - timedelta(days=2)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+    item = {
+        "start": heal_row_start.isoformat(),
+        "end": (heal_row_start + timedelta(hours=1)).isoformat(),
+        "partialData": False,
+        "energy": {
+            "electricity": {"offtake": {"kWhSum": 1.2}, "injection": {"kWhSum": 0.0}},
+            "gas": {"kWh": 0.0},
+        },
+    }
+
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value={"items": [item]})
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+    )
+
+    recorder = MagicMock()
+
+    async def _fake_executor(fn, *args: Any):  # noqa: ANN001, ANN202
+        if fn is get_last_statistics:
+            _hass, _n, sid, _convert, _types = args
+            return {sid: fake_last[sid]} if sid in fake_last else {}
+        if fn is statistics_during_period:
+            # No prior data before the heal window in this scenario.
+            return {}
+        raise AssertionError(f"unexpected executor call: {fn}")
+
+    recorder.async_add_executor_job = _fake_executor
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass, client, _mock_subentry(), streams=frozenset({STREAM_CONSUMPTION})
+        )
+
+    first_call_kwargs = client.async_get_usage_details.await_args_list[0].kwargs
+    assert first_call_kwargs["start_date"] == expected_start
+
+    written_rows = [
+        row
+        for call in mocked_add.call_args_list
+        if call.args[1].get("statistic_id") == stat_id
+        for row in call.args[2]
+    ]
+    # The row inside the heal window was written (overwritten in place),
+    # proving cutoffs_for_converter did not skip it.
+    assert any(row["start"] == dt_util.as_utc(heal_row_start) for row in written_rows)
+
+
+async def test_orchestrator_auto_heal_overwrites_stale_zero_without_inflating_sums(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """
+    The heal must reseed running_sums, not merely disable the cutoff.
+
+    Reproduces the reporter's scenario: the newest-ever recorded row for a
+    stream is a stale placeholder zero (the pre-v0.14.0b5 bug), so the old
+    resume cutoff got stuck on it. The heal re-fetches that hour and the
+    hour after it, both never truly recorded before, and ENGIE now returns
+    their real values. The written rows must carry those real values, and
+    the tail ``sum`` must equal the seed preceding the heal window plus
+    only the real deltas - not the old (stale) newest-row seed plus the
+    same deltas on top of it, which would double-count and inflate every
+    later sum. If you disable the reseed while keeping the cutoff
+    disabled, this test must fail - that pairing is the whole point of
+    ``overwrite_in_place``.
+    """
+    stat_id = "engie_be:000000000000_consumption"
+    freezer.move_to("2026-07-13T12:00:00Z")
+    now_local = dt_util.now()
+
+    # The stale-zero hour and the hour after it, both inside the heal
+    # window (today - HISTORY_HEAL_LOOKBACK_DAYS .. tomorrow).
+    h0_start = (now_local - timedelta(days=2)).replace(
+        hour=10, minute=0, second=0, microsecond=0
+    )
+    h1_start = h0_start + timedelta(hours=1)
+
+    # Genuine prior data further back, strictly before the heal window -
+    # this is what running_sums must reseed from.
+    seed_before_window = 38.0
+    seed_row = {
+        "start": (h0_start - timedelta(days=4)).timestamp(),
+        "sum": seed_before_window,
+    }
+    # The stale-zero row: the newest-ever recorded row for this stream.
+    # Its own (wrong) delta was 0.0, so its sum equals what came before it.
+    cutoff_row = {"start": h0_start.timestamp(), "sum": 40.0}
+
+    async def _fake_executor(fn, *args: Any):  # noqa: ANN001, ANN202
+        if fn is get_last_statistics:
+            _hass, _n, sid, _convert, _types = args
+            return {sid: [cutoff_row]} if sid == stat_id else {}
+        if fn is statistics_during_period:
+            _hass, _start, _end, stat_ids, _period, _units, _types = args
+            return {stat_id: [seed_row]} if stat_id in stat_ids else {}
+        raise AssertionError(f"unexpected executor call: {fn}")
+
+    recorder = MagicMock()
+    recorder.async_add_executor_job = _fake_executor
+
+    def _item(start_dt: datetime, kwh: float) -> dict[str, Any]:
+        return {
+            "start": start_dt.isoformat(),
+            "end": (start_dt + timedelta(hours=1)).isoformat(),
+            "partialData": False,
+            "energy": {
+                "electricity": {
+                    "offtake": {"kWhSum": kwh},
+                    "injection": {"kWhSum": 0.0},
+                },
+                "gas": {"kWh": 0.0},
+            },
+        }
+
+    # ENGIE now reports real values for both hours: 2.0 at the previously-
+    # stale hour, 3.0 at the hour after it (never recorded before at all,
+    # since the resume cutoff was stuck at the stale hour).
+    items = [_item(h0_start, 2.0), _item(h1_start, 3.0)]
+
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value={"items": items})
+
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass,
+            client,
+            _mock_subentry(),
+            streams=frozenset({STREAM_CONSUMPTION}),
+            contracts_payload={
+                "items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]
+            },
+        )
+
+    written_rows = [
+        row
+        for call in mocked_add.call_args_list
+        if call.args[1].get("statistic_id") == stat_id
+        for row in call.args[2]
+    ]
+    assert len(written_rows) == 2
+
+    healed_row = next(
+        row for row in written_rows if row["start"] == dt_util.as_utc(h0_start)
+    )
+    assert healed_row["state"] == pytest.approx(2.0)
+    assert healed_row["sum"] == pytest.approx(seed_before_window + 2.0)
+
+    tail_row = written_rows[-1]
+    assert tail_row["sum"] == pytest.approx(seed_before_window + 2.0 + 3.0)
+
+
+async def test_orchestrator_auto_no_heal_when_behind(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """An account behind by more than the lookback resumes from its own cutoff."""
+    freezer.move_to("2026-07-13T12:00:00Z")
+    now_local = dt_util.now()
+    cutoff = dt_util.as_utc(now_local - timedelta(days=10))
+    fake_last = {
+        "engie_be:000000000000_consumption": [
+            {"start": cutoff.timestamp(), "sum": 100.0}
+        ],
+        "engie_be:000000000000_injection": [
+            {"start": cutoff.timestamp(), "sum": 200.0}
+        ],
+        "engie_be:000000000000_gas": [{"start": cutoff.timestamp(), "sum": 50.0}],
+    }
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(return_value={"items": []})
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={
+            "items": [
+                {"division": "ELECTRICITY", "status": "ACTIVE"},
+                {"division": "GAS", "status": "ACTIVE"},
+            ]
+        }
+    )
+    recorder = MagicMock()
+
+    async def _fake_executor(_fn, _hass, _n, sid, _c, _t):  # noqa: ANN001, ANN202
+        return {sid: fake_last[sid]}
+
+    recorder.async_add_executor_job = _fake_executor
+    with patch(
+        "custom_components.engie_be._statistics.get_instance",
+        return_value=recorder,
+    ):
+        await async_import_usage_history(hass, client, _mock_subentry())
+
+    expected_resume = dt_util.as_local(cutoff + timedelta(hours=1)).date()
+    heal_floor = (now_local - timedelta(days=HISTORY_HEAL_LOOKBACK_DAYS)).date()
+    # Sanity: this account really is behind the heal floor, or the test
+    # would not be exercising the "no heal" branch at all.
+    assert expected_resume < heal_floor
+
+    first_call_kwargs = client.async_get_usage_details.await_args_list[0].kwargs
+    assert first_call_kwargs["start_date"] == expected_resume
+
+
+async def test_orchestrator_auto_heal_skips_still_placeholder_days(
+    hass,  # noqa: ANN001
+    freezer,  # noqa: ANN001
+) -> None:
+    """A still-unpublished (placeholder) hour inside the heal window is not written."""
+    stat_id = "engie_be:000000000000_consumption"
+    freezer.move_to("2026-07-13T12:00:00Z")
+    now_local = dt_util.now()
+
+    # Caught up as of an hour ago, so the heal pulls the window back.
+    last_ts = (now_local - timedelta(hours=1)).timestamp()
+    fake_last = {"engie_be:000000000000_consumption": [{"start": last_ts, "sum": 10.0}]}
+
+    real_start = (now_local - timedelta(days=2)).replace(
+        hour=9, minute=0, second=0, microsecond=0
+    )
+    # Same heal window, the following hour - still not published by ENGIE.
+    placeholder_start = real_start + timedelta(hours=1)
+
+    real_item = {
+        "start": real_start.isoformat(),
+        "end": (real_start + timedelta(hours=1)).isoformat(),
+        "partialData": False,
+        "energy": {
+            "electricity": {"offtake": {"kWhSum": 4.0}, "injection": {"kWhSum": 0.0}},
+            "gas": {"kWh": 0.0},
+        },
+    }
+    # Hours ENGIE has not published yet - the exact shape confirmed
+    # against the real API (issue #107, see plan 211).
+    placeholder_item = {
+        "start": placeholder_start.isoformat(),
+        "end": (placeholder_start + timedelta(hours=1)).isoformat(),
+        "partialData": True,
+        "energy": {},
+        "simulatedEnergy": {},
+    }
+
+    client = MagicMock()
+    client.async_get_usage_details = AsyncMock(
+        return_value={"items": [real_item, placeholder_item]}
+    )
+    client.async_get_energy_contracts = AsyncMock(
+        return_value={"items": [{"division": "ELECTRICITY", "status": "ACTIVE"}]}
+    )
+
+    recorder = MagicMock()
+
+    async def _fake_executor(fn, *args: Any):  # noqa: ANN001, ANN202
+        if fn is get_last_statistics:
+            _hass, _n, sid, _convert, _types = args
+            return {sid: fake_last[sid]} if sid in fake_last else {}
+        if fn is statistics_during_period:
+            return {}
+        raise AssertionError(f"unexpected executor call: {fn}")
+
+    recorder.async_add_executor_job = _fake_executor
+    with (
+        patch(
+            "custom_components.engie_be._statistics.get_instance",
+            return_value=recorder,
+        ),
+        patch(
+            "custom_components.engie_be._statistics.async_add_external_statistics",
+        ) as mocked_add,
+    ):
+        await async_import_usage_history(
+            hass, client, _mock_subentry(), streams=frozenset({STREAM_CONSUMPTION})
+        )
+
+    written_rows = [
+        row
+        for call in mocked_add.call_args_list
+        if call.args[1].get("statistic_id") == stat_id
+        for row in call.args[2]
+    ]
+    assert len(written_rows) == 1
+    assert written_rows[0]["start"] == dt_util.as_utc(real_start)
+    assert written_rows[0]["state"] == pytest.approx(4.0)
+
+
 async def test_orchestrator_end_only_call_does_not_double_count_boundary_day(
     hass,  # noqa: ANN001
     freezer,  # noqa: ANN001
 ) -> None:
     """An end-only call resumes per stream, no boundary re-append."""
-    freezer.move_to("2026-07-10T20:00:00Z")
+    # "Now" is deliberately well past HISTORY_HEAL_LOOKBACK_DAYS beyond the
+    # cutoff below, so the rolling heal (plan 214) does not kick in and this
+    # stays a pure per-stream resume - the scenario this test exists for.
+    freezer.move_to("2026-07-15T20:00:00Z")
     cutoff = datetime(2026, 7, 10, 10, 0, tzinfo=UTC)
     cutoff_ts = cutoff.timestamp()
     fake_last = {
