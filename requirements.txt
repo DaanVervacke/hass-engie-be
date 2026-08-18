@@ -6,5 +6,5 @@ ruff==0.16.2
 # Version 0.13.355 matches Home Assistant 2026.8.1
 # Note: pytest-cov is pulled in transitively (==7.0.0) via this package.
 pytest-homeassistant-custom-component @ git+https://github.com/MatthewFlamm/pytest-homeassistant-custom-component@0.13.355
-mypy==2.3.0
+mypy==2.3.1
 pre-commit==4.6.2
