@@ -55,7 +55,12 @@ def _module_level_descriptions(
 def test_every_sensor_description_has_an_icon() -> None:
     """Every module-level sensor description needs a device_class or icon."""
     icons = ICONS_JSON["entity"]["sensor"]
-    for name, desc in _module_level_descriptions(sensor, SensorEntityDescription):
+    descriptions = _module_level_descriptions(sensor, SensorEntityDescription)
+    assert descriptions, (
+        "no sensor descriptions collected, so this test proves nothing. The "
+        "name-comparison shim in _module_level_descriptions has stopped matching"
+    )
+    for name, desc in descriptions:
         has_icon = (
             desc.device_class is not None
             or desc.icon is not None
@@ -101,9 +106,15 @@ def test_no_orphan_trigger_or_condition_icons() -> None:
 def test_every_binary_sensor_description_has_an_icon() -> None:
     """Every module-level binary_sensor description needs a device_class or icon."""
     icons = ICONS_JSON["entity"]["binary_sensor"]
-    for name, desc in _module_level_descriptions(
+    descriptions = _module_level_descriptions(
         binary_sensor, BinarySensorEntityDescription
-    ):
+    )
+    assert descriptions, (
+        "no binary_sensor descriptions collected, so this test proves nothing. "
+        "The name-comparison shim in _module_level_descriptions has stopped "
+        "matching"
+    )
+    for name, desc in descriptions:
         has_icon = (
             desc.device_class is not None
             or desc.icon is not None
