@@ -7,6 +7,77 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-19
+
+Repair release for the historical usage import behind the Energy dashboard,
+gathered from seven betas. Minimum Home Assistant is now 2026.8.0.
+
+### Changed
+
+- Minimum supported Home Assistant is 2026.8.0, ahead of an old device lookup
+  being removed in 2027.8.
+- Clearing usage statistics now clears the matching cost statistics too, unless
+  you turn off Include costs. Before, a re-import wrote fresh usage underneath
+  stale costs.
+
+### Fixed
+
+- Hours ENGIE had not published yet were recorded as zeros. They are skipped
+  now. This is what froze dashboards at whatever the first import covered.
+- Each energy stream (electricity, injection, gas, and their costs) resumes from
+  its own last recorded hour instead of the newest hour across all of them. A
+  stream that fell behind, for example gas after turning on Include costs, never
+  caught up before.
+- An import with no dates now re-checks the last three days, so values ENGIE
+  publishes or corrects late are picked up.
+- An import with only an End date re-imported a day on top of itself, inflating
+  the dashboard totals by up to a day of usage.
+- An End date before the Start date silently did nothing and reported success.
+  It now reports an error naming both dates.
+- Clearing statistics returned before the delete had finished, so an import
+  straight afterwards could still see the old data.
+- A failed import only wrote to the log. It now raises and adds a Repairs card
+  per business agreement, so a broken nightly sync is visible.
+- Both actions work even when the integration fails to start, for example after
+  your stored login expired.
+- The setup-time backfill resumes if a reload interrupted it, and it now checks
+  every stream you are contracted for rather than just one.
+- Deleting the integration also removes the statistics it imported and the
+  stored peaks and Happy Hours history.
+- Two EPEX triggers showed the same description, hiding which was current hour
+  and which was next hour.
+- Threshold condition descriptions no longer promise an above or below direction
+  they do not enforce.
+- A missing cumulative total in the recorder no longer aborts an import.
+- A racing token refresh could hand back an empty access token instead of
+  failing.
+
+### Documentation
+
+- The README documents both actions in full, with every field, its default, and
+  a YAML example.
+- Corrected six trigger names that did not match the automation editor, and
+  documented all 17 conditions by name.
+- Added Use cases and Data updates sections, and documented the optional date
+  window offered during setup.
+- Home Assistant renamed Developer Tools to Tools in 2026.8. The README and
+  setup text follow.
+
+### Dependencies
+
+- Development tooling only, nothing users install: ruff 0.16.0 to 0.16.3, mypy
+  2.3.0 to 2.3.1, pre-commit to 4.6.2, the github-actions group, and the Home
+  Assistant test pin to 2026.8.1.
+
+### Upgrading
+
+- Home Assistant 2026.8.0 or newer is required. HACS will not offer the update
+  on older versions.
+- If your Energy dashboard froze or recorded zeros on an earlier version, run
+  Import historical usage once with a Start date before the gap and leave End
+  date empty. After that the daily sync repairs the last three days by itself,
+  but not older gaps.
+
 ## [0.14.0b7] - 2026-08-13
 
 ### Fixed
@@ -1534,7 +1605,8 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b7...HEAD
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.3...v0.14.0
 [0.14.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b6...v0.14.0b7
 [0.14.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b5...v0.14.0b6
 [0.14.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b4...v0.14.0b5
