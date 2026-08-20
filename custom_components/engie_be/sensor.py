@@ -1855,7 +1855,18 @@ class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
         code, _ = tou_current_slot(schedule, dt_util.utcnow())
         if code is None:
             return None
-        return code if code in TOU_SLOT_CODES else None
+        if code not in TOU_SLOT_CODES:
+            # An ENUM sensor may not report an undeclared option, so the
+            # state has to stay unknown. Say which code did it: ENGIE's
+            # slot-code registry is remotely mutable and has grown before.
+            LOGGER.warning(
+                "Unknown TOU slot code %s for %s, reporting unknown. "
+                "Please open an issue so it can be added",
+                code,
+                self.entity_id,
+            )
+            return None
+        return code
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

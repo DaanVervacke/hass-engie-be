@@ -64,28 +64,30 @@ SOLAR_SURPLUS_SHOWN_DASHBOARD_KEY = "solar-surplus-shown-dashboard"
 # for everyone ("default evaluation always true"), so it gates nothing.
 TOU_FLAG_KEY = "tou-is-active"
 
-# TOU_SLOT_CODES: union of every slot code the Smart App can display, so a
-# new code from ENGIE never lands the sensor in ``unknown``.
+# TOU_SLOT_CODES: the slot codes an ENUM sensor may report. Sourced from
+# ENGIE's own registry, which the Smart App fetches at runtime and caches
+# rather than hardcoding:
+# https://www.engie.be/api/ebl/cms/mobile-tou/v1/configurations
+# That registry is remotely mutable, so this list is a snapshot. Codes
+# outside it are logged by sensor.py rather than silently dropped, because
+# an ENUM sensor may not report an option it never declared.
 #
-# - ``peak`` / ``offpeak`` / ``exclusive_night`` - Dart ``TimeSlotCategory``
-#   enum. ``PEAK`` and ``OFFPEAK`` observed on the wire (BAN 000000000000,
-#   2026-07-08). ``EXCLUSIVE_NIGHT`` documented for the Fluvius rollout.
-# - ``day`` - Dart enum, not yet observed.
-# - ``superoffpeak`` - the app carries a ``"Super Offpeak"`` display label,
-#   and the integration already maps ``SUPEROFFPEAK`` for tri-rate PRICE
-#   sensors via ``_SLOT_CODE_MAP`` in ``sensor.py``. Tri-rate contracts extend the
-#   binary peak/offpeak split; the same code is expected on the TOU
-#   schedule endpoint for those accounts.
+# Wire codes are uppercase and supplier products prefix them by direction
+# (``S_TOU1_OFFTAKE_PEAK``). ``_tou.normalize_slot_code`` strips the prefix
+# at ingest, so only the rate portion reaches this list, lowercased.
 #
-# Wire values are uppercase (e.g. ``PEAK``, ``OFFPEAK``, ``SUPEROFFPEAK``,
-# ``EXCLUSIVE_NIGHT``, ``DAY``). Sensors expose the ``.lower()`` form so
-# the ENUM device class matches the strings.json translation keys.
+# ``day`` is retained although the registry does not list it: removing an
+# option a user may already have chosen in a trigger or condition would
+# fail their automation's schema validation on the next reload.
 TOU_SLOT_CODES: tuple[str, ...] = (
     "peak",
     "offpeak",
     "superoffpeak",
     "exclusive_night",
     "day",
+    "total_hours",
+    "high_load_hours",
+    "low_load_hours",
 )
 
 # Weekday keys returned by the API, in ISO order.

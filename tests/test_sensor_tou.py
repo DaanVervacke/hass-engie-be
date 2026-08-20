@@ -14,6 +14,7 @@ from custom_components.engie_be._tou import normalize_tou_payload
 from custom_components.engie_be.const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+    TOU_SLOT_CODES,
 )
 from custom_components.engie_be.sensor import (
     _TOU_INJECTION_SLOT,
@@ -288,3 +289,39 @@ def test_unique_id_shape_injection() -> None:
     """unique_id for injection uses the injection_slot key."""
     sensor = _injection_sensor(_wrap(_load(_TOU_BIHORAIRE)))
     assert sensor.unique_id == f"test_entry_sub_abc_{_EAN}_injection_slot"
+
+
+def test_registry_slot_codes_are_declared_options() -> None:
+    """Codes ENGIE's registry lists must be reportable, not unknown."""
+    assert "total_hours" in TOU_SLOT_CODES
+    assert "high_load_hours" in TOU_SLOT_CODES
+    assert "low_load_hours" in TOU_SLOT_CODES
+
+
+def test_unknown_slot_code_logs_a_warning(
+    freezer: FrozenDateTimeFactory,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An undeclared code must be diagnosable, not a silent unknown."""
+    freezer.move_to("2026-07-10T10:00:00Z")  # Friday, 12:00 Brussels
+    payload = {
+        "items": [
+            {
+                "eanWithSuffix": f"{_EAN}_ID1",
+                "supplierSchedule": {
+                    "offtake": {
+                        "friday": [
+                            {
+                                "startTime": "00:00",
+                                "endTime": "00:00",
+                                "slotCode": "MADE_UP",
+                            }
+                        ]
+                    }
+                },
+            }
+        ]
+    }
+    sensor = _offtake_sensor(_wrap(payload))
+    assert sensor.native_value is None
+    assert "made_up" in caplog.text.lower()
