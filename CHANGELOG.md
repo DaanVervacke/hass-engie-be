@@ -7,6 +7,31 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Fixed
+
+- Current offtake slot and Current injection slot showed unknown on time-of-use
+  products such as TOU001. The integration did not recognise the slot codes
+  ENGIE sends for those products.
+- Accounts whose supplier product uses time-of-use pricing, but whose network
+  operator does not, got no slot entities at all. The wrong flag decided whether
+  to create them.
+- Calendar events for time-of-use slots showed the raw code instead of a label
+  such as Off-peak (offtake).
+
+### Changed
+
+- Time-of-use schedules now come from the same endpoint the ENGIE app uses. It
+  ranks each slot by cost, so the two "at optimal slot" sensors follow that
+  ranking: cheapest for offtake, dearest for injection.
+- Every entry in the weekday_slots attribute gained a cost field, 1 being the
+  cheapest slot of the week.
+- The dgo_tgo_slot attribute can now read total_hours where it read peak or
+  offpeak before, on accounts whose network side has no time-of-use split. Check
+  any automation that reads it.
+- The slot codes total_hours, high_load_hours and low_load_hours are recognised
+  now. When a code falls outside that set, the integration writes it to the log
+  so you can ask for it to be added.
+
 ## [0.14.0] - 2026-08-19
 
 Repair release for the historical usage import behind the Energy dashboard,

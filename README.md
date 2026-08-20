@@ -332,31 +332,34 @@ sensors and two binary sensors surface it:
 
 | Entity | Entity ID | Description |
 |---|---|---|
-| Current offtake slot | `sensor.engie_belgium_{BAN}_{EAN}_offtake_slot` | Current tariff slot for offtake on this meter (peak / offpeak / superoffpeak / exclusive_night / day) |
+| Current offtake slot | `sensor.engie_belgium_{BAN}_{EAN}_offtake_slot` | Current tariff slot for offtake on this meter (peak / offpeak / superoffpeak / exclusive_night / day / total_hours / high_load_hours / low_load_hours) |
 | Current injection slot | `sensor.engie_belgium_{BAN}_{EAN}_injection_slot` | Current tariff slot for injection on this meter |
-| Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` | On when the current offtake slot matches the schedule's optimal code |
-| Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` | On when the current injection slot matches the schedule's optimal code |
+| Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` | On when the current offtake slot is the cheapest slot of the week |
+| Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` | On when the current injection slot is the dearest slot of the week |
 
 The slot sensors flip exactly on the slot boundary. Their state is
-one of `peak`, `offpeak`, `superoffpeak`, `exclusive_night`, or
-`day`.
+one of `peak`, `offpeak`, `superoffpeak`, `exclusive_night`, `day`,
+`total_hours`, `high_load_hours`, or `low_load_hours`. ENGIE can add
+codes to that list. When it does, the sensor stays unknown until the
+integration learns the new code, and the Home Assistant log names the
+code it did not recognise.
 
 Each slot sensor exposes these attributes:
 
 | Attribute | Description |
 |---|---|
-| `optimal_slot` | The schedule's declared optimal slot code (e.g. `offpeak`) |
+| `optimal_slot` | The best slot of the week for this direction (e.g. `offpeak`) |
 | `next_transition` | ISO-8601 timestamp of the next slot boundary in Brussels local time |
-| `weekday_slots` | Full weekly schedule as a dict of day-name to slot list |
-| `dgo_tgo_slot` | Current slot code from the Fluvius DGO / TGO (Transmission Grid Operator) schedule |
+| `weekday_slots` | Full weekly schedule as a dict of day-name to slot list. Each slot carries `start`, `end`, `code`, and `cost`, where 1 is the cheapest slot of the week |
+| `dgo_tgo_slot` | Current slot code from the Fluvius DGO / TGO (Transmission Grid Operator) schedule. Reads `total_hours` on accounts whose network side has no time-of-use split |
 
-The "is optimal" binary sensors turn `on` when the current slot
-matches the optimal slot for the schedule direction. For offtake
-that usually means `on` during OFFPEAK hours (cheapest network
-cost). For injection it usually means `on` during PEAK hours (best
-sell price). Flat schedules with only one slot code across the week
-do not get an "is optimal" sensor, since the answer would be
-constantly on.
+The "is optimal" binary sensors turn `on` when the current slot is the
+best one of the week for that direction. ENGIE ranks every slot by cost,
+and best depends on which way the energy flows: for offtake it is the
+cheapest slot, so usually off-peak or super-off-peak hours, and for
+injection it is the dearest one, so usually peak hours. Flat schedules
+with only one slot code across the week do not get an "is optimal"
+sensor, since the answer would be constantly on.
 
 Accounts whose supplier contract is TOU-billed also see one calendar
 event per slot per direction for the next seven days on the
