@@ -9,6 +9,7 @@ not exercise.
 from __future__ import annotations
 
 from datetime import datetime, time
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -18,6 +19,7 @@ from custom_components.engie_be._tou import (
     current_slot,
     has_multiple_slot_codes,
     normalize_slot_code,
+    normalize_tou_payload,
     schedule_for_ean,
 )
 
@@ -271,3 +273,194 @@ def test_parse_hhmm_rejects_junk() -> None:
     assert _parse_hhmm("nope") is None
     assert _parse_hhmm("1") is None
     assert _parse_hhmm("01:00:00:00") is None
+
+
+# ---------------------------------------------------------------------------
+# normalize_tou_payload
+# ---------------------------------------------------------------------------
+
+_NESTED: dict[str, Any] = {
+    "items": [
+        {
+            "eanWithSuffix": "541448820070000000_ID1",
+            "gridMeterTimeOfUseSchedules": [
+                {
+                    "gridMeterNumber": "1SAG0000000000",
+                    "exclusiveNightMeter": False,
+                    "supplierSchedule": {
+                        "activeConfigurationId": "TOU001",
+                        "offtake": {
+                            "monday": [
+                                {
+                                    "startTime": "00:00:00",
+                                    "endTime": "01:00:00",
+                                    "slotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                                    "costIndicator": 2,
+                                },
+                                {
+                                    "startTime": "01:00:00",
+                                    "endTime": "07:00:00",
+                                    "slotCode": "S_TOU1_OFFTAKE_SUPEROFFPEAK",
+                                    "costIndicator": 1,
+                                },
+                                {
+                                    "startTime": "07:00:00",
+                                    "endTime": "00:00:00",
+                                    "slotCode": "S_TOU1_OFFTAKE_PEAK",
+                                    "costIndicator": 3,
+                                },
+                            ]
+                        },
+                        "injection": {
+                            "monday": [
+                                {
+                                    "startTime": "00:00:00",
+                                    "endTime": "07:00:00",
+                                    "slotCode": "S_TOU1_INJECTION_SUPEROFFPEAK",
+                                    "costIndicator": 1,
+                                },
+                                {
+                                    "startTime": "07:00:00",
+                                    "endTime": "00:00:00",
+                                    "slotCode": "S_TOU1_INJECTION_PEAK",
+                                    "costIndicator": 3,
+                                },
+                            ]
+                        },
+                    },
+                }
+            ],
+        }
+    ]
+}
+
+
+def test_adapter_flattens_the_per_meter_level() -> None:
+    """Schedules move up from gridMeterTimeOfUseSchedules onto the item."""
+    item = normalize_tou_payload(_NESTED)["items"][0]
+    assert item["eanWithSuffix"] == "541448820070000000_ID1"
+    assert "gridMeterTimeOfUseSchedules" not in item
+    assert item["supplierSchedule"]["activeConfigurationId"] == "TOU001"
+    assert item["gridMeterNumber"] == "1SAG0000000000"
+    assert item["exclusiveNightMeter"] is False
+
+
+def test_adapter_canonicalises_slot_codes() -> None:
+    """Direction prefixes are stripped and costIndicator is preserved."""
+    offtake = normalize_tou_payload(_NESTED)["items"][0]["supplierSchedule"]["offtake"]
+    assert [s["slotCode"] for s in offtake["monday"]] == [
+        "OFFPEAK",
+        "SUPEROFFPEAK",
+        "PEAK",
+    ]
+    assert offtake["monday"][0]["costIndicator"] == 2
+
+
+def test_adapter_derives_optimal_offtake_as_cheapest() -> None:
+    """Buying is best where the slot is cheapest."""
+    offtake = normalize_tou_payload(_NESTED)["items"][0]["supplierSchedule"]["offtake"]
+    assert offtake["optimal_slot_code"] == "SUPEROFFPEAK"
+
+
+def test_adapter_derives_optimal_injection_as_dearest() -> None:
+    """Selling is best where the slot is dearest, so max rather than min."""
+    injection = normalize_tou_payload(_NESTED)["items"][0]["supplierSchedule"][
+        "injection"
+    ]
+    assert injection["optimal_slot_code"] == "PEAK"
+
+
+def test_adapter_prefers_a_wire_optimal_when_present() -> None:
+    """A route that still sends optimalTimeslotCode wins over the derivation."""
+    payload = {
+        "items": [
+            {
+                "eanWithSuffix": "541448820070000000_ID1",
+                "supplierSchedule": {
+                    "offtake": {
+                        "optimalTimeslotCode": "S_TOU1_OFFTAKE_PEAK",
+                        "monday": [
+                            {
+                                "startTime": "00:00",
+                                "endTime": "00:00",
+                                "slotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                                "costIndicator": 1,
+                            }
+                        ],
+                    }
+                },
+            }
+        ]
+    }
+    offtake = normalize_tou_payload(payload)["items"][0]["supplierSchedule"]["offtake"]
+    assert offtake["optimal_slot_code"] == "PEAK"
+
+
+def test_adapter_accepts_the_legacy_flat_shape() -> None:
+    """The energy-insights shape passes through with no per-meter level."""
+    payload = {
+        "items": [
+            {
+                "eanWithSuffix": "541448820070000000_ID1",
+                "supplierSchedule": {
+                    "offtake": {
+                        "monday": [
+                            {
+                                "startTime": "00:00",
+                                "endTime": "00:00",
+                                "slotCode": "OFFPEAK",
+                            }
+                        ]
+                    }
+                },
+            }
+        ]
+    }
+    offtake = normalize_tou_payload(payload)["items"][0]["supplierSchedule"]["offtake"]
+    assert offtake["monday"][0]["slotCode"] == "OFFPEAK"
+    assert offtake["optimal_slot_code"] is None
+
+
+def test_adapter_picks_the_non_exclusive_night_meter_and_warns(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Multi-meter is unobserved, so the choice must be visible in the log."""
+    payload = {
+        "items": [
+            {
+                "eanWithSuffix": "541448820070000000_ID1",
+                "gridMeterTimeOfUseSchedules": [
+                    {
+                        "gridMeterNumber": "NIGHT",
+                        "exclusiveNightMeter": True,
+                        "supplierSchedule": {"offtake": {}},
+                    },
+                    {
+                        "gridMeterNumber": "MAIN",
+                        "exclusiveNightMeter": False,
+                        "supplierSchedule": {"offtake": {}},
+                    },
+                ],
+            }
+        ]
+    }
+    out = normalize_tou_payload(payload)
+    assert out["items"][0]["gridMeterNumber"] == "MAIN"
+    assert "2 grid meters" in caplog.text
+
+
+def test_adapter_warns_when_an_item_carries_no_schedules(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A shape surprise must arrive as a sentence, not as silent unknowns."""
+    payload = {"items": [{"eanWithSuffix": "541448820070000000_ID1"}]}
+    assert normalize_tou_payload(payload) == {"items": []}
+    assert "neither" in caplog.text
+
+
+def test_adapter_tolerates_junk() -> None:
+    """Malformed input yields no items rather than raising in a refresh."""
+    assert normalize_tou_payload(None) == {"items": []}
+    assert normalize_tou_payload({}) == {"items": []}
+    assert normalize_tou_payload({"items": "nope"}) == {"items": []}
+    assert normalize_tou_payload({"items": [None, 3]}) == {"items": []}

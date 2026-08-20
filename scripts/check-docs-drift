@@ -116,6 +116,9 @@ KNOWN_VALUES = frozenset(
         "OFFTAKE_",
         "INJECTION_",
         "TOTAL_HOURS",
+        # Key this integration adds to the canonical TOU schedule shape.
+        # Snake_case marks it as ours: every ENGIE wire key is camelCase.
+        "optimal_slot_code",
         # miscellaneous quoted literals
         "Z",
         "sms",
