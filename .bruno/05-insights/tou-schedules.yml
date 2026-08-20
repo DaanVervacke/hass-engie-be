@@ -7,7 +7,7 @@ info:
   - live
 http:
   method: GET
-  url: '{{energyInsightsBaseUrl}}/business-agreements/{{ENGIE_BAN}}/tou-schedules'
+  url: '{{billingBaseUrl}}/business-agreements/{{ENGIE_BAN}}/tou-schedules'
   headers:
   - name: User-Agent
     value: Dalvik/2.1.0 (Linux; U; Android 16; Pixel 6 Build/BP4A.251205.006)
@@ -54,10 +54,29 @@ runtime:
         expect(malformed.length).to.equal(0);
       });
 
-      test("schedules carry a supplier or dgoTgo schedule", function () {
+      test("schedules carry per-meter schedules", function () {
         const rows = res.getBody().items || [];
-        const malformed = rows.filter(function (i) { return !(i.supplierSchedule || i.dgoTgoSchedule); });
+        const malformed = rows.filter(function (i) {
+          return !(Array.isArray(i.gridMeterTimeOfUseSchedules));
+        });
         expect(malformed.length).to.equal(0);
+      });
+
+      test("slots carry a costIndicator", function () {
+        // The derived optimal slot depends on it, so its disappearance
+        // must not be silent.
+        const rows = res.getBody().items || [];
+        const meters = rows.reduce(function (acc, i) {
+          return acc.concat(i.gridMeterTimeOfUseSchedules || []);
+        }, []);
+        const slots = meters.reduce(function (acc, m) {
+          const offtake = (m.supplierSchedule || {}).offtake || {};
+          return acc.concat(offtake.monday || []);
+        }, []);
+        const missing = slots.filter(function (s) {
+          return typeof s.costIndicator !== 'number';
+        });
+        expect(missing.length).to.equal(0);
       });
 settings:
   encodeUrl: true
@@ -65,21 +84,36 @@ settings:
   followRedirects: false
   maxRedirects: 5
 docs: |-
-  Time-of-use tariff slots per EAN and direction.
+  Time-of-use tariff slots per EAN, meter and direction.
 
   Mirrors api.py::async_get_tou_schedules.
 
-  The endpoint responds even when the dgo-tou-is-active flag is false,
-  because the DGO/network schedule applies to every digital-meter
-  customer. The flag only gates the Smart App tile.
+  Served by the billing microservice, which is the one the Smart App
+  calls, verified against 4.22.1.1058. The energy-insights service
+  answers the same leaf with an older, flatter body: schedules directly
+  on items[], HH:MM times, an optimalTimeslotCode, and no
+  costIndicator. Both routes were live on 2026-08-20. Do not repoint
+  this request without reading _tou.py::normalize_tou_payload.
 
-  _tou.py reads items[].eanWithSuffix and the individual slots, each a
-  {startTime, endTime, slotCode}. The supplierSchedule and
-  dgoTgoSchedule wrappers around them are picked apart in sensor.py,
-  binary_sensor.py and _tou_calendar.py, each holding offtake /
-  injection maps of weekday to a list of slots. _tou_calendar.py
-  reads only supplierSchedule.
+  Shape here is items[].gridMeterTimeOfUseSchedules[], one entry per
+  grid meter, each carrying gridMeterNumber, exclusiveNightMeter, and
+  the supplierSchedule / dgoTgoSchedule / combinedSchedule blocks. Each
+  schedule holds offtake and injection maps of weekday to a list of
+  {startTime, endTime, slotCode, costIndicator}, with times as HH:MM:SS
+  and costIndicator ranking 1 cheapest to 5 dearest.
 
-  Wire slot codes are uppercase (PEAK, OFFPEAK, SUPEROFFPEAK,
-  EXCLUSIVE_NIGHT, DAY). Sensors expose the lowercase form, which is
-  what const.py::TOU_SLOT_CODES lists.
+  normalize_tou_payload flattens the per-meter level, strips the
+  direction prefix off supplier slot codes, and derives
+  optimal_slot_code, cheapest for offtake and dearest for injection,
+  because this route sends no optimalTimeslotCode. Everything
+  downstream, sensor.py, binary_sensor.py and _tou_calendar.py, reads
+  that canonical shape.
+
+  Supplier slot codes are prefixed and uppercase, for example
+  S_TOU1_OFFTAKE_PEAK. Network codes are bare, TOTAL_HOURS on an account
+  whose network side has no TOU components. ENGIE's own registry of
+  every live code is public and needs no auth:
+  https://www.engie.be/api/ebl/cms/mobile-tou/v1/configurations
+
+  The endpoint responds whatever the TOU feature flags say, because the
+  network schedule applies to every digital-meter customer.

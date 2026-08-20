@@ -1,5 +1,5 @@
 info:
-  name: DGO TOU is active
+  name: TOU is active
   type: http
   seq: 3
   tags:
@@ -19,7 +19,7 @@ http:
     type: json
     data: |-
       {
-        "name": "dgo-tou-is-active",
+        "name": "tou-is-active",
         "additionalContext": {
           "contractAccountId": "{{ENGIE_BAN}}",
           "platform": "android",
@@ -70,17 +70,26 @@ settings:
   followRedirects: false
   maxRedirects: 5
 docs: |-
-  Queries the dgo-tou-is-active flag for one BAN.
+  Queries the tou-is-active flag for one BAN.
 
-  Mirrors api.py::async_get_dgo_tou_is_active_flag, which delegates to
+  Mirrors api.py::async_get_tou_is_active_flag, which delegates to
   api.py::_async_query_boolean_feature_flag.
 
-  The flag gates the time-of-use tile in the Smart App, and nothing
-  more. The /tou-schedules endpoint returns data either way, because the
-  DGO/network schedule applies to every digital-meter customer.
+  True means the account has an active time-of-use supplier product, and
+  the reason names its configuration id, for example "Time of use is
+  active (TOU001)". That id is the same value the supplier schedule
+  reports as activeConfigurationId. Every TOU entity reads the supplier
+  schedule, so this is the flag that gates them.
 
-  The flag name comes from the Android app's libapp.so, alongside the
-  isTimeOfUseActive sync method.
+  Two sibling flags exist and neither is the gate. dgo-tou-is-active
+  reports the distribution grid operator's side, the RTPCMP
+  configurations, and reads false on accounts whose supplier product is
+  active. tou-forecasts-shown evaluates to true for everyone, so it
+  gates nothing. The Smart App keeps all three apart, with its own sync
+  and watch method for each.
+
+  The /tou-schedules endpoint returns data whatever these flags say,
+  because the network schedule applies to every digital-meter customer.
 
   The targeted endpoint returns a flat {value, reason} object, not
   the group envelope keyed by flag name.

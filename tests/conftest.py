@@ -101,7 +101,7 @@ def _disable_tou_flag_probe(
     """
     Stub the TOU feature-flag probe and schedule fetch by default.
 
-    The coordinator now probes ``dgo-tou-is-active`` and fetches
+    The coordinator probes ``tou-is-active`` and fetches
     ``/tou-schedules`` on every refresh. Pre-existing tests build clients
     that do not mock these new endpoints. Stubbing the coordinator methods
     keeps every non-TOU test unaware of the new calls. TOU-specific tests
@@ -348,7 +348,7 @@ def engie_client_baseline() -> Callable[..., MagicMock]:
             "month_report": "async_get_month_report",
             "solar_flag": "async_get_solar_surplus_shown_dashboard_flag",
             "solar_forecasts": "async_get_solar_surplus_forecasts",
-            "tou_flag": "async_get_dgo_tou_is_active_flag",
+            "tou_flag": "async_get_tou_is_active_flag",
             "tou_schedules": "async_get_tou_schedules",
             "account_balance": "async_get_account_balance",
             "customer_account_relations": "async_get_customer_account_relations",

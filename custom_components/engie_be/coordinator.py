@@ -23,6 +23,7 @@ from ._relations import (
     subentry_title,
 )
 from ._solar import derive_has_solar
+from ._tou import normalize_tou_payload
 from .api import (
     EngieBeApiClientAuthenticationError,
     EngieBeApiClientError,
@@ -788,7 +789,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return await self._async_probe_boolean_flag(
             client,
             business_agreement_number,
-            api_method="async_get_dgo_tou_is_active_flag",
+            api_method="async_get_tou_is_active_flag",
             log_prefix="TOU",
         )
 
@@ -817,7 +818,10 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._note_tou_unavailable(ban_masked, exception)
             return previous_wrapper
         self._note_tou_recovered(ban_masked)
-        return {"data": payload, "fetched_at": dt_util.utcnow().isoformat()}
+        return {
+            "data": normalize_tou_payload(payload),
+            "fetched_at": dt_util.utcnow().isoformat(),
+        }
 
     def _note_tou_unavailable(
         self,

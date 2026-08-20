@@ -20,6 +20,7 @@ import pytest
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntityDescription
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
+from custom_components.engie_be._tou import normalize_tou_payload
 from custom_components.engie_be.const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     EPEX_TZ,
@@ -61,7 +62,14 @@ _INJECTION_DESC = SensorEntityDescription(
 
 
 def _load(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    """
+    Return a fixture in the canonical shape the coordinator stores.
+
+    Fixtures hold raw wire payloads. The coordinator adapts before
+    storing, so a test seeding ``coordinator.data`` must adapt too or it
+    exercises a shape production never sees.
+    """
+    return normalize_tou_payload(json.loads(path.read_text(encoding="utf-8")))
 
 
 def _wrap(payload: dict) -> dict:

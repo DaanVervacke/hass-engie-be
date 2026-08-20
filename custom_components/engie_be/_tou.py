@@ -5,7 +5,8 @@ from __future__ import annotations
 from datetime import datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 
-from .const import BRUSSELS_TZ
+from .api import mask_identifier
+from .const import BRUSSELS_TZ, LOGGER
 from .const import TOU_WEEKDAY_KEYS as _WEEKDAY_KEYS
 from .data import unwrap_dict_payload
 
@@ -14,7 +15,179 @@ if TYPE_CHECKING:
 
 _MAX_HOUR = 23
 _MAX_MINUTE = 59
-_EXPECTED_PARTS = 2
+# ``HH:MM`` on the legacy energy-insights route, ``HH:MM:SS`` on
+# billing/customer/v1. Seconds are always zero in observed payloads
+# and are discarded.
+_ACCEPTED_PARTS = (2, 3)
+
+# Direction keywords used to split prefixed slot codes. Supplier TOU
+# products send codes like ``S_TOU1_OFFTAKE_PEAK``; the rate portion is
+# what every consumer wants, and it is what ``TOU_SLOT_CODES`` lists.
+_DIRECTION_KEYWORDS = ("OFFTAKE_", "INJECTION_")
+
+
+def normalize_slot_code(raw_code: str) -> str:
+    """
+    Return the rate portion of a slot code, with any direction prefix stripped.
+
+    Bare codes (``TOTAL_HOURS``, ``PEAK``, ``OFFPEAK``) come back unchanged.
+    Prefixed codes are cut down to the part after the last direction
+    keyword, so ``S_TOU1_OFFTAKE_PEAK`` becomes ``PEAK``. Case is
+    preserved: the wire is uppercase and read sites lowercase on output.
+    """
+    for keyword in _DIRECTION_KEYWORDS:
+        idx = raw_code.rfind(keyword)
+        if idx != -1:
+            return raw_code[idx + len(keyword) :]
+    return raw_code
+
+
+# Which end of the cost scale is the good end, per direction. Verified
+# against one account observed on both routes on 2026-08-20: the legacy
+# route's ``optimalTimeslotCode`` equals the minimum-``costIndicator``
+# code for offtake and the maximum for injection. Cheapest is best when
+# you are buying, dearest is best when you are selling.
+_OPTIMAL_PICKER: dict[str, Any] = {"offtake": min, "injection": max}
+
+
+def _normalize_direction(
+    block: dict[str, Any],
+    direction: str,
+) -> dict[str, Any]:
+    """
+    Return one direction block with canonical slot codes and a derived optimal.
+
+    ``optimal_slot_code`` prefers the wire's ``optimalTimeslotCode`` when
+    the route still sends one, and otherwise is derived from
+    ``costIndicator`` per :data:`_OPTIMAL_PICKER`. It is ``None`` when
+    neither is available, which read sites already treat as "no opinion".
+    Ties break on the code itself, so the result is deterministic.
+    """
+    out: dict[str, Any] = {}
+    best: tuple[int, str] | None = None
+    picker = _OPTIMAL_PICKER[direction]
+    for key in _WEEKDAY_KEYS:
+        slots = block.get(key)
+        if not isinstance(slots, list):
+            continue
+        day: list[dict[str, Any]] = []
+        for slot in slots:
+            if not isinstance(slot, dict):
+                continue
+            raw = slot.get("slotCode")
+            if not isinstance(raw, str):
+                continue
+            code = normalize_slot_code(raw)
+            canonical = dict(slot)
+            canonical["slotCode"] = code
+            day.append(canonical)
+            cost = slot.get("costIndicator")
+            if isinstance(cost, int):
+                candidate = (cost, code)
+                best = candidate if best is None else picker(best, candidate)
+        out[key] = day
+    wire_optimal = block.get("optimalTimeslotCode")
+    if isinstance(wire_optimal, str):
+        out["optimal_slot_code"] = normalize_slot_code(wire_optimal)
+    else:
+        out["optimal_slot_code"] = best[1] if best is not None else None
+    return out
+
+
+def _normalize_schedule(schedule: dict[str, Any]) -> dict[str, Any]:
+    """Return one supplier or DGO schedule with both directions canonicalised."""
+    out: dict[str, Any] = {}
+    config_id = schedule.get("activeConfigurationId")
+    if isinstance(config_id, str):
+        out["activeConfigurationId"] = config_id
+    for direction in _OPTIMAL_PICKER:
+        block = schedule.get(direction)
+        if isinstance(block, dict):
+            out[direction] = _normalize_direction(block, direction)
+    return out
+
+
+def _pick_meter(meters: list[Any], ean: str) -> dict[str, Any]:
+    """
+    Return the grid meter whose schedules represent the main register.
+
+    Multi-meter installations have not been observed, so this prefers the
+    first meter that is not flagged ``exclusiveNightMeter`` and logs loudly
+    when it had to choose. Guessing silently is how a household with an
+    exclusive-night register would end up with night-only TOU sensors and
+    no way to tell from the UI.
+    """
+    usable = [meter for meter in meters if isinstance(meter, dict)]
+    if not usable:
+        return {}
+    chosen = next(
+        (meter for meter in usable if meter.get("exclusiveNightMeter") is not True),
+        usable[0],
+    )
+    if len(usable) > 1:
+        LOGGER.warning(
+            "TOU schedules for %s carry %d grid meters, using %s. "
+            "Please open an issue if that is the wrong register.",
+            mask_identifier(ean),
+            len(usable),
+            chosen.get("gridMeterNumber", "unknown"),
+        )
+    return chosen
+
+
+def normalize_tou_payload(payload: Any) -> dict[str, Any]:
+    """
+    Adapt a ``/tou-schedules`` response into the integration's canonical shape.
+
+    ``billing/customer/v1`` nests schedules under a per-meter list
+    (``items[].gridMeterTimeOfUseSchedules[]``) and sends no
+    ``optimalTimeslotCode``. This flattens that level, canonicalises every
+    slot code, and synthesises ``optimal_slot_code``, so the sensor,
+    binary-sensor and calendar read sites never learn which route the data
+    came from.
+
+    Always returns ``{"items": [...]}``. Malformed input yields an empty
+    list rather than an exception: this runs inside a coordinator refresh,
+    where raising would blank every unrelated sensor on the account.
+    """
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return {"items": []}
+
+    out_items: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        ean = item.get("eanWithSuffix")
+        if not isinstance(ean, str):
+            continue
+        meters = item.get("gridMeterTimeOfUseSchedules")
+        if isinstance(meters, list) and meters:
+            source = _pick_meter(meters, ean)
+        elif "supplierSchedule" in item or "dgoTgoSchedule" in item:
+            # ponytail: the legacy energy-insights shape, kept so the base
+            # URL in api.py can be reverted by editing one constant if
+            # billing/customer/v1 misbehaves for an account we have not
+            # seen. Delete this branch once billing has shipped for a few
+            # releases without complaint.
+            source = item
+        else:
+            LOGGER.warning(
+                "TOU schedules for %s carry neither gridMeterTimeOfUseSchedules "
+                "nor a supplierSchedule, so no TOU entity will have data",
+                mask_identifier(ean),
+            )
+            continue
+        canonical: dict[str, Any] = {"eanWithSuffix": ean}
+        for key in ("supplierSchedule", "dgoTgoSchedule"):
+            schedule = source.get(key)
+            if isinstance(schedule, dict):
+                canonical[key] = _normalize_schedule(schedule)
+        for key in ("gridMeterNumber", "exclusiveNightMeter"):
+            if key in source:
+                canonical[key] = source[key]
+        out_items.append(canonical)
+    return {"items": out_items}
 
 
 def tou_schedules_payload(
@@ -25,11 +198,17 @@ def tou_schedules_payload(
 
 
 def _parse_hhmm(raw: Any) -> time | None:
-    """Parse a ``"HH:MM"`` string into a :class:`datetime.time`, or ``None``."""
+    """
+    Parse a ``"HH:MM"`` or ``"HH:MM:SS"`` string into a time, or ``None``.
+
+    Seconds are accepted and discarded: the two ``/tou-schedules`` routes
+    disagree on the format and no observed payload has a non-zero seconds
+    field.
+    """
     if not isinstance(raw, str):
         return None
-    parts = raw.split(":", 1)
-    if len(parts) != _EXPECTED_PARTS:
+    parts = raw.split(":")
+    if len(parts) not in _ACCEPTED_PARTS:
         return None
     try:
         h, m = int(parts[0]), int(parts[1])

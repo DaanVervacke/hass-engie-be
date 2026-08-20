@@ -8,8 +8,8 @@ import pytest
 
 from custom_components.engie_be.api import EngieBeApiClient
 from custom_components.engie_be.const import (
+    BILLING_BASE_URL,
     BOOLEAN_FEATURE_FLAG_BASE_URL,
-    HAPPY_HOUR_BASE_URL,
     TOU_FLAG_KEY,
 )
 
@@ -43,7 +43,12 @@ async def test_async_get_tou_schedules_builds_request() -> None:
     call_kwargs = mocked.await_args.kwargs
     assert call_kwargs["method"] == "GET"
     assert call_kwargs["url"] == (
-        f"{HAPPY_HOUR_BASE_URL}/business-agreements/{_BAN}/tou-schedules"
+        f"{BILLING_BASE_URL}/business-agreements/{_BAN}/tou-schedules"
+    )
+    # The Smart App calls the billing service, not energy-insights.
+    assert call_kwargs["url"] == (
+        "https://api.engie.be/engie/ms/billing/customer/v1"
+        f"/business-agreements/{_BAN}/tou-schedules"
     )
     assert call_kwargs["json_response"] is True
     headers = call_kwargs["headers"]
@@ -67,7 +72,7 @@ async def test_async_get_tou_schedules_strips_ban_whitespace() -> None:
 
 
 async def test_async_get_dgo_tou_flag_posts_named_flag() -> None:
-    """The flag getter POSTs the ``dgo-tou-is-active`` name."""
+    """The flag getter POSTs ``tou-is-active``, the supplier-product flag."""
     client = _build_client()
     payload = {"value": True, "reason": "some_rule"}
 
@@ -76,7 +81,7 @@ async def test_async_get_dgo_tou_flag_posts_named_flag() -> None:
         "_api_wrapper",
         AsyncMock(return_value=payload),
     ) as mocked:
-        result = await client.async_get_dgo_tou_is_active_flag(_BAN)
+        result = await client.async_get_tou_is_active_flag(_BAN)
 
     assert result == payload
     call_kwargs = mocked.await_args.kwargs
@@ -84,4 +89,5 @@ async def test_async_get_dgo_tou_flag_posts_named_flag() -> None:
     assert call_kwargs["url"] == BOOLEAN_FEATURE_FLAG_BASE_URL
     body = call_kwargs["json_body"]
     assert body["name"] == TOU_FLAG_KEY
+    assert body["name"] == "tou-is-active"
     assert body["additionalContext"]["contractAccountId"] == _BAN

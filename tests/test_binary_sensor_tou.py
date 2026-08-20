@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from custom_components.engie_be._tou import normalize_tou_payload
 from custom_components.engie_be.binary_sensor import (
     TOU_INJECTION_IS_OPTIMAL_DESCRIPTION,
     TOU_OFFTAKE_IS_OPTIMAL_DESCRIPTION,
@@ -34,8 +35,14 @@ pytestmark = pytest.mark.tou
 
 
 def _load(path: Path) -> dict:
-    """Return a fresh copy of a JSON fixture."""
-    return json.loads(path.read_text(encoding="utf-8"))
+    """
+    Return a fixture in the canonical shape the coordinator stores.
+
+    Fixtures hold raw wire payloads. The coordinator adapts before
+    storing, so a test that seeds ``coordinator.data`` has to adapt too
+    or it exercises a shape production never sees.
+    """
+    return normalize_tou_payload(json.loads(path.read_text(encoding="utf-8")))
 
 
 def _wrap(payload: dict[str, Any]) -> dict:

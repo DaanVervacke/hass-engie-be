@@ -36,7 +36,7 @@ from ._solar import (
     solar_surplus_payload,
 )
 from ._tou import current_slot as tou_current_slot
-from ._tou import schedule_for_ean, tou_schedules_payload
+from ._tou import normalize_slot_code, schedule_for_ean, tou_schedules_payload
 from .api import mask_identifier
 from .const import (
     BRUSSELS_TZ,
@@ -112,24 +112,6 @@ _SLOT_CODE_MAP: dict[str, tuple[str, str] | None] = {
     "EN": None,  # blended/total rate - skipped
 }
 
-# Direction keywords used to split prefixed slot codes.
-_DIRECTION_KEYWORDS = ("OFFTAKE_", "INJECTION_")
-
-
-def _normalize_slot_code(raw_code: str) -> str:
-    """
-    Normalise a raw ``timeOfUseSlotCode`` to its rate portion.
-
-    Bare codes (``TOTAL_HOURS``, ``PEAK``, ``OFFPEAK``) are returned as-is.
-    Prefixed codes (e.g. ``S_TOU1_OFFTAKE_PEAK``) are stripped down to the
-    part after the last direction keyword (``OFFTAKE_`` / ``INJECTION_``).
-    """
-    for keyword in _DIRECTION_KEYWORDS:
-        idx = raw_code.rfind(keyword)
-        if idx != -1:
-            return raw_code[idx + len(keyword) :]
-    return raw_code
-
 
 def _slot_suffixes(slot_code: str) -> tuple[str, str] | None:
     """
@@ -137,7 +119,7 @@ def _slot_suffixes(slot_code: str) -> tuple[str, str] | None:
 
     Returns ``None`` when the code should be skipped entirely.
     """
-    normalised = _normalize_slot_code(slot_code)
+    normalised = normalize_slot_code(slot_code)
     if normalised in _SLOT_CODE_MAP:
         return _SLOT_CODE_MAP[normalised]
     # Unknown codes: use lowercased normalised code as suffix
@@ -1873,7 +1855,18 @@ class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
         code, _ = tou_current_slot(schedule, dt_util.utcnow())
         if code is None:
             return None
-        return code if code in TOU_SLOT_CODES else None
+        if code not in TOU_SLOT_CODES:
+            # An ENUM sensor may not report an undeclared option, so the
+            # state has to stay unknown. Say which code did it: ENGIE's
+            # slot-code registry is remotely mutable and has grown before.
+            LOGGER.warning(
+                "Unknown TOU slot code %s for %s, reporting unknown. "
+                "Please open an issue so it can be added",
+                code,
+                self.entity_id,
+            )
+            return None
+        return code
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -1882,7 +1875,7 @@ class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
         schedule = self._supplier_schedule()
         if schedule is None:
             return attrs
-        attrs["optimal_slot"] = schedule.get("optimalTimeslotCode", "").lower() or None
+        attrs["optimal_slot"] = schedule.get("optimal_slot_code", "").lower() or None
         now = dt_util.utcnow()
         _, next_trans = tou_current_slot(schedule, now)
         attrs["next_transition"] = next_trans.isoformat() if next_trans else None
@@ -1896,6 +1889,7 @@ class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
                         "start": s.get("startTime"),
                         "end": s.get("endTime"),
                         "code": s.get("slotCode", "").lower(),
+                        "cost": s.get("costIndicator"),
                     }
                     for s in slots
                     if isinstance(s, dict)

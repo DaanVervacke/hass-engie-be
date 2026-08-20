@@ -712,16 +712,25 @@ class EngieBeApiClient:
         """
         Fetch the time-of-use tariff schedules for a business agreement.
 
+        Served by the billing microservice, which is what the ENGIE Smart
+        App calls (verified against 4.22.1.1058). The energy-insights
+        service answers the same leaf with an older, flatter body that
+        carries no ``costIndicator``, so do not point this back without
+        reading ``_tou.normalize_tou_payload`` first.
+
         Returns the parsed JSON response. Shape:
-        ``{"items": [{"eanWithSuffix": "..._ID1", "supplierSchedule": {...},
-        "dgoTgoSchedule": {...}}]}`` where each schedule has per-direction
-        ``offtake`` / ``injection`` maps of weekday -> list of
-        ``{startTime, endTime, slotCode}`` slots. Endpoint responds even
-        when the ``dgo-tou-is-active`` feature flag is off because the
+        ``{"items": [{"eanWithSuffix": "..._ID1",
+        "gridMeterTimeOfUseSchedules": [{"gridMeterNumber": "...",
+        "exclusiveNightMeter": false, "supplierSchedule": {...},
+        "dgoTgoSchedule": {...}, "combinedSchedule": {...}}]}]}`` where each
+        schedule has per-direction ``offtake`` / ``injection`` maps of
+        weekday -> list of ``{startTime, endTime, slotCode,
+        costIndicator}`` slots, with times as ``HH:MM:SS``. Endpoint
+        responds even when the TOU feature flag is off because the
         DGO/network schedule always applies to metered electricity.
         """
         ban = business_agreement_number.replace(" ", "")
-        url = f"{HAPPY_HOUR_BASE_URL}/business-agreements/{ban}/tou-schedules"
+        url = f"{BILLING_BASE_URL}/business-agreements/{ban}/tou-schedules"
         headers = self._authenticated_headers()
         return await self._api_wrapper(
             session=self._session,
@@ -758,18 +767,21 @@ class EngieBeApiClient:
             json_response=True,
         )
 
-    async def async_get_dgo_tou_is_active_flag(
+    async def async_get_tou_is_active_flag(
         self,
         business_agreement_number: str,
     ) -> dict[str, Any]:
         """
-        Fetch the ``dgo-tou-is-active`` boolean feature flag for a BAN.
+        Fetch the ``tou-is-active`` boolean feature flag for a BAN.
 
-        Mirrors the Smart App's UI gate for the TOU tile. ``value: true``
-        means the customer's supplier contract is TOU-billed and slot
-        sensors are directly relevant to their bill. ``value: false``
-        still allows displaying the network/DGO schedule since that
-        applies to all digital-meter customers.
+        ``value: true`` means the account has an active time-of-use
+        supplier product, and the ``reason`` names its configuration id.
+        This is the flag that gates every TOU entity, because they all
+        read the supplier schedule.
+
+        The sibling ``dgo-tou-is-active`` flag reports the network
+        operator's side instead and is ``false`` for accounts whose
+        supplier product is active, so it is not a usable gate.
 
         Returns the parsed JSON response as a flat dict (top-level
         ``value`` and ``reason`` keys).
