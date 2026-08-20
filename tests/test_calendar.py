@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.util import dt as dt_util
 
+from custom_components.engie_be._tou import normalize_tou_payload
 from custom_components.engie_be._tou_calendar import tou_slot_events
 from custom_components.engie_be.calendar import (
     EngieBeCalendar,
@@ -483,8 +484,14 @@ async def test_async_setup_entry_warns_when_subentry_runtime_missing(
 
 
 def _tou_schedules() -> dict:
-    """Return a fresh copy of the bi-horaire TOU schedules fixture payload."""
-    return json.loads(_TOU_FIXTURE.read_text(encoding="utf-8"))
+    """
+    Return the bi-horaire TOU fixture in the canonical stored shape.
+
+    The fixture holds a raw wire payload. The coordinator adapts before
+    storing, so a test seeding ``coordinator.data`` must adapt too or it
+    exercises a shape production never sees.
+    """
+    return normalize_tou_payload(json.loads(_TOU_FIXTURE.read_text(encoding="utf-8")))
 
 
 def _tou_wrapper(payload: dict) -> dict:

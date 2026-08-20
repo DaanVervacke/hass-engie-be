@@ -2,34 +2,250 @@
   "items": [
     {
       "eanWithSuffix": "541448820070000000_ID1",
-      "supplierSchedule": {
-        "activeConfigurationId": "RTPCMP_FLAT",
-        "offtake": {
-          "optimalTimeslotCode": "OFFPEAK",
-          "monday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "tuesday":   [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "wednesday": [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "thursday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "friday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "saturday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "sunday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
-        },
-        "injection": {
-          "optimalTimeslotCode": "OFFPEAK",
-          "monday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "tuesday":   [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "wednesday": [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "thursday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "friday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "saturday":  [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}],
-          "sunday":    [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}]
+      "gridMeterTimeOfUseSchedules": [
+        {
+          "gridMeterNumber": "1SAG0000000000",
+          "exclusiveNightMeter": false,
+          "supplierSchedule": {
+            "activeConfigurationId": "TOU001",
+            "offtake": {
+              "monday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "tuesday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "wednesday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "thursday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "friday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "saturday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "sunday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_OFFTAKE_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ]
+            },
+            "injection": {
+              "monday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_INJECTION_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "tuesday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_INJECTION_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "wednesday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_INJECTION_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "thursday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_INJECTION_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "friday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_INJECTION_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "saturday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_INJECTION_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ],
+              "sunday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "S_TOU1_INJECTION_OFFPEAK",
+                  "costIndicator": 2
+                }
+              ]
+            }
+          },
+          "dgoTgoSchedule": {
+            "activeConfigurationId": "TOTAL_HOURS",
+            "offtake": {
+              "monday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "tuesday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "wednesday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "thursday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "friday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "saturday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "sunday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ]
+            },
+            "injection": {
+              "monday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "tuesday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "wednesday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "thursday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "friday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "saturday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ],
+              "sunday": [
+                {
+                  "startTime": "00:00:00",
+                  "endTime": "00:00:00",
+                  "slotCode": "TOTAL_HOURS",
+                  "costIndicator": 3
+                }
+              ]
+            }
+          }
         }
-      },
-      "dgoTgoSchedule": {
-        "activeConfigurationId": "RTPCMP_FLAT",
-        "offtake":   {"optimalTimeslotCode": "OFFPEAK", "monday": [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}], "tuesday": [], "wednesday": [], "thursday": [], "friday": [], "saturday": [], "sunday": []},
-        "injection": {"optimalTimeslotCode": "OFFPEAK", "monday": [{"startTime": "00:00", "endTime": "00:00", "slotCode": "OFFPEAK"}], "tuesday": [], "wednesday": [], "thursday": [], "friday": [], "saturday": [], "sunday": []}
-      }
+      ]
     }
   ]
 }
