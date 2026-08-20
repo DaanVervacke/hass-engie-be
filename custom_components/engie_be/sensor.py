@@ -1864,7 +1864,7 @@ class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
         schedule = self._supplier_schedule()
         if schedule is None:
             return attrs
-        attrs["optimal_slot"] = schedule.get("optimalTimeslotCode", "").lower() or None
+        attrs["optimal_slot"] = schedule.get("optimal_slot_code", "").lower() or None
         now = dt_util.utcnow()
         _, next_trans = tou_current_slot(schedule, now)
         attrs["next_transition"] = next_trans.isoformat() if next_trans else None
@@ -1878,6 +1878,7 @@ class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
                         "start": s.get("startTime"),
                         "end": s.get("endTime"),
                         "code": s.get("slotCode", "").lower(),
+                        "cost": s.get("costIndicator"),
                     }
                     for s in slots
                     if isinstance(s, dict)

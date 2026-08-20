@@ -572,7 +572,7 @@ class EngieBeTouIsOptimalSensor(
         schedule = self._supplier_schedule()
         if schedule is None:
             return None
-        optimal = schedule.get("optimalTimeslotCode")
+        optimal = schedule.get("optimal_slot_code")
         if not isinstance(optimal, str):
             return None
         code, _ = tou_current_slot(schedule, dt_util.utcnow())

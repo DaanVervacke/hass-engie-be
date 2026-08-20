@@ -275,3 +275,53 @@ async def test_flag_no_flip_does_not_schedule_reload(  # noqa: PLR0913, PLR0917
     assert sub_data.feature_flags.tou_active is False
     assert entry.runtime_data.reload_pending is False
     reload_mock.assert_not_awaited()
+
+
+async def test_coordinator_stores_canonical_tou_shape(
+    hass: HomeAssistant,
+    build_engie_entry: Callable,
+    build_engie_coordinator: Callable,
+    wire_engie_runtime: Callable,
+    engie_client_baseline: Callable,
+) -> None:
+    """The coordinator stores adapted data, never the raw wire payload."""
+    entry = build_engie_entry(hass)
+    subentry = next(iter(entry.subentries.values()))
+    client = engie_client_baseline(
+        tou_schedules={
+            "items": [
+                {
+                    "eanWithSuffix": f"{_EAN}_ID1",
+                    "gridMeterTimeOfUseSchedules": [
+                        {
+                            "gridMeterNumber": "1SAG0000000000",
+                            "exclusiveNightMeter": False,
+                            "supplierSchedule": {
+                                "offtake": {
+                                    "monday": [
+                                        {
+                                            "startTime": "00:00:00",
+                                            "endTime": "00:00:00",
+                                            "slotCode": "S_TOU1_OFFTAKE_SUPEROFFPEAK",
+                                            "costIndicator": 1,
+                                        }
+                                    ]
+                                }
+                            },
+                        }
+                    ],
+                }
+            ]
+        },
+        tou_flag={"value": True},
+    )
+    coord = build_engie_coordinator(hass, entry, subentry)
+    wire_engie_runtime(entry, client, subentry, coord)
+
+    result = await coord._async_update_data()
+
+    item = result["tou_schedules"]["data"]["items"][0]
+    assert "gridMeterTimeOfUseSchedules" not in item
+    offtake = item["supplierSchedule"]["offtake"]
+    assert offtake["monday"][0]["slotCode"] == "SUPEROFFPEAK"
+    assert offtake["optimal_slot_code"] == "SUPEROFFPEAK"

@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from custom_components.engie_be._tou import normalize_tou_payload
 from custom_components.engie_be.const import (
     CONF_BUSINESS_AGREEMENT_NUMBER,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
@@ -35,8 +36,14 @@ pytestmark = pytest.mark.tou
 
 
 def _load(path: Path) -> dict:
-    """Return a fresh copy of a JSON fixture."""
-    return json.loads(path.read_text(encoding="utf-8"))
+    """
+    Return a fixture in the canonical shape the coordinator stores.
+
+    Fixtures hold raw wire payloads. The coordinator adapts before
+    storing, so a test that seeds ``coordinator.data`` has to adapt too
+    or it exercises a shape production never sees.
+    """
+    return normalize_tou_payload(json.loads(path.read_text(encoding="utf-8")))
 
 
 def _wrap(payload: dict[str, Any]) -> dict:
@@ -174,7 +181,7 @@ def test_native_value_returns_none_for_malformed_slot_times() -> None:
                 "supplierSchedule": {
                     "activeConfigurationId": "X",
                     "offtake": {
-                        "optimalTimeslotCode": "OFFPEAK",
+                        "optimal_slot_code": "OFFPEAK",
                         "monday": [
                             {
                                 "startTime": None,
@@ -190,7 +197,7 @@ def test_native_value_returns_none_for_malformed_slot_times() -> None:
                         "sunday": [],
                     },
                     "injection": {
-                        "optimalTimeslotCode": "OFFPEAK",
+                        "optimal_slot_code": "OFFPEAK",
                         "monday": [],
                         "tuesday": [],
                         "wednesday": [],
@@ -203,7 +210,7 @@ def test_native_value_returns_none_for_malformed_slot_times() -> None:
                 "dgoTgoSchedule": {
                     "activeConfigurationId": "X",
                     "offtake": {
-                        "optimalTimeslotCode": "OFFPEAK",
+                        "optimal_slot_code": "OFFPEAK",
                         "monday": [],
                         "tuesday": [],
                         "wednesday": [],
@@ -213,7 +220,7 @@ def test_native_value_returns_none_for_malformed_slot_times() -> None:
                         "sunday": [],
                     },
                     "injection": {
-                        "optimalTimeslotCode": "OFFPEAK",
+                        "optimal_slot_code": "OFFPEAK",
                         "monday": [],
                         "tuesday": [],
                         "wednesday": [],
