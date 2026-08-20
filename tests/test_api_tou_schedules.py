@@ -8,8 +8,8 @@ import pytest
 
 from custom_components.engie_be.api import EngieBeApiClient
 from custom_components.engie_be.const import (
+    BILLING_BASE_URL,
     BOOLEAN_FEATURE_FLAG_BASE_URL,
-    HAPPY_HOUR_BASE_URL,
     TOU_FLAG_KEY,
 )
 
@@ -43,7 +43,12 @@ async def test_async_get_tou_schedules_builds_request() -> None:
     call_kwargs = mocked.await_args.kwargs
     assert call_kwargs["method"] == "GET"
     assert call_kwargs["url"] == (
-        f"{HAPPY_HOUR_BASE_URL}/business-agreements/{_BAN}/tou-schedules"
+        f"{BILLING_BASE_URL}/business-agreements/{_BAN}/tou-schedules"
+    )
+    # The Smart App calls the billing service, not energy-insights.
+    assert call_kwargs["url"] == (
+        "https://api.engie.be/engie/ms/billing/customer/v1"
+        f"/business-agreements/{_BAN}/tou-schedules"
     )
     assert call_kwargs["json_response"] is True
     headers = call_kwargs["headers"]

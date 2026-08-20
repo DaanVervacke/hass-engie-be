@@ -712,16 +712,25 @@ class EngieBeApiClient:
         """
         Fetch the time-of-use tariff schedules for a business agreement.
 
+        Served by the billing microservice, which is what the ENGIE Smart
+        App calls (verified against 4.22.1.1058). The energy-insights
+        service answers the same leaf with an older, flatter body that
+        carries no ``costIndicator``, so do not point this back without
+        reading ``_tou.normalize_tou_payload`` first.
+
         Returns the parsed JSON response. Shape:
-        ``{"items": [{"eanWithSuffix": "..._ID1", "supplierSchedule": {...},
-        "dgoTgoSchedule": {...}}]}`` where each schedule has per-direction
-        ``offtake`` / ``injection`` maps of weekday -> list of
-        ``{startTime, endTime, slotCode}`` slots. Endpoint responds even
-        when the ``dgo-tou-is-active`` feature flag is off because the
+        ``{"items": [{"eanWithSuffix": "..._ID1",
+        "gridMeterTimeOfUseSchedules": [{"gridMeterNumber": "...",
+        "exclusiveNightMeter": false, "supplierSchedule": {...},
+        "dgoTgoSchedule": {...}, "combinedSchedule": {...}}]}]}`` where each
+        schedule has per-direction ``offtake`` / ``injection`` maps of
+        weekday -> list of ``{startTime, endTime, slotCode,
+        costIndicator}`` slots, with times as ``HH:MM:SS``. Endpoint
+        responds even when the TOU feature flag is off because the
         DGO/network schedule always applies to metered electricity.
         """
         ban = business_agreement_number.replace(" ", "")
-        url = f"{HAPPY_HOUR_BASE_URL}/business-agreements/{ban}/tou-schedules"
+        url = f"{BILLING_BASE_URL}/business-agreements/{ban}/tou-schedules"
         headers = self._authenticated_headers()
         return await self._api_wrapper(
             session=self._session,
