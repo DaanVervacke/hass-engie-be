@@ -68,6 +68,7 @@
   - superoffpeak
   - exclusive_night
   - day
+  - total_hours
 
 # ---------------------------------------------------------------------------
 # Binary "is" conditions - check a binary sensor is on

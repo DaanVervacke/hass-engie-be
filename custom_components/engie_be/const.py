@@ -64,17 +64,18 @@ SOLAR_SURPLUS_SHOWN_DASHBOARD_KEY = "solar-surplus-shown-dashboard"
 # for everyone ("default evaluation always true"), so it gates nothing.
 TOU_FLAG_KEY = "tou-is-active"
 
-# TOU_SLOT_CODES: the slot codes an ENUM sensor may report. Sourced from
-# ENGIE's own registry, which the Smart App fetches at runtime and caches
-# rather than hardcoding:
+# TOU_SLOT_CODES: the slot codes an ENUM sensor may report. These are
+# categories, not raw wire codes. ENGIE's registry names more codes than
+# this, but renders several of them identically, and the ones it treats as
+# an existing category are aliased in ``_tou.py`` rather than added here:
 # https://www.engie.be/api/ebl/cms/mobile-tou/v1/configurations
-# That registry is remotely mutable, so this list is a snapshot. Codes
-# outside it are logged by sensor.py rather than silently dropped, because
-# an ENUM sensor may not report an option it never declared.
 #
 # Wire codes are uppercase and supplier products prefix them by direction
 # (``S_TOU1_OFFTAKE_PEAK``). ``_tou.normalize_slot_code`` strips the prefix
-# at ingest, so only the rate portion reaches this list, lowercased.
+# and resolves aliases at ingest, so only a category reaches this list,
+# lowercased. A code that resolves to nothing here is logged by sensor.py
+# rather than silently dropped, because an ENUM sensor may not report an
+# option it never declared.
 #
 # ``day`` is retained although the registry does not list it: removing an
 # option a user may already have chosen in a trigger or condition would
@@ -86,8 +87,6 @@ TOU_SLOT_CODES: tuple[str, ...] = (
     "exclusive_night",
     "day",
     "total_hours",
-    "high_load_hours",
-    "low_load_hours",
 )
 
 # Weekday keys returned by the API, in ISO order.

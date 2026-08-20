@@ -25,21 +25,46 @@ _ACCEPTED_PARTS = (2, 3)
 # what every consumer wants, and it is what ``TOU_SLOT_CODES`` lists.
 _DIRECTION_KEYWORDS = ("OFFTAKE_", "INJECTION_")
 
+# Codes ENGIE renders identically to one of ours, so they are the same
+# category and must not become separate states. Derived by grouping its own
+# registry by label:
+# https://www.engie.be/api/ebl/cms/mobile-tou/v1/configurations
+# Offtake "Dal" holds S_TOU1_OFFTAKE_OFFPEAK, LOW_LOAD_HOURS and OFFPEAK.
+# Offtake "Piek" holds S_TOU1_OFFTAKE_PEAK, HIGH_LOAD_HOURS and PEAK.
+#
+# The label is the grouping key. Colour is not: ``S_TOU1_OFFTAKE_PEAK`` and
+# ``TOTAL_HOURS`` share #004B48 while being different categories. Order is
+# not either: injection ranks the supplier and network families
+# differently, putting supplier PEAK at 1 and network PEAK at 2.
+#
+# Baked rather than fetched. The app pulls that file at runtime for labels,
+# colours and ordering, but all we need from it is these two equivalences,
+# and tariff structure moves more slowly than presentation. If ENGIE ever
+# prices HIGH_LOAD_HOURS apart from PEAK this needs a release, and the
+# unknown-code warning will not catch it because the code is known.
+_SLOT_CODE_ALIASES: dict[str, str] = {
+    "HIGH_LOAD_HOURS": "PEAK",
+    "LOW_LOAD_HOURS": "OFFPEAK",
+}
+
 
 def normalize_slot_code(raw_code: str) -> str:
     """
     Return the rate portion of a slot code, with any direction prefix stripped.
 
-    Bare codes (``TOTAL_HOURS``, ``PEAK``, ``OFFPEAK``) come back unchanged.
-    Prefixed codes are cut down to the part after the last direction
-    keyword, so ``S_TOU1_OFFTAKE_PEAK`` becomes ``PEAK``. Case is
-    preserved: the wire is uppercase and read sites lowercase on output.
+    Two steps. Any direction prefix is stripped, so
+    ``S_TOU1_OFFTAKE_PEAK`` becomes ``PEAK``. Then :data:`_SLOT_CODE_ALIASES`
+    resolves codes ENGIE treats as an existing category, so
+    ``HIGH_LOAD_HOURS`` becomes ``PEAK``. Anything else comes back
+    unchanged. Case is preserved: the wire is uppercase and read sites
+    lowercase on output.
     """
     for keyword in _DIRECTION_KEYWORDS:
         idx = raw_code.rfind(keyword)
         if idx != -1:
-            return raw_code[idx + len(keyword) :]
-    return raw_code
+            raw_code = raw_code[idx + len(keyword) :]
+            break
+    return _SLOT_CODE_ALIASES.get(raw_code, raw_code)
 
 
 # Which end of the cost scale is the good end, per direction. Verified
