@@ -16,6 +16,27 @@ _MAX_HOUR = 23
 _MAX_MINUTE = 59
 _EXPECTED_PARTS = 2
 
+# Direction keywords used to split prefixed slot codes. Supplier TOU
+# products send codes like ``S_TOU1_OFFTAKE_PEAK``; the rate portion is
+# what every consumer wants, and it is what ``TOU_SLOT_CODES`` lists.
+_DIRECTION_KEYWORDS = ("OFFTAKE_", "INJECTION_")
+
+
+def normalize_slot_code(raw_code: str) -> str:
+    """
+    Return the rate portion of a slot code, with any direction prefix stripped.
+
+    Bare codes (``TOTAL_HOURS``, ``PEAK``, ``OFFPEAK``) come back unchanged.
+    Prefixed codes are cut down to the part after the last direction
+    keyword, so ``S_TOU1_OFFTAKE_PEAK`` becomes ``PEAK``. Case is
+    preserved: the wire is uppercase and read sites lowercase on output.
+    """
+    for keyword in _DIRECTION_KEYWORDS:
+        idx = raw_code.rfind(keyword)
+        if idx != -1:
+            return raw_code[idx + len(keyword) :]
+    return raw_code
+
 
 def tou_schedules_payload(
     coordinator: EngieBeDataUpdateCoordinator,

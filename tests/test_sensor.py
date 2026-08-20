@@ -13,6 +13,7 @@ import pytest
 from homeassistant.components.sensor import SensorEntityDescription
 from homeassistant.const import EntityCategory
 
+from custom_components.engie_be._tou import normalize_slot_code
 from custom_components.engie_be.const import SUBENTRY_TYPE_BUSINESS_AGREEMENT
 from custom_components.engie_be.sensor import (
     _CAPTAR_LATEST_DAILY_PEAK,
@@ -26,7 +27,6 @@ from custom_components.engie_be.sensor import (
     _build_sensor_descriptions,
     _detect_energy_type,
     _find_current_price,
-    _normalize_slot_code,
     _slot_suffixes,
 )
 
@@ -39,7 +39,7 @@ def _load_fixture(name: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# _normalize_slot_code
+# normalize_slot_code
 # ---------------------------------------------------------------------------
 
 
@@ -59,7 +59,7 @@ def _load_fixture(name: str) -> dict[str, Any]:
 )
 def test_normalize_slot_code(raw: str, expected: str) -> None:
     """Normalising slot codes strips direction prefixes and keeps the rate part."""
-    assert _normalize_slot_code(raw) == expected
+    assert normalize_slot_code(raw) == expected
 
 
 # ---------------------------------------------------------------------------

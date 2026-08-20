@@ -17,6 +17,7 @@ from custom_components.engie_be._tou import (
     _parse_hhmm,
     current_slot,
     has_multiple_slot_codes,
+    normalize_slot_code,
     schedule_for_ean,
 )
 
@@ -240,3 +241,15 @@ def test_has_multiple_slot_codes_ignores_non_dict_slots() -> None:
         "sunday": [],
     }
     assert has_multiple_slot_codes(schedule) is True
+
+
+def test_normalize_slot_code_strips_direction_prefix() -> None:
+    """Supplier TOU codes carry a direction prefix that no consumer wants."""
+    assert normalize_slot_code("S_TOU1_OFFTAKE_SUPEROFFPEAK") == "SUPEROFFPEAK"
+    assert normalize_slot_code("S_TOU1_INJECTION_PEAK") == "PEAK"
+
+
+def test_normalize_slot_code_passes_bare_codes_through() -> None:
+    """Codes without a direction prefix are already the rate portion."""
+    assert normalize_slot_code("OFFPEAK") == "OFFPEAK"
+    assert normalize_slot_code("TOTAL_HOURS") == "TOTAL_HOURS"
