@@ -253,3 +253,21 @@ def test_normalize_slot_code_passes_bare_codes_through() -> None:
     """Codes without a direction prefix are already the rate portion."""
     assert normalize_slot_code("OFFPEAK") == "OFFPEAK"
     assert normalize_slot_code("TOTAL_HOURS") == "TOTAL_HOURS"
+
+
+def test_parse_hhmm_accepts_seconds() -> None:
+    """The billing route sends HH:MM:SS; seconds are always zero and dropped."""
+    assert _parse_hhmm("01:00:00") == time(1, 0)
+    assert _parse_hhmm("23:59:59") == time(23, 59)
+
+
+def test_parse_hhmm_still_accepts_minutes_only() -> None:
+    """The legacy energy-insights route sends HH:MM."""
+    assert _parse_hhmm("01:00") == time(1, 0)
+
+
+def test_parse_hhmm_rejects_junk() -> None:
+    """Anything that is not two or three colon-separated numbers is rejected."""
+    assert _parse_hhmm("nope") is None
+    assert _parse_hhmm("1") is None
+    assert _parse_hhmm("01:00:00:00") is None

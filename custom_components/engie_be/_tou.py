@@ -14,7 +14,10 @@ if TYPE_CHECKING:
 
 _MAX_HOUR = 23
 _MAX_MINUTE = 59
-_EXPECTED_PARTS = 2
+# ``HH:MM`` on the legacy energy-insights route, ``HH:MM:SS`` on
+# billing/customer/v1. Seconds are always zero in observed payloads
+# and are discarded.
+_ACCEPTED_PARTS = (2, 3)
 
 # Direction keywords used to split prefixed slot codes. Supplier TOU
 # products send codes like ``S_TOU1_OFFTAKE_PEAK``; the rate portion is
@@ -46,11 +49,17 @@ def tou_schedules_payload(
 
 
 def _parse_hhmm(raw: Any) -> time | None:
-    """Parse a ``"HH:MM"`` string into a :class:`datetime.time`, or ``None``."""
+    """
+    Parse a ``"HH:MM"`` or ``"HH:MM:SS"`` string into a time, or ``None``.
+
+    Seconds are accepted and discarded: the two ``/tou-schedules`` routes
+    disagree on the format and no observed payload has a non-zero seconds
+    field.
+    """
     if not isinstance(raw, str):
         return None
-    parts = raw.split(":", 1)
-    if len(parts) != _EXPECTED_PARTS:
+    parts = raw.split(":")
+    if len(parts) not in _ACCEPTED_PARTS:
         return None
     try:
         h, m = int(parts[0]), int(parts[1])
