@@ -789,7 +789,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return await self._async_probe_boolean_flag(
             client,
             business_agreement_number,
-            api_method="async_get_dgo_tou_is_active_flag",
+            api_method="async_get_tou_is_active_flag",
             log_prefix="TOU",
         )
 

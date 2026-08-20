@@ -67,7 +67,7 @@ async def test_async_get_tou_schedules_strips_ban_whitespace() -> None:
 
 
 async def test_async_get_dgo_tou_flag_posts_named_flag() -> None:
-    """The flag getter POSTs the ``dgo-tou-is-active`` name."""
+    """The flag getter POSTs ``tou-is-active``, the supplier-product flag."""
     client = _build_client()
     payload = {"value": True, "reason": "some_rule"}
 
@@ -76,7 +76,7 @@ async def test_async_get_dgo_tou_flag_posts_named_flag() -> None:
         "_api_wrapper",
         AsyncMock(return_value=payload),
     ) as mocked:
-        result = await client.async_get_dgo_tou_is_active_flag(_BAN)
+        result = await client.async_get_tou_is_active_flag(_BAN)
 
     assert result == payload
     call_kwargs = mocked.await_args.kwargs
@@ -84,4 +84,5 @@ async def test_async_get_dgo_tou_flag_posts_named_flag() -> None:
     assert call_kwargs["url"] == BOOLEAN_FEATURE_FLAG_BASE_URL
     body = call_kwargs["json_body"]
     assert body["name"] == TOU_FLAG_KEY
+    assert body["name"] == "tou-is-active"
     assert body["additionalContext"]["contractAccountId"] == _BAN

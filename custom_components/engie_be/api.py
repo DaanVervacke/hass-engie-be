@@ -758,18 +758,21 @@ class EngieBeApiClient:
             json_response=True,
         )
 
-    async def async_get_dgo_tou_is_active_flag(
+    async def async_get_tou_is_active_flag(
         self,
         business_agreement_number: str,
     ) -> dict[str, Any]:
         """
-        Fetch the ``dgo-tou-is-active`` boolean feature flag for a BAN.
+        Fetch the ``tou-is-active`` boolean feature flag for a BAN.
 
-        Mirrors the Smart App's UI gate for the TOU tile. ``value: true``
-        means the customer's supplier contract is TOU-billed and slot
-        sensors are directly relevant to their bill. ``value: false``
-        still allows displaying the network/DGO schedule since that
-        applies to all digital-meter customers.
+        ``value: true`` means the account has an active time-of-use
+        supplier product, and the ``reason`` names its configuration id.
+        This is the flag that gates every TOU entity, because they all
+        read the supplier schedule.
+
+        The sibling ``dgo-tou-is-active`` flag reports the network
+        operator's side instead and is ``false`` for accounts whose
+        supplier product is active, so it is not a usable gate.
 
         Returns the parsed JSON response as a flat dict (top-level
         ``value`` and ``reason`` keys).

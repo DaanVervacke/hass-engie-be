@@ -864,7 +864,7 @@ async def test_update_data_handles_non_dict_prices_response(
     client.async_get_solar_surplus_shown_dashboard_flag = AsyncMock(
         return_value={"value": False},
     )
-    client.async_get_dgo_tou_is_active_flag = AsyncMock(return_value={"value": False})
+    client.async_get_tou_is_active_flag = AsyncMock(return_value={"value": False})
     client.async_get_account_balance = AsyncMock(
         side_effect=EngieBeApiClientError("boom"),
     )

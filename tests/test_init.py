@@ -163,7 +163,7 @@ def _make_client(  # noqa: PLR0913 - kwargs-only test helper, one knob per endpo
     client.async_get_solar_surplus_forecasts = AsyncMock(return_value={"forecasts": []})
     # TOU endpoints: default to flag off and empty items list so existing
     # tests that don't exercise TOU stay unaffected.
-    client.async_get_dgo_tou_is_active_flag = AsyncMock(return_value={})
+    client.async_get_tou_is_active_flag = AsyncMock(return_value={})
     client.async_get_tou_schedules = AsyncMock(return_value={"items": []})
     # Energy-contracts endpoint is hit by ``_async_populate_dynamic_flags``
     # at setup; default to an empty payload so detection silently leaves
