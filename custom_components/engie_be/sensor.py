@@ -118,12 +118,22 @@ def _slot_suffixes(slot_code: str) -> tuple[str, str] | None:
     Return (key_suffix, translation_suffix) for a time-of-use slot code.
 
     Returns ``None`` when the code should be skipped entirely.
+
+    A code outside :data:`_SLOT_CODE_MAP` still yields a usable suffix, but
+    it has no strings.json entry and no icon, so the sensor arrives
+    unnamed. That is worth a log line: ENGIE prices more rate codes than
+    the four any observed contract has been billed on.
     """
     normalised = normalize_slot_code(slot_code)
     if normalised in _SLOT_CODE_MAP:
         return _SLOT_CODE_MAP[normalised]
-    # Unknown codes: use lowercased normalised code as suffix
     lower = normalised.lower()
+    LOGGER.warning(
+        "Unmapped price rate code %s. Its sensor will appear without a name "
+        "or icon, as ..._%s. Please open an issue so it can be added",
+        normalised,
+        lower,
+    )
     return (f"_{lower}", f"_{lower}")
 
 
