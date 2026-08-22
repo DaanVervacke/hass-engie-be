@@ -464,3 +464,20 @@ def test_adapter_tolerates_junk() -> None:
     assert normalize_tou_payload({}) == {"items": []}
     assert normalize_tou_payload({"items": "nope"}) == {"items": []}
     assert normalize_tou_payload({"items": [None, 3]}) == {"items": []}
+
+
+def test_normalize_slot_code_resolves_network_aliases() -> None:
+    """ENGIE renders HIGH_LOAD_HOURS and PEAK identically, so we do too."""
+    assert normalize_slot_code("HIGH_LOAD_HOURS") == "PEAK"
+    assert normalize_slot_code("LOW_LOAD_HOURS") == "OFFPEAK"
+
+
+def test_normalize_slot_code_leaves_distinct_categories_alone() -> None:
+    """TOTAL_HOURS and EXCLUSIVE_NIGHT are categories, not aliases."""
+    assert normalize_slot_code("TOTAL_HOURS") == "TOTAL_HOURS"
+    assert normalize_slot_code("EXCLUSIVE_NIGHT") == "EXCLUSIVE_NIGHT"
+
+
+def test_normalize_slot_code_aliases_after_stripping_a_prefix() -> None:
+    """A prefixed alias resolves too, though none is observed on the wire."""
+    assert normalize_slot_code("S_TOU1_OFFTAKE_HIGH_LOAD_HOURS") == "PEAK"

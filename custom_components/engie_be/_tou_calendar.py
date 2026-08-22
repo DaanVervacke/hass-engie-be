@@ -28,9 +28,7 @@ _SLOT_LABELS: dict[str, str] = {
     "superoffpeak": "Super off-peak",
     "exclusive_night": "Exclusive night",
     "day": "Day",
-    "total_hours": "Total hours",
-    "high_load_hours": "High load hours",
-    "low_load_hours": "Low load hours",
+    "total_hours": "Normal hours",
 }
 
 _DIRECTION_LABELS: dict[str, str] = {

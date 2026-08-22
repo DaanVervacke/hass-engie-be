@@ -556,3 +556,21 @@ def test_build_peak_sensors_expose_all_enables_disabled_descriptions() -> None:
             assert desc.entity_registry_enabled_default is True, (
                 f"{desc.key}: expose_all should force to enabled-by-default"
             )
+
+
+def test_unmapped_rate_code_logs_a_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unmapped rate still builds a sensor, but says so in the log."""
+    assert _slot_suffixes("S_TOU1_OFFTAKE_EXCLUSIVE_NIGHT") == (
+        "_exclusive_night",
+        "_exclusive_night",
+    )
+    assert "EXCLUSIVE_NIGHT" in caplog.text
+
+
+def test_mapped_rate_code_is_silent(caplog: pytest.LogCaptureFixture) -> None:
+    """The four known rates must not log on every refresh."""
+    assert _slot_suffixes("S_TOU1_OFFTAKE_PEAK") == ("_peak", "_peak")
+    assert _slot_suffixes("TOTAL_HOURS") == ("", "")
+    assert "Unmapped price rate" not in caplog.text

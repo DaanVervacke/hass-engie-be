@@ -28,9 +28,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - The dgo_tgo_slot attribute can now read total_hours where it read peak or
   offpeak before, on accounts whose network side has no time-of-use split. Check
   any automation that reads it.
-- The slot codes total_hours, high_load_hours and low_load_hours are recognised
-  now. When a code falls outside that set, the integration writes it to the log
-  so you can ask for it to be added.
+- The slot code total_hours is recognised now, which is what a single-rate or
+  dynamic contract reports. Where ENGIE displays two of its codes identically,
+  the integration reports the one you already know: its HIGH_LOAD_HOURS reads as
+  peak. A code outside that set goes to the log, so you can ask for it to be
+  added.
+- The automation editor offers every slot code its triggers and conditions
+  accept. total_hours was missing from the picker.
+- A support bundle now describes the time-of-use schedule: which configuration
+  produced it, which codes it holds, and which slot is optimal. Meter numbers
+  stay out of it.
+- The integration logs any price rate it has no name for. Such a sensor still
+  appears without a name or an icon, but no longer without an explanation.
 
 ## [0.14.0] - 2026-08-19
 

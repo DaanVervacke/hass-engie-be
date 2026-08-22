@@ -38,6 +38,7 @@ from custom_components.engie_be.diagnostics import (
     _summarise_coordinator_data,
     _summarise_epex,
     _summarise_solar_surplus,
+    _summarise_tou,
     async_get_config_entry_diagnostics,
 )
 
@@ -805,3 +806,66 @@ def test_summarise_billing_missing_data_returns_empty_shell() -> None:
     assert result["has_data"] is False
     assert result["status"] is None
     assert result["transaction_count"] == 0
+
+
+def _tou_coord() -> MagicMock:
+    """Return a coordinator holding a canonical TOU payload."""
+    coord = MagicMock()
+    coord.data = {
+        "tou_schedules": {
+            "data": {
+                "items": [
+                    {
+                        "eanWithSuffix": "541448820070000000_ID1",
+                        "gridMeterNumber": "1SAG0000000000",
+                        "exclusiveNightMeter": False,
+                        "supplierSchedule": {
+                            "activeConfigurationId": "TOU001",
+                            "offtake": {
+                                "monday": [
+                                    {"slotCode": "PEAK"},
+                                    {"slotCode": "OFFPEAK"},
+                                ],
+                                "optimal_slot_code": "OFFPEAK",
+                            },
+                            "injection": {
+                                "monday": [{"slotCode": "PEAK"}],
+                                "optimal_slot_code": "PEAK",
+                            },
+                        },
+                        "dgoTgoSchedule": {"activeConfigurationId": "TOTAL_HOURS"},
+                    }
+                ]
+            }
+        }
+    }
+    return coord
+
+
+def test_summarise_tou_reports_absence() -> None:
+    """No TOU wrapper means the bundle says so rather than omitting the key."""
+    coord = MagicMock()
+    coord.data = {}
+    assert _summarise_tou(coord) == {"present": False}
+
+
+def test_summarise_tou_reports_codes_and_configuration_ids() -> None:
+    """A bundle must show what arrived and which configuration produced it."""
+    result = _summarise_tou(_tou_coord())
+    assert result == {
+        "present": True,
+        "ean_count": 1,
+        "supplier_configuration_id": "TOU001",
+        "dgo_configuration_id": "TOTAL_HOURS",
+        "grid_meter_present": True,
+        "exclusive_night_meter": False,
+        "offtake_slot_codes": ["offpeak", "peak"],
+        "injection_slot_codes": ["peak"],
+        "offtake_optimal": "offpeak",
+        "injection_optimal": "peak",
+    }
+
+
+def test_summarise_tou_never_emits_the_meter_number() -> None:
+    """A meter number identifies an installation, so it must not appear."""
+    assert "1SAG0000000000" not in json.dumps(_summarise_tou(_tou_coord()))

@@ -10,6 +10,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
 from ._billing import billing_status
 from ._contracts import energy_products_by_ean
+from ._tou import tou_schedules_payload
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ACCOUNT_HOLDER_NAME,
@@ -19,6 +20,7 @@ from .const import (
     CONF_REFRESH_TOKEN,
     KEY_IS_DYNAMIC,
     SUBENTRY_TYPE_BUSINESS_AGREEMENT,
+    TOU_WEEKDAY_KEYS,
 )
 from .data import EpexPayload, unwrap_dict_payload
 
@@ -107,6 +109,64 @@ def _summarise_coordinator_data(
         "is_dynamic": bool(data.get(KEY_IS_DYNAMIC, False)),
         "solar_surplus": _summarise_solar_surplus(coordinator),
         "billing": _summarise_billing(coordinator),
+        "tou": _summarise_tou(coordinator),
+    }
+
+
+def _summarise_tou(
+    coordinator: EngieBeDataUpdateCoordinator,
+) -> dict[str, Any]:
+    """
+    Return a privacy-preserving summary of the cached TOU schedules payload.
+
+    Slot codes and configuration ids only. The grid meter is reported as
+    present or absent rather than named, because a meter number identifies
+    a physical installation and bundles get pasted into public issues. What
+    support needs is whether the schedule arrived, which configuration
+    produced it, and which codes it holds.
+    """
+    payload = tou_schedules_payload(coordinator)
+    if payload is None:
+        return {"present": False}
+    items = payload.get("items")
+    items = items if isinstance(items, list) else []
+    first = items[0] if items and isinstance(items[0], dict) else {}
+    supplier = first.get("supplierSchedule")
+    supplier = supplier if isinstance(supplier, dict) else {}
+    dgo = first.get("dgoTgoSchedule")
+    dgo = dgo if isinstance(dgo, dict) else {}
+
+    def _codes(block: Any) -> list[str]:
+        """Return the sorted distinct slot codes across one direction's week."""
+        if not isinstance(block, dict):
+            return []
+        return sorted(
+            {
+                slot["slotCode"].lower()
+                for day in TOU_WEEKDAY_KEYS
+                for slot in block.get(day, [])
+                if isinstance(slot, dict) and isinstance(slot.get("slotCode"), str)
+            }
+        )
+
+    def _optimal(block: Any) -> str | None:
+        """Return the derived optimal slot code, lowercased."""
+        if not isinstance(block, dict):
+            return None
+        value = block.get("optimal_slot_code")
+        return value.lower() if isinstance(value, str) else None
+
+    return {
+        "present": True,
+        "ean_count": len(items),
+        "supplier_configuration_id": supplier.get("activeConfigurationId"),
+        "dgo_configuration_id": dgo.get("activeConfigurationId"),
+        "grid_meter_present": "gridMeterNumber" in first,
+        "exclusive_night_meter": first.get("exclusiveNightMeter"),
+        "offtake_slot_codes": _codes(supplier.get("offtake")),
+        "injection_slot_codes": _codes(supplier.get("injection")),
+        "offtake_optimal": _optimal(supplier.get("offtake")),
+        "injection_optimal": _optimal(supplier.get("injection")),
     }
 
 

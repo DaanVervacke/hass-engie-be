@@ -292,10 +292,18 @@ def test_unique_id_shape_injection() -> None:
 
 
 def test_registry_slot_codes_are_declared_options() -> None:
-    """Codes ENGIE's registry lists must be reportable, not unknown."""
+    """
+    Every category ENGIE's registry names must be reportable, not unknown.
+
+    ``HIGH_LOAD_HOURS`` and ``LOW_LOAD_HOURS`` are deliberately absent: the
+    registry renders them exactly as ``PEAK`` and ``OFFPEAK``, so
+    ``_tou.normalize_slot_code`` resolves them rather than reporting them.
+    See ``tests/test_tou_vocabulary.py``.
+    """
     assert "total_hours" in TOU_SLOT_CODES
-    assert "high_load_hours" in TOU_SLOT_CODES
-    assert "low_load_hours" in TOU_SLOT_CODES
+    assert "exclusive_night" in TOU_SLOT_CODES
+    assert "high_load_hours" not in TOU_SLOT_CODES
+    assert "low_load_hours" not in TOU_SLOT_CODES
 
 
 def test_unknown_slot_code_logs_a_warning(

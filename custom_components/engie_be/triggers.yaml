@@ -82,6 +82,7 @@
   - superoffpeak
   - exclusive_night
   - day
+  - total_hours
 
 # ---------------------------------------------------------------------------
 # Binary transitions - fire on a specific edge of a binary sensor
