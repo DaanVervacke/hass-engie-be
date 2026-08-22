@@ -230,8 +230,7 @@ gathered from seven betas. Minimum Home Assistant is now 2026.8.0.
 
 - Two EPEX triggers showed the same description in the automation editor,
   hiding which one was current hour and which next hour. The wording now
-  differs again, and a test pins the editor strings to the translation file
-  so they cannot drift apart silently.
+  differs again.
 - Threshold condition descriptions no longer promise an "above" or "below"
   direction the condition does not enforce.
 - A recorder statistics row with a null cumulative sum could raise a
@@ -287,23 +286,20 @@ gathered from seven betas. Minimum Home Assistant is now 2026.8.0.
 
 ## [0.13.0] - 2026-07-18
 
-This release turns the integration into a full automation platform for your
-ENGIE account. It adds 34 purpose-specific triggers and 13 purpose-specific
-conditions that show up directly in the Home Assistant automation editor,
-quarter-hourly EPEX prices, time-of-use
-schedule sensors, solar surplus forecasts, billing information, and an event
-platform that records state transitions in the logbook.
+Adds 34 triggers and 13 conditions in the automation editor, quarter-hourly
+EPEX prices, time-of-use schedule sensors, Solar Surplus forecasts, billing
+sensors, and an event platform that records state transitions in the logbook.
 
 ### What's new
 
 - **Purpose-specific triggers and conditions.** 34 triggers across five
   categories are now available in the automation editor: state transitions
   (EPEX becoming negative, TOU slot becoming optimal, Happy Hours activating,
-  authentication loss), threshold crossings for EPEX prices and solar surplus
+  authentication loss), threshold crossings for EPEX prices and Solar Surplus
   values, value updates for daily peaks and price extremes, and calendar-boundary
-  triggers for Happy Hours windows and TOU slot starts. 13 conditions let you
-  gate automations on current EPEX price sign, solar surplus level, and TOU slot
-  state. These are native HA 2026.7+ automation primitives, not template sensors.
+  triggers for Happy Hours windows and TOU slot starts. 13 conditions gate
+  automations on current EPEX price sign, Solar Surplus level, and TOU slot
+  state. Native HA 2026.7+ automation primitives, not template sensors.
 
 - **Quarter-hourly EPEX prices.** Dynamic tariff contracts now get eight EPEX
   sensors: four hourly (current, next, low today, high today) and four
@@ -423,17 +419,14 @@ the new expose-all debug toggle under the integration options.
 - DST fold propagation: `datetime.combine` calls in TOU slot boundary calculation now carry the fold bit, preventing ambiguous-time mismatches during the autumn clock change.
 - Falsy-zero conflation in statistics: `entries[-1].get("sum") or 0.0` replaced with `entries[-1].get("sum", 0.0)` so a legitimate zero sum is no longer treated as missing.
 - `secrets.yaml` untracked from git and added to `.gitignore`.
-- Seven midnight-flaky `_find_current_price` tests fixed by freezing to a deterministic date instead of using `datetime.now()`.
 - `solar_surplus_today_peak` icon corrected to `mdi:solar-panel`.
 
 ### Docs
 
 - CHANGELOG comparison links added for all releases from 0.12.0b12 through Unreleased.
-- Stale EPEX v2 endpoint comments removed from test docstrings.
 - Contributing guide updated with local venv test setup instructions.
 - README: added tomorrow EPEX trigger documentation with YAML example, captar daily peak sensor, and "Expose all entities" option.
 - README: added event platform documentation (six event entities) and TOU calendar event title format.
-- Semicolons removed from CHANGELOG and CONTRIBUTING prose.
 
 ## [0.13.0b4] - 2026-07-15
 
@@ -454,7 +447,7 @@ the new expose-all debug toggle under the integration options.
 - Solar Surplus and Time-of-Use entities now appear for pure dynamic-tariff accounts, which previously had no service points discovered at all.
 - Turning on the expose-all-entities toggle now re-enables entities that were already registered as disabled, not just newly-registered ones.
 - Fixed EPEX quarter-hourly current-price sensor attributes silently disappearing from history once the 15-minute slot count pushed the serialized payload past Home Assistant's 16 KiB recorder attribute limit.
-- Security: added six missing ENGIE API body fields (client_id, ban, contractAccountId, servicePointNumber, eanWithSuffix, invoiceStructuredCommunication) to the DEBUG-log redaction lists, so enabling DEBUG logging to troubleshoot the integration no longer writes BANs, EANs, and bank-transfer references verbatim into the Home Assistant log.
+- Security: added six missing ENGIE API body fields (client_id, ban, contractAccountId, servicePointNumber, eanWithSuffix, invoiceStructuredCommunication) to the DEBUG-log redaction lists, so DEBUG logging no longer writes BANs, EANs, and bank-transfer references verbatim.
 - Security: masked the BAN in the config flow's DEBUG log line for a failed contracts fetch, matching every other identifier-logging call site in the codebase.
 - Fixed diagnostics exports hashing the same physical EAN to two different values across the service_points and energy_products sections, which broke support-engineer correlation between the two.
 - Fixed price sensors picking the wrong day's price entry for part of the day. The current-price lookup computed "today" in UTC instead of Brussels time, which could select yesterday's or tomorrow's price row during the hours the two dates disagree.
@@ -492,10 +485,6 @@ the new expose-all debug toggle under the integration options.
 
 - Clarified hourly vs quarter-hourly trigger/condition naming for better UX consistency (#106).
 
-- Apply DX improvements: fix lint script path detection, rename EPEX_DEFAULT_SLOT_DURATION_MINUTES constant, consolidate CHANGELOG entries, and clarify slot_duration_minutes docstrings (#109).
-
-- Add comprehensive edge case tests for EPEX purpose-based triggers and conditions: added missing "does not fire" and "filters wrong key" tests for QH threshold triggers and hourly threshold conditions to achieve parity between hourly and quarter-hourly test coverage (#110).
-
 - Improved icon semantics for EPEX sensors: current/next prices now use `cash-clock`, low price uses `cash-100`, and high price uses `cash-multiple` for clearer distinction from financial (offtake/injection) sensors.
 
 - Improved icon semantics for Captar peak sensors: monthly peak power uses `gauge`, monthly peak energy uses `gauge-full` for better measurement metaphor.
@@ -506,9 +495,8 @@ the new expose-all debug toggle under the integration options.
 
 ### Fixed
 
-- Security: mask entity_id in trigger debug logging to prevent BAN exposure (plan 103a).
-- Security: mask BAN in statistics device_name to prevent PII in metadata (plan 103b).
-- Add tests for quarter-hourly EPEX triggers: EpexNextQuarterHourCrossedThresholdTrigger, EpexHighTodayQuarterHourUpdatedTrigger, EpexLowTodayQuarterHourUpdatedTrigger (plan 102).
+- Security: mask entity_id in trigger debug logging to prevent BAN exposure.
+- Security: mask BAN in statistics device_name to prevent PII in metadata.
 
 - Fixed EPEX sensor `slot_duration_minutes` attribute to dynamically compute and report actual slot duration (15 for quarter-hourly, 60 for hourly) instead of using a hardcoded constant.
 
@@ -523,16 +511,12 @@ the new expose-all debug toggle under the integration options.
 - Energy dashboard integration for solar production forecast via `async_get_solar_forecast`. The integration's forecast now appears automatically in the Energy dashboard's solar-production configuration, aggregated across every electricity delivery point in Wh.
 - The `solar-surplus-shown-dashboard` feature flag is now probed before every per-EAN fan-out. Accounts where ENGIE has the flag off skip the forecasts endpoint entirely, saving one GET per electricity meter per refresh. Auth errors on the flag probe escalate to reauth.
 - Purpose-specific conditions for the automation editor. Four integration-scoped conditions are now registered: "EPEX price is negative", "Solar surplus is at level", "Offtake slot is", and "Injection slot is". Uses the HA 2026.7+ `EntityStateConditionBase` API instead of the deprecated device-condition pattern.
-- Purpose-specific triggers for the automation editor: 29 triggers across five categories. Phase A (state transitions): binary edge triggers for EPEX becoming negative, TOU offtake/injection becoming optimal, Happy Hours becoming active, and authentication loss/restore. Enum-changed triggers for surplus level and slot changes. Enum-became triggers for "surplus reached level X" and "slot entered code Y". Phase B (numerical): threshold-crossing triggers for EPEX current, EPEX next hour, solar surplus current/next hour, and captar monthly peak. Phase C (value-changed): captar peak updated, EPEX high/low today updated. Phase E (calendar): fires at start/end of captar peak and Happy Hours windows, and at TOU slot boundary start for a chosen direction and slot code.
+- Purpose-specific triggers for the automation editor: 29 triggers across five categories. Phase A (state transitions): binary edge triggers for EPEX becoming negative, TOU offtake/injection becoming optimal, Happy Hours becoming active, and authentication loss/restore. Enum-changed triggers for surplus level and slot changes. Enum-became triggers for "surplus reached level X" and "slot entered code Y". Phase B (numerical): threshold-crossing triggers for EPEX current, EPEX next hour, Solar Surplus current/next hour, and captar monthly peak. Phase C (value-changed): captar peak updated, EPEX high/low today updated. Phase E (calendar): fires at start/end of captar peak and Happy Hours windows, and at TOU slot boundary start for a chosen direction and slot code.
 - Expanded conditions: six new conditions added alongside the original four. Three binary "is" conditions (offtake is optimal, injection is optimal, Happy Hours is active) and three numerical threshold conditions (EPEX price is below threshold, EPEX price is above threshold, captar peak is above threshold).
 - Outstanding balance and overdue amount sensors per business agreement: outstanding balance owed to ENGIE (EUR), overdue amount (portion past its due date, EUR), and next invoice due date (timestamp). Fetched unconditionally on every coordinator refresh. Only created when the billing endpoint returns data.
 
 ### Changed
 
-- Inline pass-through wrappers around filter_by_translation_key.
-- Inline solar_surplus_payload helper. Use unwrap_dict_payload directly.
-- Audited `primary_entities_only` on trigger and condition target anchors: only the authentication triggers now set `false`. All other binary-sensor, sensor, and calendar anchors use the default `true`. Consolidated repeated `threshold` and `slot` field name strings into a `common:` block in `strings.json` / `translations/en.json` to reduce duplication.
-- Deduplicate TOU slot options in trigger/condition YAML and distinguish icon collisions for related triggers.
 - Drop the x-trace-id request header. It was unused by ENGIE and inconsistently applied across endpoints.
 - Solar surplus level sensor now exposes `forecast_creation_date` and
   `inference_key` attributes, letting automations detect stale/placeholder
@@ -550,19 +534,13 @@ the new expose-all debug toggle under the integration options.
 - Calendar triggers silently dropped all but the first BAN in multi-BAN accounts. A stray `break` after the first calendar entity caused subsequent calendars to be ignored. Removed the break. All ENGIE calendars are now iterated.
 - Calendar fetch errors were swallowed silently. The bare `except Exception` is now `except (HomeAssistantError, TimeoutError)` with a `debug`-level log so errors surface in diagnostics.
 - `_ValueChangedTrigger` (captar peak updated, EPEX high/low today updated) accepted `above`/`below` options via `ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR` that had no effect. Swapped to the plain `ENTITY_STATE_TRIGGER_SCHEMA`.
-- Internal: extracted `_BinaryEdgeTrigger`, `_ThresholdTrigger`, and `_BinaryOnCondition` base classes to eliminate repeated boilerplate. Extracted `_filter_by_translation_key` into `_automation_helpers.py` so both `trigger.py` and `condition.py` share a single implementation. Removed two dead backward-compat aliases (`_CAPTAR_EVENT_SUMMARY`, `_HAPPY_HOUR_EVENT_SUMMARY`).
-
-### Tests
-
-- API getter, coordinator, sensor and Energy-hook tests for the new solar-surplus feature (`test_api_solar_surplus.py`, `test_coordinator_solar_surplus.py`, `test_sensor_solar_surplus.py`, `test_energy.py`).
-- Billing tests across four files: `test_api_billing.py`, `test_billing_helpers.py`, `test_coordinator_billing.py`, `test_sensor_billing.py`, and extended `test_diagnostics.py`.
 
 ## [0.12.0] - 2026-07-08
 
-This release adds the option to import your **historical energy usage** from
-ENGIE. ENGIE keeps hourly data on your electricity consumption, electricity
-injection, and gas consumption. The integration can now pull all of that into Home
-Assistant's long-term statistics.
+Adds the option to import your **historical energy usage** from ENGIE. ENGIE
+keeps hourly data on your electricity consumption, electricity injection, and
+gas consumption. The integration can now pull that into Home Assistant's
+long-term statistics.
 
 ### What's new
 
@@ -800,11 +778,10 @@ for instructions. If anything looks off, check **Settings** > **System** >
 
 ## [0.10.0] - 2026-07-03
 
-This release adds support for **Happy Hours**. ENGIE's free-energy windows now
-show up right inside Home Assistant. On top of that, your time-based sensors now
-flip the moment a window or price slot changes instead of lagging behind,
-signing in is more reliable, and the integration has earned Home Assistant's
-**Silver** quality badge.
+Adds support for **Happy Hours**. ENGIE's free-energy windows now show up in
+Home Assistant. Time-based sensors flip the moment a window or price slot
+changes instead of lagging behind, signing in is more reliable, and the
+integration has earned Home Assistant's **Silver** quality badge.
 
 > [!CAUTION]
 > **Coming from v0.9.0?** Just update. There's nothing to remove or re-add, and
@@ -987,21 +964,6 @@ Home Assistant is on 2026.6.0 or newer first, as noted above.)
   No runtime behaviour changes: the integration already avoids every
   API deprecated up to this release, so no code changes were required.
 
-### Tests
-
-- Raised test coverage of the API client (`api.py`) from 78% to 99%,
-  adding unit tests for request/response logging redaction (mappings,
-  bodies, lists, and non-coercible values) and the low-level
-  `_api_wrapper` paths (authentication errors, non-JSON text bodies,
-  header-returning calls, and timeouts). Every module is now at or
-  above 95% coverage, with a project total of 99%.
-- The three Happy Hour scheduler tests that deliberately leave a timer
-  armed for a far-future window now cancel that timer before they
-  finish. The newer test harness
-  (`pytest-homeassistant-custom-component` `0.13.337`) fails any test
-  that leaves a timer running, so these are cleaned up explicitly. This
-  is a test-only change with no effect on the shipped integration.
-
 ## [0.10.0b4] - 2026-06-07
 
 > [!CAUTION]
@@ -1023,14 +985,6 @@ Home Assistant is on 2026.6.0 or newer first, as noted above.)
   sensors could show *unknown* and the "Happy Hour active" sensor
   could stay *off* during a live Happy Hour window. Both day fields
   are now read, so the sensors stay correct throughout the day.
-
-### Tests
-
-- Extended the Happy Hour unit and platform tests to cover the
-  current-day payload field: window parsing, active-state detection,
-  the next start/end timestamp sensors, the active binary sensor
-  (including its instant-flip scheduler), and per-subentry history
-  persistence.
 
 ## [0.10.0b3] - 2026-05-26
 
@@ -1062,20 +1016,6 @@ Home Assistant is on 2026.6.0 or newer first, as noted above.)
   was accepted and suggesting you cancel and start setup again.
   The "Invalid username or password." message is unchanged on the
   email/password screen.
-
-### Tests
-
-- New `tests/test_api_auth_step9.py` locks both Auth0 outcomes
-  (callback short-circuit and passkey-enrollment interstitial) plus
-  defensive negative cases (callback URI without a `code` parameter,
-  passkey body without an extractable state). Coverage of `api.py`
-  rises from ~68% to ~73%, overall coverage from ~85% to ~92%.
-- New `test_user_step_credential_error_keeps_auth_key` guards
-  against accidentally rerouting the pre-MFA `auth` branch when
-  future changes touch the post-MFA error mapping.
-- `test_mfa_step_auth_error_recovers` and
-  `test_reauth_mfa_auth_error` updated to assert the new
-  `post_mfa_auth_failed` key.
 
 ## [0.10.0b2] - 2026-05-23
 
@@ -1278,21 +1218,9 @@ Home Assistant is on 2026.6.0 or newer first, as noted above.)
 
 ### Internal
 
-- Extracted `_log_request` / `_log_response` / `_log_error` helpers
-  in `api.py` so the `_api_wrapper` and EPEX inline paths share a
-  single source of truth for the `→ / ← / ✗` log format. Documented
-  the conscious divergence from `homeassistant.components.diagnostics`
-  `async_redact_data` (we need case-insensitive header matching and
-  tail-preserving partial masks for greppable PII identifiers) ([#80]).
 - Form-encoded body redaction now applies the partial-mask key set
   (previously full-mask only), so PII fields posted through OAuth /
   Auth0 endpoints are masked the same way as JSON bodies ([#80]).
-- Hoisted the deferred `EpexPayload` import in `sensor.py:_epex_payload`
-  to the module-level imports and dropped the unjustified
-  `# noqa: PLC0415`. `data.py` has no runtime imports of any sibling
-  module (everything is `TYPE_CHECKING`-gated), so the local import
-  was not load-bearing. Audit hygiene only. No runtime behaviour
-  change ([#82]).
 
 ## [0.8.2] - 2026-05-07
 
@@ -1479,14 +1407,6 @@ Home Assistant is on 2026.6.0 or newer first, as noted above.)
 - Added a CHANGELOG and linked it from the README ([#48]).
 - Bug-report template now points at the README's troubleshooting steps
   for enabling debug logs ([#50]).
-
-### Tests
-
-- Initial test scaffolding and CI wiring ([#35]).
-- Coordinator and `__init__` unit coverage with `pytest-cov`
-  reporting ([#38]).
-- Regression coverage proving `update_interval` from the options flow
-  reaches the live coordinator ([#45]).
 
 ## [0.4.2] - 2026-03-23
 
