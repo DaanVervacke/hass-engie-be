@@ -35,47 +35,17 @@ else:
 
 class _BoundaryScheduleMixin(_MixinBase):
     """
-    Mixin that re-evaluates entity state at the next "boundary" instant.
+    Re-evaluate entity state at the next slot-boundary instant.
 
-    Many ENGIE entities (Happy Hours active, EPEX-negative, EPEX
-    current-price, EPEX next-hour) derive their state from a time
-    window plus the current instant. Without help, they only refresh
-    when their coordinator does, which can be up to a full refresh
-    interval (default 60 minutes) late. This mixin schedules a single
-    point-in-UTC-time callback at the next state-change instant and
-    re-arms itself on fire, mirroring the pattern used by Home
-    Assistant core's ``binary_sensor.tod`` integration.
-
-    Concrete subclasses supply ``_next_boundary`` to describe when the
-    next state change will occur. Returning ``None`` means "no future
-    boundary is known yet" and arms no timer; the next coordinator
-    update is expected to call ``_handle_coordinator_update`` and
-    recompute.
-
-    MRO requirement: this mixin MUST come before the entity's
-    coordinator base (``EngieBeEntity``, ``EngieBeEpexEntity``, etc.)
-    so that ``async_added_to_hass`` and ``_handle_coordinator_update``
-    chain through ``super()`` to the ``CoordinatorEntity``
-    implementation.
+    MRO: this mixin MUST precede the entity's ``CoordinatorEntity`` base so
+    ``async_added_to_hass`` and ``_handle_coordinator_update`` chain through.
+    Subclasses override ``_next_boundary``. Returning ``None`` arms no timer.
     """
 
     _unsub_boundary: Callable[[], None] | None = None
 
     def _boundary_log_name(self) -> str:
-        """
-        Return a log-safe, descriptive identifier for this entity.
-
-        Combines the entity-description ``key`` (BAN-free and stable,
-        e.g. ``happy_hours_active``) with the business-agreement number
-        (BAN) masked to its last four digits. Boundary entities carry
-        the BAN in their ``entity_id`` slug (e.g.
-        ``binary_sensor.engie_belgium_<BAN>_happy_hours_active``), so it
-        is masked before it reaches the log to keep shared debug bundles
-        free of account numbers. Produces values like
-        ``happy_hours_active[***6420]``; degrades to the description key
-        alone, then the class name, when those parts are unavailable
-        (e.g. before ``entity_id`` is assigned early in ``__init__``).
-        """
+        """Return a log-safe identifier ``<key>[***<last4-of-BAN>]``."""
         description = getattr(self, "entity_description", None)
         base = getattr(description, "key", None) or type(self).__name__
         entity_id: str | None = getattr(self, "entity_id", None)
@@ -87,13 +57,7 @@ class _BoundaryScheduleMixin(_MixinBase):
         return base
 
     def _next_boundary(self) -> datetime | None:
-        """
-        Return the next UTC datetime at which this entity's state changes.
-
-        Subclasses must override. Returning ``None`` skips arming the
-        timer (e.g. payload not yet available, or every relevant
-        window already in the past).
-        """
+        """Return the next UTC boundary datetime, or ``None`` to skip arming."""
         msg = (
             f"{type(self).__name__} must override _next_boundary to use "
             "_BoundaryScheduleMixin"
@@ -108,14 +72,7 @@ class _BoundaryScheduleMixin(_MixinBase):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """
-        Re-arm the boundary timer whenever the coordinator data changes.
-
-        Cancels any pending timer, recomputes the next boundary against
-        the freshly-published payload, and only then chains to the
-        ``CoordinatorEntity`` implementation which performs the state
-        write.
-        """
+        """Re-arm the boundary timer against fresh coordinator data, then chain."""
         self._cancel_boundary()
         self._schedule_next_boundary()
         super()._handle_coordinator_update()
@@ -129,14 +86,7 @@ class _BoundaryScheduleMixin(_MixinBase):
 
     @callback
     def _schedule_next_boundary(self) -> None:
-        """
-        Compute the next boundary and arm a point-in-UTC-time callback.
-
-        No-op when ``_next_boundary`` returns ``None`` or returns a
-        timestamp not strictly in the future (defensive: handles the
-        case where the boundary helper races against ``dt_util.utcnow``
-        and returns a value that has already elapsed).
-        """
+        """Arm a point-in-UTC-time callback at the next boundary."""
         target = self._next_boundary()
         if target is None or target <= dt_util.utcnow():
             LOGGER.debug(
@@ -158,15 +108,7 @@ class _BoundaryScheduleMixin(_MixinBase):
 
     @callback
     def _boundary_fired(self, _now: datetime) -> None:
-        """
-        Re-arm for the boundary after this one and write fresh state.
-
-        The HA scheduler delivers the current time as the callback's
-        argument; we discard it because every consumer in this
-        codebase reads ``dt_util.utcnow`` directly. Clearing
-        ``_unsub_boundary`` first ensures the handle does not outlive
-        the timer that has just fired.
-        """
+        """Re-arm for the next boundary and write fresh state."""
         self._unsub_boundary = None
         LOGGER.debug(
             "%s: boundary fired at %s",
@@ -182,16 +124,7 @@ class _BoundaryScheduleMixin(_MixinBase):
         )
 
     def _boundary_state_for_log(self) -> object:
-        """
-        Return a cheap, log-safe snapshot of this entity's current value.
-
-        Reads ``is_on`` for binary sensors and ``native_value`` for
-        sensors. Deliberately avoids the HA ``state`` property, which on
-        ``SensorEntity`` resolves the unit-of-measurement translation key
-        and raises ``ValueError`` until the entity is fully added to a
-        platform -- a state we do not want a debug log to depend on.
-        Returns ``None`` when neither attribute is present.
-        """
+        """Return ``is_on`` or ``native_value`` for logging."""
         if hasattr(self, "is_on"):
             return cast("Any", self).is_on
         return getattr(self, "native_value", None)
@@ -218,15 +151,7 @@ def login_device_info(entry: EngieBeConfigEntry) -> DeviceInfo:
 
 
 class _EngieBeBaseEntity:
-    """
-    Common attributes shared by every ENGIE Belgium entity.
-
-    Pure mixin: holds class-level attributes only and does not inherit
-    from ``CoordinatorEntity``. Each concrete subclass inherits
-    ``CoordinatorEntity[<concrete coordinator>]`` exactly once so the
-    generic parameter is preserved end-to-end without forcing a
-    type-arg suppression.
-    """
+    """Pure mixin of common ENGIE entity attributes."""
 
     _attr_attribution: str | None = ATTRIBUTION
     _attr_has_entity_name = True
@@ -236,16 +161,7 @@ class EngieBeEntity(
     _EngieBeBaseEntity,
     CoordinatorEntity[EngieBeDataUpdateCoordinator],
 ):
-    """
-    Base class for per-customer-account ENGIE entities.
-
-    Each entity is bound to one ENGIE customer account (one
-    :class:`ConfigSubentry`) and surfaces under the device representing
-    that account in the device registry. ``unique_id`` strategy is the
-    responsibility of subclasses, but ``DeviceInfo`` is unconditionally
-    derived from the subentry so identifiers stay stable across renames
-    and survive subentry deletion cleanup.
-    """
+    """Base for per-subentry ENGIE entities (one device per business agreement)."""
 
     def __init__(
         self,
@@ -262,21 +178,7 @@ class EngieBeEpexEntity(
     _EngieBeBaseEntity,
     CoordinatorEntity[EngieBeEpexCoordinatorBase],
 ):
-    """
-    Base class for EPEX entities attached to a customer-account device.
-
-    EPEX day-ahead prices are polled once per parent :class:`ConfigEntry`
-    by :class:`EngieBeEpexCoordinator` (or, for quarter-hourly entities,
-    :class:`EngieBeEpexQuarterHourCoordinator`), but the entities
-    themselves surface under each subentry's device so the user sees
-    the EPEX sensors next to the supplier-price sensors for the
-    matching account. Entity creation is gated upstream on the
-    per-subentry ``is_dynamic`` flag, so users on fixed tariffs never
-    see them. Typed against the shared
-    :class:`~.coordinator.EngieBeEpexCoordinatorBase` so both the
-    hourly and quarter-hourly concrete subclasses can back these
-    entities.
-    """
+    """EPEX entity base. Shared coordinator, entities surface per-subentry."""
 
     def __init__(
         self,
@@ -293,21 +195,7 @@ class EngieBeAuthEntity(
     _EngieBeBaseEntity,
     CoordinatorEntity[EngieBeDataUpdateCoordinator | EngieBeEpexCoordinator],
 ):
-    """
-    Base class for the per-entry login state entity.
-
-    The auth state is account-agnostic (one login can own many ENGIE
-    customer accounts) and is therefore surfaced under a dedicated
-    per-entry device rather than being arbitrarily attached to one of
-    the customer-account devices. The coordinator reference is required
-    by :class:`CoordinatorEntity`; any per-subentry coordinator works
-    because the entity does not consume coordinator data, it only
-    reflects ``runtime_data.authenticated``. The type parameter is
-    widened to the same union the one real call site
-    (:func:`binary_sensor.async_setup_entry`) actually constructs, since
-    that call site genuinely falls back from a per-subentry coordinator
-    to the entry-level EPEX coordinator when no subentries exist yet.
-    """
+    """Per-entry login state entity, surfaced under a dedicated login device."""
 
     def __init__(
         self,

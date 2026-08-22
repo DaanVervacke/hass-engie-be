@@ -50,9 +50,6 @@ settings:
   followRedirects: false
   maxRedirects: 5
 docs: |-
-  Email MFA ALT-5. Submits MFA_CODE. Equivalent of step 08 on this path.
+  Email MFA ALT-5. Submits MFA_CODE.
 
-  Mirrors api.py::_submit_email_mfa. Note the extra action=default field,
-  which the SMS variant does not send.
-
-  Continue at parent step 09.
+  Mirrors api.py::_submit_email_mfa. Extra action=default field is required here but not in the SMS variant.

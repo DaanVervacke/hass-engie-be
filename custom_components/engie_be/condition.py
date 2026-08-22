@@ -1,31 +1,4 @@
-"""
-Purpose-specific conditions for the ENGIE Belgium integration.
-
-Exposes ENGIE state as first-class conditions in the HA automation editor.
-
-Supported conditions:
-
-- ``engie_be.epex_price_is_negative`` -> binary sensor is ``on``
-- ``engie_be.epex_price_is_negative_quarter_hour`` -> quarter-hourly binary sensor
-- ``engie_be.solar_surplus_is_at_level`` -> enum sensor matches a surplus level
-- ``engie_be.offtake_slot_is`` -> enum sensor matches a TOU slot code
-- ``engie_be.injection_slot_is`` -> enum sensor matches a TOU slot code
-- ``engie_be.epex_price_is_below_threshold`` -> EPEX price below threshold
-- ``engie_be.epex_price_is_below_threshold_quarter_hour`` -> quarter-hourly below thresh
-- ``engie_be.epex_price_is_above_threshold`` -> EPEX price above threshold
-- ``engie_be.epex_price_is_above_threshold_quarter_hour`` -> quarter-hourly above thresh
-- ``engie_be.offtake_is_optimal`` -> offtake binary sensor is ``on``
-- ``engie_be.injection_is_optimal`` -> injection binary sensor is ``on``
-- ``engie_be.happy_hours_is_active`` -> Happy Hours binary sensor is ``on``
-- ``engie_be.captar_peak_is_above_threshold`` -> captar peak power above threshold
-- ``engie_be.outstanding_balance_is_above_threshold`` -> outstanding balance above
-  threshold
-- ``engie_be.overdue_amount_is_above_threshold`` -> overdue amount above threshold
-- ``engie_be.solar_surplus_is_above_threshold`` -> current-hour Solar Surplus above
-  threshold
-- ``engie_be.solar_surplus_is_below_threshold`` -> current-hour Solar Surplus below
-  threshold
-"""
+"""Purpose-specific automation conditions for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 
@@ -73,18 +46,9 @@ if TYPE_CHECKING:
 _LEVEL = "level"
 _SLOT = "slot"
 
-# ---------------------------------------------------------------------------
-# Shared base for binary-sensor "on" conditions
-# ---------------------------------------------------------------------------
-
 
 class _BinaryOnCondition(EntityStateConditionBase):
-    """
-    Base for binary-sensor conditions that check the sensor is ``on``.
-
-    Subclasses declare ``_translation_key`` to restrict entity_filter to
-    a single ENGIE binary sensor per entity class.
-    """
+    """Base for binary-sensor conditions checking ``state == on``."""
 
     _domain_specs: Mapping[str, DomainSpec] = {BINARY_SENSOR_DOMAIN: DomainSpec()}
     _translation_key: ClassVar[str]
@@ -100,11 +64,6 @@ class _BinaryOnCondition(EntityStateConditionBase):
         return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
-# ---------------------------------------------------------------------------
-# epex_price_is_negative
-# ---------------------------------------------------------------------------
-
-
 class EpexPriceIsNegativeCondition(_BinaryOnCondition):
     """Condition: EPEX price is negative (binary sensor is on)."""
 
@@ -115,11 +74,6 @@ class EpexPriceIsNegativeQuarterHourCondition(_BinaryOnCondition):
     """Condition: EPEX quarter-hourly price is negative (binary sensor is on)."""
 
     _translation_key = TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR
-
-
-# ---------------------------------------------------------------------------
-# Shared base for option-parameterised conditions
-# ---------------------------------------------------------------------------
 
 
 class _OptionBasedStateCondition(EntityStateConditionBase):
@@ -141,10 +95,6 @@ class _OptionBasedStateCondition(EntityStateConditionBase):
         return filter_by_translation_key(self._hass, candidates, self._translation_key)
 
 
-# ---------------------------------------------------------------------------
-# solar_surplus_is_at_level
-# ---------------------------------------------------------------------------
-
 _SOLAR_SURPLUS_SCHEMA = ENTITY_STATE_CONDITION_SCHEMA_ANY_ALL.extend(
     {
         vol.Required("options"): {
@@ -161,10 +111,6 @@ class SolarSurplusIsAtLevelCondition(_OptionBasedStateCondition):
     _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST
     _schema = _SOLAR_SURPLUS_SCHEMA
 
-
-# ---------------------------------------------------------------------------
-# offtake_slot_is
-# ---------------------------------------------------------------------------
 
 _TOU_SLOT_SCHEMA = ENTITY_STATE_CONDITION_SCHEMA_ANY_ALL.extend(
     {
@@ -183,22 +129,12 @@ class OfftakeSlotIsCondition(_OptionBasedStateCondition):
     _schema = _TOU_SLOT_SCHEMA
 
 
-# ---------------------------------------------------------------------------
-# injection_slot_is
-# ---------------------------------------------------------------------------
-
-
 class InjectionSlotIsCondition(_OptionBasedStateCondition):
     """Condition: current TOU injection slot matches the expected code."""
 
     _option_key = _SLOT
     _translation_key = TRANSLATION_KEY_TOU_INJECTION_SLOT
     _schema = _TOU_SLOT_SCHEMA
-
-
-# ---------------------------------------------------------------------------
-# Phase D - Binary "is" conditions (_BinaryOnCondition subclasses)
-# ---------------------------------------------------------------------------
 
 
 class OfftakeIsOptimalCondition(_BinaryOnCondition):
@@ -219,18 +155,8 @@ class HappyHoursIsActiveCondition(_BinaryOnCondition):
     _translation_key = TRANSLATION_KEY_HAPPY_HOURS_ACTIVE
 
 
-# ---------------------------------------------------------------------------
-# Phase D - Numerical threshold conditions (EntityNumericalConditionBase)
-# ---------------------------------------------------------------------------
-
-
 class _NumericalThresholdCondition(EntityNumericalConditionBase):
-    """
-    Base for numerical threshold conditions tied to a specific ENGIE sensor.
-
-    Subclasses declare ``_translation_key`` to restrict entity_filter to
-    a single sensor per entity class.
-    """
+    """Base for numerical-threshold conditions tied to a specific ENGIE sensor."""
 
     _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
     _schema = NUMERICAL_CONDITION_SCHEMA
@@ -296,17 +222,12 @@ class SolarSurplusIsBelowThresholdCondition(_NumericalThresholdCondition):
     _translation_key = TRANSLATION_KEY_SOLAR_SURPLUS_CURRENT
 
 
-# ---------------------------------------------------------------------------
-# Public registry
-# ---------------------------------------------------------------------------
-
 CONDITIONS: dict[str, type[Condition]] = {
     "epex_price_is_negative": EpexPriceIsNegativeCondition,
     "epex_price_is_negative_quarter_hour": EpexPriceIsNegativeQuarterHourCondition,
     "solar_surplus_is_at_level": SolarSurplusIsAtLevelCondition,
     "offtake_slot_is": OfftakeSlotIsCondition,
     "injection_slot_is": InjectionSlotIsCondition,
-    # Phase D additions
     "epex_price_is_below_threshold": EpexPriceIsBelowThresholdCondition,
     "epex_price_is_below_threshold_quarter_hour": (
         EpexPriceIsBelowThresholdQuarterHourCondition
@@ -331,5 +252,5 @@ CONDITIONS: dict[str, type[Condition]] = {
 async def async_get_conditions(
     hass: HomeAssistant,  # noqa: ARG001
 ) -> dict[str, type[Condition]]:
-    """Return the integration-scoped ENGIE Belgium conditions (17 total)."""
+    """Return the integration-scoped ENGIE Belgium conditions."""
     return CONDITIONS

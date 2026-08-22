@@ -32,10 +32,6 @@ runtime:
   scripts:
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -72,20 +68,4 @@ settings:
 docs: |-
   Queries the solar-surplus-shown-dashboard flag for one BAN.
 
-  Mirrors api.py::async_get_solar_surplus_shown_dashboard_flag, which delegates to
-  api.py::_async_query_boolean_feature_flag.
-
-  The flag gates the solar surplus tile in the Smart App. When it is
-  false the integration skips the per-EAN forecast fan-out entirely,
-  saving one GET per electricity EAN per refresh.
-
-  The flag name comes from the Android app's libapp.so, where it appears
-  as isSolarSurplusShownDashboard.
-
-  The targeted endpoint returns a flat {value, reason} object, not
-  the group envelope keyed by flag name.
-
-  additionalContext.contractAccountId takes the BAN. The
-  customerAccountNumber the Smart App also sends is accepted but
-  not required, and the integration omits it because the v5
-  subentry schema dropped the CAN.
+  Mirrors api.py::async_get_solar_surplus_shown_dashboard_flag. When false the integration skips the per-EAN Solar Surplus forecast fan-out entirely.

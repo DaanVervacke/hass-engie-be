@@ -52,10 +52,8 @@ if TYPE_CHECKING:
     from .api import EngieBeApiClient
     from .data import EngieBeConfigEntry, EngieBeData, EngieBeSubentryData
 
-# Per-flag metadata for the two thin coordinator helpers.
-# Maps the leaf field name on FeatureFlagState to (log_prefix, task_name_suffix).
-# Strings must stay verbatim to keep log lines byte-identical with the
-# six methods they replace.
+# Maps FeatureFlagState field to (log_prefix, task_name_suffix).
+# Strings kept verbatim so log lines stay byte-identical.
 _FEATURE_FLAG_METADATA: dict[str, tuple[str, str]] = {
     "happy_hour_enrolled": ("Happy Hours enrolment", "happy_hour_enrolment_change"),
     "solar": ("solar-surplus availability", "solar_surplus_change"),
@@ -64,14 +62,7 @@ _FEATURE_FLAG_METADATA: dict[str, tuple[str, str]] = {
 
 
 class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """
-    Coordinator for one ENGIE business agreement (subentry).
-
-    Polls supplier energy prices and capacity-tariff peaks for a single
-    ``businessAgreementNumber``. EPEX day-ahead prices are
-    agreement-agnostic and live in :class:`EngieBeEpexCoordinator` on
-    the parent entry.
-    """
+    """Coordinator for one ENGIE business agreement (subentry)."""
 
     config_entry: EngieBeConfigEntry
 
@@ -98,24 +89,13 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             CONF_BUSINESS_AGREEMENT_NUMBER
         ]
         self.last_successful_fetch: datetime | None = None
-        # One-shot backfill: when the subentry was created without all
-        # relations-derived display fields, we attempt to populate them
-        # from the customer-account-relations endpoint on the first
-        # successful refresh. The flag is cleared after a single attempt
-        # regardless of outcome to avoid hammering the API on every poll
-        # for an account that simply has no data.
+        # One-shot relations backfill for subentries missing display fields.
         self._needs_relations_backfill: bool = any(
             not subentry.data.get(key) for key in RELATIONS_BACKFILLABLE_KEYS
         )
-        # Per-EAN solar-surplus outage tracking: transient errors soft-fail
-        # to the last-known wrapper, so the coordinator's built-in
-        # once-per-outage logging does not fire. Track it manually to
-        # match the ``log-when-unavailable`` rule (warn on outage entry,
-        # debug while it persists, info on recovery).
+        # Manual once-per-outage tracking for soft-failing fetches.
         self._solar_surplus_unavailable: set[str] = set()
-        # TOU schedules outage tracking: same once-per-outage discipline.
         self._tou_unavailable: bool = False
-        # Billing endpoint outage tracking: same once-per-outage discipline.
         self._billing_unavailable: bool = False
 
     @property
@@ -123,16 +103,8 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         Return True when this account is on a dynamic (EPEX-indexed) tariff.
 
-        The authoritative source is the energy-contracts endpoint, which
-        reports the per-EAN product code (``energyProduct``) directly.
-        That value is populated into ``EngieBeSubentryData.is_dynamic_override``
-        during setup and takes precedence here when set, so the answer
-        is correct even for mixed-fuel accounts whose supplier-energy-
-        prices payload would otherwise look fixed (gas item populates
-        ``items[]`` so the legacy ``len(items) == 0`` heuristic returns
-        False). The legacy heuristic still backs the property when the
-        contracts call failed at setup time, so the integration degrades
-        gracefully on a contracts-endpoint outage.
+        Prefers ``is_dynamic_override`` from the energy-contracts endpoint.
+        Falls back to the legacy ``len(items) == 0`` heuristic when unset.
         """
         runtime: EngieBeData | None = getattr(self.config_entry, "runtime_data", None)
         subentry_data = (
@@ -167,36 +139,17 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 translation_key="cannot_connect",
             ) from exception
 
-        # Legacy fallback for the dynamic-tariff flag: an empty
-        # ``items`` list means the supplier-energy-prices endpoint had
-        # no fixed monthly rates to expose, which historically signalled
-        # a dynamic account. This is per-EAN (not per-account) so it
-        # misfires for mixed-fuel households whose gas EAN populates
-        # ``items[]``. The authoritative answer is the energy-contracts
-        # endpoint, fetched once at setup and stored on
-        # ``EngieBeSubentryData.is_dynamic_override`` (see ``__init__.py``);
-        # the ``is_dynamic`` property prefers that override and only
-        # falls back to this value when the contracts call failed.
+        # Legacy fallback for the dynamic-tariff flag: empty ``items``
+        # means no fixed monthly rates. Preferred: ``is_dynamic_override``.
         items = data.get("items") if isinstance(data, dict) else None
         is_dynamic = isinstance(items, list) and len(items) == 0
         if isinstance(data, dict):
             data[KEY_IS_DYNAMIC] = is_dynamic
 
-        # One-shot backfill of relations-derived display fields. Runs
-        # only when the subentry is missing at least one such field.
-        # Best-effort: failures are logged and swallowed so a transient
-        # relations outage never blocks price updates.
         if self._needs_relations_backfill:
             await self._async_try_backfill_subentry(client)
             self._needs_relations_backfill = False
 
-        # Fetch current-month captar peaks. Failures here must not block
-        # price updates; we keep the last-known peaks payload so existing
-        # peak sensors remain populated until the next successful poll.
-        # When the current month has no ``peakOfTheMonth`` yet (typical in
-        # the first day or two of a new month before ENGIE has recorded a
-        # 15-minute interval), we fall back to the previous month so users
-        # still see a meaningful value.
         today = dt_util.now(BRUSSELS_TZ)
 
         previous_peaks_wrapper: dict[str, Any] | None = None
@@ -205,36 +158,18 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(existing, dict):
                 previous_peaks_wrapper = existing
 
-        # Probe the feature-flags endpoint to learn whether this BAN is
-        # enrolled in Happy Hours. The endpoint is the authoritative
-        # signal: ``/happy-hour-event`` returns ``{}`` both for
-        # un-enrolled BANs and for enrolled BANs without a scheduled
-        # window, so the event payload alone cannot distinguish the two.
-        # Soft-fail on errors: an un-readable flag is treated as "no
-        # signal change" so a transient outage never silently drops or
-        # creates Happy Hours entities.
         previous_enrolled = self._read_cached_enrollment()
         previous_has_solar = self._read_cached_flag("solar")
         previous_is_tou_active = self._read_cached_flag("tou_active")
 
-        # Fetch account-balance / billing data. The endpoint is per-BAN
-        # with no feature flag; fetch unconditionally on every refresh.
-        # Soft-fail to previous wrapper on transient errors so sensors
-        # stay populated. Auth errors escalate to reauth.
         previous_billing_wrapper: dict[str, Any] | None = None
         if isinstance(self.data, dict):
             existing_billing = self.data.get("billing")
             if isinstance(existing_billing, dict):
                 previous_billing_wrapper = existing_billing
 
-        # These five calls have no data dependency on each other's result;
-        # run them concurrently instead of five sequential round trips.
-        # Each already soft-fails its own EngieBeApiClientError internally
-        # (returning a fallback value) and re-raises
-        # EngieBeApiClientAuthenticationError, so gather() without
-        # return_exceptions=True preserves current abort-on-auth-failure
-        # behaviour: an auth error propagates immediately and cancels the
-        # remaining in-flight tasks.
+        # Concurrent because none of these depend on each other's result.
+        # gather() propagates the first auth error and cancels siblings.
         (
             peaks_wrapper,
             new_enrolled,
@@ -272,60 +207,36 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["peaks"] = peaks_wrapper
             self._record_peak_history(peaks_wrapper)
 
-        # Only poll the Happy Hours event endpoint for enrolled BANs.
-        # When un-enrolled, drop any stale wrapper so the entities (if
-        # they exist from a previous enrolled run that has not been
-        # reloaded yet) immediately report no scheduled window.
         previous_happy_hour_wrapper: dict[str, Any] | None = None
         if isinstance(self.data, dict):
             existing_hh = self.data.get("happy_hour")
             if isinstance(existing_hh, dict):
                 previous_happy_hour_wrapper = existing_hh
 
-        # The Happy Hours month report is fetched for enrolled BANs so the
-        # current-month summary sensors (consumption, eligible hours,
-        # reward) have fresh data on every coordinator refresh. Soft-fail:
-        # a transient API error keeps the last-known wrapper so existing
-        # sensors stay populated. Only fetched when enrolled.
         previous_month_report_wrapper: dict[str, Any] | None = None
         if isinstance(self.data, dict):
             existing_mr = self.data.get("happy_hour_month_report")
             if isinstance(existing_mr, dict):
                 previous_month_report_wrapper = existing_mr
 
-        # Solar-surplus forecasts. Two gates apply: the Smart App feature
-        # flag (``solar-surplus-shown-dashboard``) mirrors ENGIE's own
-        # contract for whether this account qualifies for the feature, and
-        # the per-EAN forecast payload carries ``level = NO_DATA``
-        # everywhere for accounts without a solar installation. We honour
-        # the flag first (skips the per-EAN fan-out entirely when off) and
-        # fall back to the data-driven signal for accounts where the flag
-        # is on but no forecast data is available yet.
+        # Solar Surplus is gated by the feature flag first, then refined
+        # by per-EAN NO_DATA levels for enrolled accounts without panels.
         previous_solar_wrapper: dict[str, Any] | None = None
         if isinstance(self.data, dict):
             existing_solar = self.data.get("solar_surplus")
             if isinstance(existing_solar, dict):
                 previous_solar_wrapper = existing_solar
 
-        # TOU schedules. The flag gates the supplier-side TOU meaning but
-        # the endpoint returns data regardless (the network schedule
-        # always applies to digital-meter customers). Fetch unconditionally
-        # and surface the flag separately.
+        # TOU: flag gates the supplier meaning, but the endpoint returns
+        # the always-applicable network schedule regardless.
         previous_tou_wrapper: dict[str, Any] | None = None
         if isinstance(self.data, dict):
             existing_tou = self.data.get("tou_schedules")
             if isinstance(existing_tou, dict):
                 previous_tou_wrapper = existing_tou
 
-        # These four calls have no data dependency on each other's result
-        # (only on new_enrolled/solar_shown/tou_active from the first
-        # gather); run them concurrently instead of four sequential round
-        # trips. Gated-off fetches are replaced with a no-op coroutine so
-        # the tuple unpacking stays positional. Each fetch already
-        # soft-fails its own EngieBeApiClientError internally and
-        # re-raises EngieBeApiClientAuthenticationError, so gather()
-        # without return_exceptions=True preserves current
-        # abort-on-auth-failure behaviour.
+        # Concurrent, with a no-op standing in for gated-off fetches so
+        # positional unpacking stays aligned.
         async def _noop() -> None:
             return None
 
@@ -374,12 +285,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if new_enrolled and month_report_wrapper is not None:
             data["happy_hour_month_report"] = month_report_wrapper
 
-        # Push the enrolment outcome onto subentry runtime data and
-        # schedule a config-entry reload when the state flips. The first
-        # observation (previous_enrolled is None) sets the cache without
-        # scheduling a reload because platforms have not yet been set up
-        # against it; subsequent flips reconcile entity presence with
-        # the new enrolment state.
         self._async_apply_enrollment(
             previous_enrolled=previous_enrolled,
             new_enrolled=new_enrolled,
@@ -398,9 +303,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if tou_active and tou_wrapper is not None:
             data["tou_schedules"] = tou_wrapper
-        # Flag off → drop any stale wrapper so entities from a prior
-        # enabled run report unavailable until the next reload. Mirrors
-        # the solar-surplus behaviour when its own flag is off.
         self._async_apply_flag(
             "tou_active", previous=previous_is_tou_active, new=tou_active
         )
@@ -433,13 +335,9 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         previous_enrolled: bool | None,
     ) -> bool:
         """
-        Fetch and interpret the feature-flags response for this BAN.
+        Fetch ``happy-hours-service-enabled`` for this BAN.
 
-        Returns ``True``/``False`` based on
-        ``happy-hours-service-enabled.value``. Auth failures escalate;
-        all other failures soft-fail to the previous cached state
-        (``False`` when there is no prior observation) so a transient
-        outage never silently flips entities in or out.
+        Auth escalates, other errors soft-fail to ``previous_enrolled``.
         """
         try:
             flags = await client.async_get_happy_hours_service_enabled_flag(
@@ -492,17 +390,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         api_method: str,
         log_prefix: str,
     ) -> bool:
-        """
-        Probe a boolean feature flag with the shared soft-fail discipline.
-
-        Auth failures escalate via ``ConfigEntryAuthFailed``. Any other
-        API error logs a warning at ``log_prefix`` and soft-fails to
-        ``True`` (the "keep trying" side) - matching the fail-open
-        discipline where a transient flag-endpoint outage should not
-        strip entities from accounts that are legitimately enrolled.
-
-        Returns the ``value`` field of the flag response coerced to bool.
-        """
+        """Probe a boolean feature flag, failing open on non-auth errors."""
         try:
             flags = await getattr(client, api_method)(business_agreement_number)
         except EngieBeApiClientAuthenticationError as exception:
@@ -582,19 +470,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         business_agreement_number: str,
         previous_wrapper: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
-        """
-        Fetch solar-surplus forecasts for every electricity EAN.
-
-        Returns a wrapper ``{"data": {ean: forecasts_list}, "fetched_at":
-        <ISO-UTC>}``. ``forecasts_list`` is the raw ``forecasts`` array
-        from the API (one entry per day, each with an hourly ``details``
-        list). Missing / failed per-EAN calls carry their previous
-        wrapper value forward.
-
-        Auth failures escalate to reauth. All other errors soft-fail:
-        the previous wrapper is preserved so entities don't blank on a
-        transient outage.
-        """
+        """Fetch Solar Surplus forecasts for every electricity EAN."""
         runtime = getattr(self.config_entry, "runtime_data", None)
         subentry_data = (
             runtime.subentry_data.get(self.subentry.subentry_id)
@@ -622,11 +498,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 payload = await client.async_get_solar_surplus_forecasts(
                     business_agreement_number,
-                    # ENGIE delivery-point IDs observed in the wild are
-                    # always ``{EAN}_ID1``. Multi-panel installations may
-                    # expose ``_ID2``/``_ID3`` but no service-points
-                    # endpoint currently surfaces them; extend this
-                    # mapping when a real multi-ID sample appears.
+                    # Observed delivery-point IDs are always ``{EAN}_ID1``.
                     ean_with_delivery_point_suffix(ean),
                 )
             except EngieBeApiClientAuthenticationError:
@@ -669,9 +541,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not per_ean:
             return previous_wrapper
         if not any_fresh:
-            # Every EAN carried its previous value forward; keep the
-            # previous wrapper intact so ``fetched_at`` still reflects the
-            # last time real data was seen.
+            # Keep the wrapper so ``fetched_at`` reflects last real data.
             return previous_wrapper
 
         return {"data": per_ean, "fetched_at": dt_util.utcnow().isoformat()}
@@ -690,16 +560,8 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         Persist a boolean flag state and schedule a reload on a flip.
 
-        Shared implementation of the first-observation, no-change, and
-        flip branches used by Happy Hours enrolment, solar-surplus
-        availability, and TOU activation. ``field_name`` is the
-        attribute to mutate. When ``target`` is provided the attribute is
-        written on that object instead of ``EngieBeSubentryData``
-        directly (used by the nested ``feature_flags`` bundle).
-
-        The ``reload_pending`` check MUST fire before the flag is set to
-        ``True`` so two simultaneous flips in the same refresh tick do
-        not both queue a reload.
+        ``reload_pending`` must be checked before setting the flag so
+        simultaneous flips in one refresh tick queue only one reload.
         """
         runtime = getattr(self.config_entry, "runtime_data", None)
         if runtime is None:
@@ -751,9 +613,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         subentry_data = self._subentry_data()
         if subentry_data is None:
             return None
-        # feature_flags' fields are looked up dynamically by name (the
-        # caller passes the flag's attribute name as a string), so this
-        # genuinely cannot be typed more precisely than a runtime cast.
         return cast("bool | None", getattr(subentry_data.feature_flags, name))
 
     @callback
@@ -799,13 +658,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         business_agreement_number: str,
         previous_wrapper: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
-        """
-        Fetch the TOU schedules for this business agreement.
-
-        Returns a wrapper ``{"data": <payload>, "fetched_at": <ISO-UTC>}``
-        on success, or ``previous_wrapper`` on transient failure. Auth
-        errors escalate to reauth.
-        """
+        """Fetch the TOU schedules for this business agreement."""
         ban_masked = mask_identifier(business_agreement_number)
         try:
             payload = await client.async_get_tou_schedules(business_agreement_number)
@@ -859,14 +712,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         business_agreement_number: str,
         previous_wrapper: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
-        """
-        Fetch the account-balance payload for this business agreement.
-
-        Returns a wrapper ``{"data": <payload>, "fetched_at": <ISO-UTC>}``
-        on success. On transient failure the previous wrapper is returned
-        unchanged (so sensors keep their last-known values). Auth errors
-        escalate to reauth.
-        """
+        """Fetch the account-balance payload for this business agreement."""
         ban_masked = mask_identifier(business_agreement_number)
         try:
             payload = await client.async_get_account_balance(business_agreement_number)
@@ -917,17 +763,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         business_agreement_number: str,
         previous_wrapper: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
-        """
-        Fetch the upcoming Happy Hours event for this business agreement.
-
-        Returns a wrapper ``{"data": <payload-or-None>}``: ``data`` is the
-        raw API payload when one is returned (including the empty ``{}``
-        case, which means "no event scheduled"), and ``None`` only when
-        the API call failed and no prior wrapper is available.
-
-        Auth failures escalate to reauth; all other failures keep the
-        last-known wrapper so sensors don't blank on a transient outage.
-        """
+        """Fetch the upcoming Happy Hours event for this business agreement."""
         try:
             payload = await client.async_get_happy_hour_event(
                 business_agreement_number,
@@ -983,30 +819,11 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         previous_wrapper: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
         """
-        Fetch the Happy Hours month report for this business agreement.
+        Fetch the Happy Hours month report, falling back to history.
 
-        Returns a wrapper ``{"data": <payload-or-None>, "year": year,
-        "month": month, "is_fallback": bool}``.
-
-        On a successful fetch, if the current month carries a ``happyHour``
-        dict the wrapper is built from that (``is_fallback=False``).  If
-        the current month's ``happyHour`` is absent (common in the first
-        day or two of a new month before ENGIE has accrued any eligible
-        hours), the ``history`` array in the same response is scanned for
-        the most-recent entry that *does* carry a ``happyHour`` dict.  When
-        found, that entry's data is wrapped with ``is_fallback=True`` and
-        ``year``/``month`` taken from the history entry's ``yearMonth``
-        field, so sensors show the previous month's numbers instead of going
-        unknown.
-
-        Note: ``data`` is the full API response on the success path but the
-        minimal shape ``{"month": {"happyHour": ...}}`` on the fallback
-        path. Both forms support sensor lookups walking
-        ``("month", "happyHour", ...)``; readers must not depend on other
-        top-level fields being present in fallback mode.
-
-        Auth failures escalate to reauth; all other failures keep the
-        last-known wrapper so sensors don't blank on a transient outage.
+        On the fallback path, ``data`` has the minimal shape
+        ``{"month": {"happyHour": ...}}`` so readers walking
+        ``("month", "happyHour", ...)`` still resolve.
         """
         try:
             payload = await client.async_get_month_report(
@@ -1028,9 +845,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             if previous_wrapper is None:
                 return None
-            # Preserve the stored data as-is but mark it as stale.
-            # Keep the ORIGINAL year/month so users can see which period
-            # the numbers belong to rather than the current month header.
+            # Preserve stored data and its ORIGINAL year/month, mark stale.
             return {
                 **previous_wrapper,
                 "is_fallback": True,
@@ -1072,9 +887,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "is_fallback": False,
             }
 
-        # Current month has no happyHour data yet (typical early in a new
-        # month).  Scan history for the most-recent entry with a happyHour
-        # block and use it as a fallback so users still see meaningful values.
+        # Current month has no happyHour yet: scan history for most recent.
         history = payload.get("history")
         fallback_wrapper = _find_history_fallback(history, ban_masked)
         if fallback_wrapper is not None:
@@ -1089,9 +902,6 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return fallback_wrapper
 
-        # No history with happyHour data either - first-ever month or
-        # empty history.  Return None so the key stays absent from
-        # coordinator.data and sensors report unknown.
         LOGGER.debug(
             "BAN %s: no Happy Hours data in current month %d-%02d "
             "or history; returning no wrapper",
@@ -1143,16 +953,9 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _record_happy_hour_history(self, happy_hour_wrapper: dict[str, Any]) -> None:
         """
-        Persist every scheduled Happy Hours window if one is announced.
+        Persist scheduled Happy Hours windows (idempotent, dedups on ``start``).
 
-        ENGIE publishes the upcoming window under a ``tomorrow`` key the
-        day before and re-publishes the same window under a ``today`` key
-        once midnight passes; both keys are recorded so a window seen only
-        after a post-midnight restart still reaches the history store.
-
-        Idempotent: the same window may be observed many times (and under
-        both keys) between announcement and expiry, but the store dedups
-        on ``start``.
+        ENGIE publishes windows under both ``tomorrow`` and ``today`` keys.
         """
         ban = mask_identifier(self.business_agreement_number)
         payload = happy_hour_wrapper.get("data")
@@ -1225,13 +1028,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         Best-effort fill of relations-derived fields on the subentry.
 
-        Called once per HA run for subentries that were created without
-        a complete ``relations`` payload. Only missing fields are
-        written; existing values are preserved so a user who
-        deliberately edited a subentry isn't overwritten by upstream
-        data. Any error during the relations call is logged at warning
-        level and swallowed; the next refresh proceeds normally without
-        the missing fields.
+        Only missing fields are written, preserving user-edited values.
         """
         try:
             relations = await client.async_get_customer_account_relations()
@@ -1288,12 +1085,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         Refresh the customer-account device name after a backfill.
 
-        ``DeviceInfo`` is only consulted by HA when an entity is added or
-        re-added; updating ``subentry.title`` does not by itself rename
-        the device. We look the device up, scoped to this config entry, by
-        its stable subentry-scoped identifier and update its ``name`` field
-        directly. ``name_by_user`` is preserved by HA's update logic, so a
-        user-customised name is never clobbered.
+        Updating ``subentry.title`` does not rename the device on its own.
         """
         device_reg = dr.async_get(self.hass)
         device = device_reg.async_get_device_by_identifier(
@@ -1313,13 +1105,7 @@ class EngieBeDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         month: int,
         previous_wrapper: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
-        """
-        Fetch current-month peaks, falling back to the previous month.
-
-        Returns a wrapper dict ``{"data", "year", "month", "is_fallback"}``
-        so consumers know which month the displayed value reflects.
-        Returns ``None`` when no data could be obtained at all.
-        """
+        """Fetch current-month peaks, falling back to the previous month."""
         try:
             current = await client.async_get_monthly_peaks(
                 business_agreement_number,
@@ -1406,22 +1192,9 @@ def _find_history_fallback(
     ban_masked: str,
 ) -> dict[str, Any] | None:
     """
-    Scan a month-report ``history`` array for the most-recent happyHour entry.
+    Return the most-recent history entry with a happyHour block.
 
-    Returns a ready-to-store wrapper
-    ``{"data": ..., "year": int, "month": int, "is_fallback": True}``
-    where ``data`` is shaped like a minimal month-report response
-    (``{"month": {"happyHour": ...}}``) so sensor paths that walk
-    ``("month", "happyHour", ...)`` still resolve correctly.
-
-    Returns ``None`` when *history* is not a list, is empty, or contains no
-    entry with a valid ``yearMonth`` string and a dict ``happyHour`` block.
-
-    Entries are compared by their ``yearMonth`` string (``"YYYY-MM"`` format)
-    using ordinary lexicographic ordering, which is correct for ISO year-month
-    strings.  The entry with the lexicographically greatest *parseable*
-    ``yearMonth`` that carries a ``happyHour`` dict is selected.  Entries
-    with malformed ``yearMonth`` strings are skipped with a debug log.
+    Compares ``yearMonth`` values lexicographically (safe for ISO YYYY-MM).
     """
     if not isinstance(history, list):
         return None
@@ -1440,8 +1213,6 @@ def _find_history_fallback(
         happy_hour = entry.get("happyHour")
         if not isinstance(happy_hour, dict):
             continue
-        # Parse yearMonth here so unparseable entries are dropped in-loop
-        # rather than discovered only after selection.
         try:
             fb_year_str, fb_month_str = year_month_raw.split("-", 1)
             fb_year = int(fb_year_str)
@@ -1471,17 +1242,10 @@ def _find_history_fallback(
 
 
 class EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
-    """
-    Common base class for EPEX day-ahead coordinators.
-
-    Provides shared functionality for fetching and parsing EPEX market data.
-    Subclasses implement the specific granularity (hourly or quarter-hourly).
-    """
+    """Common base class for EPEX day-ahead coordinators."""
 
     config_entry: EngieBeConfigEntry
 
-    # Subclasses set this to select the API/parse granularity. Defined here
-    # only as a type annotation; each concrete coordinator overrides it.
     _granularity: EpexGranularity
 
     def __init__(
@@ -1512,16 +1276,7 @@ class EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
         return self._last_update_success_time
 
     def _note_unavailable(self, message: str, exception: Exception) -> None:
-        """
-        Log an EPEX fetch/parse failure at most once per outage.
-
-        The EPEX coordinator intentionally keeps serving the last-known
-        payload instead of raising :class:`UpdateFailed`, so it cannot rely
-        on the coordinator's built-in once-per-outage logging. This mirrors
-        the manual ``_unavailable_logged`` pattern from the quality-scale
-        ``log-when-unavailable`` rule: warn on the transition into the
-        failure state, then stay quiet (debug) for as long as it persists.
-        """
+        """Log an EPEX fetch/parse failure at most once per outage."""
         if self._unavailable_logged:
             LOGGER.debug(message, exception)
         else:
@@ -1529,22 +1284,12 @@ class EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
             self._unavailable_logged = True
 
     async def _async_update_data(self) -> EpexPayload | None:
-        """
-        Fetch EPEX day-ahead prices covering today + tomorrow (Brussels).
-
-        Returns the parsed payload, or the previous (last-known) payload
-        when the endpoint is reachable but tomorrow's slate is not yet
-        published (HTTP 404), or when a transient communication error
-        occurs. Returns ``None`` only when no previous payload exists
-        either; platforms must handle this by reporting unavailable.
-        """
+        """Fetch EPEX day-ahead prices covering today + tomorrow (Brussels)."""
         client = self.config_entry.runtime_data.client
         previous = self.data if isinstance(self.data, EpexPayload) else None
 
-        # Window: [today_brussels_00:00 .. day_after_tomorrow_brussels_00:00).
-        # Two full Brussels-local days expressed as a half-open interval,
-        # so we always cover today + tomorrow regardless of which side of
-        # the daily 13:15 publication we're polling.
+        # Two-day half-open window so today + tomorrow are covered either
+        # side of the 13:15 publication.
         now_brussels = dt_util.now(BRUSSELS_TZ)
         start_local = datetime.combine(
             now_brussels.date(),
@@ -1596,17 +1341,7 @@ class EngieBeEpexCoordinatorBase(DataUpdateCoordinator[EpexPayload | None]):
 
 
 class EngieBeEpexCoordinator(EngieBeEpexCoordinatorBase):
-    """
-    Coordinator for EPEX day-ahead wholesale prices.
-
-    EPEX prices are public, login-scoped at most (the integration uses the
-    public endpoint), and identical for every customer of a given parent
-    :class:`ConfigEntry`. They are therefore polled once per parent entry
-    rather than once per subentry, regardless of how many customer
-    accounts the user owns. The coordinator is created unconditionally;
-    consumers gate entity creation on per-subentry ``is_dynamic`` so a
-    user with only fixed-tariff accounts simply never sees EPEX entities.
-    """
+    """Coordinator for hourly EPEX day-ahead prices, shared per parent entry."""
 
     _granularity = EpexGranularity.HOURLY
 
@@ -1624,23 +1359,7 @@ class EngieBeEpexCoordinator(EngieBeEpexCoordinatorBase):
 
 
 class EngieBeEpexQuarterHourCoordinator(EngieBeEpexCoordinatorBase):
-    """
-    Coordinator for EPEX day-ahead wholesale prices with quarter-hourly granularity.
-
-    EPEX prices are public, login-scoped at most (the integration uses the
-    public endpoint), and identical for every customer of a given parent
-    :class:`ConfigEntry`. They are therefore polled once per parent entry
-    rather than once per subentry, regardless of how many customer
-    accounts the user owns. The coordinator is created unconditionally;
-    consumers gate entity creation on per-subentry ``is_dynamic`` so a
-    user with only fixed-tariff accounts simply never sees EPEX entities.
-
-    This coordinator fetches 15-minute slots rather than
-    hourly slots. The granularity is specified via the
-    ``granularity="QUARTER_HOURLY"`` parameter when calling the API, and the
-    parsed payload carries a ``slot_duration`` of 15 minutes to distinguish
-    it from hourly data.
-    """
+    """Coordinator for quarter-hourly EPEX day-ahead wholesale prices."""
 
     _granularity = EpexGranularity.QUARTER_HOURLY
 
@@ -1660,22 +1379,7 @@ class EngieBeEpexQuarterHourCoordinator(EngieBeEpexCoordinatorBase):
 def _parse_epex_response(
     raw: Any, slot_duration_minutes: int = EPEX_DEFAULT_SLOT_DURATION_MINUTES
 ) -> EpexPayload:
-    """
-    Parse a raw EPEX endpoint response into an :class:`EpexPayload`.
-
-    Slots are sorted by start time (the endpoint already returns them
-    chronologically, but we don't rely on it).  Any malformed slot
-    entries (missing ``period``/``value``, unparseable timestamps) are
-    dropped with a debug log so a single bad row doesn't void the whole
-    response.
-
-    Args:
-        raw: The raw API response dictionary.
-        slot_duration_minutes: Duration of each slot in minutes.
-            Use EpexGranularity.HOURLY.value (60) or
-            EpexGranularity.QUARTER_HOURLY.value (15).
-
-    """
+    """Parse a raw EPEX response into an :class:`EpexPayload`, dropping bad slots."""
     if not isinstance(raw, dict):
         msg = f"EPEX response must be a dict, got {type(raw).__name__}"
         raise TypeError(msg)
@@ -1714,9 +1418,7 @@ def _parse_epex_response(
         except TypeError, ValueError:
             LOGGER.debug("Skipping malformed EPEX slot: %r", entry)
             continue
-        # Normalise to Brussels-local for downstream slicing; the slot
-        # is the same instant either way, but Brussels-local makes the
-        # date comparisons in the sensor layer trivial and DST-safe.
+        # Normalise to Brussels-local for DST-safe date comparisons downstream.
         start_dt = start_dt.astimezone(BRUSSELS_TZ)
         slots.append(
             EpexSlot(

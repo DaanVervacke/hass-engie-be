@@ -1,15 +1,4 @@
-"""
-Pure helpers for EPEX slot-boundary scheduling and slot metadata.
-
-Kept dependency-free so the slot-boundary computation can be unit
-tested in isolation and reused across the binary-sensor and sensor
-platforms without crossing entity-class boundaries.
-
-Includes:
-- next_epex_slot_boundary: compute next slot change instant
-- epex_payload: accessor for coordinator data
-- _slot_duration_minutes: compute slot duration from boundaries
-"""
+"""Pure helpers for EPEX slot-boundary scheduling and slot metadata."""
 
 from __future__ import annotations
 
@@ -27,20 +16,10 @@ def next_epex_slot_boundary(
     now: datetime,
 ) -> datetime | None:
     """
-    Return the next UTC instant at which the current EPEX slot changes.
+    Return the next UTC instant at which the current EPEX slot changes, or None.
 
-    The returned datetime is the earliest of:
-
-    * ``slot.end`` for the slot covering ``now`` (when one exists), and
-    * ``slot.start`` for the earliest slot whose start is strictly
-      greater than ``now``.
-
-    Returns ``None`` when the payload is ``None``, when the payload
-    has no slots, or when every slot is entirely in the past.
-
-    The function does not assume contiguity: gaps between slots are
-    handled correctly by considering both the current-slot end and
-    the next-slot start as independent candidates.
+    Handles gaps between slots by considering both the current-slot end
+    and the next-slot start as candidates.
     """
     if payload is None or not payload.slots:
         return None
@@ -68,10 +47,5 @@ def epex_payload(
 
 
 def _slot_duration_minutes(slot: EpexSlot) -> float:
-    """
-    Return the duration of an EPEX slot in minutes.
-
-    Computes the duration from the slot's start and end datetimes.
-    Used by sensors to expose slot_duration_minutes in their attributes.
-    """
+    """Return the duration of an EPEX slot in minutes."""
     return (slot.end - slot.start).total_seconds() / 60

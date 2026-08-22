@@ -78,15 +78,15 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         self._auth_flow_state: AuthFlowState | None = None
         self._client: EngieBeApiClient | None = None
         self._reauth_mfa_method: str = MFA_METHOD_SMS
-        # Set after successful MFA on the initial-setup flow; consumed by
+        # Set after successful MFA on the initial-setup flow. Consumed by
         # ``async_step_select_accounts``.
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._available_accounts: list[dict[str, Any]] = []
-        # Accounts picked in select_accounts; carried into import_history_choice
+        # Accounts picked in select_accounts, carried into import_history_choice
         # and then import_options.
         self._picked_accounts: list[dict[str, Any]] = []
-        # Per-BAN import toggle from import_history_choice; maps BAN -> bool.
+        # Per-BAN import toggle from import_history_choice, maps BAN -> bool.
         self._import_choice: dict[str, bool] = {}
 
     @staticmethod
@@ -106,10 +106,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return {
             SUBENTRY_TYPE_BUSINESS_AGREEMENT: CustomerAccountSubentryFlowHandler,
         }
-
-    # ------------------------------------------------------------------
-    # Step 1: credentials + MFA method
-    # ------------------------------------------------------------------
 
     async def async_step_user(
         self,
@@ -195,10 +191,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    # ------------------------------------------------------------------
-    # Step 2a: SMS MFA code entry
-    # ------------------------------------------------------------------
-
     async def async_step_mfa_sms(
         self,
         user_input: dict[str, Any] | None = None,
@@ -210,10 +202,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             user_input=user_input,
         )
 
-    # ------------------------------------------------------------------
-    # Step 2b: email MFA code entry
-    # ------------------------------------------------------------------
-
     async def async_step_mfa_email(
         self,
         user_input: dict[str, Any] | None = None,
@@ -224,10 +212,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             mfa_method=MFA_METHOD_EMAIL,
             user_input=user_input,
         )
-
-    # ------------------------------------------------------------------
-    # Shared MFA handler
-    # ------------------------------------------------------------------
 
     async def _handle_mfa_step(
         self,
@@ -249,10 +233,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.warning(exception)
                 errors["base"] = "invalid_mfa_code"
             except EngieBeApiClientAuthenticationError as exception:
-                # Reached here only AFTER the MFA code was accepted (steps
-                # 9 to 13). The credentials and the code are both valid;
-                # the Auth0 session itself failed to complete. Telling
-                # the user their password is wrong would be misleading.
+                # Post-MFA Auth0 session failure. Credentials and code are both valid.
                 LOGGER.warning(exception)
                 errors["base"] = "post_mfa_auth_failed"
             except EngieBeApiClientCommunicationError as exception:
@@ -266,11 +247,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(slugify(username))
                 self._abort_if_unique_id_configured()
 
-                # Stash the freshly-issued tokens for the picker step,
-                # which uses them to fetch customer-account relations
-                # before any ConfigEntry is persisted. Finishing happens
-                # in async_step_select_accounts so we can pass the chosen
-                # subentries to async_create_entry in a single call.
+                # Stash tokens for the picker. Entry finishes in select_accounts.
                 self._access_token = access_token
                 self._refresh_token = refresh_token
                 return await self.async_step_select_accounts()
@@ -295,12 +272,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         mfa_code: str,
         mfa_method: str,
     ) -> tuple[str, str]:
-        """
-        Submit an MFA code and return the resulting (access, refresh) tokens.
-
-        Shared between the initial-setup flow and the reauth flow. The caller is
-        responsible for catching API exceptions and surfacing them as form errors.
-        """
+        """Submit an MFA code and return ``(access_token, refresh_token)``."""
         if self._client is None or self._auth_flow_state is None:
             msg = "MFA completion called without an active auth flow"
             raise EngieBeApiClientError(msg)
@@ -314,39 +286,18 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         finally:
             self._auth_flow_state = None
 
-    # ------------------------------------------------------------------
-    # Customer-account picker (chained from MFA success on initial setup)
-    # ------------------------------------------------------------------
-
     async def async_step_select_accounts(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """
-        Show the customer-account multi-select after MFA succeeds.
-
-        Runs as the final step of the initial-setup flow. Fetches the
-        customer-account-relations payload using the just-issued tokens
-        and presents a multi-select. On submit, creates the parent
-        ``ConfigEntry`` together with one ``ConfigSubentry`` per chosen
-        account in a single ``async_create_entry`` call (the only
-        supported way to create entry + subentries atomically; HA's
-        ``next_flow`` mechanism does not accept subentry flows).
-
-        On the first call the picker is rendered. On submit the chosen
-        identifiers are translated into ``ConfigSubentryData`` records
-        and the parent entry is created.
-        """
+        """Show the customer-account multi-select after MFA and finish the entry."""
         username = self._user_input[CONF_USERNAME]
         errors: dict[str, str] = {}
 
         if not self._available_accounts:
             relations_or_error = await self._async_fetch_initial_relations()
             if isinstance(relations_or_error, str):
-                # Fetching the relations payload at this point is best-effort:
-                # we have valid tokens but the WAF or the API may still trip.
-                # Fall back to creating the entry without any subentries; the
-                # user can add accounts via the entry's "+ Add" picker later.
+                # Best-effort fetch. Fall back to no subentries, user can add later.
                 LOGGER.warning(
                     "Skipping initial subentry picker: %s", relations_or_error
                 )
@@ -354,8 +305,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             self._available_accounts = extract_business_agreements(relations_or_error)
 
         if not self._available_accounts:
-            # Account on this login has zero customer accounts attached;
-            # finish without subentries so the user gets a usable entry.
             return self._async_finish_initial_setup(subentries=())
 
         if user_input is not None:
@@ -377,25 +326,11 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"username": username},
         )
 
-    # ------------------------------------------------------------------
-    # Import history choice step (chained from select_accounts)
-    # ------------------------------------------------------------------
-
     async def async_step_import_history_choice(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """
-        Show one toggle per picked BAN to ask whether to backfill history.
-
-        Each BAN gets its own section (``ban_0``, ``ban_1``, ...) with a
-        single ``import_history`` boolean. On submit:
-        - If all toggles are off, finish the flow immediately with every picked
-          account stored using the import-history-off defaults.
-        - If any toggle is on, store the choices in ``_import_choice`` and
-          advance to ``async_step_import_options`` showing only the toggled-on
-          BANs so the user can fill in the detail fields.
-        """
+        """Show a per-BAN backfill toggle. Advance to detail fields when any are on."""
         if user_input is not None:
             self._import_choice = {
                 account[CONF_BUSINESS_AGREEMENT_NUMBER]: user_input.get(
@@ -439,20 +374,10 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """
         Present per-BAN detail sections for BANs with import_history toggled on.
 
-        Only the BANs whose ``import_history`` toggle was on in the preceding
-        ``import_history_choice`` step appear here. Each section is keyed by a
-        positional identifier (``ban_0``, ``ban_1``, ...) mapped to the
-        filtered list. BANs whose toggle was off are merged back in with
-        import-history-off defaults on submit.
-
-        Contains four fields: ``import_energy_types`` (multi-select),
-        ``import_include_costs`` (bool), ``import_start_date`` (optional date),
-        and ``import_end_date`` (optional date).
-
-        Before rendering, the contracts endpoint is queried for each opted-in
-        BAN (with ``include_inactive=True``) so the energy-type selector can be
-        filtered to only the divisions that BAN actually carries. A failed fetch
-        for any BAN falls back to showing all three options for that BAN.
+        The energy-type selector is filtered by each BAN's active contracts
+        (via ``include_inactive=True``); a failed contracts fetch falls back
+        to showing all options for that BAN. BANs toggled off are merged
+        back in with import-history-off defaults on submit.
         """
         opted_in = [
             account
@@ -566,22 +491,11 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    # ------------------------------------------------------------------
-    # Reconfigure flow
-    # ------------------------------------------------------------------
-
     async def async_step_reconfigure(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> config_entries.ConfigFlowResult:
-        """
-        Allow the user to change the preferred MFA method.
-
-        This flow does not re-validate credentials against the ENGIE API;
-        it simply updates the stored ``mfa_method`` so the reauth flow
-        pre-populates the method selector with the user's last choice
-        instead of always defaulting to SMS.
-        """
+        """Update the stored preferred MFA method without re-validating credentials."""
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
 
@@ -623,10 +537,6 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
-
-    # ------------------------------------------------------------------
-    # Reauth flow
-    # ------------------------------------------------------------------
 
     async def async_step_reauth(
         self,
@@ -714,9 +624,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.warning(exception)
                 errors["base"] = "invalid_mfa_code"
             except EngieBeApiClientAuthenticationError as exception:
-                # Same reasoning as ``async_step_mfa``: reaching this
-                # branch means MFA was accepted but the post-MFA Auth0
-                # sequence failed. Don't blame the user's password.
+                # Post-MFA Auth0 sequence failure. Do not blame the password.
                 LOGGER.warning(exception)
                 errors["base"] = "post_mfa_auth_failed"
             except EngieBeApiClientCommunicationError as exception:
@@ -726,17 +634,9 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.exception(exception)
                 errors["base"] = "unknown"
             else:
-                # Use ``async_update_and_abort`` (not
-                # ``async_update_reload_and_abort``) because the integration
-                # registers ``add_update_listener(async_reload_entry)`` in
-                # ``__init__.py`` for options-change, subentry add/remove,
-                # and reauth reloads. The 2026.12 breaking change only
-                # applies to the COMBINATION of having update_listeners
-                # AND calling ``async_update_reload_and_abort`` -- using
-                # ``async_update_and_abort`` with a listener is fine.
-                # The listener fires for this write and detects the
-                # externally-updated refresh token, triggering exactly
-                # one reload.
+                # ``async_update_and_abort`` (not ..._reload_and_abort): the
+                # add_update_listener path handles the reload. The 2026.12
+                # breaking change only bites when both are used together.
                 return self.async_update_and_abort(
                     self._get_reauth_entry(),
                     data_updates={
@@ -769,7 +669,7 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         super().__init__()
         self._available_accounts: list[dict[str, Any]] = []
         self._picked_accounts: list[dict[str, Any]] = []
-        # Per-BAN import toggle from import_history_choice; maps BAN -> bool.
+        # Per-BAN import toggle from import_history_choice, maps BAN -> bool.
         self._import_choice: dict[str, bool] = {}
 
     async def async_step_user(
@@ -817,13 +717,7 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> SubentryFlowResult:
-        """
-        Show one toggle per picked BAN to ask whether to backfill history.
-
-        Mirrors the main-flow step of the same name. On submit, if any toggle
-        is on the flow advances to ``async_step_import_options``; if all are
-        off it finishes immediately with import-history-off defaults applied.
-        """
+        """Show one per-BAN toggle for backfill history."""
         if user_input is not None:
             self._import_choice = {
                 account[CONF_BUSINESS_AGREEMENT_NUMBER]: user_input.get(
@@ -850,18 +744,7 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> SubentryFlowResult:
-        """
-        Present per-BAN detail sections for BANs with import_history toggled on.
-
-        Mirrors the main-flow step of the same name. Only toggled-on BANs appear;
-        toggled-off BANs are merged back in with import-history-off defaults on
-        submit.
-
-        Before rendering, the contracts endpoint is queried for each opted-in
-        BAN (with ``include_inactive=True``) so the energy-type selector is
-        filtered to the divisions that BAN actually carries. A failed fetch for
-        any BAN falls back to showing all three options for that BAN.
-        """
+        """Present per-BAN detail sections for BANs with import_history toggled on."""
         opted_in = [
             account
             for account in self._picked_accounts
@@ -908,34 +791,12 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         self,
         picked: list[dict[str, Any]],
     ) -> SubentryFlowResult:
-        """
-        Create subentry/subentries from the final enriched account dicts.
-
-        Mirrors the logic that existed in ``async_step_user`` before the
-        import-options step was introduced. Programmatically adds every
-        pick after the first, gates the reload listener via
-        ``pending_subentry_target``, and finishes the first pick through
-        the framework's normal ``async_create_entry`` path.
-        """
+        """Create subentries from picked accounts. Uses ``pending_subentry_target``."""
         entry = self._get_entry()
 
-        # Programmatically add every pick after the first as a subentry on
-        # the parent entry. The first pick is returned via async_create_entry
-        # so the framework persists it via the standard ConfigSubentryFlow
-        # finish path.
-        #
-        # Each ``async_add_subentry`` (and the framework's finish-path add for
-        # the first pick) schedules this integration's ``async_reload_entry``
-        # listener, so a naive multi-pick would reload N times. We arm the
-        # one-shot ``pending_subentry_target`` gate with the *final* expected
-        # set of business-agreement numbers (BANs) up front; the listener
-        # suppresses every reload until that full BAN set is present, then
-        # reloads exactly once. The gate keys on BANs (``unique_id``) rather
-        # than subentry ids because the first pick's id is generated by the
-        # framework finish path and is not known here. The gate is only set
-        # when runtime_data exists (the picker can run before
-        # async_setup_entry finishes; in that case no listener is registered
-        # yet and there is nothing to debounce).
+        # First pick goes through the framework finish path, extras via
+        # async_add_subentry. The ``pending_subentry_target`` gate keyed on
+        # BANs collapses N reload-listener firings into one.
         runtime = getattr(entry, "runtime_data", None)
         if runtime is not None:
             existing_bans = {
@@ -965,8 +826,7 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
                 unique_id=first[CONF_BUSINESS_AGREEMENT_NUMBER],
             )
 
-        # No runtime_data yet: add extras directly (no listener to debounce)
-        # and finish the first pick through the framework.
+        # No runtime_data yet: no listener to debounce.
         for extra in picked[1:]:
             self.hass.config_entries.async_add_subentry(
                 entry,
@@ -989,13 +849,7 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         self,
         entry: config_entries.ConfigEntry,
     ) -> dict[str, Any] | str:
-        """
-        Fetch customer-account relations using a fresh client.
-
-        Returns the response dict on success, or an abort reason string on
-        failure. A fresh client is built from the parent entry's stored tokens
-        because this step can run before async_setup_entry has finished.
-        """
+        """Fetch customer-account relations, or return an abort reason string."""
         client = EngieBeApiClient(
             session=async_get_clientsession(self.hass),
             client_id=DEFAULT_CLIENT_ID,
@@ -1036,11 +890,6 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
         )
 
 
-# ----------------------------------------------------------------------
-# Helpers (module level so they can be unit-tested without HA boilerplate)
-# ----------------------------------------------------------------------
-
-
 def _subentry_title(account: dict[str, Any]) -> str:
     """Build a user-friendly subentry title (delegates to shared helper)."""
     return subentry_title(account)
@@ -1049,19 +898,7 @@ def _subentry_title(account: dict[str, Any]) -> str:
 def _collect_configured_identifiers(
     entry: config_entries.ConfigEntry,
 ) -> set[str]:
-    """
-    Collect every BAN already claimed by an existing subentry.
-
-    For each business-agreement subentry on ``entry`` this gathers the
-    subentry's ``unique_id`` plus its stored
-    ``CONF_BUSINESS_AGREEMENT_NUMBER``. The returned set is what the
-    picker uses to decide whether a candidate from the relations
-    payload is already configured.
-
-    A subentry that somehow lacks the BAN field (partial picker run,
-    manual edit) is tolerated and silently skipped so the picker stays
-    functional.
-    """
+    """Collect every BAN already claimed by an existing subentry."""
     configured: set[str] = set()
     for subentry in entry.subentries.values():
         if subentry.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
@@ -1079,14 +916,7 @@ def _candidates_excluding_configured(
     relations: dict[str, Any],
     already_configured: set[str],
 ) -> list[dict[str, Any]]:
-    """
-    Return BAN-keyed picker candidates not already attached to the entry.
-
-    Walks the relations payload via :func:`extract_business_agreements`
-    (one entry per active BAN) and filters out any candidate whose BAN
-    is already present in ``already_configured`` (see
-    :func:`_collect_configured_identifiers`).
-    """
+    """Return BAN-keyed picker candidates not already attached to the entry."""
     return [
         agreement
         for agreement in extract_business_agreements(relations)
@@ -1100,14 +930,7 @@ async def _fetch_divisions_for_opted_in(
     refresh_token: str | None,
     opted_in: list[dict[str, Any]],
 ) -> dict[str, set[str]]:
-    """
-    Build an API client from the given tokens and fetch division sets per BAN.
-
-    Wraps ``_fetch_ban_divisions`` so both the initial-setup flow and the
-    subentry-add flow share one call site for client construction and BAN
-    extraction. Neither caller needs the ``EngieBeApiClient`` afterwards,
-    so it stays scoped to this helper.
-    """
+    """Fetch division sets per BAN using a token-scoped client."""
     client = EngieBeApiClient(
         session=async_get_clientsession(hass),
         client_id=DEFAULT_CLIENT_ID,
@@ -1122,16 +945,7 @@ async def _fetch_ban_divisions(
     client: EngieBeApiClient,
     bans: list[str],
 ) -> dict[str, set[str]]:
-    """
-    Fetch the set of energy divisions present on each BAN, in parallel.
-
-    Queries the energy-contracts endpoint with ``include_inactive=True`` for
-    each BAN in ``bans``. Returns a dict mapping BAN -> set of division strings
-    (``"ELECTRICITY"``, ``"GAS"``). A failed fetch for any individual BAN is
-    logged at DEBUG level and that BAN is omitted from the result, leaving the
-    caller to apply a fail-open fallback (show all options). If all fetches
-    fail a WARNING is logged.
-    """
+    """Fetch division sets per BAN in parallel."""
     if not bans:
         return {}
 
@@ -1175,19 +989,12 @@ async def _fetch_ban_divisions(
 
 
 def _energy_types_for_divisions(divisions: set[str]) -> list[str]:
-    """
-    Return the energy-type option list restricted to the given set of divisions.
-
-    ``"ELECTRICITY"`` maps to ``[consumption, injection]``;
-    ``"GAS"`` maps to ``[gas]``. Unknown division strings are ignored.
-    """
+    """Return the energy-type options restricted to the given divisions."""
     types: list[str] = []
     if "ELECTRICITY" in divisions:
         types.extend([ENERGY_TYPE_CONSUMPTION, ENERGY_TYPE_INJECTION])
     if "GAS" in divisions:
         types.append(ENERGY_TYPE_GAS)
-    # Preserve the canonical ENERGY_TYPE_OPTIONS ordering: consumption,
-    # injection, gas. The extension order above already matches it.
     return types
 
 
@@ -1201,30 +1008,13 @@ def _import_section_schema(  # noqa: PLR0913
     include_history_toggle: bool = True,
     available_energy_types: list[str] | None = None,
 ) -> section:
-    """
-    Build the voluptuous section for a single BAN's import options.
-
-    Pass ``include_history_toggle=False`` to omit the ``import_history`` field.
-    This is used by the ``import_options`` step (which follows the dedicated
-    ``import_history_choice`` step) so the user is not asked to confirm the
-    toggle a second time.
-
-    Pass ``available_energy_types`` to restrict the selector to a subset of
-    the full ``ENERGY_TYPE_OPTIONS`` list. The default value for the field is
-    also narrowed to that subset (unless ``default_energy_types`` is provided
-    explicitly, in which case that takes precedence). When ``None`` (the
-    default) all three options are shown.
-    """
-    # Determine which options to expose in the selector.
+    """Build the voluptuous section for a single BAN's import options."""
     shown_options = (
         available_energy_types
         if available_energy_types is not None
         else list(ENERGY_TYPE_OPTIONS)
     )
-    # Determine the pre-selected default. If the caller supplied an explicit
-    # default list, use it (clamped to the shown options so Voluptuous does
-    # not reject a stored value that is no longer available). If no explicit
-    # default was given, pre-select all shown options.
+    # Clamp default to shown options so voluptuous does not reject stored values.
     if default_energy_types is not None:
         effective_default = [t for t in default_energy_types if t in shown_options]
     else:
@@ -1257,10 +1047,8 @@ def _import_section_schema(  # noqa: PLR0913
             default=default_include_costs,
         )
     ] = bool
-    # Build date fields separately so we can conditionally attach the
-    # default only when a stored value exists. DateSelector validates via
-    # cv.date which rejects None, so passing default=None would break schema
-    # instantiation if the user has never set a date.
+    # DateSelector validates via cv.date and rejects None, so attach a default
+    # only when a stored value exists.
     _start_key = (
         vol.Optional(CONF_IMPORT_START_DATE, default=default_start_date)
         if default_start_date is not None
@@ -1279,10 +1067,7 @@ def _import_section_schema(  # noqa: PLR0913
     )
 
 
-# Hassfest rejects hardcoded URLs in strings.json descriptions and asks
-# integrations to inject them via description_placeholders instead. The
-# ``{readme_url}`` placeholder is referenced by every import step description
-# in strings.json and populated by the schema builders below.
+# Injected via description_placeholders. Hassfest rejects hardcoded URLs.
 _README_URL = (
     "https://github.com/DaanVervacke/hass-engie-be/blob/"
     "main/README.md#add-to-the-energy-dashboard"
@@ -1301,26 +1086,7 @@ def _build_import_options_schema(
     *,
     divisions_by_ban: dict[str, set[str]] | None = None,
 ) -> tuple[vol.Schema, dict[str, str]]:
-    """
-    Build a per-BAN sectioned schema for the import_options flow step.
-
-    Each business agreement gets its own section keyed by a
-    positional identifier (``ban_0``, ``ban_1``, ...) so strings.json can
-    provide a ``name`` template for each slot. The consumption address is
-    returned as step-level ``description_placeholders`` under the keys
-    ``title_0``, ``title_1``, ... so the frontend substitutes the address
-    into the section name (defined in strings.json as ``{title_0}``,
-    ``{title_1}``, etc.). The ``readme_url`` placeholder is also injected so
-    the step description's markdown link can point at the docs anchor without
-    hardcoding a URL in strings.json.
-
-    When ``divisions_by_ban`` is provided, the energy-type selector for each
-    BAN is restricted to the divisions present in that BAN's contracts
-    (``"ELECTRICITY"`` -> consumption + injection; ``"GAS"`` -> gas). A BAN
-    absent from the map (fetch failed) falls back to all three options.
-
-    Returns a ``(schema, placeholders)`` tuple.
-    """
+    """Build the per-BAN schema and placeholders for the import_options step."""
     schema_fields: dict[Any, Any] = {}
     placeholders: dict[str, str] = {
         "readme_url": _README_URL,
@@ -1347,16 +1113,7 @@ def _build_import_options_schema(
 def _build_import_history_choice_schema(
     accounts: list[dict[str, Any]],
 ) -> tuple[vol.Schema, dict[str, str]]:
-    """
-    Build a per-BAN sectioned schema for the import_history_choice flow step.
-
-    Each business agreement gets its own section keyed by a positional
-    identifier (``ban_0``, ``ban_1``, ...) with a single ``import_history``
-    boolean field. The consumption address is returned as step-level
-    ``description_placeholders`` under the keys ``title_0``, ``title_1``, ...
-
-    Returns a ``(schema, placeholders)`` tuple.
-    """
+    """Build the per-BAN schema and placeholders for the import_history_choice step."""
     schema_fields: dict[Any, Any] = {}
     placeholders: dict[str, str] = {"readme_url": _README_URL}
     for i, account in enumerate(accounts):
@@ -1380,13 +1137,7 @@ def _build_import_history_choice_schema(
 def _apply_import_defaults(
     accounts: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """
-    Apply import-history-off defaults to a list of account dicts.
-
-    Used for accounts whose ``import_history`` toggle was off in the
-    ``import_history_choice`` step, or when the choice step finishes with all
-    toggles off.
-    """
+    """Apply import-history-off defaults to a list of account dicts."""
     return [
         {
             **account,
@@ -1404,12 +1155,7 @@ def _apply_import_options(
     accounts: list[dict[str, Any]],
     user_input: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """
-    Merge per-BAN import options from ``user_input`` into account dicts.
-
-    The schema uses positional section keys (``ban_0``, ``ban_1``, ...) so
-    this function maps position back to account using the same index.
-    """
+    """Merge per-BAN import options from ``user_input`` into account dicts."""
     enriched: list[dict[str, Any]] = []
     for i, account in enumerate(accounts):
         section_data = user_input.get(f"ban_{i}", {})

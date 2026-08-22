@@ -31,10 +31,6 @@ runtime:
       bru.setVar('peaksMonth', String(now.getMonth() + 1));
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -86,14 +82,4 @@ settings:
 docs: |-
   Capacity-tariff (captar) peaks for the current month.
 
-  Mirrors api.py::async_get_monthly_peaks.
-
-  Despite the contract-accounts path segment this endpoint wants the
-  businessAgreementNumber. Passing a customerAccountNumber returns
-  HTTP 500 rather than the 400 the other endpoints return.
-
-  Returns year, month, a dailyPeaks array and a peakOfTheMonth
-  object, the last two both shaped {peakKWh, peakKW, start, end}.
-  sensor.py reads dailyPeaks directly. Note that _peaks.py talks
-  about a key called peaks: that is the name coordinator.py files
-  this whole response under, not a field ENGIE sends.
+  Mirrors api.py::async_get_monthly_peaks. Despite the contract-accounts path segment this endpoint wants the businessAgreementNumber. Passing a customerAccountNumber returns HTTP 500 rather than 400.

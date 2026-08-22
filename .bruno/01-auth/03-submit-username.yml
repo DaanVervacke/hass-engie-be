@@ -56,5 +56,4 @@ settings:
 docs: |-
   Auth step 3. Submits the username.
 
-  Mirrors api.py::_run_auth_steps_1_to_7 step 3. The webauthn / passkey
-  form fields are sent verbatim as the Smart App sends them.
+  Mirrors api.py::_run_auth_steps_1_to_7 step 3.

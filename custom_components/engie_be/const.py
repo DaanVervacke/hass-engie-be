@@ -18,9 +18,7 @@ PREMISES_BASE_URL = "https://www.engie.be/api/engie/be/ms/premises/customer/v1"
 PEAKS_BASE_URL = "https://api.engie.be/engie/ms/b2c-energy-insights/v1"
 ACCOUNTS_BASE_URL = "https://api.engie.be/engie/ms/accounts/customer/v1"
 HAPPY_HOUR_BASE_URL = "https://api.engie.be/engie/ms/energy-insights/customer/v1"
-# v2 of the same energy-insights service exposes the ``usage-details``
-# endpoint used to backfill historical hourly consumption / injection /
-# gas into Home Assistant's long-term statistics.
+# v2 exposes ``usage-details`` for historical hourly backfill.
 ENERGY_INSIGHTS_V2_BASE_URL = (
     "https://www.engie.be/api/engie/be/ms/energy-insights/customer/v2"
 )
@@ -31,31 +29,20 @@ BUSINESS_AGREEMENTS_BASE_URL = (
     "https://www.engie.be/api/engie/be/ms/business-agreements/customer/v1"
 )
 
-# Feature-flags response key that authoritatively reports per-BAN Happy
-# Hour enrolment. The endpoint also returns ``happy-hours-shown`` which
-# governs Smart App UI visibility, but ``-service-enabled`` is the one
-# that flips to ``true`` once a user signs the agreement; using it as
-# the gate keeps the integration aligned with the actual service state
-# rather than a UI quirk.
+# Per-BAN Happy Hours enrolment. ``-service-enabled`` flips on contract sign,
+# distinct from ``happy-hours-shown`` which only governs Smart App UI.
 HAPPY_HOURS_SERVICE_ENABLED_KEY = "happy-hours-service-enabled"
 
-# Feature-flag key that gates the Solar Surplus feature in the Smart App.
-# Extracted from the Android app's ``libapp.so`` (``isSolarSurplusShownDashboard``).
-# When ``false`` the app hides the surplus dashboard tile; we skip the
-# per-EAN forecasts fetch entirely so we match the app's contract and
-# save one GET per electricity EAN per refresh.
+# Solar Surplus dashboard gate (from Android ``libapp.so``). When false, skip
+# the per-EAN forecast fetch to match the app's contract.
 SOLAR_SURPLUS_SHOWN_DASHBOARD_KEY = "solar-surplus-shown-dashboard"
 
-# Feature-flag key naming the account's TOU supplier product. Its reason
-# includes the configuration id (e.g. "TOU001") that also appears as
-# supplierSchedule.activeConfigurationId. Not to be confused with
-# dgo-tou-is-active (network side) or tou-forecasts-shown (always true).
+# Supplier-side TOU product flag. Distinct from ``dgo-tou-is-active`` (network)
+# and ``tou-forecasts-shown`` (always true).
 TOU_FLAG_KEY = "tou-is-active"
 
-# ENUM states for the TOU slot sensors, lowercased. Wire codes normalise
-# through _tou.normalize_slot_code before reaching this list; codes that
-# fall outside it are logged rather than reported. ``day`` stays for
-# backward compatibility with automations that may already reference it.
+# TOU slot sensor ENUM states, lowercased. Wire codes normalise via
+# ``_tou.normalize_slot_code``. ``day`` stays for backward compatibility.
 TOU_SLOT_CODES: tuple[str, ...] = (
     "peak",
     "offpeak",
@@ -76,11 +63,8 @@ TOU_WEEKDAY_KEYS: tuple[str, ...] = (
     "sunday",
 )
 
-# Solar surplus forecast levels. Values match the ENGIE Smart App Flutter
-# app's ``SolarSurplusForecastSunState`` enum (verified from the Android
-# app's libapp.so) in lowercase. ``NO_DATA`` is the "no forecast yet" /
-# "no solar" sentinel; the other four escalate from ``NO_SURPLUS`` to
-# ``HIGH_SURPLUS`` for increasing expected injection.
+# Solar Surplus forecast levels (matches Smart App ``SolarSurplusForecastSunState``).
+# ``no_data`` is the "no forecast" sentinel. The rest escalate with expected injection.
 SOLAR_SURPLUS_LEVELS: tuple[str, ...] = (
     "no_data",
     "no_surplus",
@@ -175,87 +159,46 @@ DEFAULT_UPDATE_INTERVAL_MINUTES = 60
 MIN_UPDATE_INTERVAL_MINUTES = 5
 MAX_UPDATE_INTERVAL_MINUTES = 1440
 
-# EPEX day-ahead prices (used for ENGIE Dynamic tariff customers).
-# Requires authentication; see ``fetch_epex_prices`` in api.py.
+# EPEX day-ahead prices (ENGIE Dynamic tariff). Requires auth.
 EPEX_BASE_URL = "https://api.engie.be/engie/ms/pricing/v1/public/prices/epex"
-# All Belgian retail dynamic tariffs bill in local time; EPEX values
-# carry explicit DST-aware offsets but slot bucketing must use the
-# Brussels civil day to match what end-users see on their bill.
+# Bucket by Brussels civil day so slots line up with what customers see billed.
 EPEX_TZ = "Europe/Brussels"
-# Shared Brussels ZoneInfo instance, reused across the integration so every
-# module bucketing timestamps into local civil time agrees on the same
-# object instead of constructing its own ZoneInfo("Europe/Brussels").
 BRUSSELS_TZ = ZoneInfo(EPEX_TZ)
-# Default slot length. Quarter-hourly already ships and is selected
-# per-coordinator via ``EpexGranularity``.
 EPEX_DEFAULT_SLOT_DURATION_MINUTES = 60
 
-# Raw EPEX values are EUR/MWh; the integration normalises everything
-# to EUR/kWh for consistency with the existing supplier-energy-prices
-# sensors.
+# Raw EPEX is EUR/MWh. Normalise to EUR/kWh across the integration.
 EPEX_MWH_TO_KWH = 1000.0
 
-# Coordinator payload key for the dynamic-tariff flag (kept namespaced
-# to avoid clashing with future ENGIE response fields).
 KEY_IS_DYNAMIC = "is_dynamic"
 
-# Energy-contracts product codes that identify a dynamic (EPEX-indexed)
-# tariff. The API returns ``productConfiguration.energyProduct`` per
-# active contract; only contracts whose code appears in this set count
-# as dynamic. Held as a frozenset so future codes (e.g. a renamed
-# successor product) can be added in one place without touching the
-# detection predicate.
+# ``productConfiguration.energyProduct`` codes that identify a dynamic tariff.
 DYNAMIC_ENERGY_PRODUCTS: frozenset[str] = frozenset({"DYNAMIC"})
 
-# Historical usage import
-# Fallback window applied only when the energy-contracts endpoint fails
-# or returns no usable start date on a first-ever import. In the normal
-# path the orchestrator walks back to the earliest active-contract
-# ``legalContractStartDate`` returned by ENGIE.
+# Historical usage import.
+# Fallback window when energy-contracts has no usable start date.
 HISTORY_BACKFILL_YEARS = 3
-# Days per HTTP request when walking the backfill window. 7d bounds
-# each response to 168 hourly items and caps the amount of unpersisted
-# work lost to a mid-import failure at one week of rows.
+# 7d chunk caps each response at 168 hourly items and bounds mid-import loss.
 HISTORY_CHUNK_DAYS = 7
-# A setup-time backfill whose newest recorded statistic is older than this
-# is treated as interrupted, not complete, and retried on the next reload
-# or restart. A healthy, actively-synced account should never be this far
-# behind; ENGIE has no publication lag anywhere close to this. See Guard 1
-# in _async_guarded_import (__init__.py) for the full reasoning.
+# A backfill whose newest stat is older than this is treated as interrupted
+# and retried. See Guard 1 in _async_guarded_import (__init__.py).
 HISTORY_BACKFILL_STALE_DAYS = 30
-# Auto-mode re-imports this many days back from today on every run and
-# overwrites them in place, so a value ENGIE published late (or a zero a
-# pre-v0.14.0b5 version wrote for a not-yet-published hour) is corrected
-# on the next sync rather than staying frozen behind the resume point.
-# Must comfortably exceed ENGIE's 1-2 day publication lag. Deeper stale
-# data (from a long stint on an old version) still needs a one-time
-# explicit re-import. See async_import_usage_history in _statistics.py.
+# Auto-mode re-imports this many days back and overwrites in place, so a
+# late-published value is corrected instead of frozen behind the resume point.
+# Must exceed ENGIE's 1-2 day publication lag.
 HISTORY_HEAL_LOOKBACK_DAYS = 3
-# How long to wait for the recorder to finish a statistics delete before
-# treating the clear as failed. The delete itself is a few milliseconds;
-# this budget only covers recorder-queue backpressure. It also guards
-# against a delete that raises on the recorder thread, which would skip
-# the completion callback and otherwise hang the awaiting caller forever.
-# See async_clear_usage_history in _statistics.py.
+# Recorder-delete timeout. Also guards a raise on the recorder thread that
+# would skip the completion callback and hang the caller.
 CLEAR_STATISTICS_TIMEOUT_SECONDS = 60
 
-# Service name for the ``import_history`` service. Exposes optional
-# ``start_date`` / ``end_date`` for explicit windows; omit both for
-# auto (incremental delta) mode.
+# Optional ``start_date`` / ``end_date`` for explicit windows. Omit both for auto mode.
 SERVICE_IMPORT_HISTORY = "import_history"
-# Companion service that clears the three per-BAN external statistic
-# streams so the next import walks all the way back to the business
-# agreement's start date again. Meant for post-hoc corrections when
-# ENGIE republishes historical data.
+# Clears per-BAN external statistic streams so the next import walks to BAN start.
 SERVICE_CLEAR_IMPORT_HISTORY = "clear_import_history"
 ATTR_START_DATE = "start_date"
 ATTR_END_DATE = "end_date"
 ATTR_ENERGY_TYPE = "energy_type"
 ATTR_INCLUDE_COSTS = "include_costs"
-# User-facing energy-type identifiers accepted by the import / clear
-# services. Kept separate from the internal ``STREAM_*`` keys in
-# ``_statistics.py`` so the service surface uses UI-friendly names while
-# the orchestrator keeps its internal per-direction split.
+# User-facing identifiers for import/clear (separate from internal STREAM_* keys).
 ENERGY_TYPE_CONSUMPTION = "consumption"
 ENERGY_TYPE_INJECTION = "injection"
 ENERGY_TYPE_GAS = "gas"

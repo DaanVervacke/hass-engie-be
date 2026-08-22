@@ -1,22 +1,4 @@
-"""
-Pure helpers for solar-surplus forecast payload parsing.
-
-Every consumer of the ENGIE solar-surplus payload (the numeric and enum
-sensors in ``sensor.py``, the has-solar detection in ``coordinator.py``, and
-the Energy dashboard hook in ``energy.py``) walks the same nested shape: a
-per-EAN dict of day entries, each carrying a ``details`` list of hourly
-slots. Centralising the walk here means a payload-shape change is one edit
-instead of three.
-
-Includes:
-- solar_surplus_payload: accessor for coordinator data
-- parse_slot_start: parse a slot's startTime into an aware datetime
-- flat_slots: flatten a per-EAN forecasts list into a flat slot list
-- slot_covering: find the slot covering a given instant
-- slots_for_local_date: filter slots to a Brussels-local date
-- next_hour_boundary: find the next slot start after a given instant
-- derive_has_solar: infer solar presence from a payload wrapper
-"""
+"""Pure helpers for Solar Surplus forecast payload parsing."""
 
 from __future__ import annotations
 
@@ -108,11 +90,10 @@ def derive_has_solar(wrapper: dict[str, Any] | None) -> bool | None:
     """
     Infer whether the customer has a solar installation from a wrapper.
 
-    Returns ``True`` when any hourly slot across any EAN and any day
-    carries a level other than ``NO_DATA``, ``False`` when the wrapper
-    is present but every slot is ``NO_DATA`` (the shape ENGIE returns
-    for customers without solar), and ``None`` when no wrapper is
-    available so callers know to preserve the last-known value.
+    Returns ``True`` when any slot has a level other than ``NO_DATA``,
+    ``False`` when the wrapper is present but every slot is ``NO_DATA``,
+    and ``None`` when no wrapper is available so callers preserve the
+    last-known value.
     """
     if not isinstance(wrapper, dict):
         return None

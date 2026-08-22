@@ -18,10 +18,6 @@ runtime:
   scripts:
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -70,22 +66,6 @@ settings:
   followRedirects: false
   maxRedirects: 5
 docs: |-
-  Expected solar injection surplus per hour.
+  Expected Solar Surplus injection per hour.
 
-  Mirrors api.py::async_get_solar_surplus_forecasts.
-
-  The path wants the ENGIE delivery-point id, which is the EAN plus
-  an _ID1 suffix, so the URL interpolates ENGIE_EAN and appends it.
-  Building it in a script would not work: bru.setVar writes a runtime
-  variable and bru.getEnvVar only reads environment ones, so a seeded
-  EAN would come back empty.
-
-  A customer with no solar still gets a well-formed response whose
-  level values are all NO_DATA, so the integration infers availability
-  from the response rather than probing a flag. It does check
-  solar-surplus-shown-dashboard first to skip the per-EAN fan-out.
-
-  coordinator.py stores the forecasts array as returned. The fields
-  forecasts[].{forecastDate,level,details} and
-  details[].{startTime,value,level} are read in sensor.py, energy.py
-  and diagnostics.py. Levels are in const.py::SOLAR_SURPLUS_LEVELS.
+  Mirrors api.py::async_get_solar_surplus_forecasts. The path takes the ENGIE delivery-point id, which is EAN + '_ID1'. Customers without solar still get a well-formed response with all levels NO_DATA, so availability is inferred from the payload.

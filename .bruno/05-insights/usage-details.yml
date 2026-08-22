@@ -43,10 +43,6 @@ runtime:
       bru.setVar('usageEndDate', isoDate(end));
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -85,24 +81,6 @@ settings:
   followRedirects: false
   maxRedirects: 5
 docs: |-
-  Hourly consumption, injection and gas. This is what the history
-  import writes into long-term statistics.
+  Hourly consumption, injection and gas rows for the history import.
 
-  Mirrors api.py::async_get_usage_details.
-
-  The window is the last 7 days, matching const.py::HISTORY_CHUNK_DAYS
-  (168 hourly rows per response). startDate is inclusive, endDate
-  exclusive.
-
-  includeSimulation=true matches _statistics.py. Without it ENGIE
-  scopes the response to the currently active contract, so a backfill
-  across an earlier contract on the same BAN comes back empty. Any
-  projected future rows it adds carry partialData true, and the
-  converter drops them by comparing end against now rather than by
-  filtering on that flag, because ENGIE also sets it on final rows
-  from expired contracts.
-
-  Parsed by _statistics.py: items[].{start,end}, then
-  energy.electricity.{offtake,injection}.kWhSum and energy.gas.kWh,
-  plus costs.electricity.{offtake,injection}.amountSum and costs.gas
-  when costs are imported.
+  Mirrors api.py::async_get_usage_details. includeSimulation=true is load-bearing: without it ENGIE scopes the response to the currently active contract, so a backfill across an earlier contract on the same BAN comes back empty. partialData=true is set on both projected future rows and final rows from expired contracts, so the converter filters by end vs now instead.

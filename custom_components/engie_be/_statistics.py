@@ -1,14 +1,4 @@
-"""
-Historical usage import into Home Assistant long-term statistics.
-
-Turns ENGIE usage-details payloads into hour-aligned StatisticData rows
-and feeds them to ``async_add_external_statistics`` under six per-BAN
-statistic IDs: three energy streams (``engie_be:{ban}_consumption``,
-``_injection``, ``_gas`` in kWh) and three matching cost streams
-(``_consumption_cost``, ``_injection_cost``, ``_gas_cost`` in EUR).
-The energy dashboard picks these up automatically for electricity and
-gas source pickers.
-"""
+"""Historical usage import into Home Assistant long-term statistics."""
 
 from __future__ import annotations
 
@@ -57,8 +47,6 @@ if TYPE_CHECKING:
 
 _UNIT_EUR = "EUR"
 
-# Statistic-stream keys, kept as module constants so the pure converter,
-# the metadata factory and the orchestrator agree on spelling.
 STREAM_CONSUMPTION = "consumption"
 STREAM_INJECTION = "injection"
 STREAM_GAS = "gas"
@@ -74,14 +62,12 @@ _STREAMS: tuple[str, ...] = (
     STREAM_GAS_COST,
 )
 
-# User-facing energy-type selectors map 1:1 to internal energy streams.
 _ENERGY_TYPE_TO_STREAMS: dict[str, frozenset[str]] = {
     ENERGY_TYPE_CONSUMPTION: frozenset({STREAM_CONSUMPTION}),
     ENERGY_TYPE_INJECTION: frozenset({STREAM_INJECTION}),
     ENERGY_TYPE_GAS: frozenset({STREAM_GAS}),
 }
 
-# Parallel cost streams for each energy stream.
 _ENERGY_STREAM_TO_COST_STREAM: dict[str, str] = {
     STREAM_CONSUMPTION: STREAM_CONSUMPTION_COST,
     STREAM_INJECTION: STREAM_INJECTION_COST,
@@ -97,13 +83,10 @@ def streams_for_energy_types(
     include_costs: bool = False,
 ) -> frozenset[str]:
     """
-    Return the set of internal streams matching a list of energy-type selectors.
+    Return the internal streams for a list of energy-type selectors.
 
-    ``None`` or an empty list expands to all energy streams (auto mode).
-    Unknown values are silently ignored so a future ENGIE-side addition
-    (e.g. district heating) does not break older service calls.
-    When ``include_costs`` is true, the matching cost stream is included
-    alongside each resolved energy stream.
+    ``None`` or empty expands to all energy streams. Unknown values are
+    ignored so a future ENGIE-side addition never breaks older calls.
     """
     if not energy_types:
         base = frozenset(_ENERGY_STREAMS)
@@ -127,7 +110,6 @@ def streams_for_energy_types(
 class _StreamSpec:
     """Where in the ENGIE payload each stream's hourly value lives."""
 
-    # Full path from the item root (not from item["energy"]) to the leaf number.
     item_path: tuple[str, ...]
     display_name: str
     unit_of_measurement: str
@@ -147,8 +129,7 @@ _STREAM_SPECS: dict[str, _StreamSpec] = {
         unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         unit_class=EnergyConverter.UNIT_CLASS,
     ),
-    # ENGIE reports gas in kWh directly (energy-equivalent), so all three
-    # energy streams share the same unit class and no m3-to-kWh conversion runs.
+    # ENGIE reports gas in kWh directly, no m3-to-kWh conversion runs.
     STREAM_GAS: _StreamSpec(
         item_path=("energy", "gas", "kWh"),
         display_name="gas consumption",
@@ -167,7 +148,7 @@ _STREAM_SPECS: dict[str, _StreamSpec] = {
         unit_of_measurement=_UNIT_EUR,
         unit_class=None,
     ),
-    # costs.gas is a bare number, not a nested object (unlike costs.electricity).
+    # costs.gas is a bare number, not a nested object like costs.electricity.
     STREAM_GAS_COST: _StreamSpec(
         item_path=("costs", "gas"),
         display_name="gas consumption cost",
@@ -199,18 +180,7 @@ def _filter_by_contract(
     streams: frozenset[str],
     contracts_payload: dict[str, Any] | None,
 ) -> frozenset[str]:
-    """
-    Narrow ``streams`` to those whose division has a contract on this BAN.
-
-    Fail-open: returns ``streams`` unchanged when ``contracts_payload``
-    is ``None`` or malformed (no ``items`` list), matching the existing
-    policy that an ENGIE outage on the contracts endpoint must not block
-    an import. Shared between ``async_import_usage_history`` (which
-    fetches or reuses a payload before calling this) and Guard 1 in
-    ``_async_guarded_import`` (``__init__.py``), which only ever reuses
-    an already-cached payload and never fetches - see that call site for
-    why.
-    """
+    """Narrow ``streams`` to divisions with a contract on this BAN (fail-open)."""
     if not isinstance(contracts_payload, dict):
         return streams
     items_list = contracts_payload.get("items")
@@ -229,16 +199,11 @@ def earliest_contract_start_date(
     streams: frozenset[str],
 ) -> date | None:
     """
-    Return the earliest ``legalContractStartDate`` across contracts.
+    Return the earliest ``legalContractStartDate`` across matching contracts.
 
-    Considers every contract whose ``division`` matches the requested
-    ``streams``, active and inactive alike. ENGIE retains hourly usage
-    data across contract renewals and supplier switches, so the
-    earliest known contract start on a BAN is the true lower bound
-    of what we can pull. ``legalContractStartDate`` is preferred;
-    falls back to ``startDate`` if only that is populated. Returns
-    ``None`` when no matching contract carries a parseable date, so
-    the caller can fall back to a fixed default.
+    Considers active and inactive alike because ENGIE keeps usage data
+    across renewals. Falls back to ``startDate`` when the legal field is
+    missing. Returns ``None`` when no parseable date is found.
     """
     if not isinstance(contracts_payload, dict):
         return None
@@ -252,10 +217,6 @@ def earliest_contract_start_date(
     for item in items:
         if not isinstance(item, dict):
             continue
-        # Include inactive/terminated contracts too: ENGIE keeps hourly
-        # usage data across contract renewals and supplier switches, so
-        # the earliest known contract start on a BAN is a better lower
-        # bound than the currently-active contract's start.
         if item.get("division") not in wanted:
             continue
         raw = item.get("legalContractStartDate") or item.get("startDate")
@@ -281,13 +242,8 @@ def _metadata(
     device_name: str,
 ) -> StatisticMetaData:
     spec = _STREAM_SPECS[stream]
-    # ``StatisticMetaData`` has no device-linkage field, so external
-    # statistics can't inherit a device subtitle the way sensor entities
-    # can. The convention across peer utility integrations (opower,
-    # elvia, suez_water, mill) is to fold the disambiguating context
-    # into the ``name`` itself. Format: primary descriptor, then the
-    # consumption address, so multi-BAN users can scan a list in the
-    # Energy dashboard source picker.
+    # StatisticMetaData has no device-linkage field, so the address is
+    # folded into ``name`` for multi-BAN users, matching peer utilities.
     return StatisticMetaData(
         mean_type=StatisticMeanType.NONE,
         has_sum=True,
@@ -301,12 +257,9 @@ def _metadata(
 
 def _dig(payload: dict[str, Any] | None, path: tuple[str, ...]) -> float | None:
     """
-    Walk ``path`` through nested dicts, returning the leaf as a float.
+    Walk ``path`` and return the leaf as float, or ``None`` when unresolved.
 
-    Returns ``None`` when the path is missing, a node along it is not a
-    dict, the value is null, or the value cannot be parsed as a float -
-    this distinguishes ENGIE's placeholder rows (no data published yet)
-    from genuine zero-value hours, so only the latter get recorded.
+    Distinguishes ENGIE's placeholder rows from genuine zero-value hours.
     """
     node: Any = payload
     for key in path:
@@ -327,30 +280,12 @@ def usage_items_to_statistics(
     """
     Convert ENGIE usage items to per-stream hour-aligned StatisticData.
 
-    - Rows whose ``end`` is in the future are skipped so an in-progress
-      or simulated hour never lands in permanent statistics. ENGIE also
-      marks rows from expired contracts as ``partialData: true`` even
-      though the values are final, so a plain ``partialData`` filter
-      would drop real historical data. ``end > now`` catches only the
-      truly not-yet-finalised rows.
-    - A stream is skipped for a row when ``_dig`` returns ``None`` (its
-      value is missing, null, or unparseable), which is how ENGIE marks
-      an hour it has not published data for yet. Skipping means no row
-      is written and the running sum does not advance, so the resume
-      cutoff can never move past unpublished data. A leaf that is
-      present with a ``0.0`` value is a genuine zero and is still
-      recorded.
-    - Each stream is checked against its own entry in ``cutoffs``
-      (``None`` means the stream has no prior data, so nothing is
-      skipped for it) rather than one shared value, so a stream that is
-      behind its siblings does not have its still-missing rows silently
-      dropped just because another stream in the same call is already
-      caught up through that point. ENGIE bucket starts equal the last
-      recorded start on the boundary hour, so ``<=`` (not ``<``) is
-      correct.
-    - Sums are running cumulative totals seeded from ``initial_sums``;
-      HA's Energy dashboard reads the ``sum`` column, not per-bucket
-      ``state``, so the running total is what matters.
+    Skips rows whose ``end`` is in the future (in-progress / simulated).
+    Skips a stream on missing/unparseable value so the resume cutoff
+    never advances past unpublished data. Each stream keeps its own
+    cutoff, compared with ``<=`` because ENGIE bucket starts equal the
+    last recorded start on the boundary hour. Sums are running totals
+    seeded from ``initial_sums``.
     """
     sums: dict[str, float] = {
         stream: initial_sums.get(stream, 0.0) for stream in _STREAMS
@@ -402,17 +337,7 @@ def usage_items_to_statistics(
 
 
 def _sum_or_zero(row: StatisticsRow) -> float:
-    """
-    Return a statistics row's cumulative sum, or ``0.0`` when it is null.
-
-    The recorder can legitimately return a row whose ``sum`` key is
-    present but whose value is ``None`` (e.g. a row written before any
-    delta was ever computed). ``StatisticsRow.get("sum", 0.0)`` does not
-    guard against this: the default only applies when the key is
-    missing, not when its value is null, so a bare ``float(...)`` on
-    that result raises ``TypeError`` and aborts the resume/reseed it
-    feeds into.
-    """
+    """Return a statistics row's cumulative sum, or ``0.0`` when the value is null."""
     value = row.get("sum")
     return value if value is not None else 0.0
 
@@ -452,17 +377,8 @@ async def _sums_before(
     """
     Return the last recorded cumulative sum strictly before ``before_utc``.
 
-    Used to seed ``running_sums`` for an explicit re-import whose window
-    starts earlier than the newest recorded statistic. Seeding from the
-    newest lifetime row (as auto mode does, and as explicit mode used to
-    do) makes the rows rewritten inside the window jump straight to the
-    lifetime total, overshooting the untouched rows that immediately
-    follow the window; HA then reads that drop back down as a meter
-    reset. Seeding from the row immediately preceding the window keeps
-    the boundary monotonic instead.
-
-    Streams with no statistic recorded before ``before_utc`` (the window
-    predates all existing data for that stream) default to 0.0.
+    Seeds ``running_sums`` for a re-import whose window starts earlier
+    than the newest recorded statistic so the boundary stays monotonic.
     """
     out: dict[str, float] = {}
     recorder = get_instance(hass)
@@ -500,48 +416,12 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     """
     Import historical hourly usage for one business agreement.
 
-    Auto mode (no ``start_date``/``end_date``): first import walks back to
-    the earliest ``legalContractStartDate`` across active and inactive
-    contracts returned by the ENGIE energy-contracts endpoint. Falls back to a
-    ``HISTORY_BACKFILL_YEARS``-year window only if that endpoint fails or
-    returns no usable date. Subsequent runs, once every requested stream is
-    caught up, fetch from ``today - HISTORY_HEAL_LOOKBACK_DAYS`` rather than
-    strictly from the last recorded statistic, and overwrite the rows in
-    that rolling window in place. This heals a value ENGIE published or
-    corrected after the previous sync already ran (and a placeholder zero a
-    pre-v0.14.0b5 version once recorded) without needing a manual re-import,
-    at the cost of re-writing a few days of rows on every run. An account
-    that is behind by more than the lookback resumes from its own cutoff
-    instead, so no history is skipped.
-
-    Explicit mode (any date supplied): imports exactly the requested
-    window. The last-stats cutoff is bypassed so re-imports overwrite
-    (statistic_id, start) collisions in place. When ``start_date`` is
-    given, cumulative ``sum`` values seed from the row immediately
-    preceding the window (not the lifetime-newest row) so a re-import of
-    an older window stays monotonic against the untouched rows that
-    follow it. This does not rewrite that untouched tail, so if the
-    re-imported deltas differ substantially from the original ones, the
-    tail's sums may still understate or overstate the true lifetime
-    total from that point on; only the window itself and the boundary
-    into it are guaranteed correct.
-
-    Both the rolling heal and an explicit re-import share the same
-    ``overwrite_in_place`` flag, which pairs the running-sum reseed with
-    disabling the per-stream cutoff in the converter. The two must stay
-    enabled together or the cumulative sums double-count.
-
-    Chunks the fetch by ``HISTORY_CHUNK_DAYS`` and **persists each chunk
-    immediately** rather than accumulating and writing at the end.  A
-    failure partway through leaves earlier chunks safely in the
-    statistics table, so a follow-up press resumes from
-    ``_last_stats`` without redoing successful work.  Returns the total
-    number of hourly rows written.
-
-    ``contracts_payload`` may be passed in by callers who have already
-    fetched contracts for this BAN (with ``include_inactive=True``).
-    When provided, the orchestrator skips its own fetch. When ``None``,
-    the orchestrator fetches fresh (fail-open on network error).
+    Auto mode walks back to the earliest contract start, then heals the
+    last ``HISTORY_HEAL_LOOKBACK_DAYS`` on every run. Explicit mode
+    imports exactly the requested window, bypassing the resume cutoff
+    and reseeding sums from the row preceding the window. Chunks are
+    persisted immediately so a failure resumes cleanly. Returns rows
+    written.
     """
     business_agreement_number = subentry.data[CONF_BUSINESS_AGREEMENT_NUMBER]
     masked_ban = business_agreement_number[-4:]
@@ -558,12 +438,7 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
         sorted(active_streams),
     )
 
-    # Reuse a caller-provided contracts payload when available (setup and
-    # service-action call sites already have this cached on
-    # ``EngieBeSubentryData.energy_contracts_payload``). Fall back to a
-    # fresh fetch when nothing was passed in.
-    # include_inactive=True so a user who switched gas providers but kept ENGIE
-    # electricity still gets the gas history imported for the inactive contract.
+    # include_inactive=True so history from prior terminated contracts is imported.
     if contracts_payload is None:
         try:
             contracts_payload = await client.async_get_energy_contracts(
@@ -578,11 +453,7 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
                 err,
             )
 
-    # Filter active_streams to only those whose division has at least one
-    # contract on this BAN (active or inactive). This prevents writing
-    # all-zero statistic streams for divisions the BAN has never had.
-    # Fail-open: if the fetch failed or the payload is malformed, skip
-    # filtering so an ENGIE outage does not kill an import.
+    # Drop streams whose division has no contract on this BAN.
     filtered = _filter_by_contract(active_streams, contracts_payload)
     if filtered != active_streams:
         dropped = sorted(active_streams - filtered)
@@ -602,19 +473,13 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
 
     last = await _last_stats(hass, business_agreement_number, active_streams)
 
-    # Running sums are threaded across chunks by the orchestrator so per-
-    # chunk writes are still monotonically correct.  Seeded from the
-    # newest existing row per stream so a resumed import continues the
-    # lifetime total rather than starting over.
+    # Seed running sums from the newest existing row per stream so a
+    # resumed import continues the lifetime total.
     running_sums: dict[str, float] = {
         stream: _sum_or_zero(entry) for stream, entry in last.items()
     }
 
-    # Each stream's own resume point. Absent from ``last`` means never
-    # imported: no cutoff, everything in the (widened, see below) window
-    # is new. A stream present in ``last`` keeps its own timestamp so it
-    # only skips rows it has actually already recorded, not whatever its
-    # freshest sibling happens to have.
+    # Per-stream resume points: absent means never imported.
     cutoffs: dict[str, datetime | None] = {
         stream: dt_util.utc_from_timestamp(float(entry["start"]))
         for stream, entry in last.items()
@@ -639,15 +504,12 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
             {s: round(v, 4) for s, v in running_sums.items()},
         )
 
-    # Query in local (Brussels) civil dates because ENGIE's startDate /
-    # endDate params are civil-day boundaries; the response items carry
-    # their own explicit +02:00 / +01:00 offsets so DST is handled
-    # correctly downstream in ``usage_items_to_statistics``.
+    # ENGIE startDate/endDate are civil-day boundaries. Response rows
+    # carry offsets so DST is handled downstream.
     now_local = dt_util.now()
     explicit_window = start_date is not None or end_date is not None
-    # Hoisted so it survives past the if/elif/else below: only set inside
-    # the resume (``else``) branch, but ``heal_active`` needs it afterward
-    # to tell a heal-pulled-back window apart from a genuine resume.
+    # Hoisted so ``heal_active`` below can tell a heal-widened window
+    # apart from a genuine resume.
     resume_start_date: date | None = None
     if start_date is not None:
         window_start_date = start_date
@@ -657,13 +519,8 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
             window_start_date.isoformat(),
         )
     elif any_stream_missing:
-        # At least one requested stream has never been imported (this
-        # subsumes the old "no prior stats at all" case). Widen the whole
-        # window to first-import scope so that stream gets full history.
-        # Streams that already have data keep their own cutoff (set
-        # above), so they just re-skip their own already-covered rows
-        # instead of double-counting - see the per-stream-cutoff note
-        # above for why that is required, not optional.
+        # Widen the window to full history for any stream never imported.
+        # Caught-up streams keep their own cutoff and re-skip their rows.
         contract_start = earliest_contract_start_date(contracts_payload, active_streams)
         if contract_start is not None:
             window_start_date = contract_start
@@ -686,11 +543,7 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
                 window_start_date.isoformat(),
             )
     else:
-        # Every requested stream already has some data: resume from the
-        # EARLIEST of their cutoffs (not the latest) so no stream's own
-        # gap gets skipped just because a sibling is more current.
-        # ``any_stream_missing`` is False here, so every entry is a real
-        # datetime, not None - narrow explicitly for the type checker.
+        # Resume from the EARLIEST per-stream cutoff so no gap is skipped.
         known_cutoffs = [
             cutoffs[stream] for stream in active_streams if cutoffs[stream] is not None
         ]
@@ -698,14 +551,8 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
         resume_start_date = dt_util.as_local(
             earliest_cutoff + timedelta(hours=1)
         ).date()
-        # Pull the window back to the rolling heal floor so a caught-up
-        # account still re-fetches (and overwrites in place, see
-        # ``overwrite_in_place`` below) the last few days on every run -
-        # that is what lets a stale placeholder zero or a late ENGIE
-        # correction inside that window self-heal. ``min(...)`` means a
-        # behind account (resume point older than the heal floor, e.g.
-        # after a missed sync) is unaffected: its own, earlier
-        # resume_start_date wins and no history is skipped.
+        # Pull the window back to the rolling heal floor so caught-up
+        # accounts still overwrite the last few days on every run.
         heal_floor_date = (
             now_local - timedelta(days=HISTORY_HEAL_LOOKBACK_DAYS)
         ).date()
@@ -727,19 +574,14 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
                 earliest_cutoff.isoformat(),
             )
 
-    # endDate is exclusive; when auto, include tomorrow so today's
-    # completed hours land regardless of the caller's civil day.
+    # endDate is exclusive. When auto, include tomorrow so today's rows land.
     window_end_date = (
         end_date if end_date is not None else (now_local + timedelta(days=1)).date()
     )
 
-    # Only reject when the *user's own two inputs* are contradictory.
-    # Keyed on ``start_date is not None``, NOT ``explicit_window``: an
-    # ``end_date``-only call gets its ``window_start_date`` from the
-    # resume logic above, not from the caller, so a caught-up account
-    # landing on an empty window there is the same legitimate "nothing
-    # left to import through that date" outcome as auto mode, not a user
-    # mistake to scold them for.
+    # Reject only when the user-supplied start/end are contradictory.
+    # end_date-only calls compute their start from the resume logic, so
+    # an empty window there is legitimate, not a user error.
     if start_date is not None and window_start_date >= window_end_date:
         raise ServiceValidationError(
             translation_domain=DOMAIN,
@@ -758,23 +600,11 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
         explicit_window,
     )
 
-    # ``overwrite_in_place`` is true for an explicit re-import (the caller
-    # named the window start themselves) and for an auto-mode heal (the
-    # resume window got pulled back to the rolling heal floor above). In
-    # both cases ENGIE's rows must overwrite (statistic_id, start)
-    # collisions instead of being skipped at a cutoff, and running_sums
-    # must be reseeded from the row preceding the window (``_sums_before``)
-    # rather than kept at the lifetime-newest seed from ``last`` above.
-    # These two effects are two sides of the same coin and MUST stay
-    # paired on this one flag: reseeding without disabling the cutoff
-    # would skip the very rows we reseeded for, and disabling the cutoff
-    # without reseeding would re-add already-counted rows on top of the
-    # newest-row seed, double-counting. See "Why the sums stay correct"
-    # in plans/214-auto-heal-rolling-reimport-window.md for the full
-    # argument. Deliberately keyed on ``start_date is not None`` /
-    # ``heal_active``, NOT on ``explicit_window``: an ``end_date``-only
-    # call must not trip either effect, or it double-counts the boundary
-    # day.
+    # overwrite_in_place pairs the running-sum reseed with disabling the
+    # per-stream cutoff. Both effects MUST stay paired on this one flag
+    # or cumulative sums double-count. Deliberately not keyed on
+    # ``explicit_window``: an end_date-only call must trigger neither
+    # effect or the boundary day double-counts.
     heal_active = (
         start_date is None
         and not any_stream_missing
@@ -784,14 +614,8 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
     overwrite_in_place = start_date is not None or heal_active
 
     if overwrite_in_place:
-        # Reseed running_sums from the row immediately preceding the
-        # window instead of the lifetime-newest row above. If the window
-        # lies at or after the newest existing row, this resolves to the
-        # same value (no-op); if it lies before (an explicit re-import
-        # patching an older gap, or a heal pulling the window back), this
-        # keeps the sum series monotonic across the window boundary.
-        # Streams with nothing recorded before the window default to 0.0,
-        # matching a first-ever import of that range.
+        # Reseed from the row preceding the window so the sum series
+        # stays monotonic across the window boundary.
         window_start_utc = dt_util.as_utc(dt_util.start_of_local_day(window_start_date))
         seeded = await _sums_before(
             hass, business_agreement_number, active_streams, window_start_utc
@@ -820,11 +644,8 @@ async def async_import_usage_history(  # noqa: PLR0912, PLR0913, PLR0915 - orche
             start_date=cursor_date,
             end_date=chunk_end_date,
             granularity="HOURLY",
-            # ENGIE scopes the response to the currently-active contract
-            # unless includeSimulation is true, in which case it serves
-            # data across all past contracts on this BAN. Any projected
-            # future rows carry partialData:true and get dropped by the
-            # converter.
+            # includeSimulation=True to get rows from past contracts.
+            # Projected rows are dropped by the converter's future filter.
             include_simulation=True,
         )
         items = response.get("items") if isinstance(response, dict) else None
@@ -869,18 +690,10 @@ async def async_clear_usage_history(
     streams: frozenset[str] | None = None,
 ) -> list[str]:
     """
-    Delete external statistic streams for one BAN.
+    Delete external statistic streams for one BAN and await the delete.
 
-    ``streams`` defaults to the three energy streams (consumption, injection,
-    gas). Pass cost streams explicitly to also clear those. The next import
-    for the same BAN and cleared streams will do a full backfill again.
-    Returns the list of cleared statistic IDs.
-
-    Awaits the recorder's delete before returning, so a caller that clears
-    and then re-imports never races a not-yet-applied delete, and a delete
-    that fails on the recorder thread surfaces as an error instead of a
-    silent success. Raises ``HomeAssistantError`` if the recorder does not
-    signal completion within ``CLEAR_STATISTICS_TIMEOUT_SECONDS``.
+    Raises ``HomeAssistantError`` when the recorder does not signal
+    completion within ``CLEAR_STATISTICS_TIMEOUT_SECONDS``.
     """
     active_streams = streams or frozenset(_ENERGY_STREAMS)
     stat_ids = [
@@ -898,7 +711,7 @@ async def async_clear_usage_history(
     )
     recorder = get_instance(hass)
     # ``clear_statistics`` mutates the statistics_meta table and must run
-    # on the recorder's own thread; the recorder asserts this and raises
+    # on the recorder's own thread. The recorder asserts this and raises
     # ``RuntimeError: Detected unsafe call not in recorder thread`` when
     # invoked via ``async_add_executor_job``. Queue a ``ClearStatisticsTask``
     # so the recorder itself dequeues it on the correct thread, and bridge

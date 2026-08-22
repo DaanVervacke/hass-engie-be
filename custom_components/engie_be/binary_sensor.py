@@ -35,7 +35,7 @@ from .entity import (
     _BoundaryScheduleMixin,
 )
 
-# Coordinator centralises updates; entities never poll individually.
+# Coordinator centralises updates. Entities never poll individually.
 PARALLEL_UPDATES = 0
 
 if TYPE_CHECKING:
@@ -59,13 +59,6 @@ AUTHENTICATION_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     entity_category=EntityCategory.DIAGNOSTIC,
 )
 
-# EPEX "negative price right now" indicator.
-#
-# Created per dynamic-tariff customer account so users can wire
-# ``numeric_state``-free automations such as "run the dishwasher when
-# wholesale is paying me".  Reports ``unavailable`` during outages so
-# downstream automations don't fire on stale data.  Fixed-tariff
-# accounts only get the entity under the expose-all-entities option.
 EPEX_NEGATIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key=TRANSLATION_KEY_EPEX_NEGATIVE,
     translation_key=TRANSLATION_KEY_EPEX_NEGATIVE,
@@ -75,14 +68,6 @@ EPEX_NEGATIVE_QUARTER_HOUR_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     translation_key=TRANSLATION_KEY_EPEX_NEGATIVE_QUARTER_HOUR,
 )
 
-# Happy Hours active indicator.
-#
-# Created per Happy Hours-enrolled business agreement. The happy-hour
-# endpoint is account scoped and not gated on dynamic tariff. The entity
-# is available when created: ``on`` while the current moment falls inside
-# a scheduled window, ``off`` otherwise (including when no event is
-# scheduled). The companion timestamp sensors expose the "scheduled vs
-# not scheduled" distinction.
 HAPPY_HOUR_ACTIVE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="happy_hours_active",
     translation_key="happy_hours_active",
@@ -94,30 +79,11 @@ async def async_setup_entry(
     entry: EngieBeConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """
-    Set up the binary sensor platform.
-
-    The auth sensor is created **once per parent config entry** because
-    authentication is login-scoped, not account-scoped: a single ENGIE
-    login holds one Auth0 session shared across all customer accounts.
-    It attaches to a dedicated "login" device (no ``config_subentry_id``)
-    rather than to any one customer-account device.
-
-    The EPEX negative-price indicator is created **once per dynamic
-    customer account** and attached to that account's device.  A
-    fixed-tariff account never sees one: the coordinator detects
-    ``is_dynamic`` at first refresh, and a contract change requires a
-    config-entry reload to (re)create the entity.
-    """
+    """Set up binary_sensors: login-scoped auth plus per-subentry entities."""
     expose_all = entry.options.get(CONF_EXPOSE_ALL_ENTITIES, False)
     epex_coordinator = entry.runtime_data.epex_coordinator
 
-    # Pick any per-subentry coordinator to back the auth sensor's
-    # CoordinatorEntity machinery.  The auth sensor doesn't consume
-    # coordinator data -- it reflects ``runtime_data.authenticated`` --
-    # but ``CoordinatorEntity`` requires a coordinator reference.  Fall
-    # back to the EPEX coordinator if no customer-account subentries
-    # exist yet (e.g. a future state where all accounts were removed).
+    # CoordinatorEntity needs a coordinator reference. The auth sensor never reads it.
     auth_backing_coordinator: EngieBeDataUpdateCoordinator | EngieBeEpexCoordinator = (
         epex_coordinator
     )
@@ -142,12 +108,6 @@ async def async_setup_entry(
             continue
 
         subentry_entities: list[BinarySensorEntity] = []
-        # Only surface the Happy Hours active binary sensor when this
-        # BAN is enrolled in the Happy Hours service. Enrolment is
-        # detected from the feature-flags endpoint during the
-        # coordinator's first refresh; the parent entry is reloaded
-        # automatically when enrolment flips so entities track the
-        # service status.
         if runtime_data.feature_flags.happy_hour_enrolled or expose_all:
             LOGGER.debug(
                 "Subentry %s (BAN %s): enrolled in Happy Hours, "
@@ -185,12 +145,7 @@ async def async_setup_entry(
                     )
                 )
 
-        # TOU "is optimal slot" binary sensors: created when the supplier
-        # contract is TOU-active AND the per-EAN schedule has more than
-        # one distinct slot code (i.e. not a flat all-OFFPEAK schedule).
-        # expose_all bypasses both gates.
-        # The gate avoids spamming "is optimal" on flat-rate accounts
-        # where every hour is OFFPEAK and the answer is always True.
+        # TOU "is optimal" gated on TOU-active + non-trivial schedule.
         tou_entities = _build_tou_binary_sensors(
             runtime_data.coordinator, subentry, expose_all=expose_all
         )
@@ -234,7 +189,7 @@ class EngieBeAuthSensor(EngieBeAuthEntity, BinarySensorEntity):
 
     @property
     def available(self) -> bool:
-        """Auth sensor is always available; its state reflects token validity."""
+        """Auth sensor is always available. Its state reflects token validity."""
         return True
 
     @property
@@ -247,36 +202,10 @@ class EngieBeEpexNegativeSensor(
     _BoundaryScheduleMixin, EngieBeEpexEntity, BinarySensorEntity
 ):
     """
-    Binary sensor that turns ``on`` when the current EPEX slot is negative.
+    Binary sensor ``on`` when the EPEX slot covering ``now`` has a negative price.
 
-    Shared implementation for both the hourly and quarter-hourly EPEX
-    negative-price indicators; the two granularities differ only in
-    entity metadata (description, unique-id suffix, entity-id slug),
-    supplied via the constructor. The wholesale leg of the user's bill
-    is a credit (not a cost) during these slots; final delivered price
-    still includes positive grid fees, taxes, and supplier margin, so
-    this sensor flags the wholesale signal only.  No device class is
-    set because none of the built-in classes (POWER, BATTERY_CHARGING,
-    ...) describe a price-sign indicator.
-
-    State semantics:
-
-    * ``on`` / ``off`` -- a slot covers ``now`` and its price is
-      negative (``< 0``) or non-negative (``>= 0``) respectively.
-      Zero is treated as non-negative.
-    * ``unknown`` (``is_on=None`` while available) -- payload present
-      but no slot covers ``now`` (e.g. a multi-hour outage where the
-      cached payload no longer covers the present instant).  Returning
-      ``off`` here would falsely imply a non-negative price.
-    * ``unavailable`` -- no payload cached yet (first poll 404), or
-      the account silently flipped off the dynamic tariff between
-      polls without a config-entry reload (defensive only; the entity
-      isn't created at all on accounts that are non-dynamic at setup).
-
-    The ``_BoundaryScheduleMixin`` arms a point-in-UTC-time callback at
-    the next slot boundary so the entity flips at the exact second the
-    market moves between negative and non-negative slots, rather than
-    waiting up to a full coordinator refresh interval.
+    ``unknown`` when the cached payload contains no covering slot.
+    ``unavailable`` when no payload is cached at all.
     """
 
     def __init__(
@@ -289,45 +218,23 @@ class EngieBeEpexNegativeSensor(
         """Initialise the negative-price indicator."""
         self.entity_description = description
         super().__init__(coordinator, subentry)
-        # Subentry-scoped unique ID: the same EPEX-negative descriptor
-        # repeats across every dynamic-tariff customer account on a
-        # single login.
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_{suffix}"
         )
-        # BAN-prefixed entity_id keeps the slug stable and collision-free
-        # across multiple dynamic-tariff business agreements on one login.
-        # Only effective on first registration; entity registry overrides
-        # on subsequent boots.
         ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
         if ban:
             self.entity_id = f"binary_sensor.engie_belgium_{ban}_{suffix}"
 
     @property
     def available(self) -> bool:
-        """
-        Available only when the EPEX coordinator has a parsed payload.
-
-        Per HA's integration-quality-scale guidance: an entity is
-        ``unavailable`` when data cannot be fetched, but ``unknown``
-        when the fetch succeeded yet a specific datum is missing.
-        Here, "no payload" is the unavailable case; "payload present
-        but no slot covers ``now``" is handled by ``is_on`` returning
-        ``None`` (which surfaces as ``unknown``).
-        """
+        """Available only when the EPEX coordinator has a parsed payload."""
         if not super().available:
             return False
         return epex_payload(self.coordinator) is not None
 
     @property
     def is_on(self) -> bool | None:
-        """
-        Return ``True`` when the slot covering ``now`` has a negative price.
-
-        Returns ``None`` (rendered as ``unknown``) when no slot covers
-        the current instant -- distinct from the unavailable case
-        handled in ``available``.
-        """
+        """Return True/False for a slot covering ``now``, or ``None`` when none does."""
         payload = epex_payload(self.coordinator)
         if payload is None:
             return None
@@ -338,15 +245,7 @@ class EngieBeEpexNegativeSensor(
         return None
 
     def _next_boundary(self) -> datetime | None:
-        """
-        Return the next EPEX slot boundary in UTC, or ``None``.
-
-        Delegates to :func:`next_epex_slot_boundary` so the helper is
-        shared with the EPEX current-price and next-hour sensors. When
-        the cached payload is fully in the past (multi-hour outage),
-        returns ``None``; the next coordinator update re-arms via
-        :meth:`_handle_coordinator_update` once a fresh payload lands.
-        """
+        """Return the next EPEX slot boundary in UTC, or ``None`` if payload is past."""
         payload = epex_payload(self.coordinator)
         if payload is None:
             return None
@@ -356,31 +255,7 @@ class EngieBeEpexNegativeSensor(
 class EngieBeHappyHourActiveSensor(
     _BoundaryScheduleMixin, EngieBeEntity, BinarySensorEntity
 ):
-    """
-    Binary sensor that turns ``on`` during a scheduled Happy Hours window.
-
-    Backed by the per-subentry data coordinator (NOT the EPEX
-    coordinator): the happy-hour endpoint is account-scoped and the
-    response is folded into the same payload as supplier prices and
-    captar peaks.
-
-    State semantics:
-
-    * ``on``: the current instant falls inside a scheduled window.
-    * ``off``: no scheduled window, or ``now`` is outside the window.
-
-    The sensor is always available once the coordinator has data;
-    ``off`` covers both "no event scheduled" and "scheduled but not
-    active right now". Automations that need the distinction can
-    consult the ``happy_hours_next_start`` / ``happy_hours_next_end``
-    timestamp sensors (which are ``unknown`` when no window is
-    scheduled).
-
-    The ``_BoundaryScheduleMixin`` arms a point-in-UTC-time callback
-    at the next window boundary so the entity flips on and off at the
-    exact second the window starts and ends, rather than waiting up to
-    a full coordinator refresh interval.
-    """
+    """Binary sensor ``on`` during a scheduled Happy Hours window."""
 
     entity_description = HAPPY_HOUR_ACTIVE_SENSOR_DESCRIPTION
 
@@ -405,14 +280,7 @@ class EngieBeHappyHourActiveSensor(
         return is_happy_hour_active(self.coordinator, dt_util.utcnow())
 
     def _next_boundary(self) -> datetime | None:
-        """
-        Return the next happy-hour boundary in UTC, or ``None``.
-
-        Picks ``start`` while the window is still in the future, ``end``
-        while we are inside it, and ``None`` once both endpoints are in
-        the past (the next coordinator refresh either replaces the
-        cached payload with the next day's window or with ``{}``).
-        """
+        """Return the next happy-hour boundary in UTC, or ``None`` if all past."""
         window = happy_hour_window(self.coordinator)
         if window is None:
             return None
@@ -424,10 +292,6 @@ class EngieBeHappyHourActiveSensor(
             return end
         return None
 
-
-# ---------------------------------------------------------------------------
-# TOU "is optimal slot" binary sensors
-# ---------------------------------------------------------------------------
 
 TOU_OFFTAKE_IS_OPTIMAL_DESCRIPTION = BinarySensorEntityDescription(
     key="tou_offtake_is_optimal",
@@ -446,16 +310,7 @@ def _build_tou_binary_sensors(
     *,
     expose_all: bool = False,
 ) -> list[BinarySensorEntity]:
-    """
-    Build TOU optimal-slot binary sensors for every electricity EAN.
-
-    Gated on the ``dgo-tou-is-active`` feature flag mirroring the solar-
-    surplus pattern: when the flag is off the coordinator skips the fetch
-    entirely, so the wrapper is absent and there is nothing to key
-    against. ``is_tou_active is True`` accounts get the binary sensors, plus
-    every account when expose_all is on. A non-trivial per-EAN schedule is
-    required on top of that.
-    """
+    """Build TOU optimal-slot binary sensors per electricity EAN."""
     from .data import EngieBeSubentryData  # noqa: PLC0415, TC001 - avoid import cycle
 
     runtime = getattr(coordinator.config_entry, "runtime_data", None)
@@ -515,17 +370,7 @@ def _build_tou_binary_sensors(
 class EngieBeTouIsOptimalSensor(
     _BoundaryScheduleMixin, EngieBeEntity, BinarySensorEntity
 ):
-    """
-    Binary sensor indicating whether the current TOU slot is the optimal one.
-
-    ``on`` when the current slot code equals the schedule's
-    ``optimalTimeslotCode``. Uses ``_BoundaryScheduleMixin`` so state
-    flips at the exact slot boundary rather than the next coordinator
-    refresh.
-
-    Created only when the supplier contract is TOU-active and the schedule
-    is non-trivial (more than one distinct slot code).
-    """
+    """Binary sensor ``on`` when the current TOU slot equals the optimal slot code."""
 
     def __init__(
         self,

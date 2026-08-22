@@ -41,5 +41,4 @@ settings:
 docs: |-
   Email MFA ALT-3. Selects the email factor.
 
-  Mirrors api.py::_switch_to_email_mfa ALT-3. The action value email::1
-  is the first enrolled email authenticator.
+  Mirrors api.py::_switch_to_email_mfa ALT-3. Action value email::1 is the first enrolled email authenticator.

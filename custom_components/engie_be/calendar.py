@@ -1,20 +1,4 @@
-"""
-Calendar platform for the ENGIE Belgium integration.
-
-One calendar entity is created per business-agreement ConfigSubentry,
-attached to that subentry's device. Today this exposes the monthly
-capacity-tariff (captar) peak window for every agreement, the upcoming
-Happy Hours window for agreements enrolled in the ENGIE Happy Hours
-service, and TOU slot events for TOU-active agreements. New event types
-can be added without
-spawning a new calendar entity by registering an additional
-``EventProvider`` below.
-
-Each ``EventProvider`` is a callable that takes the per-subentry
-coordinator and returns zero or more ``CalendarEvent`` instances. The
-data is sourced from the existing coordinator payload, so no additional
-API calls are made.
-"""
+"""Calendar platform: one entity per business agreement."""
 
 from __future__ import annotations
 
@@ -35,7 +19,7 @@ from .const import (
 )
 from .entity import EngieBeEntity
 
-# Coordinator centralises updates; entities never poll individually.
+# Coordinator centralises updates. Entities never poll individually.
 PARALLEL_UPDATES = 0
 
 if TYPE_CHECKING:
@@ -50,10 +34,7 @@ if TYPE_CHECKING:
 
 EventProvider = Callable[["EngieBeDataUpdateCoordinator"], list[CalendarEvent]]
 
-# Providers that are always active for every customer-account calendar.
-# Account-conditional providers (e.g. Happy Hours for enrolled BANs only)
-# are appended in ``EngieBeCalendar.__init__`` based on subentry runtime
-# data rather than hard-coded here.
+# Always-on providers. Feature-gated ones are appended in ``__init__``.
 EVENT_PROVIDERS: list[EventProvider] = [
     captar_peak_events,
 ]
@@ -95,19 +76,8 @@ async def async_setup_entry(
 class EngieBeCalendar(EngieBeEntity, CalendarEntity):
     """Aggregated calendar entity for one ENGIE Belgium customer account."""
 
-    # Inherit ``_attr_has_entity_name = True`` from ``EngieBeEntity`` and
-    # let HA compose the friendly name as ``<device-name> <entity-name>``,
-    # which on HA 2026.4+ resolves to ``<address> ENGIE Belgium``. The
-    # entity name itself is supplied via the ``engie_belgium`` translation
-    # key below so it stays consistent with every other engie_be entity
-    # naming pattern. Earlier versions hard-coded a brand-prefixed
-    # ``_attr_name`` and set ``_attr_has_entity_name = False`` to suppress
-    # composition; HA 2026.4 changed the composition logic so that opt-out
-    # no longer prevents the device-name prefix from being prepended,
-    # producing a doubled friendly name ("<address> ENGIE Belgium
-    # <address>"). Aligning with the standard convention fixes that and
-    # also lets the calendar count toward the ``has-entity-name`` quality
-    # scale rule.
+    # ``engie_belgium`` translation key + inherited ``_attr_has_entity_name``
+    # composes as ``<address> ENGIE Belgium`` on HA 2026.4+.
     _attr_translation_key = "engie_belgium"
 
     def __init__(
@@ -120,34 +90,17 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
     ) -> None:
         """Initialise the calendar entity for one customer-account subentry."""
         super().__init__(coordinator, subentry)
-        # Subentry-scoped unique ID: the calendar descriptor repeats
-        # across every customer account on a single login.
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}_{subentry.subentry_id}_calendar"
         )
-        # Build the per-instance provider list. Baseline providers
-        # (captar) apply to every account. Happy Hours events are only
-        # surfaced for accounts enrolled in the ENGIE Happy Hours
-        # service, and TOU slot events only for TOU-active accounts. The
-        # parent entry is reloaded automatically
-        # when enrolment flips so this list always reflects the current
-        # service status without needing a runtime re-check on every
-        # event read.
         self._event_providers: list[EventProvider] = list(EVENT_PROVIDERS)
         if happy_hour_enrolled:
             self._event_providers.append(happy_hour_events)
         if tou_active:
             self._event_providers.append(tou_slot_events)
-        # Force a BAN-prefixed entity_id so each business agreement
-        # gets a predictable, collision-proof calendar entity_id
-        # regardless of address. HA's auto-derived slug would key off
-        # the friendly name (which embeds the address) and append
-        # ``_2`` if two agreements share an address. Setting
-        # ``self.entity_id`` directly is the supported escape hatch
-        # (``_attr_suggested_object_id`` is not honoured by
-        # ``Entity.suggested_object_id``, which reads ``self.name``).
-        # Only effective on first registration; entity registry
-        # overrides on subsequent boots.
+        # Force a BAN-prefixed entity_id. HA's slug otherwise collides on
+        # shared addresses. Direct ``entity_id`` assignment is the supported
+        # escape hatch, effective on first registration only.
         ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
         if ban:
             self.entity_id = f"calendar.engie_belgium_{ban}"
@@ -161,13 +114,7 @@ class EngieBeCalendar(EngieBeEntity, CalendarEntity):
 
     @property
     def event(self) -> CalendarEvent | None:
-        """
-        Return the current or next upcoming event across all providers.
-
-        Active events (``start <= now < end``) win over future ones; among
-        future events the soonest ``start`` wins. Falls back to the most
-        recent past event so card-style frontends still show the last window.
-        """
+        """Return the active event, else the soonest upcoming, else the last past."""
         events = self._all_events()
         if not events:
             return None

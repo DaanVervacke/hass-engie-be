@@ -11,22 +11,7 @@ DIVISION_ELECTRICITY = "ELECTRICITY"
 
 
 def is_account_dynamic(payload: Any) -> bool:
-    """
-    Return True when the payload describes a dynamic-electricity contract.
-
-    The ENGIE energy-contracts endpoint returns one element per active
-    contract on a business agreement. A customer is considered to be on
-    a dynamic (EPEX-indexed) tariff when at least one such element is
-    an active electricity contract whose
-    ``productConfiguration.energyProduct`` identifies a dynamic product
-    (see :data:`DYNAMIC_ENERGY_PRODUCTS`). Any item that fails to match
-    is silently ignored so a malformed entry in an otherwise healthy
-    payload never flips the result.
-
-    Mixed-fuel households (dynamic electricity plus fixed gas) are
-    handled correctly: the gas item is skipped because its ``division``
-    is ``"GAS"``, and the electricity item alone determines the result.
-    """
+    """Return True iff payload has an active dynamic-electricity contract."""
     if not isinstance(payload, dict):
         return False
     items = payload.get("items")
@@ -52,13 +37,7 @@ def is_account_dynamic(payload: Any) -> bool:
 
 
 def energy_products_by_ean(payload: Any) -> dict[str, str]:
-    """
-    Return a mapping of EAN to ``energyProduct`` for active contracts.
-
-    Used by diagnostics so support bundles surface the per-EAN product
-    code that drove dynamic detection. Items missing an EAN or product
-    code are skipped.
-    """
+    """Return a mapping of EAN to ``energyProduct`` for active contracts."""
     result: dict[str, str] = {}
     if not isinstance(payload, dict):
         return result
@@ -84,11 +63,8 @@ def service_points_by_ean(payload: Any) -> dict[str, str]:
     """
     Return a mapping of EAN to division for active contracts.
 
-    The energy-contracts payload carries a division per active contract
-    regardless of tariff type, unlike the supplier-energy-prices
-    endpoint which returns no items for pure dynamic-tariff accounts.
-    Used to fill in service_points for accounts the prices-based
-    lookup misses. Items missing an EAN or division are skipped.
+    Fills in service_points for pure dynamic-tariff accounts, where the
+    supplier-energy-prices endpoint returns no items.
     """
     result: dict[str, str] = {}
     if not isinstance(payload, dict):
@@ -112,24 +88,10 @@ DELIVERY_POINT_SUFFIX = "_ID1"
 
 
 def bare_ean(ean: str) -> str:
-    """
-    Strip a trailing delivery-point suffix (``_ID1``) from an EAN.
-
-    ENGIE's supplier-energy-prices and TOU-schedules endpoints return
-    EANs with a delivery-point suffix; ``service_points`` and every
-    user-facing EAN key are stored bare. Returns ``ean`` unchanged when
-    it carries no suffix.
-    """
+    """Strip a trailing delivery-point suffix (``_ID1``) from an EAN."""
     return ean.split("_", maxsplit=1)[0] if "_" in ean else ean
 
 
 def ean_with_delivery_point_suffix(ean: str) -> str:
-    """
-    Append the delivery-point suffix ENGIE's per-EAN endpoints expect.
-
-    ENGIE delivery-point IDs observed in the wild are always
-    ``{EAN}_ID1``. Multi-panel installations may expose ``_ID2``/
-    ``_ID3`` but no service-points endpoint currently surfaces them;
-    extend this helper when a real multi-ID sample appears.
-    """
+    """Append the delivery-point suffix ENGIE's per-EAN endpoints expect."""
     return f"{ean}{DELIVERY_POINT_SUFFIX}"

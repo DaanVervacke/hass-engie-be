@@ -56,6 +56,4 @@ settings:
 docs: |-
   Auth step 8. Submits MFA_CODE.
 
-  Mirrors api.py::_submit_sms_mfa. A wrong code returns HTTP 400 and the
-  MFA form again, which is why api.py passes raise_on_error=False here
-  and infers failure from the missing state.
+  Mirrors api.py::_submit_sms_mfa. A wrong code returns HTTP 400 with the MFA form again, so failure is inferred from missing state.

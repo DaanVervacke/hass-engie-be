@@ -129,9 +129,3 @@ docs: |-
   Auth step 1. Starts the PKCE flow and returns the Auth0 login page.
 
   Mirrors api.py::_run_auth_steps_1_to_7 step 1.
-
-  The pre-request script generates state, nonce, code_verifier and
-  code_challenge exactly as api.py::_generate_pkce does. code_verifier
-  is kept for step 13 and must survive the whole run.
-
-  Sets: state, nonce, code_verifier, code_challenge, authorizeState.

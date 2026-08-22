@@ -94,17 +94,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa: ARG001
-    """
-    Register domain-level services once, independently of any config entry.
-
-    Services are registered here rather than in ``async_setup_entry`` so
-    they still exist when every entry fails to load, which is the common
-    case when the stored ENGIE refresh token has expired. Without this,
-    an automation calling ``engie_be.import_history`` would fail with
-    "service not found" and give the user no hint about the real cause.
-    With it, the call reaches ``_resolve_targets``, which raises a
-    translated ``ServiceValidationError`` naming the unloaded entry.
-    """
+    """Register domain-level services so they survive per-entry setup failures."""
     _async_register_services(hass)
     return True
 
@@ -113,19 +103,7 @@ async def async_migrate_entry(
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,
 ) -> bool:
-    """
-    Refuse to migrate config entries from before v0.9.0.
-
-    v0.9.0 is a breaking schema change: the v1->v2->v3->v4 migration chain
-    was removed to drop ~3000 LOC of one-shot upgrade code that had to
-    survive long-tail upgrade paths. Users on any pre-v0.9.0 install
-    must remove the integration from Home Assistant and re-add it
-    through the UI; that re-add walks the current config flow and
-    produces a fresh v5 entry. Returning ``False`` here causes HA to
-    flag the entry as ``setup_error``; alongside that, we raise a
-    translated, non-fixable Repairs issue so the user sees an
-    actionable card in Settings -> Repairs.
-    """
+    """Refuse to migrate config entries from before v0.9.0."""
     LOGGER.error(
         "Cannot migrate ENGIE Belgium config entry from version %s. "
         "v0.9.0 is a breaking schema change: remove this integration from "
@@ -174,24 +152,14 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
         },
     )
 
-    # Register the update listener BEFORE any step that can raise
-    # ``ConfigEntryAuthFailed`` AND without wrapping in ``async_on_unload``.
-    # When ``async_setup_entry`` raises, HA invokes every ``async_on_unload``
-    # callback (see ``config_entries.py`` ``_async_process_on_unload`` in the
-    # setup-failure finally-branch), which would immediately unregister the
-    # listener, so reauth completion (via ``async_update_and_abort``) would
-    # fire no listener and no reload would happen. Registering directly on
-    # ``entry.update_listeners`` survives the failed setup. The list is
-    # created once at entry construction and never reset, so a membership
-    # check keeps this idempotent across setup retries.
+    # Register the update listener without ``async_on_unload`` so it survives a
+    # failed setup and still fires on reauth completion.
     # ponytail: relying on the public ``update_listeners`` field is
     # intentional; the returned unlisten callable is discarded because the
     # listener must outlive individual setup attempts.
     if async_reload_entry not in entry.update_listeners:
         entry.add_update_listener(async_reload_entry)
 
-    # Initial token refresh so per-subentry coordinators have a valid
-    # access token to make their first authenticated request with.
     try:
         new_access, new_refresh = await client.async_refresh_token()
     except EngieBeApiClientAuthenticationError as err:
@@ -204,8 +172,6 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
     _persist_tokens(hass, entry, new_access, new_refresh)
     _set_authenticated(hass, entry, authenticated=True)
 
-    # Recurring token refresh (one timer per parent entry, not per
-    # subentry: tokens are login-scoped, not account-scoped).
     async def _refresh_token_callback(_now: object) -> None:
         """Refresh the access token periodically."""
         try:
@@ -215,12 +181,8 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
             LOGGER.warning(
                 "Scheduled token refresh rejected by ENGIE; starting reauth flow"
             )
-            # Cancel the timer before starting reauth so it does not keep
-            # firing 403s every 60s until the user completes the reauth
-            # flow and the entry reloads. The on_unload path remains armed
-            # as belt-and-braces; calling the cancel callable twice is safe
-            # because async_track_time_interval returns an idempotent remove
-            # listener closure.
+            # Cancel the timer before starting reauth so it stops firing 403s
+            # until the entry reloads. Double-cancel is safe.
             runtime = entry.runtime_data
             if runtime.cancel_token_refresh is not None:
                 runtime.cancel_token_refresh()
@@ -229,11 +191,6 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
             return
         except EngieBeApiClientError as err:
             _set_authenticated(hass, entry, authenticated=False)
-            # The API client embeds HTTP status / underlying exception class
-            # into the message (see api.py: "HTTP {status}: {body_preview}",
-            # "Timeout communicating ... ({TimeoutError})", etc.), so logging
-            # the exception type plus its message is enough to diagnose
-            # transient upstream failures without enabling debug logging.
             LOGGER.warning(
                 "Scheduled token refresh failed (%s: %s); will retry",
                 type(err).__name__,
@@ -245,9 +202,6 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
         _set_authenticated(hass, entry, authenticated=True)
         LOGGER.debug("Token refreshed successfully")
 
-    # Build per-subentry coordinators, peak stores and service-points
-    # lookups, then do their initial refreshes in parallel so that a
-    # user with N business agreements does not pay sum(latency) at setup.
     subentries: list[ConfigSubentry] = [
         sub
         for sub in entry.subentries.values()
@@ -270,20 +224,9 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
             happy_hours_store=happy_hours_store,
         )
 
-    # Refresh EPEX once at startup alongside the per-subentry data;
-    # EPEX is shared across subentries so this is one fetch total.
-    #
-    # ``return_exceptions=True`` so a failure in one coordinator does not
-    # cancel siblings mid-flight, leaking in-flight aiohttp requests and
-    # committing partial state (peaks history upsert, enrolment cache)
-    # for some subentries but not others. After all tasks settle we
-    # re-raise the most-actionable exception:
-    #
-    #   1. ``ConfigEntryAuthFailed`` -> HA triggers reauth flow
-    #   2. ``ConfigEntryNotReady``   -> HA retries setup later
-    #   3. anything else             -> first one wins (propagates)
-    #
-    # See ``.opencode/audit-v0.10.0b1-prerelease.md`` CFG-1.
+    # ``return_exceptions=True`` so a coordinator failure does not cancel
+    # siblings mid-flight. After all tasks settle, prefer re-raising
+    # ``ConfigEntryAuthFailed``, then ``ConfigEntryNotReady``, else the first.
     refresh_calls = [
         epex_coordinator.async_config_entry_first_refresh(),
         epex_qh_coordinator.async_config_entry_first_refresh(),
@@ -303,12 +246,8 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
                 raise exc
         raise exceptions[0]
 
-    # Resolve energy type for each EAN per subentry. Service-point lookups
-    # are fanned out across all subentries' EANs in a single gather so
-    # multi-agreement customers do not pay sum(latency) for setup. Dynamic-
-    # tariff detection runs in parallel with the same fan-out so the
-    # ``is_dynamic`` flag (which gates EPEX entity creation) is settled
-    # before platforms are forwarded.
+    # Fan out service-point lookups and dynamic-tariff detection so the
+    # ``is_dynamic`` flag is settled before platforms are forwarded.
     await asyncio.gather(
         _async_populate_service_points(client, entry),
         _async_populate_dynamic_flags(client, entry),
@@ -318,15 +257,9 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _async_reenable_expose_all_entities(hass, entry)
 
-    # Spawn setup-time background import tasks for subentries that have
-    # ``import_history = True`` and have not yet accumulated any statistics.
-    # The ``_last_stats`` guard prevents re-importing on every reload or
-    # restart: if data already exists for any stream on the requested set,
-    # the task exits immediately. Spawned with ``entry.async_create_background_task``
-    # so the task is entry-scoped and cancelled automatically on unload.
-    # We copy the BAN and client reference out of runtime_data here so
-    # the coroutine closure does not hold a stale subentry or runtime_data
-    # reference (those are torn down on reload/unload).
+    # Spawn setup-time background import tasks for subentries with
+    # ``import_history = True``. The closure snapshots client/subentry so a
+    # reload's runtime_data teardown does not leave it holding stale state.
     for subentry in subentries:
         subentry_data: Mapping[str, Any] = subentry.data or {}
         if not subentry_data.get(CONF_IMPORT_HISTORY, False):
@@ -339,12 +272,10 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
             raw_energy_types, include_costs=include_costs
         )
         ban = subentry_data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
-        # Parse optional ISO date strings stored by the config flow.
         raw_start = subentry_data.get(CONF_IMPORT_START_DATE)
         raw_end = subentry_data.get(CONF_IMPORT_END_DATE)
         start_date: date | None = date.fromisoformat(raw_start) if raw_start else None
-        # User-facing end_date is inclusive; the orchestrator treats it as
-        # exclusive. Apply the same +1-day shift used in the service handler.
+        # User-facing end_date is inclusive, orchestrator wants exclusive.
         end_date: date | None = (
             date.fromisoformat(raw_end) + timedelta(days=1) if raw_end else None
         )
@@ -377,18 +308,8 @@ async def async_setup_entry(  # noqa: PLR0915 - orchestrator, splitting hurts re
             end_date,
         )
 
-    # Recurring token refresh registered AFTER every step that can raise
-    # ``ConfigEntryNotReady`` (initial token refresh at the top of this
-    # function, plus per-subentry ``async_config_entry_first_refresh``
-    # which wraps ``UpdateFailed`` from ``coordinator.py:_async_update_data``
-    # into ``ConfigEntryNotReady``). Registering the timer earlier would leak
-    # it on a half-set-up entry: if a later setup step raises, the timer
-    # keeps firing, rotating refresh tokens that never get persisted (because
-    # the ``_persist_tokens`` write inside the callback targets the same
-    # half-set-up entry), and the next real setup attempt fails reauth.
-    # See ``.opencode/audit-v0.10.0b1-prerelease.md`` Blocker B1a.
-    # Note: the update listener (registered above, before the first await)
-    # is intentionally placed earlier; it is safe on a half-set-up entry.
+    # Register the recurring token refresh only after every step that can raise
+    # ``ConfigEntryNotReady``, otherwise it leaks on a half-set-up entry.
     cancel_refresh = async_track_time_interval(
         hass,
         _refresh_token_callback,
@@ -413,24 +334,7 @@ async def async_remove_config_entry_device(
     entry: EngieBeConfigEntry,
     device_entry: DeviceEntry,
 ) -> bool:
-    """
-    Allow removal of stale devices from the device registry.
-
-    Each device in this integration is either the login device (one per
-    parent :class:`ConfigEntry`) or a customer-account device (one per
-    ``ConfigSubentry``).  When a subentry is deleted the device is
-    normally cleaned up automatically by HA (all entities carry
-    ``config_subentry_id``, so HA removes the device once it has no
-    entities).  This function handles the edge case where a device
-    lingers with no corresponding live subentry, for example after a
-    failed teardown or a manual store edit.
-
-    A device is removable when no currently-active business-agreement
-    subentry's ``subentry_id`` matches any of the device's identifiers.
-    The login device (``login_{entry_id}``) has no matching subentry and
-    is therefore also considered removable if the user requests it; HA
-    will recreate it on the next successful setup.
-    """
+    """Allow removing devices with no matching active business-agreement subentry."""
     active_subentry_ids: set[str] = {
         sub.subentry_id
         for sub in entry.subentries.values()
@@ -446,27 +350,7 @@ async def async_remove_entry(
     hass: HomeAssistant,
     entry: EngieBeConfigEntry,
 ) -> None:
-    """
-    Delete everything this integration persisted outside its config entry.
-
-    Two kinds of leftovers, neither owned by Home Assistant:
-
-    - External statistics imported by ``engie_be.import_history``. Recorder
-      owns only ``recorder``-sourced statistics, so every ``engie_be:{ban}_*``
-      stream would otherwise survive deletion, stay selectable in the Energy
-      dashboard, and be unreachable through any supported UI.
-    - The per-subentry ``.storage`` files holding captar peaks history and
-      the Happy Hours window archive.
-
-    Reads only ``entry.subentries``, never ``entry.runtime_data``: HA calls
-    this for entries that never finished setting up, where no runtime data
-    exists. That is also why the stores are constructed here rather than
-    taken from ``runtime_data``.
-
-    Re-adding the integration and running ``engie_be.import_history`` again
-    rebuilds the statistics from the business agreement's start date, so
-    this is recoverable rather than a one-way door.
-    """
+    """Delete imported statistics and per-subentry stores on entry removal."""
     for subentry_id in entry.subentries:
         await EngieBePeaksStore(hass, subentry_id).async_remove()
         await EngieBeHappyHoursStore(hass, subentry_id).async_remove()
@@ -493,28 +377,12 @@ async def async_reload_entry(
     entry: EngieBeConfigEntry,
 ) -> None:
     """
-    Reload on options change, business-agreement subentry add/remove, or reauth.
+    Reload on options change, subentry add/remove, or external token rotation.
 
-    Token rotation also fires this listener (it writes to ``entry.data``
-    via ``_persist_tokens``). During rotation the live client updates its
-    in-memory ``refresh_token`` *before* ``_persist_tokens`` is called, so
-    ``entry.data[CONF_REFRESH_TOKEN]`` and ``runtime.client.refresh_token``
-    are equal when the listener runs, so no reload happens.
-
-    Reauthentication writes new tokens to ``entry.data`` externally (via
-    ``async_update_and_abort`` in the config flow) without touching the
-    live client object. When the listener fires after a reauth, the stored
-    refresh token differs from the live client's in-memory token. That
-    mismatch is the signal that an external write occurred and a reload is
-    needed to wire the new credentials into the running client.
-
-    A multi-pick subentry add writes N subentries via N separate
-    ``async_add_subentry`` calls, each scheduling this listener. The
-    subentry picker sets ``runtime_data.pending_subentry_target`` to the
-    final expected set of business-agreement numbers (BANs) so intermediate
-    listener runs (whose current BAN set does not yet cover the target)
-    suppress their reload; the run that first observes the full target
-    clears the gate and reloads once.
+    Routine token rotation is a no-op because the live client's refresh
+    token equals the stored one when the listener runs. Reauth writes
+    tokens externally so the mismatch is the trigger. Multi-pick
+    subentry adds are batched via ``pending_subentry_target``.
     """
     runtime = entry.runtime_data
     options_changed = dict(entry.options) != runtime.last_options
@@ -530,10 +398,9 @@ async def async_reload_entry(
 
     target = runtime.pending_subentry_target
     if target is not None and not options_changed:
-        # A multi-add is in progress. Suppress until the full target BAN set
-        # is present, then reload exactly once. ``>=`` (superset) rather than
-        # strict equality so an unrelated concurrent removal cannot wedge the
-        # gate open forever; reaching or passing the target clears it.
+        # Multi-add in progress: suppress until the target BAN set is reached,
+        # then reload once. Superset rather than equality so a concurrent
+        # removal cannot wedge the gate open.
         if _business_agreement_numbers(entry) >= target:
             runtime.pending_subentry_target = None
             await hass.config_entries.async_reload(entry.entry_id)
@@ -544,15 +411,7 @@ async def async_reload_entry(
 
 
 def _business_agreement_numbers(entry: EngieBeConfigEntry) -> set[str]:
-    """
-    Return the set of BANs currently attached as business-agreement subentries.
-
-    A subentry's BAN is its ``unique_id`` (set by the picker), falling back
-    to the stored ``CONF_BUSINESS_AGREEMENT_NUMBER`` when unset. Used by
-    the ``pending_subentry_target`` reload gate, which keys on BANs rather
-    than subentry ids because the first pick's ``subentry_id`` is generated
-    by the framework finish path and is not predictable up front.
-    """
+    """Return the BANs currently attached as business-agreement subentries."""
     bans: set[str] = set()
     for sub in entry.subentries.values():
         if sub.subentry_type != SUBENTRY_TYPE_BUSINESS_AGREEMENT:
@@ -589,15 +448,7 @@ def _resolve_targets(
     device_ids: list[str],
     service_name: str,
 ) -> list[tuple[EngieBeConfigEntry, ConfigSubentry]]:
-    """
-    Resolve service ``device_id`` targets to (entry, subentry) pairs.
-
-    Skips (with a warning) any device that is not a business-agreement
-    device. Raises a translated ``ServiceValidationError`` when the
-    owning entry is not in the ``LOADED`` state, so callers can
-    dereference ``runtime_data.client`` on any entry returned here
-    without a further None check.
-    """
+    """Resolve service ``device_id`` targets to (entry, subentry) pairs."""
     device_reg = dr.async_get(hass)
     resolved: list[tuple[EngieBeConfigEntry, ConfigSubentry]] = []
     LOGGER.debug(
@@ -628,18 +479,8 @@ def _resolve_targets(
             subentry = entry.subentries.get(subentry_id)
             if subentry is None:
                 continue
-            # Gate on entry state, not on ``runtime_data``. Services are
-            # registered from ``async_setup``, so an entry reached here can
-            # be mid-reload, unloaded, or one that never set up at all
-            # (expired refresh token). ``runtime_data`` does not detect the
-            # last case: ``async_setup_entry`` assigns it before the token
-            # refresh that raises, and HA only deletes it on a real unload
-            # (``config_entries.py::ConfigEntry.async_unload``), so a failed
-            # setup leaves a live-looking client behind and the import would
-            # silently no-op against an unauthenticated client. Entry state
-            # is accurate for all three cases, and ``LOADED`` guarantees
-            # ``async_setup_entry`` ran to completion, so callers can
-            # dereference ``runtime_data.client`` without a None check.
+            # Gate on entry state, not runtime_data: a failed setup leaves a
+            # live-looking client behind, so LOADED is the only safe signal.
             if entry.state is not ConfigEntryState.LOADED:
                 raise ServiceValidationError(
                     translation_domain=DOMAIN,
@@ -680,37 +521,12 @@ async def _async_guarded_import(  # noqa: PLR0913
     contracts_payload: dict[str, Any] | None = None,
 ) -> None:
     """
-    Run a setup-time historical import with two guards.
+    Run a setup-time historical import, freshness-checked and error-swallowing.
 
-    Guard 1 - freshness check: ``streams`` is first narrowed to the
-    streams the BAN is actually contracted for (via ``_filter_by_contract``,
-    fail-open on a missing/malformed ``contracts_payload``). The backfill
-    is treated as complete and skipped only when every contracted stream
-    has a recorded statistic no older than HISTORY_BACKFILL_STALE_DAYS.
-    Any contracted stream missing entirely, or whose newest statistic is
-    older than that, is treated as an interrupted or never-run backfill
-    and the import proceeds - it resumes from ``_last_stats`` internally
-    via ``async_import_usage_history``, so this is cheap even when most
-    of the data is already there. A stream the BAN has no contract for is
-    never treated as "never backfilled" - it is simply excluded from the
-    freshness check, since there is nothing ENGIE would ever return for it.
-
-    Guard 2 - broad try/except: a failure in the import does NOT fail entry
-    setup (the background task is entry-scoped and runs after
-    ``async_forward_entry_setups`` returns) and does NOT propagate into the
-    event loop. On failure a non-fixable Repairs issue is raised so the user
-    sees an actionable card in Settings -> Repairs without any notification
-    pop-up clutter. Repairs is preferred over a persistent notification here
-    because it survives restarts and groups naturally with other integration
-    issues, whereas a notification disappears on reload.
-
-    ``start_date`` and ``end_date`` bound the import window (``end_date``
-    must already be shifted to exclusive before calling this function).
-    ``None`` means auto-mode: walk back to the earliest contract-start
-    (``start_date``) or import through today (``end_date``).
-
-    Token rotation and coordinator polling continue normally in parallel
-    with this task.
+    Skips when every contracted stream has a statistic newer than
+    HISTORY_BACKFILL_STALE_DAYS. On failure, raises a non-fixable
+    Repairs issue rather than failing entry setup. ``end_date`` must
+    already be shifted to exclusive by the caller.
     """
     ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER, "")
     masked = ban[-4:] if ban else "????"
@@ -784,14 +600,8 @@ async def _async_guarded_import(  # noqa: PLR0913
             end_date=end_date,
             contracts_payload=contracts_payload,
         )
-        # Clear any lingering Repairs issue from a prior failed attempt so
-        # a transient error does not leave a stale card in Settings > Repairs.
         ir.async_delete_issue(hass, DOMAIN, issue_id)
         if rows_written == 0:
-            # Filter emptied the stream set (user asked for a division the
-            # BAN has no contract for) or ENGIE returned no rows for the
-            # requested window. Distinct notification so the user is not
-            # told data landed when it did not.
             message = (
                 f"No historical usage was imported for {address}. "
                 "This can happen when the selected energy types have no "
@@ -811,10 +621,7 @@ async def _async_guarded_import(  # noqa: PLR0913
             notification_id=notification_id,
         )
     except asyncio.CancelledError:
-        # Entry unload cancels the background task via ``entry.async_create_
-        # background_task``. Dismiss the "running" notification so it does not
-        # orphan in the notification tray, then re-raise so HA can propagate
-        # cancellation cleanly.
+        # Dismiss the running notification so unload does not orphan it.
         pn.async_dismiss(hass, notification_id)
         raise
     except Exception:  # noqa: BLE001
@@ -868,14 +675,7 @@ class _ClearImportHistoryCall:
 
     @classmethod
     def from_service_call(cls, call: ServiceCall) -> _ClearImportHistoryCall:
-        """
-        Read fields off ``call.data``.
-
-        ``include_costs`` defaults to ``True`` here, unlike the import
-        path: clearing is a cleanup operation, and leaving a cost stream
-        behind whose energy stream was deleted is the one incoherent
-        outcome.
-        """
+        """Read fields off ``call.data`` (``include_costs`` defaults to True)."""
         data = call.data
         return cls(
             device_ids=list(data.get(ATTR_DEVICE_ID) or []),
@@ -885,14 +685,7 @@ class _ClearImportHistoryCall:
 
 
 def _async_register_services(hass: HomeAssistant) -> None:  # noqa: PLR0915 - two service handlers, branches are all irreducible
-    """
-    Register the domain-level services.
-
-    Called once from ``async_setup``, before any config entry is set up.
-    Services outlive individual config entries: every entry shares the
-    same registration and the handler routes to the entry that owns
-    the targeted device, resolving it at call time via ``_resolve_targets``.
-    """
+    """Register the domain-level services."""
 
     async def _handle_import_history(call: ServiceCall) -> None:
         payload = _ImportHistoryCall.from_service_call(call)
@@ -922,9 +715,7 @@ def _async_register_services(hass: HomeAssistant) -> None:  # noqa: PLR0915 - tw
         targets = list(
             _resolve_targets(hass, payload.device_ids, "engie_be.import_history")
         )
-        # User-facing end_date is inclusive; the orchestrator (and the
-        # underlying ENGIE endpoint) treat it as exclusive. Bump by one
-        # day so picking 2026-04-15 imports through the 15th.
+        # User-facing end_date is inclusive, ENGIE endpoint wants exclusive.
         api_end_date = (
             payload.end_date + timedelta(days=1) if payload.end_date else None
         )
@@ -981,11 +772,7 @@ def _async_register_services(hass: HomeAssistant) -> None:  # noqa: PLR0915 - tw
                 raise result
 
             if isinstance(result, ServiceValidationError):
-                # A user-input error (e.g. a backwards date window). It is
-                # not a system fault: propagate it as-is so the frontend
-                # shows its message, without an ERROR-level traceback or a
-                # Repairs card. The window check is call-level, so the
-                # first such error represents the whole call.
+                # User-input error, propagate without traceback or Repairs card.
                 raise result
 
             if isinstance(result, EngieBeApiClientAuthenticationError):
@@ -1005,11 +792,8 @@ def _async_register_services(hass: HomeAssistant) -> None:  # noqa: PLR0915 - tw
                 _flag_failed(subentry, masked)
                 continue
 
-            # Clear both this call path's own issue and the one-shot
-            # setup-time backfill's issue: the latter's own text tells the
-            # user to retry via this exact service, so a success here must
-            # also clear it or that instruction never actually resolves
-            # anything. Deleting a non-existent issue id is a no-op.
+            # Clear both this call's issue and the setup-time backfill's
+            # issue: the latter tells the user to retry via this service.
             ir.async_delete_issue(
                 hass, DOMAIN, f"service_import_failed_{subentry.subentry_id}"
             )
@@ -1137,16 +921,7 @@ def _persist_tokens(
     access_token: str,
     refresh_token: str,
 ) -> None:
-    """
-    Persist refreshed tokens to the config entry data.
-
-    Skips the write when both tokens already match what is stored, so
-    routine coordinator refreshes that hand back the same access token
-    do not dirty ``core.config_entries`` storage. ENGIE rotates the
-    refresh token on every successful exchange, so in practice this
-    short-circuit only fires when the OAuth helper returns a cached
-    token (e.g. when the previous access token is still valid).
-    """
+    """Persist refreshed tokens to the config entry data, skipping no-op writes."""
     current_access = entry.data.get(CONF_ACCESS_TOKEN)
     current_refresh = entry.data.get(CONF_REFRESH_TOKEN)
     if current_access == access_token and current_refresh == refresh_token:
@@ -1197,16 +972,7 @@ async def _async_populate_service_points(
     client: EngieBeApiClient,
     entry: EngieBeConfigEntry,
 ) -> None:
-    """
-    Resolve EAN-to-energy-type for every subentry in one fan-out call.
-
-    EAN-to-division mapping is per-EAN (and therefore inherently
-    per-subentry, since EANs belong to one business agreement). Lookups
-    are issued in parallel across all subentries' EANs so a multi-
-    agreement user does not pay sum(latency) at setup. Failures degrade
-    gracefully: a missing service-point falls back to the heuristic in
-    the sensor layer, exactly as for single-agreement setups.
-    """
+    """Resolve EAN-to-energy-type for every subentry in one fan-out call."""
     eans_by_subentry: dict[str, list[str]] = {}
     flat_eans: list[tuple[str, str]] = []
     for subentry_id, sub_data in entry.runtime_data.subentry_data.items():
@@ -1235,14 +1001,10 @@ async def _async_populate_service_points(
             )
             continue
         if isinstance(result, BaseException):
-            # Re-raise unexpected exceptions; only API errors are tolerated.
             raise result
         division: str = result.get("division", "")
         if division:
-            # The prices API returns the EAN with a delivery-point suffix
-            # (e.g. "..._ID1"). Store the bare EAN so service_points stays
-            # the single source of truth every per-EAN consumer can key
-            # off of without guessing whether a suffix is already present.
+            # Prices API returns EAN with a delivery-point suffix, store bare.
             ean_short = bare_ean(ean)
             entry.runtime_data.subentry_data[subentry_id].service_points[ean_short] = (
                 division
@@ -1252,19 +1014,10 @@ async def _async_populate_service_points(
 
 def _merge_service_points_from_contracts(entry: EngieBeConfigEntry) -> None:
     """
-    Fill in service_points gaps using the energy-contracts payload.
+    Fill service_points gaps using the energy-contracts payload.
 
-    _async_populate_service_points learns EANs from the supplier-
-    energy-prices endpoint, which returns no items for pure dynamic-
-    tariff accounts (that emptiness is how the legacy is_dynamic
-    heuristic works - see coordinator.py). Those accounts' EANs are
-    never learned, so every EAN-scoped feature (solar-surplus, TOU) has
-    nothing to attach to. The energy-contracts payload - already
-    fetched by _async_populate_dynamic_flags in the same gather above -
-    carries EAN + division for every active contract regardless of
-    tariff type, so use it to fill in what the prices-based lookup
-    missed. Never overwrites an existing entry: the dedicated service-
-    point endpoint lookup is more authoritative when both agree.
+    Dynamic-tariff accounts have no prices-endpoint items, so their EANs
+    would never be learned otherwise. Never overwrites an existing entry.
     """
     for sub_data in entry.runtime_data.subentry_data.values():
         contract_points = service_points_by_ean(sub_data.energy_contracts_payload)
@@ -1276,19 +1029,7 @@ def _merge_service_points_from_contracts(entry: EngieBeConfigEntry) -> None:
 def _async_reenable_expose_all_entities(
     hass: HomeAssistant, entry: EngieBeConfigEntry
 ) -> None:
-    """
-    Re-enable entities disabled by default, once expose_all_entities is on.
-
-    entity_registry_enabled_default only takes effect the first time an
-    entity is registered - flipping the option on later never
-    retroactively enables an entity that already exists in the registry
-    (excl-VAT prices, captar peak energy/start/end). Without this, the
-    debug toggle silently does nothing for any account whose entities
-    were first registered before the toggle was turned on, which is the
-    common case. Only clears ``disabled_by`` when it is
-    ``RegistryEntryDisabler.INTEGRATION`` - an entity the user disabled
-    themselves (``RegistryEntryDisabler.USER``) is left untouched.
-    """
+    """Re-enable INTEGRATION-disabled entities when expose_all_entities is on."""
     if not entry.options.get(CONF_EXPOSE_ALL_ENTITIES, False):
         return
     registry = er.async_get(hass)
@@ -1304,18 +1045,8 @@ async def _async_populate_dynamic_flags(
     """
     Resolve the dynamic-tariff flag for every subentry in one fan-out call.
 
-    Calls the energy-contracts endpoint once per subentry's BAN in
-    parallel and writes the result to
-    :attr:`EngieBeSubentryData.is_dynamic_override`. The override is
-    consulted by :attr:`EngieBeDataUpdateCoordinator.is_dynamic`, which
-    in turn gates EPEX entity creation in the sensor and binary-sensor
-    platforms. Failures degrade gracefully: a contracts call that
-    raises (network error, 5xx, schema drift) leaves the override at
-    ``None`` so the legacy ``len(items) == 0`` heuristic on the prices
-    payload still drives detection. Authentication failures are not
-    raised here because the parent entry's first refresh has already
-    surfaced any auth problem; a contracts-only auth error is treated
-    as a transient failure for this account.
+    Leaves ``is_dynamic_override`` at ``None`` on failure so the legacy
+    ``len(items) == 0`` heuristic on the prices payload still drives detection.
     """
     subentries: list[tuple[str, str]] = [
         (
@@ -1351,7 +1082,6 @@ async def _async_populate_dynamic_flags(
             )
             continue
         if isinstance(result, BaseException):
-            # Re-raise unexpected exceptions; only API errors are tolerated.
             raise result
         if not isinstance(result, dict):
             LOGGER.warning(

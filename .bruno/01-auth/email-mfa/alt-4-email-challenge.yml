@@ -34,5 +34,4 @@ settings:
 docs: |-
   Email MFA ALT-4. Loading this page is what sends the email.
 
-  Mirrors api.py::_switch_to_email_mfa ALT-4. Set MFA_CODE from the email
-  and run ALT-5.
+  Mirrors api.py::_switch_to_email_mfa ALT-4.

@@ -32,10 +32,6 @@ runtime:
   scripts:
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -72,13 +68,4 @@ settings:
 docs: |-
   Queries the tou-is-active flag for one BAN.
 
-  Mirrors api.py::async_get_tou_is_active_flag, which delegates to
-  api.py::_async_query_boolean_feature_flag.
-
-  True means the account has an active TOU supplier product. The reason
-  names its configuration id (e.g. TOU001), matching the supplier
-  schedule's activeConfigurationId. Sibling flags dgo-tou-is-active
-  (network side) and tou-forecasts-shown (always true) are not the
-  gate.
-
-  additionalContext.contractAccountId takes the BAN.
+  Mirrors api.py::async_get_tou_is_active_flag. True means the account has an active TOU supplier product. The reason names its configuration id (e.g. TOU001), matching the supplier schedule's activeConfigurationId.

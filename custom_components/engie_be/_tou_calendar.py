@@ -1,10 +1,4 @@
-"""
-Calendar-event provider for ENGIE time-of-use schedules.
-
-Emits one CalendarEvent per per-EAN, per-direction slot for the
-next 7 days. Reads only the cached ``tou_schedules`` wrapper on the
-coordinator; no additional network calls.
-"""
+"""Calendar-event provider for ENGIE time-of-use schedules."""
 
 from __future__ import annotations
 
@@ -50,12 +44,7 @@ def tou_slot_events(
     """
     Return the next 7 days of TOU slot transitions as CalendarEvent objects.
 
-    One event per (EAN, direction, slot), built from the supplier
-    schedule only. The DGO/TGO schedule is never materialised into
-    events, so nothing here compares the two.
-
-    Returns an empty list when the coordinator has no ``tou_schedules``
-    wrapper (feature flag off) or when no items are present.
+    Uses the supplier schedule only. DGO/TGO is never materialised.
     """
     payload = tou_schedules_payload(coordinator)
     if payload is None:

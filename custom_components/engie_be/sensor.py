@@ -56,7 +56,7 @@ from .const import (
 from .data import EpexSlot, unwrap_dict_payload
 from .entity import EngieBeEntity, EngieBeEpexEntity, _BoundaryScheduleMixin
 
-# Coordinator centralises updates; entities never poll individually.
+# Coordinator centralises updates. Entities never poll individually.
 PARALLEL_UPDATES = 0
 
 if TYPE_CHECKING:
@@ -219,15 +219,7 @@ async def async_setup_entry(
     entry: EngieBeConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """
-    Set up the sensor platform.
-
-    Builds entities once per :class:`ConfigSubentry` of type
-    ``business_agreement``. Energy-price and peak sensors come from the
-    per-subentry coordinator; EPEX sensors come from the entry-level
-    EPEX coordinator and are gated on the per-subentry ``is_dynamic``
-    flag so users on a fixed tariff never see them.
-    """
+    """Set up the sensor platform once per business-agreement subentry."""
     expose_all = entry.options.get(CONF_EXPOSE_ALL_ENTITIES, False)
     epex_coordinator = entry.runtime_data.epex_coordinator
     epex_qh_coordinator = entry.runtime_data.epex_qh_coordinator
@@ -271,11 +263,6 @@ async def async_setup_entry(
         entities.extend(
             _build_peak_sensors(coordinator, subentry, expose_all=expose_all)
         )
-        # Only surface Happy Hours timestamp sensors when this BAN is
-        # enrolled in the Happy Hours service. Enrolment is detected
-        # from the feature-flags endpoint during the coordinator's
-        # first refresh; the parent entry is reloaded automatically
-        # when enrolment flips so entities track the service status.
         if sub_data.feature_flags.happy_hour_enrolled or expose_all:
             happy_hour_sensors = _build_happy_hour_sensors(coordinator, subentry)
             LOGGER.debug(
@@ -310,11 +297,6 @@ async def async_setup_entry(
                 )
             )
 
-        # TOU slot sensors gated on the ``dgo-tou-is-active`` feature flag,
-        # mirroring the solar-surplus pattern. The coordinator skips the
-        # ``/tou-schedules`` fetch entirely when the flag is off, so
-        # ``coordinator.data["tou_schedules"]`` stays absent; without the
-        # gate, sensor properties would report ``None`` on every read.
         if sub_data.feature_flags.tou_active or expose_all:
             entities.extend(
                 _build_tou_sensors(
@@ -324,19 +306,12 @@ async def async_setup_entry(
                 )
             )
 
-        # Gate billing sensors on the billing wrapper being present. The
-        # endpoint is per-BAN with no feature flag; if the first fetch
-        # failed the wrapper is absent and we skip sensor creation until
-        # the next coordinator refresh that succeeds.
+        # Gate billing on the wrapper being present (per-BAN, no feature flag).
         if isinstance(coordinator.data.get("billing"), dict) or expose_all:
             entities.extend(_build_billing_sensors(coordinator, subentry))
 
         async_add_entities(entities, config_subentry_id=subentry.subentry_id)
 
-
-# ---------------------------------------------------------------------------
-# Capacity-tariff (captar) peak sensors
-# ---------------------------------------------------------------------------
 
 _CAPTAR_MONTHLY_PEAK_POWER = SensorEntityDescription(
     key="captar_monthly_peak_power",
@@ -351,23 +326,14 @@ _CAPTAR_MONTHLY_PEAK_ENERGY = SensorEntityDescription(
     translation_key="captar_monthly_peak_energy",
     native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
-    # No state_class: this is a snapshot of one 15-min peak window's energy,
-    # not a measurement, total, or total_increasing. HA rejects ENERGY +
-    # MEASUREMENT at runtime; TOTAL would require last_reset semantics that
-    # don't fit a sliding monthly peak.
+    # No state_class: ENERGY+MEASUREMENT is rejected, TOTAL needs last_reset.
     suggested_display_precision=3,
-    # Disabled by default: this is a raw measurement that most users don't
-    # need; the peak power (kW) is the value used for the capacity tariff
-    # calculation and is always enabled.
     entity_registry_enabled_default=False,
 )
 _CAPTAR_MONTHLY_PEAK_START = SensorEntityDescription(
     key="captar_monthly_peak_start",
     translation_key="captar_monthly_peak_start",
     device_class=SensorDeviceClass.TIMESTAMP,
-    # Diagnostic + disabled by default: timestamp detail is contextual
-    # information about the peak power value; users can enable if they
-    # want the raw timestamps.
     entity_category=EntityCategory.DIAGNOSTIC,
     entity_registry_enabled_default=False,
 )
@@ -375,7 +341,6 @@ _CAPTAR_MONTHLY_PEAK_END = SensorEntityDescription(
     key="captar_monthly_peak_end",
     translation_key="captar_monthly_peak_end",
     device_class=SensorDeviceClass.TIMESTAMP,
-    # See captar_monthly_peak_start.
     entity_category=EntityCategory.DIAGNOSTIC,
     entity_registry_enabled_default=False,
 )
@@ -386,8 +351,6 @@ _CAPTAR_LATEST_DAILY_PEAK = SensorEntityDescription(
     device_class=SensorDeviceClass.POWER,
     state_class=SensorStateClass.MEASUREMENT,
     suggested_display_precision=3,
-    # Disabled by default: most users only care about the monthly peak;
-    # per-day detail is opt-in by enabling the entity, or via ``expose_all``.
     entity_registry_enabled_default=False,
 )
 
@@ -476,10 +439,10 @@ class _EngieBePeakSensorBase(EngieBeEntity, SensorEntity):
         # Force a BAN-prefixed entity_id so two business agreements
         # on the same login never collide on the translated friendly
         # name. ``_attr_suggested_object_id`` is not honoured by
-        # ``Entity.suggested_object_id`` (which reads ``self.name``);
-        # setting ``self.entity_id`` directly is the supported escape
-        # hatch. Only effective on first registration; entity
-        # registry overrides on subsequent boots.
+        # ``Entity.suggested_object_id`` (which reads ``self.name``).
+        # Setting ``self.entity_id`` directly is the supported escape
+        # hatch, effective on first registration only. The entity
+        # registry overrides it on subsequent boots.
         ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
         if ban:
             self.entity_id = f"sensor.engie_belgium_{ban}_{entity_description.key}"
@@ -612,10 +575,6 @@ class EngieBeLatestDailyPeakSensor(_EngieBePeakSensorBase):
         return attrs
 
 
-# ---------------------------------------------------------------------------
-# Happy Hours sensors
-# ---------------------------------------------------------------------------
-
 _HAPPY_HOUR_NEXT_START = SensorEntityDescription(
     key="happy_hours_next_start",
     translation_key="happy_hours_next_start",
@@ -683,10 +642,6 @@ class EngieBeHappyHourTimestampSensor(EngieBeEntity, SensorEntity):
         start, end = window
         return start if self._field == "start" else end
 
-
-# ---------------------------------------------------------------------------
-# Happy Hours month-report sensors
-# ---------------------------------------------------------------------------
 
 _HAPPY_HOUR_MONTH_CONSUMPTION = SensorEntityDescription(
     key="happy_hours_month_consumption",
@@ -928,7 +883,7 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
         # key already embeds EAN + direction, so the final slug is
         # ``engie_belgium_{ban}_{ean}_{direction}[_excl_vat]`` which
         # is globally unique. ``_attr_suggested_object_id`` is not
-        # honoured by ``Entity.suggested_object_id``; setting
+        # honoured by ``Entity.suggested_object_id``, so setting
         # ``self.entity_id`` directly is the supported escape hatch.
         # Only effective on first registration.
         ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
@@ -988,24 +943,8 @@ class EngieBeEnergySensor(EngieBeEntity, SensorEntity):
         return None
 
 
-# ---------------------------------------------------------------------------
-# EPEX day-ahead price sensors (dynamic / EPEX-indexed contracts only)
-# ---------------------------------------------------------------------------
-
-# EPEX wholesale prices are identical for every Belgian electricity EAN on
-# a given dynamic contract, so a single :class:`EngieBeEpexCoordinator`
-# fetches them once per parent ConfigEntry. The entities themselves are
-# attached to each customer-account device that is on a dynamic tariff
-# (gated upstream by ``coordinator.is_dynamic``) so the user sees them
-# alongside the other sensors for that account.
-#
-# Unit follows the existing convention in this integration: the string
-# ``"EUR/kWh"`` rather than ``SensorDeviceClass.MONETARY``+``"EUR"``,
-# because Home Assistant's MONETARY device class requires a bare ISO
-# 4217 currency code as the unit and would reject the per-kWh form.
-# Precision is 4 (vs. 6 for retail prices) because wholesale fluctuates
-# at the cent level and extra digits are noise.
-
+# EPEX unit is the bare string ``EUR/kWh``: MONETARY needs a bare ISO 4217
+# code and would reject the per-kWh form. Precision 4 (vs. 6 for retail).
 _EPEX_UNIT = "EUR/kWh"
 _EPEX_PRECISION = 4
 # Slot durations at or below this use the lean {start, value} shape in
@@ -1121,17 +1060,7 @@ def _slots_for_date(payload: EpexPayload, target: date) -> list[Any]:
 
 
 class _EngieBeEpexSensorBase(_BoundaryScheduleMixin, EngieBeEpexEntity, SensorEntity):
-    """
-    Common base for EPEX day-ahead sensors.
-
-    The ``_BoundaryScheduleMixin`` arms a point-in-UTC-time callback at
-    the next EPEX slot boundary so both the current-price and
-    next-hour-price sensors update at the exact second the market moves
-    between slots, rather than waiting up to a full coordinator refresh
-    interval. The same boundary serves both: at each hourly transition
-    the current slot becomes the previous-hour slot AND the next-hour
-    slot shifts, so a single callback covers every dependent value.
-    """
+    """Common base for EPEX day-ahead sensors."""
 
     def __init__(
         self,
@@ -1142,18 +1071,10 @@ class _EngieBeEpexSensorBase(_BoundaryScheduleMixin, EngieBeEpexEntity, SensorEn
         """Bind the coordinator, subentry and entity description."""
         super().__init__(coordinator, subentry)
         self.entity_description = entity_description
-        # Subentry-scoped unique IDs because the same EPEX descriptor
-        # repeats across every dynamic-tariff customer account.
         self._attr_unique_id = (
             f"{coordinator.config_entry.entry_id}"
             f"_{subentry.subentry_id}_{entity_description.key}"
         )
-        # Force a BAN-prefixed entity_id so EPEX sensors stay
-        # distinct per business agreement on multi-agreement
-        # dynamic-tariff logins. ``_attr_suggested_object_id`` is
-        # not honoured by ``Entity.suggested_object_id``; setting
-        # ``self.entity_id`` directly is the supported escape hatch.
-        # Only effective on first registration.
         ban = subentry.data.get(CONF_BUSINESS_AGREEMENT_NUMBER)
         if ban:
             self.entity_id = f"sensor.engie_belgium_{ban}_{entity_description.key}"
@@ -1164,27 +1085,11 @@ class _EngieBeEpexSensorBase(_BoundaryScheduleMixin, EngieBeEpexEntity, SensorEn
         return super().available and epex_payload(self.coordinator) is not None
 
     def _next_boundary(self) -> datetime | None:
-        """
-        Return the next EPEX slot boundary in UTC, or ``None``.
-
-        Shared by the current-price and next-hour-price sensors: at
-        every hourly transition the current slot rolls over AND the
-        next-hour slot shifts, so a single callback at the next slot
-        boundary covers both dependent values.
-        """
+        """Return the next EPEX slot boundary in UTC, or ``None``."""
         payload = epex_payload(self.coordinator)
         if payload is None:
             return None
         return next_epex_slot_boundary(payload, dt_util.utcnow())
-
-
-# EPEX Sensor Slot Duration
-# All EPEX sensors expose slot_duration_minutes in extra_state_attributes.
-# Dynamically computed via _slot_duration_minutes() in _epex.py from slot
-# boundaries:
-# - Hourly contracts (MTU60): 60 minutes per slot
-# - Quarter-hourly contracts (MTU15): 15 minutes per slot
-# The value is NOT hardcoded; it reflects actual slot duration from API payload.
 
 
 class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
@@ -1205,21 +1110,13 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """
-        Expose the today/tomorrow slot arrays plus publication metadata.
+        Expose today/tomorrow slot arrays plus publication metadata.
 
-        Hour arrays are emitted as ``{start, end, value}`` dicts using
-        Brussels-local ISO 8601 timestamps so dashboard cards
-        (ApexCharts, etc.) can plot them without timezone gymnastics.
-        Raw EUR/MWh is included alongside EUR/kWh for users who prefer
-        wholesale-market units.
-
-        Quarter-hourly payloads use a leaner ``{start, value}`` shape
-        instead: 2 days of 15-minute slots is 192 entries, and the full
-        5-field shape pushes the serialized attributes past HA's 16 KiB
-        recorder limit (silently dropping the whole attribute set from
-        history). ``end``/``value_eur_per_mwh``/the per-slot duration are
-        all derivable from ``start`` and the top-level
-        ``slot_duration_minutes``, so nothing is lost.
+        Quarter-hourly payloads use a lean ``{start, value}`` shape:
+        192 entries at the full 5-field shape push past HA's 16 KiB
+        recorder limit and the whole attribute set drops silently.
+        The omitted fields are all derivable from ``start`` and
+        ``slot_duration_minutes``.
         """
         payload = epex_payload(self.coordinator)
         if payload is None:
@@ -1253,11 +1150,10 @@ class EngieBeEpexCurrentSensor(_EngieBeEpexSensorBase):
 
 class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
     """
-    EPEX day-ahead price for the slot starting one hour from now.
+    EPEX day-ahead price for the slot ``_lookahead`` from now.
 
-    ``_lookahead`` controls how far ahead of ``now`` the reported slot
-    sits; :class:`EngieBeEpexNextQuarterHourSensor` reuses this
-    implementation with a 15-minute lookahead instead of an hour.
+    :class:`EngieBeEpexNextQuarterHourSensor` reuses this with a
+    15-minute lookahead.
     """
 
     _lookahead = timedelta(hours=1)
@@ -1276,14 +1172,7 @@ class EngieBeEpexNextHourSensor(_EngieBeEpexSensorBase):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """
-        Expose the start/end of the slot whose price is being reported.
-
-        Intentionally narrower than :class:`EngieBeEpexCurrentSensor`'s
-        attribute set: this is a point lookup for one specific future
-        slot, not a today/tomorrow slate browser, so the per-day arrays
-        and market metadata are omitted to keep the entity focused.
-        """
+        """Expose the start/end of the slot whose price is being reported."""
         payload = epex_payload(self.coordinator)
         if payload is None:
             return {}
@@ -1371,10 +1260,6 @@ def _serialize_slot_lean(slot: EpexSlot) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# Solar-surplus forecast sensors
-# ---------------------------------------------------------------------------
-
 _SOLAR_SURPLUS_FORECAST = SensorEntityDescription(
     key=TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
     translation_key=TRANSLATION_KEY_SOLAR_SURPLUS_FORECAST,
@@ -1388,7 +1273,7 @@ _SOLAR_SURPLUS_CURRENT = SensorEntityDescription(
     device_class=SensorDeviceClass.ENERGY,
     # No state_class: this is a snapshot of one forecast hour slot's
     # value, not a measurement, total, or total_increasing. HA rejects
-    # ENERGY + MEASUREMENT at runtime; see _CAPTAR_MONTHLY_PEAK_ENERGY
+    # ENERGY + MEASUREMENT at runtime. See _CAPTAR_MONTHLY_PEAK_ENERGY
     # for the same pattern.
     suggested_display_precision=3,
 )
@@ -1408,7 +1293,7 @@ _SOLAR_SURPLUS_TODAY_TOTAL = SensorEntityDescription(
     # No state_class: re-summed from today's forecast slots on every
     # refresh (not an accumulating meter reading), so forecast revisions
     # can move it up or down. TOTAL/TOTAL_INCREASING assume a
-    # monotonically accumulating source; this isn't one. Same pattern as
+    # monotonically accumulating source, which this is not. Same pattern as
     # _CAPTAR_MONTHLY_PEAK_ENERGY.
     suggested_display_precision=2,
 )
@@ -1441,13 +1326,7 @@ def _build_solar_surplus_sensors(
 
 
 class _EngieBePerEanBase(EngieBeEntity, SensorEntity):
-    """
-    Shared per-EAN wiring: unique_id, entity_id, and translation placeholders.
-
-    Subclasses add per-feature state / helpers. Future per-EAN sensors
-    (e.g. a hypothetical per-EAN import-status sensor) should inherit
-    from this class directly.
-    """
+    """Shared per-EAN wiring: unique_id, entity_id, and translation placeholders."""
 
     def __init__(
         self,
@@ -1743,10 +1622,6 @@ class EngieBeSolarSurplusTodayPeakSensor(_EngieBeSolarSurplusBase):
         return {"peak_start": peak_start.isoformat()}
 
 
-# ---------------------------------------------------------------------------
-# Time-of-Use (TOU) tariff schedule sensors
-# ---------------------------------------------------------------------------
-
 _TOU_OFFTAKE_SLOT = SensorEntityDescription(
     key="offtake_slot",
     translation_key=TRANSLATION_KEY_TOU_OFFTAKE_SLOT,
@@ -1908,10 +1783,6 @@ class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
         return attrs
 
 
-# ---------------------------------------------------------------------------
-# Billing (outstanding balance + overdue amount) sensors
-# ---------------------------------------------------------------------------
-
 _BILLING_OUTSTANDING_BALANCE = SensorEntityDescription(
     key="outstanding_balance",
     translation_key=TRANSLATION_KEY_OUTSTANDING_BALANCE,
@@ -1974,7 +1845,7 @@ class EngieBeOutstandingBalanceSensor(_EngieBeBillingBase):
     """
     Outstanding balance owed to ENGIE in EUR.
 
-    Positive means the customer owes ENGIE; negative means credit.
+    Positive means the customer owes ENGIE. Negative means credit.
     """
 
     def __init__(

@@ -32,10 +32,6 @@ runtime:
   scripts:
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -72,22 +68,4 @@ settings:
 docs: |-
   Queries the happy-hours-service-enabled flag for one BAN.
 
-  Mirrors api.py::async_get_happy_hours_service_enabled_flag, which delegates to
-  api.py::_async_query_boolean_feature_flag.
-
-  This is the authoritative Happy Hours enrolment signal, and the reason
-  the request exists. /happy-hour-event returns {} both when a customer is
-  not enrolled and when they are enrolled with nothing scheduled, so the
-  event payload alone cannot tell the two apart. value flips to true once
-  the customer signs the agreement.
-
-  The endpoint also exposes happy-hours-shown, which governs Smart App UI
-  visibility only. const.py deliberately keys on -service-enabled instead.
-
-  The targeted endpoint returns a flat {value, reason} object, not
-  the group envelope keyed by flag name.
-
-  additionalContext.contractAccountId takes the BAN. The
-  customerAccountNumber the Smart App also sends is accepted but
-  not required, and the integration omits it because the v5
-  subentry schema dropped the CAN.
+  Mirrors api.py::async_get_happy_hours_service_enabled_flag. This is the authoritative Happy Hours enrolment signal: /happy-hour-event returns {} both when the customer is not enrolled and when nothing is scheduled, so the event payload alone cannot tell them apart. The sibling happy-hours-shown governs Smart App UI visibility only.

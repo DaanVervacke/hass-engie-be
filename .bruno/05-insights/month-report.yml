@@ -24,10 +24,6 @@ runtime:
       bru.setVar('reportMonth', now.getFullYear() + '-' + month);
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -60,16 +56,4 @@ settings:
 docs: |-
   Current-month Happy Hours summary.
 
-  Mirrors api.py::async_get_month_report.
-
-  Path month is YYYY-MM, zero-padded, computed by the pre-request
-  script.
-
-  Only meaningful for BANs enrolled in Happy Hours. Un-enrolled BANs
-  can get empty or zero values rather than an error, so the assertion
-  checks only the envelope.
-
-  The month.happyHour block carries the current-month summary:
-  consumption, eligible hours, reward and comparison metrics. Read in
-  coordinator.py and sensor.py. _happy_hour.py handles the event
-  windows, not this report.
+  Mirrors api.py::async_get_month_report. Un-enrolled BANs come back with empty or zero values rather than an error, so the assertion checks only the envelope.

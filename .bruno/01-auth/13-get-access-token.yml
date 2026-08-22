@@ -39,10 +39,6 @@ runtime:
       bru.setVar('refreshToken', body.refresh_token);
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -79,14 +75,4 @@ settings:
 docs: |-
   Auth step 13. Exchanges the authorization code for tokens.
 
-  Mirrors api.py::_run_auth_steps_8_to_13 step 13. Needs code_verifier
-  from step 1, so the whole flow must run in one session.
-
-  Sets: accessToken, refreshToken. Everything in folders 03-08 reads
-  accessToken through the collection-level bearer auth.
-
-  The access token stays valid for about 2 minutes, which is why the
-  integration refreshes every 60 seconds
-  (const.py::TOKEN_REFRESH_INTERVAL_SECONDS). Re-run
-  02-token/Refresh token rather than the whole login when it
-  expires.
+  Mirrors api.py::_run_auth_steps_8_to_13 step 13. Access token lifetime is around 2 minutes, refreshed every 60s (const.py::TOKEN_REFRESH_INTERVAL_SECONDS). Re-run 02-token/Refresh token rather than the whole login when it expires.

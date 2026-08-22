@@ -33,10 +33,6 @@ settings:
   followRedirects: false
   maxRedirects: 5
 docs: |-
-  Auth step 7. Loading this page is what actually sends the SMS.
+  Auth step 7. Loading this page is what sends the SMS.
 
-  Mirrors api.py::_run_auth_steps_1_to_7 step 7. Set MFA_CODE in the
-  Local environment from the SMS, then run step 8.
-
-  For email MFA, skip this and run the email-mfa folder instead: api.py
-  skips step 7 entirely so no SMS is sent.
+  Mirrors api.py::_run_auth_steps_1_to_7 step 7. For email MFA, run the email-mfa folder instead.

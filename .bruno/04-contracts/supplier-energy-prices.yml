@@ -22,10 +22,6 @@ runtime:
   scripts:
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -71,16 +67,4 @@ settings:
 docs: |-
   Per-EAN energy prices. The main price sensors read this.
 
-  Mirrors api.py::async_get_prices.
-
-  ENGIE_BAN must be the 12-digit businessAgreementNumber, NOT the shorter
-  customerAccountNumber (CAN). The endpoint validates the length and
-  returns HTTP 400 for anything else.
-
-  Parsed by sensor.py: items[].ean, items[].prices[] (the current
-  window is chosen by date), then
-  proportionalPriceConfigurations.{offtake,injection}[] with
-  priceValue and timeOfUseSlotCode. ENGIE already returns EUR/kWh here,
-  so sensor.py uses priceValue as-is and labels the unit. The only
-  conversion in the integration is on EPEX, which arrives in
-  EUR/MWh.
+  Mirrors api.py::async_get_prices. Prices come back in EUR/kWh already, so no unit conversion is applied.

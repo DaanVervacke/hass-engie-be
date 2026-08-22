@@ -1,10 +1,4 @@
-"""
-Shared helpers for capacity-tariff (captar) peak data.
-
-These helpers unwrap the ``peaks`` wrapper that the coordinator stores under
-``coordinator.data["peaks"]``. They are imported by the sensor and calendar
-platforms so payload-shape knowledge lives in a single place.
-"""
+"""Shared helpers for capacity-tariff (captar) peak data."""
 
 from __future__ import annotations
 
@@ -18,8 +12,6 @@ from .data import unwrap_dict_payload
 if TYPE_CHECKING:
     from .coordinator import EngieBeDataUpdateCoordinator
 
-# Summary shown on captar calendar events. Module-local: nothing outside
-# _peaks.py reads it.
 CAPTAR_EVENT_SUMMARY = "Captar monthly peak"
 
 
@@ -56,11 +48,8 @@ def captar_peak_events(
     """
     Return calendar events for every known captar peak window.
 
-    Combines persisted historical peaks (from the per-subentry peak store)
-    with the current month's peak window from the live coordinator
-    payload. Entries are deduplicated by ``(year, month)`` so the live
-    payload does not produce a duplicate event when the store already
-    has it.
+    Combines persisted history with the live payload, deduplicated by
+    ``(year, month)``.
     """
     events_by_key: dict[tuple[int, int], CalendarEvent] = {}
 

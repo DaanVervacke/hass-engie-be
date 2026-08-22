@@ -28,10 +28,6 @@ runtime:
   scripts:
   - type: after-response
     code: |-
-      // Seed ENGIE_EAN for the two requests that need one: the service-point lookup
-      // and the solar surplus forecasts, which builds its delivery point id as
-      // EAN + '_ID1'. Electricity only, matching _contracts.py, because a gas EAN
-      // has no surplus forecast. An ENGIE_EAN you set yourself always wins.
       if (bru.getVar('ENGIE_EAN') || bru.getEnvVar('ENGIE_EAN')) {
         console.log('ENGIE_EAN already set, leaving it alone.');
       } else {
@@ -49,10 +45,6 @@ runtime:
       }
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -99,28 +91,4 @@ settings:
 docs: |-
   Active energy contracts, and the tariff product behind each.
 
-  Mirrors api.py::async_get_energy_contracts.
-
-  Needs ENGIE_BAN, which 03-accounts/Customer account relations seeds
-  for you. Running this first against an empty ENGIE_BAN drops the BAN
-  segment from the path and ENGIE answers 400 with 'size must be
-  between 12 and 12'.
-
-  Its own after-response script then seeds ENGIE_EAN from the first
-  active electricity contract.
-
-  ENGIE_BAN must be the 12-digit businessAgreementNumber, NOT the shorter
-  customerAccountNumber (CAN). The endpoint validates the length and
-  returns HTTP 400 for anything else.
-
-  includeActions=true and includeSapData=true are load-bearing:
-  without them the response omits productConfiguration entirely, and
-  that is where the integration reads energyProduct to detect a
-  DYNAMIC (EPEX-indexed) tariff.
-
-  Switch filter to ALL_ENERGY_CONTRACTS to include historical
-  contracts, which is what the history import walks to find the
-  earliest legalContractStartDate.
-
-  Parsed by _contracts.py: items[].division, .servicePointNumber,
-  .status, .productConfiguration.energyProduct.
+  Mirrors api.py::async_get_energy_contracts. includeActions=true and includeSapData=true are load-bearing: without them productConfiguration is omitted, which is where energyProduct signals a DYNAMIC (EPEX-indexed) tariff. ENGIE_BAN must be the 12-digit businessAgreementNumber, not the shorter customerAccountNumber.

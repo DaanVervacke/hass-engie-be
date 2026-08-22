@@ -25,21 +25,7 @@ def unwrap_dict_payload(
     coordinator: DataUpdateCoordinator[Any],
     key: str,
 ) -> dict[str, Any] | None:
-    """
-    Return the inner ``data`` dict from a coordinator dict-wrapper.
-
-    The coordinator stores each domain payload under a top-level key
-    (``"peaks"``, ``"happy_hour"``, ``"billing"``, ...) wrapped in a
-    dict of shape ``{"data": <payload>, ...}``. This helper peels both
-    levels and narrows the return type.
-
-    Returns ``None`` when:
-
-    * the coordinator has no data yet,
-    * the top-level container is not a dict,
-    * the wrapper under ``key`` is missing or not a dict, or
-    * the inner ``"data"`` value is missing or not a dict.
-    """
+    """Return the inner ``data`` dict from a coordinator wrapper, or ``None``."""
     if not isinstance(coordinator.data, dict):
         return None
     wrapper = coordinator.data.get(key)
@@ -54,13 +40,7 @@ type EngieBeConfigEntry = ConfigEntry[EngieBeData]
 
 @dataclass(slots=True, frozen=True)
 class EpexSlot:
-    """
-    Single EPEX day-ahead market price slot.
-
-    ``start``/``end`` are timezone-aware datetimes (Europe/Brussels).
-    ``value_eur_per_kwh`` is the wholesale market price in EUR/kWh
-    (raw API value is EUR/MWh and divided by 1000 on ingest).
-    """
+    """Single EPEX day-ahead price slot (Brussels-aware, value in EUR/kWh)."""
 
     start: datetime
     end: datetime
@@ -80,19 +60,10 @@ class EpexPayload:
 @dataclass(frozen=False)
 class FeatureFlagState:
     """
-    Per-subentry ENGIE feature-flag snapshot.
+    Per-subentry feature-flag snapshot.
 
-    Each field mirrors a boolean flag surfaced by the ENGIE API and
-    follows the same three-state lifecycle:
-
-    - ``None`` until the first successful refresh observes the flag.
-    - ``True`` when the customer is enrolled / eligible.
-    - ``False`` when the flag is explicitly off (or the endpoint is
-      absent under the fail-open policy).
-
-    Bundled as one object so future flags land as a single field
-    addition here, not another pair of fields and helpers on the
-    coordinator.
+    ``None`` until first observed, then True/False. Fail-open: an absent
+    endpoint reads as False, never as unknown-but-on.
     """
 
     happy_hour_enrolled: bool | None = None
@@ -103,37 +74,15 @@ class FeatureFlagState:
 @dataclass
 class EngieBeSubentryData:
     """
-    Per-subentry runtime state.
+    Per-subentry runtime state (one per active business agreement).
 
-    One instance lives in :class:`EngieBeData.subentry_data` per active
-    business agreement (one ``ConfigSubentry`` of type
-    ``business_agreement``). Each subentry owns its own customer-data
-    coordinator, the per-account service-points lookup, and a peaks
-    store keyed off the subentry id so historical peaks survive across
-    restarts independently per business agreement.
+    ``is_dynamic_override`` comes from the energy-contracts endpoint and takes
+    precedence over the payload-shape heuristic when not None, so a transient
+    prices outage never flips the account back to fixed.
 
-    ``is_dynamic_override`` is set from the energy-contracts endpoint
-    during setup and takes precedence over the legacy payload-shape
-    heuristic when not None. It survives across coordinator refreshes
-    so a transient outage on the prices endpoint never silently flips
-    the account back to fixed. ``energy_contracts_payload`` retains the
-    raw contracts response for diagnostics so support bundles can
-    correlate per-EAN product codes with the detection result.
-
-    ``feature_flags`` bundles the three per-subentry feature-flag
-    booleans (Happy Hours enrolment, solar-surplus availability, TOU
-    activation). See :class:`FeatureFlagState` for per-field semantics.
-    The coordinator writes to this object directly on each refresh; a
-    flip on any flag schedules a config-entry reload so entities appear
-    or disappear without manual intervention.
-
-    ``happy_hours_store`` persists every Happy Hours window the
-    coordinator observes (the API only ever returns the next upcoming
-    window under ``tomorrow``, so historical windows would otherwise
-    disappear the moment they expire). Stays ``None`` for un-enrolled
-    accounts at first observation; the store is created up front so
-    enrolment that flips on later can start recording immediately
-    without a second wiring pass.
+    ``happy_hours_store`` records every observed window because the API only
+    returns the next upcoming one under ``tomorrow``. Allocated up front so
+    later enrolment can record immediately.
     """
 
     coordinator: EngieBeDataUpdateCoordinator
@@ -148,32 +97,19 @@ class EngieBeSubentryData:
 @dataclass
 class EngieBeData:
     """
-    Runtime data for the ENGIE Belgium integration.
+    Parent-entry runtime data.
 
-    The parent :class:`ConfigEntry` owns a single :class:`EngieBeApiClient`
-    and a single :class:`EngieBeEpexCoordinator` (EPEX wholesale prices
-    are account-agnostic, so polling them once per login is correct).
-    Per-account state lives under ``subentry_data`` keyed by
-    ``ConfigSubentry.subentry_id``.
+    Shared client and EPEX coordinator plus per-subentry state.
 
-    ``reload_pending`` is a one-shot debounce flag set by the coordinator
-    when a Happy Hours enrolment flip is detected. It guarantees that a
-    refresh tick which observes simultaneous flips on multiple subentries
-    schedules at most one ``async_reload`` call per parent entry.
+    ``reload_pending`` is a one-shot debounce so simultaneous Happy Hours
+    enrolment flips across subentries collapse to a single ``async_reload``.
 
-    ``pending_subentry_target`` collapses a multi-pick subentry add into a
-    single reload. When a user selects N business agreements in one picker
-    run, the flow writes them with N separate ``async_add_subentry`` calls,
-    each of which schedules this integration's update listener. Without a
-    gate, the listener would observe N intermediate subentry sets and fire N
-    reloads. The picker sets this to the *final* expected set of business-
-    agreement numbers (BANs) before adding; ``async_reload_entry`` then
-    suppresses every reload until that full BAN set is present, reloading
-    exactly once when it is reached (and clearing the gate). BANs are used
-    rather than subentry ids because the first pick's ``subentry_id`` is
-    generated by the framework's finish path and is not known up front,
-    whereas the BAN (``unique_id``) is set by the picker. ``None`` means no
-    multi-add is in progress.
+    ``pending_subentry_target`` collapses a multi-pick add into one reload:
+    the picker sets it to the final expected BAN set before adding, and
+    ``async_reload_entry`` suppresses reloads until that set is present, then
+    reloads once and clears the gate. Keyed by BAN (``unique_id``) because
+    subentry ids are generated by the framework's finish path and not known
+    up front. ``None`` means no multi-add is in progress.
     """
 
     client: EngieBeApiClient

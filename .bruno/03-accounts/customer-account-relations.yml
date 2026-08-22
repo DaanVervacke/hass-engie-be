@@ -22,13 +22,6 @@ runtime:
   scripts:
   - type: after-response
     code: |-
-      // Seed ENGIE_BAN so the rest of the collection works straight after a login.
-      // Every other folder needs a BAN, and this request is the only one that does
-      // not, so it is where the value is discovered.
-      //
-      // Only fills a gap: an explicitly configured ENGIE_BAN always wins, so a CI
-      // run keeps using its secret rather than silently retargeting itself at
-      // whatever account happens to come back first.
       if (bru.getVar('ENGIE_BAN') || bru.getEnvVar('ENGIE_BAN')) {
         console.log('ENGIE_BAN already set, leaving it alone.');
       } else {
@@ -53,10 +46,6 @@ runtime:
       }
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -103,17 +92,4 @@ settings:
 docs: |-
   Every customer account this login can reach.
 
-  Mirrors api.py::async_get_customer_account_relations.
-
-  Run this FIRST. It is the only data request that does not need a
-  BAN, and its after-response script seeds ENGIE_BAN for every other
-  request from the first active business agreement it finds. An
-  ENGIE_BAN you have set yourself is never overwritten.
-
-  withBusinessAgreements=SMART_APP is required. Without it the
-  endpoint returns bare account identifiers with no business
-  agreements and no consumption address.
-
-  Parsed by _relations.py: items[].customerAccount.customerAccountNumber,
-  .name, .businessAgreements[].businessAgreementNumber, .active,
-  .consumptionAddress.{premisesNumber,street,houseNumber,postalCode,city}.
+  Mirrors api.py::async_get_customer_account_relations. Run this FIRST: it is the only data request that does not need a BAN and it seeds ENGIE_BAN for the rest. withBusinessAgreements=SMART_APP is required, or the endpoint returns bare account identifiers with no business agreements and no consumption address.

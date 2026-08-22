@@ -44,5 +44,3 @@ docs: |-
   Auth step 6. Resuming the authorize transaction makes Auth0 demand MFA.
 
   Mirrors api.py::_run_auth_steps_1_to_7 step 6.
-
-  Sets: mfaChallengeState.

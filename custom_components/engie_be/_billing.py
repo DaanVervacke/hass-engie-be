@@ -15,12 +15,7 @@ if TYPE_CHECKING:
 def overview_open_amount(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> float | None:
-    """
-    Return the total open (unpaid) amount from the billing overview.
-
-    Returns ``None`` when the coordinator has no billing data or the
-    payload is malformed.
-    """
+    """Return the total open (unpaid) amount from the billing overview, or None."""
     payload = unwrap_dict_payload(coordinator, "billing")
     if payload is None:
         return None
@@ -39,12 +34,7 @@ def overview_open_amount(
 def overview_due_amount(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> float | None:
-    """
-    Return the amount that is past its due date from the billing payload.
-
-    Returns ``None`` when the coordinator has no billing data or the
-    payload is malformed.
-    """
+    """Return the amount past its due date from the billing payload, or None."""
     payload = unwrap_dict_payload(coordinator, "billing")
     if payload is None:
         return None
@@ -63,15 +53,7 @@ def overview_due_amount(
 def next_due_date(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> datetime | None:
-    """
-    Return the earliest due date among open transactions, as a timezone-aware datetime.
-
-    The returned datetime is midnight Brussels-local on the due date,
-    timezone-aware.
-
-    Returns ``None`` when no open transactions exist or the coordinator
-    has no billing data.
-    """
+    """Return the earliest open-transaction due date at Brussels midnight, or None."""
     transactions = _transactions(coordinator)
     if not transactions:
         return None
@@ -109,11 +91,6 @@ def billing_status(
         return None
     status = payload.get("status")
     return status if isinstance(status, str) else None
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 
 def _transactions(

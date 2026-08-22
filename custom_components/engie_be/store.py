@@ -1,15 +1,4 @@
-"""
-Persistent storage of historical captar peak windows and Happy Hours windows.
-
-Each refresh queries only the current month's ``peakOfTheMonth``, plus a
-one-month fallback, so anything older survives only because this store
-kept it. The Happy Hours endpoint returns at most a ``today`` and a
-``tomorrow`` window (or ``{}``), so windows that have already passed are
-not retrievable. Both stores persist every
-window we observe so the calendar entity can keep surfacing the full
-history across restarts and so newly-installed integrations gradually
-build up their own local archive.
-"""
+"""Persistent history for captar peaks and Happy Hours windows."""
 
 from __future__ import annotations
 
@@ -74,13 +63,7 @@ class EngieBePeaksStore:
         peak_kw: Any,
         peak_kwh: Any,
     ) -> bool:
-        """
-        Insert or update a peak entry, returning ``True`` if anything changed.
-
-        Entries are keyed by ``(year, month)``. An existing entry is
-        overwritten when any field differs (the peak window can shift
-        within a month as larger 15-minute peaks are recorded).
-        """
+        """Insert or update a peak keyed by ``(year, month)``. Return True on change."""
         new_entry = {
             "year": year,
             "month": month,
@@ -124,13 +107,7 @@ class EngieBePeaksStore:
         }
 
     async def async_remove(self) -> None:
-        """
-        Delete this subentry's persisted peaks-history store from disk.
-
-        Called when the config entry is removed. ``Store.async_remove``
-        already suppresses ``FileNotFoundError``, so this is safe for a
-        subentry whose store was never written.
-        """
+        """Delete this subentry's persisted store from disk. Safe if never written."""
         await self._store.async_remove()
         LOGGER.debug(
             "Subentry %s: removed persisted peaks-history store",
@@ -151,20 +128,10 @@ def _is_valid_peak(peak: Any) -> bool:
 
 class EngieBeHappyHoursStore:
     """
-    Wrapper around ``Store`` for persisted Happy Hours window history.
+    Persisted Happy Hours window history, keyed by ``start`` (ISO with offset).
 
-    Entries are keyed by ``start`` (the ISO-formatted window start with
-    explicit timezone offset, as supplied by ENGIE). The API publishes a
-    window under a ``tomorrow`` key and re-publishes the same window under
-    a ``today`` key once midnight passes; both are recorded, so dedup by
-    ``start`` is enough to make repeated upserts idempotent across the
-    many refreshes (and both keys) that happen between the moment ENGIE
-    announces a window and the moment it expires.
-
-    The store can only ever contain windows the integration observed
-    while running. Windows that happened before the user installed the
-    integration, or before this store landed, are permanently lost
-    because ENGIE does not expose Happy Hours history.
+    ENGIE republishes a window under both ``today`` and ``tomorrow`` keys, so
+    dedup by ``start`` keeps upserts idempotent.
     """
 
     def __init__(self, hass: HomeAssistant, subentry_id: str) -> None:
@@ -207,12 +174,7 @@ class EngieBeHappyHoursStore:
         return self._loaded
 
     def upsert(self, start: str, end: str) -> bool:
-        """
-        Insert or update a window entry, returning ``True`` if anything changed.
-
-        Entries are keyed by ``start``. An existing entry is overwritten
-        only when ``end`` differs (start is the dedup key by definition).
-        """
+        """Insert or update a window keyed by ``start``. Return True on change."""
         new_entry = {"start": start, "end": end}
         for index, existing in enumerate(self._windows):
             if existing.get("start") == start:
@@ -247,13 +209,7 @@ class EngieBeHappyHoursStore:
         }
 
     async def async_remove(self) -> None:
-        """
-        Delete this subentry's persisted Happy Hours store from disk.
-
-        Called when the config entry is removed. ``Store.async_remove``
-        already suppresses ``FileNotFoundError``, so this is safe for a
-        subentry whose store was never written.
-        """
+        """Delete this subentry's persisted Happy Hours store from disk."""
         await self._store.async_remove()
         LOGGER.debug(
             "Subentry %s: removed persisted Happy Hours store",

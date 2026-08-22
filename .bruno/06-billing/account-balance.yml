@@ -18,10 +18,6 @@ runtime:
   scripts:
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -63,17 +59,4 @@ settings:
 docs: |-
   Outstanding balance and per-invoice rows.
 
-  Mirrors api.py::async_get_account_balance.
-
-  status is CLEAR, OPEN_DEBIT, OPEN_OVERDUE and similar. Amounts are
-  EUR. No name, IBAN or address is returned.
-
-  Parsed by _billing.py: status, overview.dueAmount, and
-  details.financialTransactions[].{dueDate,openAmount}. Note that
-  dueAmount is read from overview, not from the per-invoice rows.
-  invoiceType is returned by ENGIE and documented in api.py, but no
-  parser reads it.
-
-  This endpoint returns financial data. The assertions compare types
-  and counts rather than values, so no amount can reach a public CI
-  log.
+  Mirrors api.py::async_get_account_balance. status is CLEAR, OPEN_DEBIT, OPEN_OVERDUE and similar. dueAmount is read from overview, not from the per-invoice rows.

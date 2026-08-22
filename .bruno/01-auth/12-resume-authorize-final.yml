@@ -48,8 +48,4 @@ settings:
 docs: |-
   Auth step 12. Outcome B only. Yields the authorization code.
 
-  Mirrors api.py::_run_auth_steps_8_to_13 step 12. Uses loginState, not
-  passKeyState. The code arrives in the body on some accounts and only in
-  the Location header on others, so both are checked.
-
-  Sets: code.
+  Mirrors api.py::_run_auth_steps_8_to_13 step 12. Uses loginState, not passKeyState. The code arrives in the body on some accounts and only in the Location header on others, so both are checked.

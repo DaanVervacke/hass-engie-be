@@ -52,14 +52,7 @@ def _hash_ean(ean: str) -> str:
 
 
 def _redacted_title(title: str | None) -> str:
-    """
-    Return a stable, non-identifying fingerprint for a subentry title.
-
-    Subentry titles are user-facing addresses or customer-account holder
-    names. Replacing them with a short content-hash keeps support bundles
-    privacy-safe while still letting the user correlate two subentries
-    in the same diagnostic dump.
-    """
+    """Return a stable, non-identifying fingerprint for a subentry title."""
     if not title:
         return "**REDACTED**"
     digest = hashlib.sha256(title.encode("utf-8")).hexdigest()[:TITLE_HASH_LENGTH]
@@ -166,13 +159,7 @@ def _summarise_tou(
 def _summarise_solar_surplus(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> dict[str, Any] | None:
-    """
-    Return a privacy-safe summary of the cached solar-surplus payload.
-
-    Emits per-EAN hashes, day count, hourly-slot count, and the mix of
-    level values seen (as a sorted list). Never emits raw startTime,
-    value, or full EAN strings.
-    """
+    """Return a privacy-safe summary of the cached solar-surplus payload."""
     per_ean = unwrap_dict_payload(coordinator, "solar_surplus")
     if per_ean is None:
         return None
@@ -226,17 +213,7 @@ def _summarise_solar_surplus(
 def _summarise_billing(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> dict[str, Any] | None:
-    """
-    Return a privacy-safe summary of the cached billing wrapper.
-
-    Wrapper shape: ``{"data": <account-balance-payload>, "fetched_at": ISO}``.
-    Emits: ``has_data``, ``fetched_at``, ``status``, ``transaction_count``.
-
-    Never emits: raw amounts, invoice IDs, ``invoiceStructuredCommunication``,
-    or any other PII from the billing payload.
-
-    Returns ``None`` when the coordinator has no billing wrapper at all.
-    """
+    """Return a privacy-safe summary of the billing wrapper, or ``None``."""
     raw_wrapper = (
         coordinator.data.get("billing") if isinstance(coordinator.data, dict) else None
     )

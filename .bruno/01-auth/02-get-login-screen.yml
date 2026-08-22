@@ -35,6 +35,4 @@ settings:
 docs: |-
   Auth step 2. Loads the identifier (username) page.
 
-  Mirrors api.py::_run_auth_steps_1_to_7 step 2. The response is
-  discarded. The request exists because Auth0 expects the page load
-  before the POST.
+  Mirrors api.py::_run_auth_steps_1_to_7 step 2.

@@ -38,10 +38,6 @@ runtime:
       bru.setVar('refreshToken', body.refresh_token);
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -76,14 +72,6 @@ settings:
   followRedirects: false
   maxRedirects: 5
 docs: |-
-  Refreshes the access token. Mirrors api.py::async_refresh_token.
+  Refreshes the access token.
 
-  Needs refreshToken to already be set, either by auth step 13 in this
-  session or seeded manually.
-
-  Rotation: the response carries a NEW refresh_token and the one you
-  sent is now dead. In CI the rotated value must be persisted back to
-  the ENGIE_REFRESH_TOKEN secret immediately. See
-  .github/workflows/bruno-live.yml.
-
-  Sets: accessToken, refreshToken.
+  Mirrors api.py::async_refresh_token. The response carries a NEW refresh_token and the one sent is now dead, so CI must persist the rotated value back to ENGIE_REFRESH_TOKEN immediately.

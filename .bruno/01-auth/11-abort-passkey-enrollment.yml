@@ -42,6 +42,4 @@ settings:
 docs: |-
   Auth step 11. Outcome B only. Declines passkey enrollment.
 
-  Mirrors api.py::_run_auth_steps_8_to_13 step 11. Redirects are not
-  followed: the chain ends at an app-scheme URL no HTTP client can
-  follow, and the code is picked up by step 12 instead.
+  Mirrors api.py::_run_auth_steps_8_to_13 step 11. Redirects end at an app-scheme URL, so the code is picked up by step 12 instead.

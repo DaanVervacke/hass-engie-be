@@ -1,17 +1,9 @@
 """
 Shared helpers for Happy Hours event data.
 
-The Happy Hours endpoint (``/business-agreements/{BAN}/happy-hour-event``)
-returns ``{}`` (no event scheduled) or a payload carrying the upcoming
-window under a ``tomorrow`` key (announced the day before) and/or a
-``today`` key (the *same* window, re-published once midnight passes).
-Both keys are honoured so a window is not lost across a post-midnight
-restart.
-
-The coordinator stores the response under ``coordinator.data["happy_hour"]``
-as ``{"data": <payload-or-None>}``. These helpers unwrap that wrapper so
-payload-shape knowledge lives in a single place, and produce the data
-shapes needed by the sensor, binary_sensor, and calendar platforms.
+ENGIE announces a window under ``tomorrow`` the day before and re-publishes
+the same window under ``today`` once midnight passes. Both keys are honoured
+so a window is not lost across a post-midnight restart.
 """
 
 from __future__ import annotations
@@ -36,13 +28,8 @@ def is_enrolled_from_flag(flag: dict[str, Any] | None) -> bool:
     """
     Return True iff the boolean-feature-flag response reports Happy Hours enrolled.
 
-    The boolean-feature-flags endpoint returns a flat dict for the named
-    flag with a top-level ``value`` boolean (and usually a ``reason``
-    string). Callers pass the raw API response dict without pre-validation.
-
-    Defensive against every observed and plausible non-enrolled shape
-    (``None``, non-dict, missing ``value``, falsy ``value``) so a transient
-    or unexpected response never incorrectly signals enrolment.
+    Fails closed against every observed non-enrolled shape so a transient
+    response never signals enrolment.
     """
     if not isinstance(flag, dict):
         return False
@@ -50,13 +37,7 @@ def is_enrolled_from_flag(flag: dict[str, Any] | None) -> bool:
 
 
 def happy_hour_flag_reason(flag: dict[str, Any] | None) -> str | None:
-    """
-    Return ENGIE's ``reason`` string from the Happy Hours flag response, or ``None``.
-
-    Useful for debug logging so beta users can see *why* enrolment
-    flipped (e.g. ``HAPPY_HOUR_ACTIVE`` vs ``HAPPY_HOUR_INACTIVE``)
-    without having to read the raw API JSON.
-    """
+    """Return ENGIE's ``reason`` from the Happy Hours flag response, or ``None``."""
     if not isinstance(flag, dict):
         return None
     reason = flag.get("reason")
@@ -69,16 +50,8 @@ def happy_hour_payload(
     """
     Return the inner happy-hour dict from coordinator data, or ``None``.
 
-    Returns ``None`` when:
-
-    * the coordinator has no data yet,
-    * the coordinator failed to fetch happy-hour data and has no
-      last-known wrapper, or
-    * the wrapper is present but the API returned a non-dict payload.
-
-    Returns the empty dict ``{}`` when the API explicitly reported no
-    event scheduled. Callers must distinguish ``None`` (no data) from
-    ``{}`` (no event scheduled) themselves when that matters.
+    Returns ``{}`` when the API explicitly reported no event scheduled.
+    Callers must distinguish that from ``None`` (no data) themselves.
     """
     return unwrap_dict_payload(coordinator, "happy_hour")
 
@@ -87,13 +60,7 @@ _HAPPY_HOUR_PAYLOAD_KEYS = ("today", "tomorrow")
 
 
 def _parse_window(sub: Any) -> tuple[datetime, datetime] | None:
-    """
-    Parse one happy-hour sub-payload (``{"startTime": ..., "endTime": ...}``).
-
-    Returns a timezone-aware ``(start, end)`` tuple, or ``None`` when the
-    sub-payload is missing, not a dict, malformed, unparseable, or
-    timezone-naive (ENGIE returns explicit offsets, e.g. ``+02:00``).
-    """
+    """Parse one happy-hour sub-payload into a tz-aware (start, end), or None."""
     if not isinstance(sub, dict):
         return None
     start_raw = sub.get("startTime")
@@ -113,16 +80,7 @@ def _parse_window(sub: Any) -> tuple[datetime, datetime] | None:
 def happy_hour_windows(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> list[tuple[datetime, datetime]]:
-    """
-    Return every scheduled happy-hour ``(start, end)`` window, earliest first.
-
-    ENGIE announces a window under a ``tomorrow`` key the day before, then
-    re-publishes the same window under a ``today`` key once midnight passes;
-    both keys are parsed so a window observed after a post-midnight restart
-    is not lost. Returns ``[]`` when no event is scheduled or the payload is
-    missing. Malformed or timezone-naive sub-payloads are skipped. Windows
-    are sorted by start, so the earliest-starting window is first.
-    """
+    """Return every scheduled happy-hour ``(start, end)`` window, earliest first."""
     payload = happy_hour_payload(coordinator)
     if not payload:
         return []
@@ -139,12 +97,9 @@ def happy_hour_window(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> tuple[datetime, datetime] | None:
     """
-    Return the earliest upcoming happy-hour ``(start, end)``, or ``None``.
+    Return the earliest scheduled happy-hour ``(start, end)``, or ``None``.
 
-    Thin wrapper over :func:`happy_hour_windows` returning the first
-    (earliest-start) window, or ``None`` when none is scheduled. Both
-    datetimes are timezone-aware. Intentionally ``now``-agnostic: it may
-    return a window whose start already lies in the past.
+    ``now``-agnostic: may return a window whose start already lies in the past.
     """
     windows = happy_hour_windows(coordinator)
     return windows[0] if windows else None
@@ -164,17 +119,9 @@ def happy_hour_events(
     """
     Return calendar events for every known Happy Hours window.
 
-    Combines persisted historical windows (from the per-subentry
-    Happy Hours history store) with the live window(s) from the current
-    coordinator payload (``today`` and/or ``tomorrow``). Entries are
-    deduplicated by ``start`` so the live payload does not produce a
-    duplicate event when the store has already recorded it during an
-    earlier refresh, nor when the same window appears under both keys.
-
-    The integration can only ever surface windows it has observed
-    while running because ENGIE does not expose Happy Hours history.
-    Newly-installed integrations build the archive up from the moment
-    they first see an enrolled account.
+    Combines persisted historical windows with the live payload,
+    deduplicated by ``start``. ENGIE exposes no history, so archives
+    only grow from install time forward.
     """
     events_by_start: dict[str, CalendarEvent] = {}
 

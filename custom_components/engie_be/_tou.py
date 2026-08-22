@@ -115,9 +115,7 @@ def normalize_tou_payload(payload: Any) -> dict[str, Any]:
     """
     Adapt a /tou-schedules response into the integration's canonical shape.
 
-    Always returns ``{"items": [...]}``; malformed input yields an empty
-    list rather than raising, so a bad refresh does not blank unrelated
-    sensors.
+    Always returns ``{"items": [...]}``, empty on malformed input.
     """
     items = payload.get("items") if isinstance(payload, dict) else None
     if not isinstance(items, list):
@@ -165,11 +163,10 @@ def tou_schedules_payload(
 
 def _parse_hhmm(raw: Any) -> time | None:
     """
-    Parse a ``"HH:MM"`` or ``"HH:MM:SS"`` string into a time, or ``None``.
+    Parse ``"HH:MM"`` or ``"HH:MM:SS"`` into a time, or ``None``.
 
     Seconds are accepted and discarded: the two ``/tou-schedules`` routes
-    disagree on the format and no observed payload has a non-zero seconds
-    field.
+    disagree on the format.
     """
     if not isinstance(raw, str):
         return None
@@ -203,10 +200,7 @@ def current_slot(
     """
     Return (current_slot_code_lowercase, next_transition_aware) or (None, None).
 
-    ``schedule`` is one direction's block (has monday-sunday keys).
-    ``now`` defaults to Brussels-local now. Handles the ``00:00`` end-time
-    (== midnight/end-of-day) convention. Returns (None, None) if the
-    schedule is empty, malformed, or no slot covers the current moment.
+    Handles the ``00:00`` end-time (end-of-day) convention.
     """
     now_local = now.astimezone(BRUSSELS_TZ) if now else datetime.now(BRUSSELS_TZ)
     weekday = now_local.weekday()
@@ -249,12 +243,7 @@ def schedule_for_ean(
 
 
 def has_multiple_slot_codes(direction_schedule: dict[str, Any]) -> bool:
-    """
-    Return True when the schedule has more than one distinct slot code across the week.
-
-    Used to gate "is optimal" binary sensors: a flat schedule where every
-    hour is the same code has no meaningful optimal vs non-optimal distinction.
-    """
+    """Return True when the schedule has more than one distinct slot code."""
     codes: set[str] = set()
     for key in _WEEKDAY_KEYS:
         slots = direction_schedule.get(key)

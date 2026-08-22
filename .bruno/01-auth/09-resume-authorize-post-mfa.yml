@@ -63,24 +63,6 @@ settings:
   followRedirects: false
   maxRedirects: 5
 docs: |-
-  Auth step 9. Auth0 takes one of two paths here, chosen per session and
-  not controllable by the client. Mirrors the Location-first branch in
-  api.py::_run_auth_steps_8_to_13.
+  Auth step 9. Branches on outcome A (callback short-circuit, code already in Location) or outcome B (passkey enrollment interstitial).
 
-  Outcome A, the callback short-circuit. Location is
-  be.engie.smart://login-callback/nl?code=...&state=... and the auth code
-  is already in hand. Steps 10-12 must be skipped: the Auth0 session is
-  finalised and a second resume returns error=access_denied. In a folder
-  run the script jumps to step 13 for you via bru.runner.setNextRequest.
-  Running requests one at a time in the GUI, skip to 13 yourself.
-
-  Outcome B, the passkey-enrollment interstitial. Location points at
-  /u/passkey-enrollment and the body carries a fresh passKeyState.
-  Continue with steps 10, 11, 12.
-
-  The script checks Location FIRST and only then falls back to the body.
-  Body-first parsing is wrong for outcome A: the body's state= is the
-  OAuth state from step 1, not a passKeyState, and using it as one
-  produces a stale-session error at step 12.
-
-  Sets: authOutcome ('callback' or 'passkey'), plus code or passKeyState.
+  Mirrors api.py::_run_auth_steps_8_to_13. Location is checked first: outcome A's body carries the OAuth state from step 1, not a passKeyState, so body-first parsing produces a stale-session error at step 12.

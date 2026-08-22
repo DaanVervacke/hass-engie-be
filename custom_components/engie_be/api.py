@@ -40,10 +40,6 @@ from .const import (
     USER_AGENT_NATIVE,
 )
 
-# ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
-
 
 class EngieBeApiClientError(Exception):
     """Base exception for ENGIE Belgium API client errors."""
@@ -62,25 +58,13 @@ class EngieBeApiClientMfaError(EngieBeApiClientError):
 
 
 class EpexNotPublishedError(EngieBeApiClientError):
-    """
-    The EPEX endpoint returned 404 for the requested window.
-
-    ENGIE returns 404 (with body ``{"detail":"No prices found ..."}``)
-    when day-ahead prices for the requested window have not yet been
-    published.  Callers should treat this as a soft state (retry later)
-    rather than an error worth surfacing to the user.
-    """
+    """Raised when the EPEX endpoint returns 404 (prices not yet published)."""
 
 
 def _raise_auth_error(status: int) -> NoReturn:
     """Raise an authentication error tagged with the offending HTTP status."""
     msg = f"Authentication failed ({status})"
     raise EngieBeApiClientAuthenticationError(msg)
-
-
-# ---------------------------------------------------------------------------
-# Auth flow intermediate state
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -93,10 +77,6 @@ class AuthFlowState:
     mfa_challenge_state: str
     code_verifier: str
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 _BROWSER_HEADERS: dict[str, str] = {
     "Accept": (
@@ -117,11 +97,7 @@ def _base64url(data: bytes) -> str:
 
 
 def _generate_pkce() -> tuple[str, str, str, str]:
-    """
-    Generate PKCE parameters.
-
-    Returns (state, nonce, code_verifier, code_challenge).
-    """
+    """Return (state, nonce, code_verifier, code_challenge)."""
     state = os.urandom(16).hex()
     nonce = os.urandom(16).hex()
     code_verifier = _base64url(os.urandom(32))
@@ -135,26 +111,13 @@ def _extract_from_body(body: str, pattern: str) -> str | None:
     return match.group(1) if match else None
 
 
-# Public re-export so non-HTTP modules (coordinator, platforms) can mask
-# identifiers in their own log lines using the same scheme as the HTTP
-# layer's body/URL redaction (``***NNNN`` with last-4 preserved).  Keep
-# this in sync with ``_PARTIAL_MASK_BODY_KEYS`` semantics: any identifier
-# masked there must also be masked when logged elsewhere.
+# Public re-export so non-HTTP modules mask identifiers with the same scheme
+# as the HTTP layer. Keep in sync with ``_PARTIAL_MASK_BODY_KEYS`` semantics.
 mask_identifier = _redact_text
 
 
-# ---------------------------------------------------------------------------
-# API Client
-# ---------------------------------------------------------------------------
-
-
 class EngieBeApiClient:
-    """
-    ENGIE Belgium API client.
-
-    Handles the full OAuth2/PKCE + MFA authentication flow (SMS or email)
-    and subsequent token refresh / data retrieval.
-    """
+    """ENGIE Belgium API client (OAuth2/PKCE + MFA, token refresh, data fetch)."""
 
     def __init__(
         self,
@@ -169,21 +132,10 @@ class EngieBeApiClient:
         self.access_token = access_token
         self.refresh_token = refresh_token
         # Serialises async_refresh_token against itself. ENGIE rotates the
-        # refresh token on every call, so two concurrent refreshes (e.g.
-        # the periodic 60s timer firing while a coordinator's auth-failure
-        # retry path also calls refresh) would consume the same refresh
-        # token twice and the second caller would 400 -> spurious reauth.
-        # The lock + "did someone else refresh while I was waiting?" check
-        # inside async_refresh_token make refresh idempotent under racing
-        # callers.
+        # refresh token on every call, so concurrent refreshes would consume
+        # the same token twice and 400 the second caller.
         self._token_lock = asyncio.Lock()
         self._req_logger = RequestLogger()
-
-    # ------------------------------------------------------------------
-    # Phase 1: start authentication (config-flow step 1 triggers this)
-    # Runs auth steps 1-7, returns intermediate state so the config flow
-    # can ask the user for the MFA code.
-    # ------------------------------------------------------------------
 
     async def async_start_authentication(
         self,
@@ -191,14 +143,7 @@ class EngieBeApiClient:
         password: str,
         mfa_method: str = MFA_METHOD_SMS,
     ) -> AuthFlowState:
-        """
-        Execute auth steps 1-7 and return intermediate state.
-
-        When *mfa_method* is ``sms`` (default) step 7 triggers an SMS.
-        When it is ``email`` the ALT authenticator-switching detour runs
-        instead (no SMS is sent).  The caller must then collect the code
-        and pass it to ``async_complete_authentication``.
-        """
+        """Execute auth steps 1-7 (trigger SMS or email MFA), return flow state."""
         auth_session = aiohttp.ClientSession()
         try:
             return await self._run_auth_steps_1_to_7(
@@ -208,11 +153,6 @@ class EngieBeApiClient:
             await auth_session.close()
             raise
 
-    # ------------------------------------------------------------------
-    # Phase 2: complete authentication (config-flow step 2 triggers this)
-    # Runs auth steps 8-13.
-    # ------------------------------------------------------------------
-
     async def async_complete_authentication(
         self,
         flow_state: AuthFlowState,
@@ -220,19 +160,16 @@ class EngieBeApiClient:
         mfa_method: str = MFA_METHOD_SMS,
     ) -> tuple[str, str]:
         """
-        Submit the MFA code and exchange the authorisation code for tokens.
+        Submit the MFA code and exchange the auth code for (access, refresh).
 
-        Returns (access_token, refresh_token).
-        The temporary auth session is closed on success or on non-recoverable
-        errors.  On ``EngieBeApiClientMfaError`` the session is kept open so
-        the caller can retry with a corrected code.
+        Keeps the temporary auth session open on ``EngieBeApiClientMfaError``
+        so the caller can retry with a corrected code.
         """
         try:
             access_token, refresh_token = await self._run_auth_steps_8_to_13(
                 flow_state, mfa_code, mfa_method=mfa_method
             )
         except EngieBeApiClientMfaError:
-            # Keep session open - user can retry with a new code
             raise
         except BaseException:
             await flow_state.session.close()
@@ -243,46 +180,25 @@ class EngieBeApiClient:
             self.refresh_token = refresh_token
             return access_token, refresh_token
 
-    # ------------------------------------------------------------------
-    # Token refresh  (runs on a 60-second timer after setup)
-    # ------------------------------------------------------------------
-
     async def async_refresh_token(self) -> tuple[str, str]:
         """
-        Refresh the access token using the refresh token.
+        Refresh the access token, returning the rotated (access, refresh) pair.
 
-        Returns (new_access_token, new_refresh_token).
-        The refresh token is rotated on every call.
-
-        Serialised by self._token_lock against concurrent callers. If a
-        racing caller already rotated the pair while we were waiting on
-        the lock, we return the freshly-rotated pair without issuing a
-        second refresh request (which would 400 on the now-consumed
-        refresh token). If that rotation left the access token unset, we
-        raise an authentication error rather than hand back a ``None``
-        bearer token.
+        Serialised against concurrent callers: if another caller already
+        rotated while this one was waiting on the lock, returns the fresh
+        pair without re-issuing the request.
         """
         if not self.refresh_token:
             msg = "No refresh token available"
             raise EngieBeApiClientAuthenticationError(msg)
 
-        # Snapshot before awaiting the lock so we can detect a racing
-        # refresh that completed while we were queued.
+        # Snapshot before awaiting the lock to detect a racing refresh.
         refresh_at_entry = self.refresh_token
 
         async with self._token_lock:
             if self.refresh_token != refresh_at_entry:
-                # Another caller rotated the pair while we were waiting.
-                # Return the fresh pair instead of replaying our (now
-                # consumed) refresh token.
                 racing_access_token = self.access_token
                 if racing_access_token is None:
-                    # refresh_token rotated but access_token was never set:
-                    # not reachable via this method's own success path
-                    # (both are assigned together below), but a caller that
-                    # mutates the tokens directly could leave this
-                    # inconsistent. Fail loudly instead of handing back
-                    # None as a bearer token.
                     msg = "Racing token refresh left access_token unset"
                     raise EngieBeApiClientAuthenticationError(msg)
                 LOGGER.debug(
@@ -330,23 +246,8 @@ class EngieBeApiClient:
 
             return self.access_token, self.refresh_token
 
-    # ------------------------------------------------------------------
-    # Data retrieval
-    # ------------------------------------------------------------------
-
     async def async_get_prices(self, business_agreement_number: str) -> dict[str, Any]:
-        """
-        Fetch energy prices for a business agreement.
-
-        ``business_agreement_number`` is the 12-digit BAN (the
-        ``businessAgreementNumber`` field returned by the customer-account
-        relations endpoint, distinct from the shorter
-        ``customerAccountNumber`` / CAN). The endpoint validates this
-        path segment as exactly 12 characters and returns HTTP 400 for
-        any other identifier.
-
-        Returns the parsed JSON response.
-        """
+        """Fetch energy prices for a 12-digit BAN."""
         url = (
             f"{API_BASE_URL}/business-agreements/"
             f"{business_agreement_number.replace(' ', '')}/supplier-energy-prices"
@@ -372,34 +273,12 @@ class EngieBeApiClient:
         include_inactive: bool = False,
     ) -> dict[str, Any]:
         """
-        Fetch energy contracts for a business agreement.
+        Fetch energy contracts for a BAN.
 
-        Returns the parsed JSON response. Each ``items[]`` element
-        carries a ``division`` (``"ELECTRICITY"`` / ``"GAS"``), a
-        ``servicePointNumber`` (EAN), a ``status``
-        (``"ACTIVE"`` / ``"INACTIVE"``), and a ``productConfiguration``
-        block whose ``energyProduct`` field identifies the tariff
-        product (e.g. ``"DYNAMIC"`` for the EPEX-indexed tariff,
-        ``"EASY"`` for fixed). The integration uses ``energyProduct``
-        to detect dynamic-tariff accounts in a way that survives
-        mixed-fuel households (dynamic electricity + fixed gas), where
-        the supplier-energy-prices payload alone is ambiguous.
-
-        ``include_inactive=False`` (default) sends
-        ``filter=ONLY_ACTIVE_ENERGY_CONTRACTS`` and returns only the
-        contracts currently in force, matching the ENGIE smart app's
-        request. ``include_inactive=True`` switches to
-        ``filter=ALL_ENERGY_CONTRACTS`` so historical contracts
-        (renewals, prior suppliers switched away from) are included
-        too. Callers walking the customer's full contract history
-        (for example the historical usage import) need the wider
-        view; callers only interested in what's currently billed
-        should leave the default.
-
-        ``includeActions=true`` and ``includeSapData=true`` mirror the
-        request the ENGIE smart app issues. Without them the response
-        omits the ``productConfiguration`` block this integration
-        relies on.
+        ``include_inactive=True`` widens the ENGIE filter to include
+        historical contracts. The ``includeActions`` and
+        ``includeSapData`` query flags are required for ENGIE to return
+        the ``productConfiguration`` block.
         """
         url = (
             f"{BUSINESS_AGREEMENTS_BASE_URL}/business-agreements/"
@@ -424,12 +303,7 @@ class EngieBeApiClient:
         )
 
     async def async_get_service_point(self, ean: str) -> dict[str, Any]:
-        """
-        Fetch service-point metadata for a single EAN.
-
-        Returns the parsed JSON response which includes a ``division``
-        field (``"ELECTRICITY"`` or ``"GAS"``).
-        """
+        """Fetch service-point metadata for a single EAN."""
         url = f"{PREMISES_BASE_URL}/service-points/{ean}"
         headers = {
             "User-Agent": USER_AGENT_BROWSER,
@@ -446,23 +320,10 @@ class EngieBeApiClient:
 
     async def async_get_customer_account_relations(self) -> dict[str, Any]:
         """
-        Fetch the list of customer accounts the logged-in user can access.
+        Fetch customer accounts accessible to the logged-in user.
 
-        The Auth0 access token is per-login, not per-customer-account, so
-        a single ENGIE login can be linked to multiple ``customerAccountNumber``
-        values (e.g. a person managing both their own household and a
-        relative's account). This endpoint enumerates all such accounts
-        together with the consumption address and contract metadata
-        needed to present a meaningful picker in the config flow.
-
-        Returns the parsed JSON response with the shape
-        ``{"items": [{"customerAccount": {"customerAccountNumber": ...,
-        "name": ..., "businessAgreements": [...]}}, ...]}``.
-
-        The ``withBusinessAgreements=SMART_APP`` query parameter is
-        required to make ENGIE include the active business agreement
-        and its consumption address inline; without it the endpoint
-        returns only bare customer-account identifiers.
+        The ``withBusinessAgreements=SMART_APP`` query flag is required
+        for ENGIE to include the active business agreement inline.
         """
         url = f"{ACCOUNTS_BASE_URL}/customer-account-relations"
         headers = self._authenticated_headers()
@@ -484,14 +345,8 @@ class EngieBeApiClient:
         """
         Fetch capacity-tariff (captar) peaks for a given month.
 
-        ``business_agreement_number`` is the 12-digit BAN. Despite the
-        URL path naming it ``contract-accounts``, the endpoint expects
-        a businessAgreementNumber (the same identifier accepted by
-        :meth:`async_get_prices`); passing a ``customerAccountNumber``
-        / CAN here returns HTTP 500.
-
-        Returns the parsed JSON response which contains the monthly peak
-        and an array of daily peaks for the requested month.
+        Despite the ``contract-accounts`` path segment, ENGIE expects a
+        BAN here, not a CAN (a CAN returns HTTP 500).
         """
         url = (
             f"{PEAKS_BASE_URL}/private/customers/me/contract-accounts/"
@@ -512,22 +367,10 @@ class EngieBeApiClient:
         business_agreement_number: str,
     ) -> dict[str, Any]:
         """
-        Fetch the upcoming Happy Hours event for a business agreement.
+        Fetch the upcoming Happy Hours event for a BAN.
 
-        ``business_agreement_number`` is the 12-digit BAN. Passing a
-        ``customerAccountNumber`` / CAN here returns HTTP 400.
-
-        Returns the parsed JSON response. Shapes observed in production:
-
-        * No event scheduled: ``{}`` (empty object).
-        * Event scheduled: the upcoming window under a ``tomorrow`` key
-          (announced the day before) and/or a ``today`` key (the same
-          window, re-published once midnight passes), each shaped
-          ``{"startTime": "...", "endTime": "..."}`` with ISO-8601 times
-          carrying explicit offsets.
-
-        The endpoint is not gated on dynamic-tariff status, so it is
-        polled for every active business agreement.
+        Response is ``{}`` when no event is scheduled, otherwise carries
+        ``today`` and/or ``tomorrow`` keys.
         """
         url = (
             f"{HAPPY_HOUR_BASE_URL}/business-agreements/"
@@ -548,19 +391,7 @@ class EngieBeApiClient:
         year: int,
         month: int,
     ) -> dict[str, Any]:
-        """
-        Fetch the Happy Hours month report for a business agreement.
-
-        ``business_agreement_number`` is the 12-digit BAN. The endpoint
-        returns a ``month`` block with a ``happyHour`` sub-object carrying
-        the current-month Happy Hours summary (consumption, number of
-        eligible hours, reward, and comparison metrics).
-
-        Only meaningful for BANs enrolled in the Happy Hours service; the
-        endpoint may return empty or zero values for un-enrolled BANs.
-
-        Returns the parsed JSON response.
-        """
+        """Fetch the Happy Hours month report for a BAN."""
         ban = business_agreement_number.replace(" ", "")
         url = (
             f"{HAPPY_HOUR_BASE_URL}/business-agreements/"
@@ -585,20 +416,10 @@ class EngieBeApiClient:
         include_simulation: bool = False,
     ) -> dict[str, Any]:
         """
-        Fetch historical usage details for a business agreement.
+        Fetch historical usage details for a BAN over ``[start_date, end_date)``.
 
-        Returns the parsed JSON response. Per-hour rows live under
-        ``items[]`` with ``start`` / ``end`` ISO timestamps, per-stream
-        ``energy.electricity.{offtake,injection}.kWhSum`` and
-        ``energy.gas.kWh``, plus a ``partialData`` boolean that flags
-        the current in-progress hour. A ``total`` block aggregates the
-        whole requested window. ``start_date`` is inclusive and
-        ``end_date`` is exclusive (civil-day boundaries).
-
-        ``include_simulation`` defaults to ``False`` so ENGIE never
-        returns projected numbers into the response; the caller writes
-        the results into permanent long-term statistics where projected
-        values would be misleading.
+        ``include_simulation`` defaults to ``False`` so projected values
+        never enter long-term statistics.
         """
         ban = business_agreement_number.replace(" ", "")
         url = f"{ENERGY_INSIGHTS_V2_BASE_URL}/business-agreements/{ban}/usage-details"
@@ -623,21 +444,10 @@ class EngieBeApiClient:
         delivery_point_id: str,
     ) -> dict[str, Any]:
         """
-        Fetch solar-surplus injection forecasts for a delivery point.
+        Fetch Solar Surplus injection forecasts for a delivery point.
 
-        ``delivery_point_id`` is the ENGIE-formatted service-point ID,
-        typically ``{EAN}_ID1``.
-
-        Returns the parsed JSON response. Shape:
-        ``{"forecasts": [{"forecastDate": "YYYY-MM-DD", "level": "...",
-        "details": [{"startTime": "...", "value": <kWh>, "level": "..."}]}]}``.
-
-        The endpoint sits behind the Smart App's
-        ``solar-surplus-shown-dashboard`` feature flag. Customers without a
-        solar installation receive a well-formed response whose per-slot
-        ``level`` values are all ``NO_DATA``. The coordinator gates this
-        fetch on the feature flag first, then refines availability from
-        the returned levels.
+        ``delivery_point_id`` is typically ``{EAN}_ID1``. Customers with
+        no installation get ``level: NO_DATA`` slots.
         """
         ban = business_agreement_number.replace(" ", "")
         url = (
@@ -660,24 +470,8 @@ class EngieBeApiClient:
         """
         Fetch the ``happy-hours-service-enabled`` boolean feature flag for a BAN.
 
-        Uses the targeted boolean-feature-flags endpoint, which returns a
-        single flat object ``{"value": bool, "reason": str, ...}`` for the
-        named flag rather than the group envelope keyed by flag name.
-
-        The endpoint is the authoritative signal for Happy Hours enrolment:
-        the ``/happy-hour-event`` endpoint returns ``{}`` both when the
-        customer is not enrolled and when they are enrolled but no window is
-        scheduled yet, so the event payload alone cannot distinguish the two
-        states. The ``value`` field flips to ``true`` once the customer has
-        signed the Happy Hours agreement.
-
-        The ``customerAccountNumber`` field that the Smart App sends in
-        ``additionalContext`` is accepted but not required; omitting it
-        keeps the integration aligned with the v5 subentry schema which
-        deliberately drops the CAN.
-
-        Returns the parsed JSON response as a flat dict (top-level ``value``
-        and ``reason`` keys).
+        Authoritative signal for enrolment: ``/happy-hour-event`` returns
+        ``{}`` for both un-enrolled and enrolled-without-window states.
         """
         return await self._async_query_boolean_feature_flag(
             HAPPY_HOURS_SERVICE_ENABLED_KEY,
@@ -688,18 +482,7 @@ class EngieBeApiClient:
         self,
         business_agreement_number: str,
     ) -> dict[str, Any]:
-        """
-        Fetch the ``solar-surplus-shown-dashboard`` boolean feature flag for a BAN.
-
-        Mirrors the Smart App's UI gate: ``value: true`` means the customer
-        has a qualifying contract and delivery point for Solar Surplus, so
-        it is safe to fetch per-EAN forecasts. ``value: false`` means the
-        app hides the surplus tile and we skip the per-EAN fan-out to
-        keep the refresh cycle lean.
-
-        Returns the parsed JSON response as a flat dict (top-level ``value``
-        and ``reason`` keys).
-        """
+        """Fetch the ``solar-surplus-shown-dashboard`` boolean feature flag."""
         return await self._async_query_boolean_feature_flag(
             SOLAR_SURPLUS_SHOWN_DASHBOARD_KEY,
             business_agreement_number,
@@ -710,12 +493,9 @@ class EngieBeApiClient:
         business_agreement_number: str,
     ) -> dict[str, Any]:
         """
-        Fetch the time-of-use tariff schedules for a business agreement.
+        Fetch the time-of-use tariff schedules for a BAN.
 
-        Response shape is ``items[].gridMeterTimeOfUseSchedules[]`` with
-        per-meter supplierSchedule / dgoTgoSchedule / combinedSchedule
-        blocks; ``_tou.normalize_tou_payload`` adapts it. Endpoint responds
-        regardless of the ``tou-is-active`` flag.
+        Endpoint responds regardless of the ``tou-is-active`` flag.
         """
         ban = business_agreement_number.replace(" ", "")
         url = f"{BILLING_BASE_URL}/business-agreements/{ban}/tou-schedules"
@@ -732,18 +512,7 @@ class EngieBeApiClient:
         self,
         business_agreement_number: str,
     ) -> dict[str, Any]:
-        """
-        Fetch the current account balance for a business agreement.
-
-        Returns the parsed JSON response. Shape confirmed via spike capture
-        on 2026-07-08. The response includes a ``status`` field
-        (``"CLEAR"``, ``"OPEN_DEBIT"``, ``"OPEN_OVERDUE"``, etc.), an
-        ``overview`` block with totals, a ``details`` block with
-        ``financialTransactions`` (list of per-invoice rows with
-        ``dueDate``, ``openAmount``, ``dueAmount``, and ``invoiceType``),
-        and a ``refundBlocked`` flag. Amounts are in EUR. No customer
-        name, IBAN, or address is returned by this endpoint.
-        """
+        """Fetch the current account balance for a BAN."""
         ban = business_agreement_number.replace(" ", "")
         url = f"{BILLING_BASE_URL}/business-agreements/{ban}/account-balance"
         headers = self._authenticated_headers()
@@ -759,12 +528,7 @@ class EngieBeApiClient:
         self,
         business_agreement_number: str,
     ) -> dict[str, Any]:
-        """
-        Fetch the ``tou-is-active`` boolean feature flag for a BAN.
-
-        ``value`` is true when the account has an active TOU supplier
-        product; the ``reason`` names the configuration id.
-        """
+        """Fetch the ``tou-is-active`` boolean feature flag for a BAN."""
         return await self._async_query_boolean_feature_flag(
             TOU_FLAG_KEY,
             business_agreement_number,
@@ -775,14 +539,7 @@ class EngieBeApiClient:
         flag_name: str,
         business_agreement_number: str,
     ) -> dict[str, Any]:
-        """
-        Query a single boolean feature flag for a business agreement.
-
-        Shared plumbing for the targeted boolean-feature-flags endpoint,
-        which returns a flat ``{"value": bool, "reason": str, ...}`` object
-        for the named flag. Callers are the public wrappers that pin the
-        specific flag name so the call site stays self-documenting.
-        """
+        """Query a single boolean feature flag for a BAN."""
         headers = self._authenticated_headers(
             extra={"Content-Type": "application/json"},
         )
@@ -814,32 +571,14 @@ class EngieBeApiClient:
         """
         Fetch EPEX day-ahead market prices for the given UTC window.
 
-        ``from_dt``/``to_dt`` must be timezone-aware datetimes; they are
-        normalised to UTC and rendered as ISO-8601 with millisecond
-        precision and a literal ``Z`` suffix (the format the endpoint
-        accepts; e.g. ``2026-05-04T00:00:00.000Z``).
-
-        The endpoint requires authentication. 401/403 raises
-        ``EngieBeApiClientAuthenticationError``. The EPEX coordinator
-        catches that and keeps the last-known payload, so a failure here
-        does not by itself start a reauth flow.
-
-        The optional ``granularity`` parameter controls the resolution of
-        the returned time series:
-        - ``None`` or ``"HOURLY"`` (default) -> 24 items/day, hourly slots
-        - ``"QUARTER_HOURLY"`` -> 96 items/day, 15-minute slots
-
-        On HTTP 404 (``{"detail":"No prices found ..."}``) this raises
-        :class:`EpexNotPublishedError` so callers can treat it as a soft
-        "not yet published" state rather than a real failure.
+        ``granularity`` accepts ``"HOURLY"`` (default) or ``"QUARTER_HOURLY"``.
+        Raises :class:`EpexNotPublishedError` on 404 so callers can treat
+        it as a soft state.
         """
 
         def _iso_ms_z(value: datetime) -> str:
             """Render a datetime as ISO-8601 UTC with ms precision + ``Z``."""
             utc_value = value.astimezone(UTC)
-            # ``isoformat(timespec="milliseconds")`` keeps ms precision; we
-            # then strip the ``+00:00`` offset and append ``Z`` to match the
-            # exact shape the EPEX endpoint expects.
             iso = utc_value.isoformat(timespec="milliseconds").removesuffix("+00:00")
             return f"{iso}Z"
 
@@ -847,10 +586,7 @@ class EngieBeApiClient:
         if granularity is not None:
             params["granularity"] = granularity
 
-        # Endpoint requires auth. _api_wrapper turns 401/403 into an
-        # authentication error. 404 is handled separately below because
-        # it means the prices are not published yet. We still need to handle
-        # 404 (not published yet) specially.
+        # 404 means "not yet published" here, handle it specially below.
         try:
             headers = self._authenticated_headers(user_agent=USER_AGENT_BROWSER)
             return await self._api_wrapper(
@@ -862,8 +598,6 @@ class EngieBeApiClient:
                 json_response=True,
             )
         except EngieBeApiClientCommunicationError as err:
-            # Check if this is a 404 by looking at the cause
-            # The _api_wrapper wraps aiohttp.ClientResponseError which has status
             if (
                 isinstance(err.__cause__, aiohttp.ClientResponseError)
                 and err.__cause__.status == HTTPStatus.NOT_FOUND
@@ -875,10 +609,6 @@ class EngieBeApiClient:
                 raise EpexNotPublishedError(msg) from err
             raise
 
-    # ------------------------------------------------------------------
-    # Internal: auth flow step implementations
-    # ------------------------------------------------------------------
-
     async def _run_auth_steps_1_to_7(
         self,
         session: aiohttp.ClientSession,
@@ -886,13 +616,7 @@ class EngieBeApiClient:
         password: str,
         mfa_method: str,
     ) -> AuthFlowState:
-        """
-        Run auth steps 1-7 (authorize -> MFA triggered).
-
-        When *mfa_method* is ``sms``, step 7 fires an SMS.  When it is
-        ``email``, step 7 is skipped and the ALT authenticator-switching
-        detour runs instead so the user receives an email code.
-        """
+        """Run auth steps 1-7 (authorize, then trigger SMS or email MFA)."""
         state, nonce, code_verifier, code_challenge = _generate_pkce()
 
         # Step 1: GET /authorize
@@ -1022,9 +746,7 @@ class EngieBeApiClient:
             )
             LOGGER.debug("Auth step 7 complete: SMS sent to user")
         else:
-            # Email MFA: run ALT steps 1-4 to switch authenticator and
-            # trigger the email send (skips step 7 entirely so no SMS
-            # is sent).
+            # Email MFA: switch authenticator via ALT steps 1-4, skipping step 7.
             await self._switch_to_email_mfa(session, mfa_challenge_state)
 
         return AuthFlowState(
@@ -1050,9 +772,7 @@ class EngieBeApiClient:
         else:
             body = await self._submit_email_mfa(flow_state, mfa_code)
 
-        # The response should contain a new state; if it doesn't the
-        # code was most likely wrong (server returned 400 with the MFA
-        # form again).
+        # Missing state means the code was wrong (server re-served the form).
         another_state = _extract_from_body(body, r"state=([a-zA-Z0-9_-]+)")
         if not another_state:
             msg = "Invalid MFA code or failed to proceed after MFA submission"
@@ -1060,33 +780,11 @@ class EngieBeApiClient:
 
         LOGGER.debug("Auth step 8 complete: MFA code accepted")
 
-        # Step 9: GET /authorize/resume (post-MFA).
-        #
-        # Auth0 has two possible outcomes here, and the choice is per
-        # session/account (not configurable client-side):
-        #
-        #   A. **Callback short-circuit.** Auth0 finalizes the session
-        #      immediately and redirects to the native callback URI
-        #      ``be.engie.smart://login-callback/nl?code=...&state=...``.
-        #      This is what older / passkey-dismissed accounts get. The
-        #      auth code is already in the ``Location`` header; steps
-        #      10-12 must be skipped because the Auth0 session is gone
-        #      (a second ``/authorize/resume`` would return
-        #      ``error=access_denied``).
-        #
-        #   B. **Passkey-enrollment interstitial.** Auth0 redirects to
-        #      ``/u/passkey-enrollment?state=<passKeyState>`` so the
-        #      user can register a passkey. The body contains a fresh
-        #      state we must extract; we then load (step 10) and abort
-        #      (step 11) enrollment, and re-resume (step 12) to get the
-        #      code.
-        #
-        # We distinguish the two by inspecting the ``Location`` header
-        # first. Falling back to body-only parsing the way the previous
-        # implementation did is wrong for outcome A: the body's
-        # ``state=`` is the *OAuth* state (the integration's own nonce
-        # from step 1), not a ``passKeyState``. Using it as such
-        # produces a stale-session error at step 12.
+        # Step 9: GET /authorize/resume (post-MFA). Auth0 either short-circuits
+        # to the callback URI with the code in Location (outcome A) or
+        # redirects to a passkey-enrollment interstitial (outcome B). For A
+        # the body ``state`` is the OAuth state, not a passKeyState, so the
+        # Location header is the authoritative source.
         body, resp_headers = await self._api_wrapper(
             session=session,
             method="GET",
@@ -1131,11 +829,8 @@ class EngieBeApiClient:
             )
             LOGGER.debug("Auth step 10 complete: loaded passkey page")
 
-            # Step 11: POST /u/passkey-enrollment (abort enrollment).
-            # The Auth0 flow uses followRedirects=true, but the redirect
-            # chain ends at a non-HTTP app-scheme URL that aiohttp cannot
-            # follow. We skip following redirects here since the code is
-            # extracted in step 12.
+            # Step 11: abort enrollment. Redirect target uses app-scheme
+            # which aiohttp cannot follow, so allow_redirects=False.
             await self._api_wrapper(
                 session=session,
                 method="POST",
@@ -1150,11 +845,8 @@ class EngieBeApiClient:
             )
             LOGGER.debug("Auth step 11 complete: passkey enrollment aborted")
 
-            # Step 12: GET /authorize/resume (final - extract auth code).
-            # Uses loginState (not passKeyState), exactly as in the API
-            # auth flow. The response body contains the authorization
-            # code, but some responses return it only in the Location
-            # header.
+            # Step 12: extract auth code (uses loginState, not passKeyState).
+            # Some responses return the code only in the Location header.
             body, resp_headers = await self._api_wrapper(
                 session=session,
                 method="GET",
@@ -1206,19 +898,13 @@ class EngieBeApiClient:
         LOGGER.debug("Auth step 13 complete: tokens obtained")
         return access_token, refresh_token
 
-    # ------------------------------------------------------------------
-    # Internal: MFA submission methods (SMS vs email)
-    # ------------------------------------------------------------------
-
     async def _submit_sms_mfa(
         self,
         flow_state: AuthFlowState,
         mfa_code: str,
     ) -> str:
         """Submit an SMS MFA code (auth step 8)."""
-        # Step 8: POST /u/mfa-sms-challenge (submit SMS code)
-        # A wrong code returns HTTP 400; we suppress the automatic error
-        # handling so we can raise a specific MfaError instead.
+        # Suppress automatic error handling so a wrong-code 400 becomes an MfaError.
         return await self._api_wrapper(
             session=flow_state.session,
             method="POST",
@@ -1241,13 +927,7 @@ class EngieBeApiClient:
         flow_state: AuthFlowState,
         mfa_code: str,
     ) -> str:
-        """
-        Submit an email MFA code (auth step 8.ALT-5).
-
-        The authenticator switch (ALT steps 1-4) has already been
-        performed during ``_run_auth_steps_1_to_7`` so only the code
-        POST is needed here.
-        """
+        """Submit an email MFA code (auth step 8.ALT-5)."""
         return await self._api_wrapper(
             session=flow_state.session,
             method="POST",
@@ -1266,23 +946,12 @@ class EngieBeApiClient:
             raise_on_error=False,
         )
 
-    # ------------------------------------------------------------------
-    # Internal: email MFA authenticator switch (ALT steps 1-4)
-    # ------------------------------------------------------------------
-
     async def _switch_to_email_mfa(
         self,
         session: aiohttp.ClientSession,
         challenge_state: str,
     ) -> None:
-        """
-        Run the authenticator-switching detour (auth ALT steps 1-4).
-
-        This is called from ``_run_auth_steps_1_to_7`` when the user
-        chose email MFA instead of SMS.  It navigates the Auth0 UI from
-        the SMS challenge screen to the email challenge screen, which
-        triggers the email send.
-        """
+        """Run the authenticator-switching detour (auth ALT steps 1-4)."""
         # ALT-1: POST /u/mfa-sms-challenge with action=pick-authenticator
         await self._api_wrapper(
             session=session,
@@ -1335,23 +1004,12 @@ class EngieBeApiClient:
         )
         LOGGER.debug("Auth ALT-4 complete: email challenge triggered")
 
-    # ------------------------------------------------------------------
-    # Authenticated header helper
-    # ------------------------------------------------------------------
-
     def _authenticated_headers(
         self,
         user_agent: str = USER_AGENT_NATIVE,
         extra: dict[str, str] | None = None,
     ) -> dict[str, str]:
-        """
-        Return the standard authenticated JSON header dict.
-
-        Used by most ENGIE endpoints that require a Bearer token. Pass
-        ``extra`` to merge per-endpoint headers (e.g.
-        ``Content-Type: application/json`` on POST bodies). Auth-flow methods use
-        custom header dicts and do not go through this helper.
-        """
+        """Return the standard authenticated JSON header dict, merging ``extra``."""
         headers = {
             "User-Agent": user_agent,
             "Accept": "application/json, application/problem+json",
@@ -1360,10 +1018,6 @@ class EngieBeApiClient:
         if extra:
             headers.update(extra)
         return headers
-
-    # ------------------------------------------------------------------
-    # Generic request wrapper
-    # ------------------------------------------------------------------
 
     @overload
     async def _api_wrapper(
@@ -1432,21 +1086,10 @@ class EngieBeApiClient:
         include_headers: bool = False,
     ) -> Any:
         """
-        Execute an HTTP request with error handling.
+        Execute an HTTP request with error handling and DEBUG-level tracing.
 
-        When *raise_on_error* is ``False`` the caller is responsible for
-        interpreting non-success status codes (useful when a 400 has
-        semantic meaning, e.g. an invalid MFA code).
-
-        When *include_headers* is ``True`` the return value is a tuple
-        of ``(body_or_json, response_headers)`` instead of just the body.
-
-        At ``DEBUG`` log level this emits one ``→`` line before the
-        request and one ``←`` (success) or ``✗`` (error) line after,
-        correlated by an 8-char ``req_id``.  Tokens, credentials, OAuth
-        state, and HTML auth-page bodies are masked / truncated; see the
-        module-level redaction helpers.  When DEBUG is off, the cost is a
-        single ``isEnabledFor`` check.
+        With ``raise_on_error=False`` the caller interprets non-success
+        codes. With ``include_headers=True`` returns ``(body, headers)``.
         """
         ctx = self._req_logger.new_context(method, url)
 
@@ -1478,9 +1121,7 @@ class EngieBeApiClient:
                             self._req_logger.error(ctx, status=response.status)
                         _raise_auth_error(response.status)
 
-                    # For auth-flow HTML pages, non-200/302 is likely an
-                    # error but we don't raise_for_status on 3xx since we
-                    # handle redirects manually.
+                    # Do not raise on 3xx: redirects are handled manually.
                     if response.status >= HTTPStatus.BAD_REQUEST:
                         if ctx is not None:
                             self._req_logger.error(ctx, status=response.status)

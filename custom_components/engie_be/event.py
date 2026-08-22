@@ -1,14 +1,4 @@
-"""
-Event platform for the ENGIE Belgium integration.
-
-Records every meaningful state transition that the 37 automation
-triggers already detect (EPEX going negative, Happy Hours activating,
-TOU slot changing, authentication lost/restored, ...) as a logbook-
-visible ``event`` entity. This platform does not duplicate any
-transition-detection logic: it watches the existing binary sensors and
-sensors via ``async_track_state_change_event`` and re-fires their
-transitions as HA events.
-"""
+"""Event platform: re-fires sibling-entity transitions as logbook-visible events."""
 
 from __future__ import annotations
 
@@ -39,7 +29,7 @@ from .const import (
 )
 from .entity import login_device_info, subentry_device_info
 
-# Coordinator centralises updates; this platform doesn't poll at all -- it
+# Coordinator centralises updates. This platform does not poll at all, it
 # reacts to sibling-entity state changes instead.
 PARALLEL_UPDATES = 0
 
@@ -53,16 +43,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WatchedSibling:
-    """
-    Transition rule for one watched sibling entity's translation_key.
-
-    ``transitions`` maps an exact ``(old_state, new_state)`` pair to the
-    event_type it fires -- used for binary sensors with a fixed pair of
-    on/off event types. ``changed_event_type`` fires on any state change
-    where the value actually differs -- used for enum sensors (e.g. the
-    TOU slot sensors) where every distinct value is a valid transition
-    target, not just two fixed endpoints.
-    """
+    """Transition rule for one watched sibling entity."""
 
     translation_key: str
     transitions: dict[tuple[str, str], str] = field(default_factory=dict)
@@ -194,15 +175,7 @@ async def async_setup_entry(
     entry: EngieBeConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """
-    Set up the event platform.
-
-    Mirrors ``binary_sensor.py``'s gating pattern: the authentication
-    event entity is created once per parent config entry (login-scoped,
-    same as ``EngieBeAuthSensor``), while the remaining event entities
-    are created once per business-agreement subentry, gated on the same
-    feature flags that gate their watched sibling entities.
-    """
+    """Set up one auth event entity plus per-subentry event entities."""
     expose_all = entry.options.get(CONF_EXPOSE_ALL_ENTITIES, False)
 
     async_add_entities([EngieBeAuthenticationEvent(entry=entry)])
@@ -265,17 +238,7 @@ else:
 
 
 class _TransitionWatcherMixin(_EventMixinBase):
-    """
-    Shared watched-entity subscription and event-firing logic.
-
-    Both event entities in this module (per-subentry and the entry-wide
-    authentication one) build an ``_entity_watch_map`` during
-    ``async_added_to_hass`` and then delegate every subsequent state
-    change to :meth:`_handle_state_change`. Factoring the map-driven
-    firing logic out here keeps the two ``async_added_to_hass``
-    overrides -- which differ only in *how* they populate the map --
-    the only place that differs between the two entities.
-    """
+    """Watched-sibling subscription and event-firing shared by both event entities."""
 
     _entity_watch_map: dict[str, WatchedSibling]
 
@@ -314,16 +277,7 @@ class _TransitionWatcherMixin(_EventMixinBase):
 
 
 class EngieBeTransitionEvent(_TransitionWatcherMixin, EventEntity):
-    """
-    Event entity that records state transitions on sibling entities.
-
-    Does not inherit from ``EngieBeEntity`` / ``CoordinatorEntity``:
-    ``EventEntity`` extends ``RestoreEntity`` instead, and this entity's
-    state comes from watching sibling entities via
-    ``async_track_state_change_event`` rather than from a coordinator.
-    Attached to the same device as its sibling entities so the events
-    show up on the same business-agreement device page.
-    """
+    """Event entity that records transitions on sibling entities in one subentry."""
 
     _attr_should_poll = False
     _attr_has_entity_name = True
@@ -373,15 +327,7 @@ class EngieBeTransitionEvent(_TransitionWatcherMixin, EventEntity):
 
 
 class EngieBeAuthenticationEvent(_TransitionWatcherMixin, EventEntity):
-    """
-    Event entity that records authentication lost/restored transitions.
-
-    Entry-scoped (one per login), mirroring ``EngieBeAuthSensor``: it
-    watches the authentication binary sensor across the whole config
-    entry rather than being restricted to one business-agreement
-    subentry, because a single ENGIE login's Auth0 session is shared
-    across every customer account on that login.
-    """
+    """Entry-scoped auth lost/restored event entity."""
 
     _attr_should_poll = False
     _attr_has_entity_name = True

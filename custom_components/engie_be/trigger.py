@@ -1,64 +1,4 @@
-"""
-Purpose-specific triggers for the ENGIE Belgium integration.
-
-Exposes ENGIE state transitions and calendar-event boundaries as first-class
-triggers in the HA automation editor.
-
-Supported trigger keys:
-
-Binary transitions (fire on a specific edge):
-- ``engie_be.epex_became_negative`` - EPEX price goes negative
-- ``engie_be.epex_became_negative_quarter_hour`` - quarter-hourly goes negative
-- ``engie_be.epex_no_longer_negative`` - EPEX price returns positive
-- ``engie_be.epex_no_longer_negative_quarter_hour`` - quarter-hourly returns positive
-- ``engie_be.offtake_became_optimal`` - offtake slot becomes optimal
-- ``engie_be.offtake_no_longer_optimal``     offtake slot leaves optimal
-- ``engie_be.injection_became_optimal``      injection slot becomes optimal
-- ``engie_be.injection_no_longer_optimal``   injection slot leaves optimal
-- ``engie_be.happy_hours_became_active``     Happy Hours window opens
-- ``engie_be.happy_hours_became_inactive``   Happy Hours window closes
-- ``engie_be.authentication_lost``           auth sensor drops to off
-- ``engie_be.authentication_restored``       auth sensor recovers to on
-
-Enum transitions (fires on any level/slot change):
-- ``engie_be.solar_surplus_level_changed``   any surplus level change
-- ``engie_be.offtake_slot_changed``          any offtake slot change
-- ``engie_be.injection_slot_changed``        any injection slot change
-
-Enum "became" (fires when the sensor enters a chosen level/slot):
-- ``engie_be.solar_surplus_became``          surplus reaches a chosen level
-- ``engie_be.offtake_slot_became``           offtake enters a chosen slot
-- ``engie_be.injection_slot_became``         injection enters a chosen slot
-
-Numerical threshold triggers (Phase B):
-- ``engie_be.epex_current_crossed_threshold``
-- ``engie_be.epex_current_quarter_hour_crossed_threshold``
-- ``engie_be.epex_next_hour_crossed_threshold``
-- ``engie_be.epex_next_quarter_hour_crossed_threshold``
-- ``engie_be.solar_surplus_current_crossed_threshold``
-- ``engie_be.solar_surplus_next_hour_crossed_threshold``
-- ``engie_be.captar_peak_crossed_threshold``
-- ``engie_be.outstanding_balance_crossed_threshold``
-- ``engie_be.overdue_amount_crossed_threshold``
-
-Value-changed triggers (Phase C):
-- ``engie_be.captar_peak_updated``
-- ``engie_be.epex_high_today_updated``
-- ``engie_be.epex_high_today_quarter_hour_updated``
-- ``engie_be.epex_low_today_updated``
-- ``engie_be.epex_low_today_quarter_hour_updated``
-
-Calendar event-class triggers (Phase E):
-- ``engie_be.happy_hours_window_started``    fires at start of Happy Hours window
-- ``engie_be.happy_hours_window_ended``      fires at end of Happy Hours window
-- ``engie_be.tou_slot_started``              fires when a TOU slot boundary begins
-
-Coordinator-data triggers (Phase F):
-- ``engie_be.tomorrow_epex_prices_published`` fires once when tomorrow's EPEX
-  day-ahead slate becomes available
-- ``engie_be.happy_hours_window_announced`` fires when ENGIE announces a new
-  Happy Hours window or revises a known one
-"""
+"""Purpose-specific automation triggers for the ENGIE Belgium integration."""
 
 from __future__ import annotations
 
@@ -139,30 +79,11 @@ if TYPE_CHECKING:
 _LEVEL = "level"
 _SLOT = "slot"
 
-# ---------------------------------------------------------------------------
-# Phase A - Binary state-transition triggers
-# ---------------------------------------------------------------------------
-
-# _BinaryEdgeTrigger provides a single class to inherit from instead of
-# 12 separate factory-generated bases.  Subclasses declare _translation_key
-# and _to_states; entity_filter is provided here.
-
 
 class _BinaryEdgeTrigger(
     make_entity_target_state_trigger({BINARY_SENSOR_DOMAIN: DomainSpec()}, set())  # type: ignore[misc]
 ):
-    """
-    Base for binary-sensor edge triggers restricted to a single ENGIE entity.
-
-    Subclasses must declare:
-    - ``_translation_key: ClassVar[str]`` - the entity translation key to match
-    - ``_to_states: ClassVar[set[str]]`` - the target state(s) that trigger firing
-
-    The ``_to_states`` class variable overrides the (empty) set baked into the
-    factory base class.  ``make_entity_target_state_trigger`` stores the
-    target-state set as a class attribute; overriding it here works because the
-    instance-level lookup finds the subclass attribute first.
-    """
+    """Base for binary-sensor edge triggers restricted to one ENGIE entity."""
 
     _translation_key: ClassVar[str]
 
@@ -309,15 +230,6 @@ class InjectionSlotChangedTrigger(EntityTriggerBase):
         )
 
 
-# ---------------------------------------------------------------------------
-# Phase A - Enum "became" triggers (option-parameterised)
-# ---------------------------------------------------------------------------
-
-# One trigger key per enum sensor. The user picks the desired level/slot via a
-# `level` or `slot` option in the schema. The trigger fires only when the
-# sensor transitions into that specific value (i.e. the previous value was NOT
-# the target value). Mirror of _OptionBasedStateCondition in condition.py.
-
 _SOLAR_SURPLUS_BECAME_SCHEMA = ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR.extend(
     {
         vol.Required("options"): {
@@ -336,14 +248,7 @@ _TOU_SLOT_BECAME_SCHEMA = ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR.extend(
 
 
 class _OptionBasedStateTrigger(EntityTargetStateTriggerBase):
-    """
-    Base for triggers that fire when a sensor reaches a config-specified state.
-
-    Subclasses declare ``_option_key`` (the field in ``options``) and
-    ``_translation_key`` (used to restrict entity_filter).  ``__init__``
-    reads the chosen value and sets ``_to_states`` so the inherited
-    ``is_valid_state`` / ``is_valid_transition`` logic works unchanged.
-    """
+    """Base for triggers firing when a sensor reaches a config-specified state."""
 
     _option_key: ClassVar[str]
     _translation_key: ClassVar[str]
@@ -385,23 +290,10 @@ class InjectionSlotBecameTrigger(_OptionBasedStateTrigger):
     _schema = _TOU_SLOT_BECAME_SCHEMA
 
 
-# ---------------------------------------------------------------------------
-# Phase B - Numerical threshold triggers
-# ---------------------------------------------------------------------------
-
-# _ThresholdTrigger collapses the 9 numerical threshold trigger classes.
-# Each factory call produced an EntityNumericalStateCrossedThresholdTriggerBase
-# subclass; we now share a single base and override _translation_key.
-
-
 class _ThresholdTrigger(
     make_entity_numerical_state_crossed_threshold_trigger({SENSOR_DOMAIN: DomainSpec()})  # type: ignore[misc]
 ):
-    """
-    Base for numerical threshold triggers restricted to a single ENGIE sensor.
-
-    Subclasses declare ``_translation_key`` to restrict entity_filter.
-    """
+    """Base for numerical threshold triggers restricted to a single ENGIE sensor."""
 
     _translation_key: ClassVar[str]
 
@@ -465,26 +357,11 @@ class OverdueAmountCrossedThresholdTrigger(_ThresholdTrigger):
     _translation_key = TRANSLATION_KEY_OVERDUE_AMOUNT
 
 
-# ---------------------------------------------------------------------------
-# Phase C - Value-changed triggers
-# ---------------------------------------------------------------------------
-
-# These fire whenever the numeric value changes at all. Use EntityTriggerBase
-# (not the numerical variant) so that non-numeric states are not special-cased.
-# The "any change" semantics come from the base class's default
-# ``is_valid_transition`` (from_state.state != to_state.state).
-# Plain ENTITY_STATE_TRIGGER_SCHEMA is used (no above/below options - those
-# options are not meaningful for "any change" semantics).
-
 _VALUE_CHANGED_SCHEMA = ENTITY_STATE_TRIGGER_SCHEMA
 
 
 class _ValueChangedTrigger(EntityTriggerBase):
-    """
-    Base for value-changed triggers: fires on any state change.
-
-    Subclasses only need to declare ``_translation_key``.
-    """
+    """Base for value-changed triggers: fires on any state change."""
 
     _domain_specs: Mapping[str, DomainSpec] = {SENSOR_DOMAIN: DomainSpec()}
     _schema = _VALUE_CHANGED_SCHEMA
@@ -526,18 +403,6 @@ class EpexLowTodayQuarterHourUpdatedTrigger(_ValueChangedTrigger):
     _translation_key = TRANSLATION_KEY_EPEX_LOW_TODAY_QUARTER_HOUR
 
 
-# ---------------------------------------------------------------------------
-# Phase E - Calendar event-class triggers
-# ---------------------------------------------------------------------------
-
-# These triggers watch the ENGIE Belgium calendar entity. At attach time they
-# find all calendar entities registered by this integration, fetch events for
-# the next 7 days, and schedule async_track_point_in_time for each matching
-# event start or end. After firing they re-schedule for the next occurrence.
-#
-# Unlike Phases A-D these are NOT entity-state triggers. They subclass Trigger
-# directly and implement async_attach_runner with a time-based scheduler.
-
 _CAL_LOOKAHEAD_DAYS = 7
 _DIRECTION = "direction"
 
@@ -565,12 +430,7 @@ def _engie_calendar_entity_ids(hass: HomeAssistant) -> list[str]:
 
 
 async def _get_calendar_events(hass: HomeAssistant, entity_id: str) -> list[Any]:
-    """
-    Fetch upcoming calendar events from the entity object, if available.
-
-    Returns an empty list if the calendar entity is not loaded or the
-    EntityComponent is not registered.
-    """
+    """Fetch upcoming calendar events, or ``[]`` when the entity is not loaded."""
     component = hass.data.get(CALENDAR_DOMAIN)
     if component is None:
         return []
@@ -595,16 +455,7 @@ async def _get_calendar_events(hass: HomeAssistant, entity_id: str) -> list[Any]
 def _validated_dict_config(
     schema: vol.Schema, config: dict[str, Any]
 ) -> dict[str, Any]:
-    """
-    Validate ``config`` against a dict-based voluptuous schema.
-
-    ``vol.Schema.__call__`` is loosely typed and returns ``Any``. Every
-    schema used by this module's ``async_validate_config`` methods is
-    dict-based, so a successful validation always yields a dict;
-    narrow with isinstance rather than a cast so an accidentally
-    non-dict schema fails loudly instead of silently satisfying the
-    type checker.
-    """
+    """Validate ``config`` against a dict-based voluptuous schema."""
     validated = schema(config)
     if not isinstance(validated, dict):  # pragma: no cover - defensive, unreachable
         msg = f"{schema} did not validate {config!r} to a dict"
@@ -613,13 +464,7 @@ def _validated_dict_config(
 
 
 class _CalendarEventTrigger(Trigger, abc.ABC):
-    """
-    Base for calendar-event triggers that fire at event boundaries.
-
-    Subclasses must implement ``_matches_event`` and declare ``_is_start``
-    (True -> fire at event start, False -> fire at event end).
-    Subclasses may also override ``_schema`` for option-bearing triggers.
-    """
+    """Base for calendar-event triggers firing at event boundaries."""
 
     _schema: ClassVar[vol.Schema] = _SIMPLE_CAL_SCHEMA
     _is_start: ClassVar[bool]
@@ -649,13 +494,8 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
     ) -> Any:
         """Attach the trigger: schedule a listener per ENGIE calendar."""
         # Keyed by entity_id so each calendar's listener is replaced, not
-        # accumulated. Rescheduling one calendar's listener only ever pops
-        # and cancels *that same* calendar's previous (now-stale) entry, so
-        # ``unsub_refs`` never grows past one entry per calendar. It also
-        # means a fire on one calendar can never cancel another calendar's
-        # still-pending listener, which matters when multiple BANs share
-        # identical event boundaries (e.g. the same Happy Hours window
-        # starting on several calendars at once).
+        # accumulated. Distinct calendars with identical boundaries do not
+        # cancel each other.
         unsub_refs: dict[str, Any] = {}
         cancelled = False
         calendar_entity_ids = _engie_calendar_entity_ids(self._hass)
@@ -698,11 +538,7 @@ class _CalendarEventTrigger(Trigger, abc.ABC):
                         f"calendar event {fire_event.summary}",
                         None,
                     )
-                    # Only reschedule this calendar's own next event.
-                    # Multi-BAN setups have one calendar per subentry and all
-                    # should fire independently; recomputing every calendar
-                    # here would risk cancelling another calendar's still-
-                    # pending listener before it gets a chance to fire.
+                    # Reschedule only this calendar's next event.
                     await _schedule_one(cal_entity_id)
 
                 return _on_time
@@ -764,31 +600,11 @@ class TouSlotStartedTrigger(_CalendarEventTrigger):
         return bool(event.summary == expected)
 
 
-# ---------------------------------------------------------------------------
-# Phase F - Coordinator-data triggers
-# ---------------------------------------------------------------------------
-
-# Unlike every other trigger above, this one has no ENGIE entity to watch:
-# the EPEX coordinator's ``tomorrow`` slate is only exposed as sensor
-# attributes, not as its own entity state, so there is nothing for an
-# entity-state trigger to subscribe to. It subclasses ``Trigger`` directly
-# (like ``_CalendarEventTrigger``) and listens to the EPEX coordinator(s) of
-# every loaded config entry instead.
-
 _NO_OPTIONS_SCHEMA: vol.Schema = vol.Schema({}, extra=vol.ALLOW_EXTRA)
 
 
 class TomorrowEpexPricesPublishedTrigger(Trigger):
-    """
-    Trigger: fires once per Brussels day when tomorrow's EPEX slate publishes.
-
-    Listens directly to every EPEX coordinator (hourly and, when present,
-    quarter-hourly) across all loaded config entries, since EPEX day-ahead
-    prices are account-agnostic and polled once per parent entry rather than
-    per business agreement. ``_last_fire_date`` guards against re-firing on
-    every subsequent refresh once tomorrow's slate is already known, and
-    resets naturally the next Brussels-local day.
-    """
+    """Fires once per Brussels day when tomorrow's EPEX slate publishes."""
 
     _schema: ClassVar[vol.Schema] = _NO_OPTIONS_SCHEMA
 
@@ -878,13 +694,7 @@ class TomorrowEpexPricesPublishedTrigger(Trigger):
 
 
 def _parse_stored_window(entry: dict[str, Any]) -> tuple[datetime, datetime] | None:
-    """
-    Parse one persisted Happy Hours store entry into a ``(start, end)`` pair.
-
-    The store holds ENGIE's raw ISO strings verbatim. Returns ``None`` when
-    either field is missing, not a string, unparseable, or timezone-naive, so
-    a malformed entry is silently skipped rather than seeded as a window.
-    """
+    """Parse one persisted Happy Hours entry into ``(start, end)``, or ``None``."""
     start_raw = entry.get("start")
     end_raw = entry.get("end")
     if not isinstance(start_raw, str) or not isinstance(end_raw, str):
@@ -901,22 +711,10 @@ def _parse_stored_window(entry: dict[str, Any]) -> tuple[datetime, datetime] | N
 
 class HappyHoursWindowAnnouncedTrigger(Trigger):
     """
-    Trigger: fires when ENGIE announces a new Happy Hours window or revises one.
+    Fires when ENGIE announces a new Happy Hours window or revises a known one.
 
-    Listens to every subentry's coordinator (one per business agreement)
-    across all loaded config entries, since Happy Hours windows are
-    per-account, unlike the account-agnostic EPEX slate above. ENGIE
-    publishes a window under a ``tomorrow`` key the day before and
-    re-publishes the same window under a ``today`` key once midnight
-    passes; ``happy_hour_windows`` already merges both keys, so a seen-map
-    keyed on the parsed window *start* is enough to dedup that
-    republication without a spurious "announced" fire.
-
-    Seeded at attach from the persisted Happy Hours history store when it
-    has finished loading, so a plain restart with a previously-observed
-    window stays silent. Falls back to seeding from the current coordinator
-    payload when the store is absent or has not loaded yet, so a window
-    that was already pending does not fire the moment the store catches up.
+    Seeded at attach from the persisted store when loaded, otherwise from the
+    current coordinator payload, so a restart with pre-existing windows stays silent.
     """
 
     _schema: ClassVar[vol.Schema] = _NO_OPTIONS_SCHEMA
@@ -1034,12 +832,7 @@ class HappyHoursWindowAnnouncedTrigger(Trigger):
         return _cancel
 
 
-# ---------------------------------------------------------------------------
-# Public registry
-# ---------------------------------------------------------------------------
-
 TRIGGERS: dict[str, type[Trigger]] = {
-    # Phase A - binary transitions
     "epex_became_negative": EpexBecameNegativeTrigger,
     "epex_no_longer_negative": EpexNoLongerNegativeTrigger,
     "epex_became_negative_quarter_hour": EpexBecameNegativeQuarterHourTrigger,
@@ -1052,15 +845,12 @@ TRIGGERS: dict[str, type[Trigger]] = {
     "happy_hours_became_inactive": HappyHoursBecameInactiveTrigger,
     "authentication_lost": AuthenticationLostTrigger,
     "authentication_restored": AuthenticationRestoredTrigger,
-    # Phase A - enum changed (any value)
     "solar_surplus_level_changed": SolarSurplusLevelChangedTrigger,
     "offtake_slot_changed": OfftakeSlotChangedTrigger,
     "injection_slot_changed": InjectionSlotChangedTrigger,
-    # Phase A - enum became (specific value)
     "solar_surplus_became": SolarSurplusBecameTrigger,
     "offtake_slot_became": OfftakeSlotBecameTrigger,
     "injection_slot_became": InjectionSlotBecameTrigger,
-    # Phase B - numerical thresholds
     "epex_current_crossed_threshold": EpexCurrentCrossedThresholdTrigger,
     "epex_current_quarter_hour_crossed_threshold": (
         EpexCurrentQuarterHourCrossedThresholdTrigger
@@ -1078,17 +868,14 @@ TRIGGERS: dict[str, type[Trigger]] = {
     "captar_peak_crossed_threshold": CaptarPeakCrossedThresholdTrigger,
     "outstanding_balance_crossed_threshold": OutstandingBalanceCrossedThresholdTrigger,
     "overdue_amount_crossed_threshold": OverdueAmountCrossedThresholdTrigger,
-    # Phase C - value changed
     "captar_peak_updated": CaptarPeakUpdatedTrigger,
     "epex_high_today_updated": EpexHighTodayUpdatedTrigger,
     "epex_high_today_quarter_hour_updated": EpexHighTodayQuarterHourUpdatedTrigger,
     "epex_low_today_updated": EpexLowTodayUpdatedTrigger,
     "epex_low_today_quarter_hour_updated": EpexLowTodayQuarterHourUpdatedTrigger,
-    # Phase E - calendar event-class triggers
     "happy_hours_window_started": HappyHoursWindowStartedTrigger,
     "happy_hours_window_ended": HappyHoursWindowEndedTrigger,
     "tou_slot_started": TouSlotStartedTrigger,
-    # Phase F - coordinator-data triggers
     "tomorrow_epex_prices_published": TomorrowEpexPricesPublishedTrigger,
     "happy_hours_window_announced": HappyHoursWindowAnnouncedTrigger,
 }

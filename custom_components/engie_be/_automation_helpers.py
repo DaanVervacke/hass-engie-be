@@ -1,10 +1,4 @@
-"""
-Shared helpers for automation triggers and conditions.
-
-Extracted here because both ``trigger.py`` and ``condition.py`` use the same
-entity-filter logic verbatim.  Keep this module lean - only add code that is
-genuinely duplicated across both files.
-"""
+"""Shared helpers for automation triggers and conditions."""
 
 from __future__ import annotations
 

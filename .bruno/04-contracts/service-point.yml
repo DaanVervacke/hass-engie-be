@@ -18,10 +18,6 @@ runtime:
   scripts:
   - type: tests
     code: |-
-      // Assertions compare derived facts (types, counts, status), never response
-      // values: this repo is public and Chai prints both sides of a failure.
-
-
       test("responds 200", function () {
         expect(res.getStatus()).to.equal(200);
       });
@@ -54,11 +50,4 @@ settings:
 docs: |-
   Metadata for one metering point.
 
-  Mirrors api.py::async_get_service_point.
-
-  Runs after Energy contracts because that is what seeds ENGIE_EAN.
-  Running it earlier drops the EAN from the path and ENGIE
-  answers 404. ENGIE_EAN is a bare EAN with no _ID1 suffix.
-
-  __init__.py calls this per EAN to tell electricity from gas: division
-  is ELECTRICITY or GAS.
+  Mirrors api.py::async_get_service_point. ENGIE_EAN is a bare EAN with no _ID1 suffix. Division comes back as ELECTRICITY or GAS.
