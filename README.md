@@ -337,15 +337,10 @@ sensors and two binary sensors surface it:
 | Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` | On when the current offtake slot is the cheapest slot of the week |
 | Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` | On when the current injection slot is the dearest slot of the week |
 
-The slot sensors flip exactly on the slot boundary. Their state is
-one of `peak`, `offpeak`, `superoffpeak`, `exclusive_night`, `day`, or
-`total_hours`. These are categories rather than raw codes.
-ENGIE names more codes than this and renders several of them identically,
-so where two of its codes mean the same tariff the sensor reports the one
-listed above. Its `HIGH_LOAD_HOURS` reads as `peak`. ENGIE can add codes at
-any time, and when it does the sensor stays unknown until the integration
-learns the new one, with the Home Assistant log naming the code it did
-not recognise.
+The slot sensors flip exactly on the slot boundary. Their state is one of
+`peak`, `offpeak`, `superoffpeak`, `exclusive_night`, `day`, or
+`total_hours`. Codes ENGIE has not shipped a name for yet are logged and
+leave the sensor unknown.
 
 Each slot sensor exposes these attributes:
 
@@ -357,15 +352,10 @@ Each slot sensor exposes these attributes:
 | `dgo_tgo_slot` | Current slot code from the Fluvius DGO / TGO (Transmission Grid Operator) schedule. Reads `total_hours` on accounts whose network side has no time-of-use split |
 
 The "is optimal" binary sensors turn `on` when the current slot is the
-best one of the week for that direction. ENGIE ranks every slot by cost,
-and best depends on which way the energy flows: for offtake it is the
-cheapest slot, so usually off-peak or super-off-peak hours, and for
-injection it is the dearest one, so usually peak hours. Flat schedules
-with only one slot code across the week do not get an "is optimal"
-sensor, since there is no optimum to find. A `total_hours` schedule is
-exactly that case, and it is what a single-rate or dynamic contract
-reports. Turning on Expose all entities creates the sensors anyway, and
-on such an account they read `on` permanently.
+best of the week for that direction: cheapest for offtake, dearest for
+injection. Flat schedules (a single all-week code, including `total_hours`)
+have no meaningful optimum; the sensors are omitted by default and stay
+pinned `on` when Expose all entities is set.
 
 Accounts whose supplier contract is TOU-billed also see one calendar
 event per slot per direction for the next seven days on the

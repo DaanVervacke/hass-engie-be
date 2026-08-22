@@ -75,26 +75,10 @@ docs: |-
   Mirrors api.py::async_get_tou_is_active_flag, which delegates to
   api.py::_async_query_boolean_feature_flag.
 
-  True means the account has an active time-of-use supplier product, and
-  the reason names its configuration id, for example "Time of use is
-  active (TOU001)". That id is the same value the supplier schedule
-  reports as activeConfigurationId. Every TOU entity reads the supplier
-  schedule, so this is the flag that gates them.
+  True means the account has an active TOU supplier product; the reason
+  names its configuration id (e.g. TOU001), matching the supplier
+  schedule's activeConfigurationId. Sibling flags dgo-tou-is-active
+  (network side) and tou-forecasts-shown (always true) are not the
+  gate.
 
-  Two sibling flags exist and neither is the gate. dgo-tou-is-active
-  reports the distribution grid operator's side, the RTPCMP
-  configurations, and reads false on accounts whose supplier product is
-  active. tou-forecasts-shown evaluates to true for everyone, so it
-  gates nothing. The Smart App keeps all three apart, with its own sync
-  and watch method for each.
-
-  The /tou-schedules endpoint returns data whatever these flags say,
-  because the network schedule applies to every digital-meter customer.
-
-  The targeted endpoint returns a flat {value, reason} object, not
-  the group envelope keyed by flag name.
-
-  additionalContext.contractAccountId takes the BAN. The
-  customerAccountNumber the Smart App also sends is accepted but
-  not required, and the integration omits it because the v5
-  subentry schema dropped the CAN.
+  additionalContext.contractAccountId takes the BAN.

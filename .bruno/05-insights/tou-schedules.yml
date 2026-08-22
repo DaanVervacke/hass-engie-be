@@ -88,32 +88,12 @@ docs: |-
 
   Mirrors api.py::async_get_tou_schedules.
 
-  Served by the billing microservice, which is the one the Smart App
-  calls, verified against 4.22.1.1058. The energy-insights service
-  answers the same leaf with an older, flatter body: schedules directly
-  on items[], HH:MM times, an optimalTimeslotCode, and no
-  costIndicator. Both routes were live on 2026-08-20. Do not repoint
-  this request without reading _tou.py::normalize_tou_payload.
+  Response shape: items[].gridMeterTimeOfUseSchedules[] with per-meter
+  supplierSchedule, dgoTgoSchedule and combinedSchedule blocks. Slots are
+  {startTime, endTime, slotCode, costIndicator} with HH:MM:SS times and a
+  1-cheapest to 5-dearest cost ranking. Supplier codes are direction-
+  prefixed (S_TOU1_OFFTAKE_PEAK); network codes are bare.
 
-  Shape here is items[].gridMeterTimeOfUseSchedules[], one entry per
-  grid meter, each carrying gridMeterNumber, exclusiveNightMeter, and
-  the supplierSchedule / dgoTgoSchedule / combinedSchedule blocks. Each
-  schedule holds offtake and injection maps of weekday to a list of
-  {startTime, endTime, slotCode, costIndicator}, with times as HH:MM:SS
-  and costIndicator ranking 1 cheapest to 5 dearest.
-
-  normalize_tou_payload flattens the per-meter level, strips the
-  direction prefix off supplier slot codes, and derives
-  optimal_slot_code, cheapest for offtake and dearest for injection,
-  because this route sends no optimalTimeslotCode. Everything
-  downstream, sensor.py, binary_sensor.py and _tou_calendar.py, reads
-  that canonical shape.
-
-  Supplier slot codes are prefixed and uppercase, for example
-  S_TOU1_OFFTAKE_PEAK. Network codes are bare, TOTAL_HOURS on an account
-  whose network side has no TOU components. ENGIE's own registry of
-  every live code is public and needs no auth:
-  https://www.engie.be/api/ebl/cms/mobile-tou/v1/configurations
-
-  The endpoint responds whatever the TOU feature flags say, because the
-  network schedule applies to every digital-meter customer.
+  _tou.py::normalize_tou_payload flattens the per-meter level, strips
+  supplier prefixes, resolves aliases and derives optimal_slot_code
+  (cheapest for offtake, dearest for injection).

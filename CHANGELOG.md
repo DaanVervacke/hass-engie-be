@@ -9,37 +9,29 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Fixed
 
-- Current offtake slot and Current injection slot showed unknown on time-of-use
-  products such as TOU001. The integration did not recognise the slot codes
-  ENGIE sends for those products.
-- Accounts whose supplier product uses time-of-use pricing, but whose network
-  operator does not, got no slot entities at all. The wrong flag decided whether
-  to create them.
-- Calendar events for time-of-use slots showed the raw code instead of a label
-  such as Off-peak (offtake).
+- Current offtake slot and Current injection slot showed unknown on
+  time-of-use products that carry direction-prefixed slot codes.
+- Accounts whose supplier product uses time-of-use pricing but whose
+  network operator does not got no slot entities. The wrong flag decided
+  whether to create them.
+- Calendar events for time-of-use slots showed the raw code instead of a
+  human-readable label.
 
 ### Changed
 
-- Time-of-use schedules now come from the same endpoint the ENGIE app uses. It
-  ranks each slot by cost, so the two "at optimal slot" sensors follow that
-  ranking: cheapest for offtake, dearest for injection.
-- Every entry in the weekday_slots attribute gained a cost field, 1 being the
-  cheapest slot of the week.
-- The dgo_tgo_slot attribute can now read total_hours where it read peak or
-  offpeak before, on accounts whose network side has no time-of-use split. Check
-  any automation that reads it.
-- The slot code total_hours is recognised now, which is what a single-rate or
-  dynamic contract reports. Where ENGIE displays two of its codes identically,
-  the integration reports the one you already know: its HIGH_LOAD_HOURS reads as
-  peak. A code outside that set goes to the log, so you can ask for it to be
-  added.
-- The automation editor offers every slot code its triggers and conditions
-  accept. total_hours was missing from the picker.
-- A support bundle now describes the time-of-use schedule: which configuration
-  produced it, which codes it holds, and which slot is optimal. Meter numbers
-  stay out of it.
-- The integration logs any price rate it has no name for. Such a sensor still
-  appears without a name or an icon, but no longer without an explanation.
+- Time-of-use schedules now come from the endpoint the ENGIE app uses.
+  The "at optimal slot" sensors follow ENGIE's cost ranking: cheapest for
+  offtake, dearest for injection.
+- Each `weekday_slots` entry gained a `cost` field, 1 being the cheapest
+  slot of the week.
+- `dgo_tgo_slot` can now read `total_hours` on accounts whose network
+  side has no time-of-use split. Automations reading that attribute may
+  need updating.
+- The automation editor picker offers the `total_hours` slot code.
+- Diagnostic bundles now include a `tou` block naming the configuration
+  ids, slot codes and optimal slot; no meter numbers.
+- A price rate with no known name is logged instead of producing an
+  unnamed sensor.
 
 ## [0.14.0] - 2026-08-19
 

@@ -712,22 +712,10 @@ class EngieBeApiClient:
         """
         Fetch the time-of-use tariff schedules for a business agreement.
 
-        Served by the billing microservice, which is what the ENGIE Smart
-        App calls (verified against 4.22.1.1058). The energy-insights
-        service answers the same leaf with an older, flatter body that
-        carries no ``costIndicator``, so do not point this back without
-        reading ``_tou.normalize_tou_payload`` first.
-
-        Returns the parsed JSON response. Shape:
-        ``{"items": [{"eanWithSuffix": "..._ID1",
-        "gridMeterTimeOfUseSchedules": [{"gridMeterNumber": "...",
-        "exclusiveNightMeter": false, "supplierSchedule": {...},
-        "dgoTgoSchedule": {...}, "combinedSchedule": {...}}]}]}`` where each
-        schedule has per-direction ``offtake`` / ``injection`` maps of
-        weekday -> list of ``{startTime, endTime, slotCode,
-        costIndicator}`` slots, with times as ``HH:MM:SS``. Endpoint
-        responds even when the TOU feature flag is off because the
-        DGO/network schedule always applies to metered electricity.
+        Response shape is ``items[].gridMeterTimeOfUseSchedules[]`` with
+        per-meter supplierSchedule / dgoTgoSchedule / combinedSchedule
+        blocks; ``_tou.normalize_tou_payload`` adapts it. Endpoint responds
+        regardless of the ``tou-is-active`` flag.
         """
         ban = business_agreement_number.replace(" ", "")
         url = f"{BILLING_BASE_URL}/business-agreements/{ban}/tou-schedules"
@@ -774,17 +762,8 @@ class EngieBeApiClient:
         """
         Fetch the ``tou-is-active`` boolean feature flag for a BAN.
 
-        ``value: true`` means the account has an active time-of-use
-        supplier product, and the ``reason`` names its configuration id.
-        This is the flag that gates every TOU entity, because they all
-        read the supplier schedule.
-
-        The sibling ``dgo-tou-is-active`` flag reports the network
-        operator's side instead and is ``false`` for accounts whose
-        supplier product is active, so it is not a usable gate.
-
-        Returns the parsed JSON response as a flat dict (top-level
-        ``value`` and ``reason`` keys).
+        ``value`` is true when the account has an active TOU supplier
+        product; the ``reason`` names the configuration id.
         """
         return await self._async_query_boolean_feature_flag(
             TOU_FLAG_KEY,

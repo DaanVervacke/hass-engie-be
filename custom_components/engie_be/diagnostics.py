@@ -116,15 +116,7 @@ def _summarise_coordinator_data(
 def _summarise_tou(
     coordinator: EngieBeDataUpdateCoordinator,
 ) -> dict[str, Any]:
-    """
-    Return a privacy-preserving summary of the cached TOU schedules payload.
-
-    Slot codes and configuration ids only. The grid meter is reported as
-    present or absent rather than named, because a meter number identifies
-    a physical installation and bundles get pasted into public issues. What
-    support needs is whether the schedule arrived, which configuration
-    produced it, and which codes it holds.
-    """
+    """Return a privacy-preserving summary of the cached TOU schedules payload."""
     payload = tou_schedules_payload(coordinator)
     if payload is None:
         return {"present": False}
@@ -156,6 +148,7 @@ def _summarise_tou(
         value = block.get("optimal_slot_code")
         return value.lower() if isinstance(value, str) else None
 
+    # No meter number: it identifies a physical installation.
     return {
         "present": True,
         "ean_count": len(items),

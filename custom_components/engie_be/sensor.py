@@ -117,12 +117,8 @@ def _slot_suffixes(slot_code: str) -> tuple[str, str] | None:
     """
     Return (key_suffix, translation_suffix) for a time-of-use slot code.
 
-    Returns ``None`` when the code should be skipped entirely.
-
-    A code outside :data:`_SLOT_CODE_MAP` still yields a usable suffix, but
-    it has no strings.json entry and no icon, so the sensor arrives
-    unnamed. That is worth a log line: ENGIE prices more rate codes than
-    the four any observed contract has been billed on.
+    Returns ``None`` when the code should be skipped entirely. Unmapped
+    codes fall through to a generated suffix and log a warning.
     """
     normalised = normalize_slot_code(slot_code)
     if normalised in _SLOT_CODE_MAP:
@@ -1866,9 +1862,6 @@ class EngieBeTouSlotSensor(_EngieBeTouSlotBase):
         if code is None:
             return None
         if code not in TOU_SLOT_CODES:
-            # An ENUM sensor may not report an undeclared option, so the
-            # state has to stay unknown. Say which code did it: ENGIE's
-            # slot-code registry is remotely mutable and has grown before.
             LOGGER.warning(
                 "Unknown TOU slot code %s for %s, reporting unknown. "
                 "Please open an issue so it can be added",

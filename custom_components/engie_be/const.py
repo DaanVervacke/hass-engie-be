@@ -46,40 +46,16 @@ HAPPY_HOURS_SERVICE_ENABLED_KEY = "happy-hours-service-enabled"
 # save one GET per electricity EAN per refresh.
 SOLAR_SURPLUS_SHOWN_DASHBOARD_KEY = "solar-surplus-shown-dashboard"
 
-# Feature-flag key reporting whether this account has an active
-# time-of-use supplier product. Its ``reason`` names the configuration id,
-# for example "Time of use is active (TOU001)", which is the same value
-# that arrives as ``activeConfigurationId`` on the supplier schedule.
-#
-# Not to be confused with ``dgo-tou-is-active``, which reports the
-# distribution grid operator's side (``RTPCMP_*`` configurations) and is
-# ``false`` for accounts whose supplier TOU product is perfectly active.
-# The Smart App tracks the two separately (``isTimeOfUseActive`` versus
-# ``isDgoTimeOfUseActive``, each with its own sync and watch method).
-# Every entity this integration builds reads the supplier schedule, so the
-# supplier flag is the correct gate. Gating on the DGO flag, as this did
-# until 0.14, left TOU accounts with no entities at all.
-#
-# ``tou-forecasts-shown`` is a third TOU flag. It evaluates to ``true``
-# for everyone ("default evaluation always true"), so it gates nothing.
+# Feature-flag key naming the account's TOU supplier product. Its reason
+# includes the configuration id (e.g. "TOU001") that also appears as
+# supplierSchedule.activeConfigurationId. Not to be confused with
+# dgo-tou-is-active (network side) or tou-forecasts-shown (always true).
 TOU_FLAG_KEY = "tou-is-active"
 
-# TOU_SLOT_CODES: the slot codes an ENUM sensor may report. These are
-# categories, not raw wire codes. ENGIE's registry names more codes than
-# this, but renders several of them identically, and the ones it treats as
-# an existing category are aliased in ``_tou.py`` rather than added here:
-# https://www.engie.be/api/ebl/cms/mobile-tou/v1/configurations
-#
-# Wire codes are uppercase and supplier products prefix them by direction
-# (``S_TOU1_OFFTAKE_PEAK``). ``_tou.normalize_slot_code`` strips the prefix
-# and resolves aliases at ingest, so only a category reaches this list,
-# lowercased. A code that resolves to nothing here is logged by sensor.py
-# rather than silently dropped, because an ENUM sensor may not report an
-# option it never declared.
-#
-# ``day`` is retained although the registry does not list it: removing an
-# option a user may already have chosen in a trigger or condition would
-# fail their automation's schema validation on the next reload.
+# ENUM states for the TOU slot sensors, lowercased. Wire codes normalise
+# through _tou.normalize_slot_code before reaching this list; codes that
+# fall outside it are logged rather than reported. ``day`` stays for
+# backward compatibility with automations that may already reference it.
 TOU_SLOT_CODES: tuple[str, ...] = (
     "peak",
     "offpeak",
