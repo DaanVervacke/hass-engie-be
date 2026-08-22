@@ -7,6 +7,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-22
+
+Time-of-Use schedules now come from the ENGIE billing endpoint, with
+cost-based optimal-slot detection, human-readable calendar labels, and
+richer diagnostics.
+
 ### Fixed
 
 - Current offtake slot and Current injection slot showed unknown on
@@ -32,6 +38,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   ids, slot codes and optimal slot. Meter numbers stay out of it.
 - Price rate codes without a mapped name are now logged. The sensor
   still appears, but without a name or icon.
+
+### Documentation
+
+- The README section on Time-of-Use tariff schedules was rewritten for
+  clarity, with plain-language definitions of each slot code, attribute,
+  and the "is optimal" behaviour.
+
+### Upgrading
+
+- Automations that key on `dgo_tgo_slot == None` for accounts without a
+  network time-of-use split now see `dgo_tgo_slot == "total_hours"`
+  instead. Update those triggers or conditions to match on
+  `total_hours`, or on the supplier slot attributes if the network split
+  was not what you cared about.
 
 ## [0.14.0] - 2026-08-19
 
