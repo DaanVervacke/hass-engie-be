@@ -323,23 +323,25 @@ forecast tags as `high_surplus`.
 
 ### Time-of-Use tariff schedules
 
-Time-of-use (TOU) is a supplier-product pricing model: the price
-per kWh depends on the time of day, split into peak, off-peak, and
-sometimes super-off-peak or exclusive-night slots. When your ENGIE
-product is TOU-billed, ENGIE publishes the full weekly slot layout
-per meter and per direction (offtake and injection). Two enum
-sensors and two binary sensors surface it:
+Some ENGIE contracts use Time-of-Use (TOU) pricing, where the price
+per kWh depends on the time of day. Off-peak hours cost less, peak
+hours cost more. When your product is TOU-billed, ENGIE publishes the
+full weekly schedule per meter and per direction (offtake and
+injection). The integration turns that into two slot sensors and two
+"is optimal" binary sensors:
 
 | Entity | Entity ID | Description |
 |---|---|---|
 | Current offtake slot | `sensor.engie_belgium_{BAN}_{EAN}_offtake_slot` | Current tariff slot for offtake on this meter (peak / offpeak / superoffpeak / exclusive_night / day / total_hours) |
 | Current injection slot | `sensor.engie_belgium_{BAN}_{EAN}_injection_slot` | Current tariff slot for injection on this meter |
 | Offtake at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_offtake_is_optimal` | On when the current offtake slot is the cheapest slot of the week |
-| Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` | On when the current injection slot is the dearest slot of the week |
+| Injection at optimal slot | `binary_sensor.engie_belgium_{BAN}_{EAN}_tou_injection_is_optimal` | On when the current injection slot is the most expensive slot of the week |
 
-The slot sensors flip exactly on the slot boundary. Their state is one of
-`peak`, `offpeak`, `superoffpeak`, `exclusive_night`, `day`, or
-`total_hours`. Unrecognised codes are logged and leave the sensor unknown.
+The slot sensors update the moment a slot changes, without waiting for
+the next poll. Values are `peak`, `offpeak`, `superoffpeak`,
+`exclusive_night`, `day`, or `total_hours`. If ENGIE ever ships a code
+the integration does not recognise, the sensor reads unknown and the
+log gets a warning asking you to file an issue.
 
 Each slot sensor exposes these attributes:
 
@@ -347,23 +349,23 @@ Each slot sensor exposes these attributes:
 |---|---|
 | `optimal_slot` | The best slot of the week for this direction (e.g. `offpeak`) |
 | `next_transition` | ISO-8601 timestamp of the next slot boundary in Brussels local time |
-| `weekday_slots` | Full weekly schedule as a dict of day-name to slot list. Each slot carries `start`, `end`, `code`, and `cost`, where 1 is the cheapest slot of the week |
-| `dgo_tgo_slot` | Current slot code from the Fluvius DGO / TGO (Transmission Grid Operator) schedule. Reads `total_hours` on accounts whose network side has no time-of-use split |
+| `weekday_slots` | Full weekly schedule as a dict of day name to slot list. Each slot has `start`, `end`, `code`, and `cost`, where `1` is the cheapest slot of the week |
+| `dgo_tgo_slot` | Current slot on the network-tariff schedule. Reads `total_hours` when the network side has no time-of-use split |
 
 The "is optimal" binary sensors turn `on` when the current slot is the
-best of the week for that direction: cheapest for offtake, dearest for
-injection. Flat schedules (a single all-week code, including `total_hours`)
-have no optimum. The sensors are omitted by default and read `on`
-permanently when Expose all entities is set.
+best for that direction: the cheapest slot for offtake, the most
+expensive one for injection. Flat schedules (one code all week) have no
+optimum, so those sensors are hidden by default. Enable **Expose all
+entities** in the options if you want them anyway. They read `on`
+permanently in that case.
 
-Accounts whose supplier contract is TOU-billed also see one calendar
-event per slot per direction for the next seven days on the
-per-account calendar, so the whole week is visible in any Home
-Assistant calendar card without opening the ENGIE Smart App. Each
-event title uses the format `Off-peak (offtake)` or `Peak (injection)`,
-mapping raw slot codes to human-readable labels.
+If your supplier contract is TOU-billed you also get one calendar per
+account, with one event per slot per direction for the next seven days.
+That way the whole week shows up in any Home Assistant calendar card
+without opening the ENGIE Smart App. Event titles read like
+`Off-peak (offtake)` or `Peak (injection)`.
 
-Example automation: run the dishwasher when it is optimal to consume:
+Example automation: run the dishwasher when offtake is at its cheapest:
 
 ```yaml
 automation:
