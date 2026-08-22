@@ -29,9 +29,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   need updating.
 - The automation editor picker offers the `total_hours` slot code.
 - Diagnostic bundles now include a `tou` block naming the configuration
-  ids, slot codes and optimal slot; no meter numbers.
-- A price rate with no known name is logged instead of producing an
-  unnamed sensor.
+  ids, slot codes and optimal slot. Meter numbers stay out of it.
+- Price rate codes without a mapped name are now logged. The sensor
+  still appears, but without a name or icon.
 
 ## [0.14.0] - 2026-08-19
 

@@ -339,8 +339,7 @@ sensors and two binary sensors surface it:
 
 The slot sensors flip exactly on the slot boundary. Their state is one of
 `peak`, `offpeak`, `superoffpeak`, `exclusive_night`, `day`, or
-`total_hours`. Codes ENGIE has not shipped a name for yet are logged and
-leave the sensor unknown.
+`total_hours`. Unrecognised codes are logged and leave the sensor unknown.
 
 Each slot sensor exposes these attributes:
 
@@ -354,8 +353,8 @@ Each slot sensor exposes these attributes:
 The "is optimal" binary sensors turn `on` when the current slot is the
 best of the week for that direction: cheapest for offtake, dearest for
 injection. Flat schedules (a single all-week code, including `total_hours`)
-have no meaningful optimum; the sensors are omitted by default and stay
-pinned `on` when Expose all entities is set.
+have no optimum. The sensors are omitted by default and read `on`
+permanently when Expose all entities is set.
 
 Accounts whose supplier contract is TOU-billed also see one calendar
 event per slot per direction for the next seven days on the

@@ -92,7 +92,7 @@ docs: |-
   supplierSchedule, dgoTgoSchedule and combinedSchedule blocks. Slots are
   {startTime, endTime, slotCode, costIndicator} with HH:MM:SS times and a
   1-cheapest to 5-dearest cost ranking. Supplier codes are direction-
-  prefixed (S_TOU1_OFFTAKE_PEAK); network codes are bare.
+  prefixed (S_TOU1_OFFTAKE_PEAK). Network codes are bare.
 
   _tou.py::normalize_tou_payload flattens the per-meter level, strips
   supplier prefixes, resolves aliases and derives optimal_slot_code
