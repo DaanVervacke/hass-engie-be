@@ -71,8 +71,14 @@ runtime:
         expect(malformed.length).to.equal(0);
       });
 
-      test("returns peakOfTheMonth", function () {
-        expect(typeof res.getBody().peakOfTheMonth === 'undefined' ? 'missing' : 'present').to.equal('present');
+      test("peakOfTheMonth, when present, carries start, end and both peak values", function () {
+        // ENGIE omits peakOfTheMonth until a peak lands, so early in the
+        // month it is legitimately absent. _peaks.py treats it as optional.
+        const monthly = res.getBody().peakOfTheMonth;
+        const problem = monthly === undefined || monthly === null
+          ? 'none'
+          : (monthly.start && monthly.end && monthly.peakKW !== undefined && monthly.peakKWh !== undefined ? 'none' : 'malformed');
+        expect(problem).to.equal('none');
       });
 settings:
   encodeUrl: true
