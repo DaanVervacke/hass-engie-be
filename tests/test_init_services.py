@@ -154,8 +154,8 @@ async def test_service_raises_when_all_targets_are_non_ban_devices(
     """Targeting only the login device raises service_no_valid_target."""
     entry = await _setup_entry(hass)
 
-    login_device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, f"login_{entry.entry_id}")}
+    login_device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, f"login_{entry.entry_id}"), entry.entry_id
     )
     assert login_device is not None
 
@@ -182,8 +182,8 @@ async def test_service_raises_when_energy_type_is_explicitly_empty(
     """
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
-    ban_device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, subentry_id)}
+    ban_device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
     )
     assert ban_device is not None
 
@@ -205,8 +205,8 @@ async def test_clear_service_raises_when_energy_type_is_explicitly_empty(
     """clear_import_history with energy_type: [] raises the same validation error."""
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
-    ban_device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, subentry_id)}
+    ban_device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
     )
     assert ban_device is not None
 
@@ -229,8 +229,8 @@ async def test_service_raises_when_entry_is_not_loaded(
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
 
-    ban_device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, subentry_id)}
+    ban_device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
     )
     assert ban_device is not None
 
@@ -260,8 +260,8 @@ async def test_import_history_service_bumps_end_date_by_one_day(
     """end_date is inclusive at the service boundary; orchestrator gets +1 day."""
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
-    ban_device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, subentry_id)}
+    ban_device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
     )
     assert ban_device is not None
 
@@ -293,8 +293,8 @@ async def test_import_history_service_end_date_none_stays_none(
     """Omitting end_date leaves the orchestrator to auto-select (None passthrough)."""
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
-    ban_device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, subentry_id)}
+    ban_device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
     )
     assert ban_device is not None
 
@@ -384,7 +384,9 @@ async def test_import_history_dispatches_in_parallel_across_bans(
     entry = await _setup_two_ban_entry(hass)
     device_registry = dr.async_get(hass)
     ban_devices = [
-        device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, subentry_id), entry.entry_id
+        )
         for subentry_id in entry.subentries
     ]
     assert all(d is not None for d in ban_devices)
@@ -419,7 +421,9 @@ async def test_clear_import_history_dispatches_expected_streams_across_bans(
     entry = await _setup_two_ban_entry(hass)
     device_registry = dr.async_get(hass)
     ban_devices = [
-        device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, subentry_id), entry.entry_id
+        )
         for subentry_id in entry.subentries
     ]
     assert all(d is not None for d in ban_devices)
@@ -461,7 +465,9 @@ async def test_clear_import_history_clears_costs_by_default(
     entry = await _setup_two_ban_entry(hass)
     device_registry = dr.async_get(hass)
     ban_devices = [
-        device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, subentry_id), entry.entry_id
+        )
         for subentry_id in entry.subentries
     ]
     assert all(d is not None for d in ban_devices)
@@ -501,7 +507,9 @@ async def test_clear_import_history_creates_repairs_issue_on_failure(
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
     device_registry = dr.async_get(hass)
-    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    ban_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
+    )
     assert ban_device is not None
 
     with (
@@ -535,7 +543,9 @@ async def test_clear_import_history_clears_repairs_issue_on_success(
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
     device_registry = dr.async_get(hass)
-    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    ban_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
+    )
     assert ban_device is not None
 
     issue_id = f"service_clear_failed_{subentry_id}"
@@ -574,7 +584,7 @@ async def test_clear_import_history_partial_failure_processes_all_and_raises(
     subentry_ids = list(entry.subentries)
     device_registry = dr.async_get(hass)
     ban_devices = [
-        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        device_registry.async_get_device_by_identifier((DOMAIN, sid), entry.entry_id)
         for sid in subentry_ids
     ]
     assert all(d is not None for d in ban_devices)
@@ -624,7 +634,9 @@ async def test_clear_import_history_cancelled_error_reraised_without_issue(
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
     device_registry = dr.async_get(hass)
-    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    ban_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
+    )
     assert ban_device is not None
 
     with (
@@ -663,7 +675,9 @@ async def test_import_history_defaults_to_energy_streams_only(
     entry = await _setup_two_ban_entry(hass)
     device_registry = dr.async_get(hass)
     ban_devices = [
-        device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, subentry_id), entry.entry_id
+        )
         for subentry_id in entry.subentries
     ]
     assert all(d is not None for d in ban_devices)
@@ -695,7 +709,7 @@ async def test_import_history_continues_when_one_ban_fails(
     device_registry = dr.async_get(hass)
     subentry_ids = list(entry.subentries)
     ban_devices = [
-        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        device_registry.async_get_device_by_identifier((DOMAIN, sid), entry.entry_id)
         for sid in subentry_ids
     ]
     assert all(d is not None for d in ban_devices)
@@ -744,7 +758,7 @@ async def test_import_history_continues_when_one_ban_auth_rejected(
     device_registry = dr.async_get(hass)
     subentry_ids = list(entry.subentries)
     ban_devices = [
-        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        device_registry.async_get_device_by_identifier((DOMAIN, sid), entry.entry_id)
         for sid in subentry_ids
     ]
     assert all(d is not None for d in ban_devices)
@@ -864,7 +878,9 @@ async def test_import_history_creates_repairs_issue_on_failure(
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
     device_registry = dr.async_get(hass)
-    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    ban_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
+    )
     assert ban_device is not None
 
     with (
@@ -906,7 +922,9 @@ async def test_import_history_validation_error_raises_without_repairs_or_traceba
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
     device_registry = dr.async_get(hass)
-    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    ban_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
+    )
     assert ban_device is not None
 
     validation_error = ServiceValidationError(
@@ -950,7 +968,9 @@ async def test_import_history_clears_repairs_issue_on_success(
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
     device_registry = dr.async_get(hass)
-    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    ban_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
+    )
     assert ban_device is not None
 
     issue_id = f"service_import_failed_{subentry_id}"
@@ -988,7 +1008,9 @@ async def test_import_history_auth_failure_creates_issue(
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
     device_registry = dr.async_get(hass)
-    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    ban_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
+    )
     assert ban_device is not None
 
     with (
@@ -1021,7 +1043,7 @@ async def test_import_history_partial_failure_processes_all_targets_and_raises(
     subentry_ids = list(entry.subentries)
     device_registry = dr.async_get(hass)
     ban_devices = [
-        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        device_registry.async_get_device_by_identifier((DOMAIN, sid), entry.entry_id)
         for sid in subentry_ids
     ]
     assert all(d is not None for d in ban_devices)
@@ -1068,7 +1090,9 @@ async def test_import_history_cancelled_error_reraised_without_issue(
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
     device_registry = dr.async_get(hass)
-    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    ban_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
+    )
     assert ban_device is not None
 
     with (
@@ -1109,7 +1133,7 @@ async def test_import_history_all_targets_fail_with_mixed_exceptions(
     subentry_ids = list(entry.subentries)
     device_registry = dr.async_get(hass)
     ban_devices = [
-        device_registry.async_get_device(identifiers={(DOMAIN, sid)})
+        device_registry.async_get_device_by_identifier((DOMAIN, sid), entry.entry_id)
         for sid in subentry_ids
     ]
     assert all(d is not None for d in ban_devices)
@@ -1169,7 +1193,9 @@ async def test_import_history_success_clears_setup_time_issue_too(
     entry = await _setup_entry(hass)
     subentry_id = next(iter(entry.subentries))
     device_registry = dr.async_get(hass)
-    ban_device = device_registry.async_get_device(identifiers={(DOMAIN, subentry_id)})
+    ban_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, subentry_id), entry.entry_id
+    )
     assert ban_device is not None
 
     setup_issue_id = f"setup_import_failed_{subentry_id}"
