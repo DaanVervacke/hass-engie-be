@@ -7,6 +7,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-03
+
+Compatibility release for Home Assistant 2026.9.
+
+### Changed
+
+- The minimum supported Home Assistant version is now 2026.9.0.
+
+### Upgrading
+
+- Update Home Assistant to 2026.9.0 or newer before updating the
+  integration. HACS will not offer this release on older versions.
+
 ## [0.15.0] - 2026-08-22
 
 Time-of-Use schedules now come from the ENGIE billing endpoint, with
