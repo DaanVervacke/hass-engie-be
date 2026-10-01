@@ -6,7 +6,7 @@ import asyncio
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-import voluptuous as vol
+import probatio
 from homeassistant import config_entries
 from homeassistant.config_entries import (
     ConfigSubentry,
@@ -153,22 +153,24 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "user_management_url": "https://www.engie.be/nl/energiedesk/usermanagement/manage-access/",
             },
-            data_schema=vol.Schema(
+            data_schema=probatio.Schema(
                 {
-                    vol.Required(
+                    probatio.Required(
                         CONF_USERNAME,
-                        default=(user_input or {}).get(CONF_USERNAME, vol.UNDEFINED),
+                        default=(user_input or {}).get(
+                            CONF_USERNAME, probatio.UNDEFINED
+                        ),
                     ): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,
                         ),
                     ),
-                    vol.Required(CONF_PASSWORD): selector.TextSelector(
+                    probatio.Required(CONF_PASSWORD): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.PASSWORD,
                         ),
                     ),
-                    vol.Required(
+                    probatio.Required(
                         CONF_MFA_METHOD,
                         default=(user_input or {}).get(CONF_MFA_METHOD, MFA_METHOD_SMS),
                     ): selector.SelectSelector(
@@ -254,9 +256,9 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id=step_id,
-            data_schema=vol.Schema(
+            data_schema=probatio.Schema(
                 {
-                    vol.Required("code"): selector.TextSelector(
+                    probatio.Required("code"): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,
                         ),
@@ -470,7 +472,7 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             return "unknown"
 
     @callback
-    def _async_build_picker_schema(self) -> vol.Schema:
+    def _async_build_picker_schema(self) -> probatio.Schema:
         """Build the multi-select schema for the available customer accounts."""
         options = [
             selector.SelectOptionDict(
@@ -479,9 +481,9 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             )
             for account in self._available_accounts
         ]
-        return vol.Schema(
+        return probatio.Schema(
             {
-                vol.Required(CONF_SELECTED_ACCOUNTS): selector.SelectSelector(
+                probatio.Required(CONF_SELECTED_ACCOUNTS): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=options,
                         multiple=True,
@@ -513,9 +515,9 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "username": entry.data.get(CONF_USERNAME, ""),
             },
-            data_schema=vol.Schema(
+            data_schema=probatio.Schema(
                 {
-                    vol.Required(
+                    probatio.Required(
                         CONF_MFA_METHOD,
                         default=entry.data.get(CONF_MFA_METHOD, MFA_METHOD_SMS),
                     ): selector.SelectSelector(
@@ -582,9 +584,9 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reauth_confirm",
             description_placeholders={"username": entry.data.get(CONF_USERNAME, "")},
-            data_schema=vol.Schema(
+            data_schema=probatio.Schema(
                 {
-                    vol.Required(
+                    probatio.Required(
                         CONF_MFA_METHOD,
                         default=self._reauth_mfa_method,
                     ): selector.SelectSelector(
@@ -648,9 +650,9 @@ class EngieBeFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reauth_mfa",
-            data_schema=vol.Schema(
+            data_schema=probatio.Schema(
                 {
-                    vol.Required("code"): selector.TextSelector(
+                    probatio.Required("code"): selector.TextSelector(
                         selector.TextSelectorConfig(
                             type=selector.TextSelectorType.TEXT,
                         ),
@@ -868,7 +870,7 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
             LOGGER.exception(exception)
             return "unknown"
 
-    def _build_schema(self) -> vol.Schema:
+    def _build_schema(self) -> probatio.Schema:
         """Build the multi-select schema for the available customer accounts."""
         options = [
             selector.SelectOptionDict(
@@ -877,9 +879,9 @@ class CustomerAccountSubentryFlowHandler(ConfigSubentryFlow):
             )
             for account in self._available_accounts
         ]
-        return vol.Schema(
+        return probatio.Schema(
             {
-                vol.Required(CONF_SELECTED_ACCOUNTS): selector.SelectSelector(
+                probatio.Required(CONF_SELECTED_ACCOUNTS): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=options,
                         multiple=True,
@@ -1008,13 +1010,13 @@ def _import_section_schema(  # noqa: PLR0913
     include_history_toggle: bool = True,
     available_energy_types: list[str] | None = None,
 ) -> section:
-    """Build the voluptuous section for a single BAN's import options."""
+    """Build the probatio section for a single BAN's import options."""
     shown_options = (
         available_energy_types
         if available_energy_types is not None
         else list(ENERGY_TYPE_OPTIONS)
     )
-    # Clamp default to shown options so voluptuous does not reject stored values.
+    # Clamp default to shown options so probatio does not reject stored values.
     if default_energy_types is not None:
         effective_default = [t for t in default_energy_types if t in shown_options]
     else:
@@ -1023,13 +1025,13 @@ def _import_section_schema(  # noqa: PLR0913
     schema_dict: dict[Any, Any] = {}
     if include_history_toggle:
         schema_dict[
-            vol.Required(
+            probatio.Required(
                 CONF_IMPORT_HISTORY,
                 default=default_import,
             )
         ] = bool
     schema_dict[
-        vol.Required(
+        probatio.Required(
             CONF_IMPORT_ENERGY_TYPES,
             default=effective_default,
         )
@@ -1042,7 +1044,7 @@ def _import_section_schema(  # noqa: PLR0913
         ),
     )
     schema_dict[
-        vol.Required(
+        probatio.Required(
             CONF_IMPORT_INCLUDE_COSTS,
             default=default_include_costs,
         )
@@ -1050,19 +1052,19 @@ def _import_section_schema(  # noqa: PLR0913
     # DateSelector validates via cv.date and rejects None, so attach a default
     # only when a stored value exists.
     _start_key = (
-        vol.Optional(CONF_IMPORT_START_DATE, default=default_start_date)
+        probatio.Optional(CONF_IMPORT_START_DATE, default=default_start_date)
         if default_start_date is not None
-        else vol.Optional(CONF_IMPORT_START_DATE)
+        else probatio.Optional(CONF_IMPORT_START_DATE)
     )
     _end_key = (
-        vol.Optional(CONF_IMPORT_END_DATE, default=default_end_date)
+        probatio.Optional(CONF_IMPORT_END_DATE, default=default_end_date)
         if default_end_date is not None
-        else vol.Optional(CONF_IMPORT_END_DATE)
+        else probatio.Optional(CONF_IMPORT_END_DATE)
     )
     schema_dict[_start_key] = selector.DateSelector()
     schema_dict[_end_key] = selector.DateSelector()
     return section(
-        vol.Schema(schema_dict),
+        probatio.Schema(schema_dict),
         SectionConfig(collapsed=False),
     )
 
@@ -1085,7 +1087,7 @@ def _build_import_options_schema(
     accounts: list[dict[str, Any]],
     *,
     divisions_by_ban: dict[str, set[str]] | None = None,
-) -> tuple[vol.Schema, dict[str, str]]:
+) -> tuple[probatio.Schema, dict[str, str]]:
     """Build the per-BAN schema and placeholders for the import_options step."""
     schema_fields: dict[Any, Any] = {}
     placeholders: dict[str, str] = {
@@ -1099,7 +1101,7 @@ def _build_import_options_schema(
         ban = account[CONF_BUSINESS_AGREEMENT_NUMBER]
         divisions = (divisions_by_ban or {}).get(ban)
         available = _energy_types_for_divisions(divisions) if divisions else None
-        schema_fields[vol.Required(key)] = _import_section_schema(
+        schema_fields[probatio.Required(key)] = _import_section_schema(
             default_energy_types=account.get(CONF_IMPORT_ENERGY_TYPES),
             default_include_costs=account.get(CONF_IMPORT_INCLUDE_COSTS, False),
             default_start_date=account.get(CONF_IMPORT_START_DATE),
@@ -1107,12 +1109,12 @@ def _build_import_options_schema(
             include_history_toggle=False,
             available_energy_types=available,
         )
-    return vol.Schema(schema_fields), placeholders
+    return probatio.Schema(schema_fields), placeholders
 
 
 def _build_import_history_choice_schema(
     accounts: list[dict[str, Any]],
-) -> tuple[vol.Schema, dict[str, str]]:
+) -> tuple[probatio.Schema, dict[str, str]]:
     """Build the per-BAN schema and placeholders for the import_history_choice step."""
     schema_fields: dict[Any, Any] = {}
     placeholders: dict[str, str] = {"readme_url": _README_URL}
@@ -1120,10 +1122,10 @@ def _build_import_history_choice_schema(
         key = f"ban_{i}"
         title = subentry_title(account)
         placeholders[f"title_{i}"] = title
-        schema_fields[vol.Required(key)] = section(
-            vol.Schema(
+        schema_fields[probatio.Required(key)] = section(
+            probatio.Schema(
                 {
-                    vol.Required(
+                    probatio.Required(
                         CONF_IMPORT_HISTORY,
                         default=False,
                     ): bool,
@@ -1131,7 +1133,7 @@ def _build_import_history_choice_schema(
             ),
             SectionConfig(collapsed=False),
         )
-    return vol.Schema(schema_fields), placeholders
+    return probatio.Schema(schema_fields), placeholders
 
 
 def _apply_import_defaults(
@@ -1189,9 +1191,9 @@ class EngieBeOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
+            data_schema=probatio.Schema(
                 {
-                    vol.Required(
+                    probatio.Required(
                         CONF_UPDATE_INTERVAL,
                         default=self.config_entry.options.get(
                             CONF_UPDATE_INTERVAL,
@@ -1206,7 +1208,7 @@ class EngieBeOptionsFlowHandler(config_entries.OptionsFlow):
                             unit_of_measurement="minutes",
                         ),
                     ),
-                    vol.Optional(
+                    probatio.Optional(
                         CONF_EXPOSE_ALL_ENTITIES,
                         default=self.config_entry.options.get(
                             CONF_EXPOSE_ALL_ENTITIES, False

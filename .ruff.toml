@@ -17,8 +17,15 @@ ignore = [
     "ISC001", # incompatible with formatter
 ]
 
+[lint.flake8-import-conventions.banned-aliases]
+"probatio" = ["vol"]
+
 [lint.flake8-pytest-style]
 fixture-parentheses = false
+
+[lint.flake8-tidy-imports.banned-api]
+"voluptuous".msg = "use probatio instead"
+"homeassistant.helpers.config_validation.ensure_list".msg = "use probatio.EnsureList() instead"
 
 [lint.pyupgrade]
 keep-runtime-typing = true

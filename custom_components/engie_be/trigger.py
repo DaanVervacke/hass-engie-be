@@ -6,7 +6,7 @@ import abc
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
 
-import voluptuous as vol
+import probatio
 from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
 from homeassistant.components.calendar.const import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
@@ -232,16 +232,16 @@ class InjectionSlotChangedTrigger(EntityTriggerBase):
 
 _SOLAR_SURPLUS_BECAME_SCHEMA = ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR.extend(
     {
-        vol.Required("options"): {
-            vol.Required(_LEVEL): vol.In(SOLAR_SURPLUS_LEVELS),
+        probatio.Required("options"): {
+            probatio.Required(_LEVEL): probatio.In(SOLAR_SURPLUS_LEVELS),
         },
     }
 )
 
 _TOU_SLOT_BECAME_SCHEMA = ENTITY_STATE_TRIGGER_SCHEMA_WITH_BEHAVIOR.extend(
     {
-        vol.Required("options"): {
-            vol.Required(_SLOT): vol.In(TOU_SLOT_CODES),
+        probatio.Required("options"): {
+            probatio.Required(_SLOT): probatio.In(TOU_SLOT_CODES),
         },
     }
 )
@@ -406,17 +406,17 @@ class EpexLowTodayQuarterHourUpdatedTrigger(_ValueChangedTrigger):
 _CAL_LOOKAHEAD_DAYS = 7
 _DIRECTION = "direction"
 
-_TOU_SLOT_CALENDAR_SCHEMA: vol.Schema = vol.Schema(
+_TOU_SLOT_CALENDAR_SCHEMA: probatio.Schema = probatio.Schema(
     {
-        vol.Required("options"): {
-            vol.Required(_DIRECTION): vol.In(["offtake", "injection"]),
-            vol.Required(_SLOT): vol.In(TOU_SLOT_CODES),
+        probatio.Required("options"): {
+            probatio.Required(_DIRECTION): probatio.In(["offtake", "injection"]),
+            probatio.Required(_SLOT): probatio.In(TOU_SLOT_CODES),
         },
     },
-    extra=vol.ALLOW_EXTRA,
+    extra=probatio.ALLOW_EXTRA,
 )
 
-_SIMPLE_CAL_SCHEMA: vol.Schema = vol.Schema({}, extra=vol.ALLOW_EXTRA)
+_SIMPLE_CAL_SCHEMA: probatio.Schema = probatio.Schema({}, extra=probatio.ALLOW_EXTRA)
 
 
 def _engie_calendar_entity_ids(hass: HomeAssistant) -> list[str]:
@@ -453,9 +453,9 @@ async def _get_calendar_events(hass: HomeAssistant, entity_id: str) -> list[Any]
 
 
 def _validated_dict_config(
-    schema: vol.Schema, config: dict[str, Any]
+    schema: probatio.Schema, config: dict[str, Any]
 ) -> dict[str, Any]:
-    """Validate ``config`` against a dict-based voluptuous schema."""
+    """Validate ``config`` against a dict-based probatio schema."""
     validated = schema(config)
     if not isinstance(validated, dict):  # pragma: no cover - defensive, unreachable
         msg = f"{schema} did not validate {config!r} to a dict"
@@ -466,7 +466,7 @@ def _validated_dict_config(
 class _CalendarEventTrigger(Trigger, abc.ABC):
     """Base for calendar-event triggers firing at event boundaries."""
 
-    _schema: ClassVar[vol.Schema] = _SIMPLE_CAL_SCHEMA
+    _schema: ClassVar[probatio.Schema] = _SIMPLE_CAL_SCHEMA
     _is_start: ClassVar[bool]
 
     @classmethod
@@ -600,13 +600,13 @@ class TouSlotStartedTrigger(_CalendarEventTrigger):
         return bool(event.summary == expected)
 
 
-_NO_OPTIONS_SCHEMA: vol.Schema = vol.Schema({}, extra=vol.ALLOW_EXTRA)
+_NO_OPTIONS_SCHEMA: probatio.Schema = probatio.Schema({}, extra=probatio.ALLOW_EXTRA)
 
 
 class TomorrowEpexPricesPublishedTrigger(Trigger):
     """Fires once per Brussels day when tomorrow's EPEX slate publishes."""
 
-    _schema: ClassVar[vol.Schema] = _NO_OPTIONS_SCHEMA
+    _schema: ClassVar[probatio.Schema] = _NO_OPTIONS_SCHEMA
 
     @classmethod
     async def async_validate_config(
@@ -717,7 +717,7 @@ class HappyHoursWindowAnnouncedTrigger(Trigger):
     current coordinator payload, so a restart with pre-existing windows stays silent.
     """
 
-    _schema: ClassVar[vol.Schema] = _NO_OPTIONS_SCHEMA
+    _schema: ClassVar[probatio.Schema] = _NO_OPTIONS_SCHEMA
 
     @classmethod
     async def async_validate_config(

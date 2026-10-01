@@ -8,8 +8,8 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
+import probatio
 import pytest
-import voluptuous as vol
 from homeassistant import config_entries, data_entry_flow
 from homeassistant.config_entries import (
     SOURCE_USER,
@@ -1315,7 +1315,7 @@ async def test_options_flow_rejects_out_of_range(
     too_high = MAX_UPDATE_INTERVAL_MINUTES + 1
 
     for bad in (too_low, too_high):
-        with pytest.raises(vol.Invalid):
+        with pytest.raises(probatio.Invalid):
             await hass.config_entries.options.async_configure(
                 result["flow_id"], {CONF_UPDATE_INTERVAL: bad}
             )
@@ -1781,7 +1781,7 @@ async def test_import_options_elec_only_ban_hides_gas(
     A BAN with only ELECTRICITY contracts exposes only consumption and injection.
 
     The gas option must be absent from the selector. Submitting a gas value
-    must raise MultipleInvalid because the Voluptuous schema only allows
+    must raise MultipleInvalid because the probatio schema only allows
     the options present in the SelectSelector.
     """
     relations = _load_relations_fixture()
@@ -1828,7 +1828,7 @@ async def test_import_options_elec_only_ban_hides_gas(
         assert result["step_id"] == "import_options"
 
         # Submitting gas for an elec-only BAN must be rejected by the schema.
-        with pytest.raises(vol.Invalid):
+        with pytest.raises(probatio.Invalid):
             await hass.config_entries.flow.async_configure(
                 result["flow_id"],
                 {
@@ -1908,7 +1908,7 @@ async def test_import_options_gas_only_ban_hides_elec(
         assert result["step_id"] == "import_options"
 
         # Submitting consumption for a gas-only BAN must be rejected.
-        with pytest.raises(vol.Invalid):
+        with pytest.raises(probatio.Invalid):
             await hass.config_entries.flow.async_configure(
                 result["flow_id"],
                 {
@@ -2045,7 +2045,7 @@ async def test_import_options_subentry_flow_elec_only_ban_hides_gas(
         assert result["step_id"] == "import_options"
 
         # Gas must be rejected for this elec-only BAN.
-        with pytest.raises(vol.Invalid):
+        with pytest.raises(probatio.Invalid):
             await hass.config_entries.subentries.async_configure(
                 result["flow_id"],
                 {

@@ -7,6 +7,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- Schema validation now imports Probatio directly instead of
+  voluptuous, matching Home Assistant core, which has validated on
+  Probatio since 2026.9. No behavior change.
+
 ## [0.16.0] - 2026-09-03
 
 Compatibility release for Home Assistant 2026.9.
