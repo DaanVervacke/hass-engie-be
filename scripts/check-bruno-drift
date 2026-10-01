@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S .venv/bin/python
 """
 Fail when the Bruno collection has drifted away from the API client.
 
