@@ -18,3 +18,8 @@ warn_return_any = true
 no_implicit_reexport = true
 strict_equality = true
 extra_checks = true
+
+# HA 2026.9 still annotates schema-taking APIs with voluptuous types, which is probatio at runtime; skip them until HA annotates with probatio itself.
+[[tool.mypy.overrides]]
+module = ["voluptuous", "voluptuous.*"]
+follow_imports = "skip"

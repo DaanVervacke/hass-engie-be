@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import probatio
 import pytest
-import voluptuous as vol
 from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.helpers import entity_registry as er
@@ -588,10 +588,10 @@ async def test_injection_slot_rejects_offtake_slot_entity(
     ],
 )
 def test_schema_rejects_invalid_option(
-    schema: vol.Schema, options: dict[str, str]
+    schema: probatio.Schema, options: dict[str, str]
 ) -> None:
-    """Schemas raise vol.Invalid when an unknown level or slot value is passed."""
-    with pytest.raises(vol.Invalid):
+    """Schemas raise probatio.Invalid when an unknown level or slot value is passed."""
+    with pytest.raises(probatio.Invalid):
         schema(
             {
                 "condition": "engie_be.x",

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
-import voluptuous as vol
+import probatio
 from homeassistant.components import persistent_notification as pn
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import ATTR_DEVICE_ID, Platform
@@ -422,23 +422,29 @@ def _business_agreement_numbers(entry: EngieBeConfigEntry) -> set[str]:
     return bans
 
 
-_ENERGY_TYPE_LIST = vol.All(cv.ensure_list, [vol.In(ENERGY_TYPE_OPTIONS)])
+_ENERGY_TYPE_LIST = probatio.All(
+    probatio.EnsureList(), [probatio.In(ENERGY_TYPE_OPTIONS)]
+)
 
-_IMPORT_HISTORY_SCHEMA = vol.Schema(
+_IMPORT_HISTORY_SCHEMA = probatio.Schema(
     {
-        vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional(ATTR_ENERGY_TYPE): _ENERGY_TYPE_LIST,
-        vol.Optional(ATTR_START_DATE): cv.date,
-        vol.Optional(ATTR_END_DATE): cv.date,
-        vol.Optional(ATTR_INCLUDE_COSTS, default=False): cv.boolean,
+        probatio.Optional(ATTR_DEVICE_ID): probatio.All(
+            probatio.EnsureList(), [cv.string]
+        ),
+        probatio.Optional(ATTR_ENERGY_TYPE): _ENERGY_TYPE_LIST,
+        probatio.Optional(ATTR_START_DATE): cv.date,
+        probatio.Optional(ATTR_END_DATE): cv.date,
+        probatio.Optional(ATTR_INCLUDE_COSTS, default=False): cv.boolean,
     },
 )
 
-_CLEAR_IMPORT_HISTORY_SCHEMA = vol.Schema(
+_CLEAR_IMPORT_HISTORY_SCHEMA = probatio.Schema(
     {
-        vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
-        vol.Optional(ATTR_ENERGY_TYPE): _ENERGY_TYPE_LIST,
-        vol.Optional(ATTR_INCLUDE_COSTS, default=True): cv.boolean,
+        probatio.Optional(ATTR_DEVICE_ID): probatio.All(
+            probatio.EnsureList(), [cv.string]
+        ),
+        probatio.Optional(ATTR_ENERGY_TYPE): _ENERGY_TYPE_LIST,
+        probatio.Optional(ATTR_INCLUDE_COSTS, default=True): cv.boolean,
     },
 )
 

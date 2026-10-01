@@ -8,8 +8,8 @@ from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock
 
+import probatio
 import pytest
-import voluptuous as vol
 from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
 from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.components.calendar import CalendarEvent
@@ -952,10 +952,10 @@ async def test_injection_slot_became_rejects_offtake_entity(
     ],
 )
 def test_schema_rejects_invalid_option(
-    schema: vol.Schema, options: dict[str, str]
+    schema: probatio.Schema, options: dict[str, str]
 ) -> None:
-    """Schemas raise vol.Invalid when an unknown level or slot value is passed."""
-    with pytest.raises(vol.Invalid):
+    """Schemas raise probatio.Invalid when an unknown level or slot value is passed."""
+    with pytest.raises(probatio.Invalid):
         schema(
             {
                 "trigger": f"{DOMAIN}.test",
@@ -1771,13 +1771,13 @@ async def test_calendar_trigger_no_fires_when_no_matching_calendar_entity(
 
 def test_tou_slot_calendar_schema_rejects_invalid_direction() -> None:
     """_TOU_SLOT_CALENDAR_SCHEMA rejects invalid direction values."""
-    with pytest.raises(vol.Invalid):
+    with pytest.raises(probatio.Invalid):
         _TOU_SLOT_CALENDAR_SCHEMA({"options": {"direction": "wrong", "slot": "peak"}})
 
 
 def test_tou_slot_calendar_schema_rejects_invalid_slot() -> None:
     """_TOU_SLOT_CALENDAR_SCHEMA rejects invalid slot values."""
-    with pytest.raises(vol.Invalid):
+    with pytest.raises(probatio.Invalid):
         _TOU_SLOT_CALENDAR_SCHEMA(
             {"options": {"direction": "offtake", "slot": "not_a_slot"}}
         )

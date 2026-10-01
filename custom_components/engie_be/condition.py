@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
-import voluptuous as vol
+import probatio
 from homeassistant.components.binary_sensor import DOMAIN as BINARY_SENSOR_DOMAIN
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.const import STATE_ON
@@ -97,8 +97,8 @@ class _OptionBasedStateCondition(EntityStateConditionBase):
 
 _SOLAR_SURPLUS_SCHEMA = ENTITY_STATE_CONDITION_SCHEMA_ANY_ALL.extend(
     {
-        vol.Required("options"): {
-            vol.Required(_LEVEL): vol.In(SOLAR_SURPLUS_LEVELS),
+        probatio.Required("options"): {
+            probatio.Required(_LEVEL): probatio.In(SOLAR_SURPLUS_LEVELS),
         },
     }
 )
@@ -114,8 +114,8 @@ class SolarSurplusIsAtLevelCondition(_OptionBasedStateCondition):
 
 _TOU_SLOT_SCHEMA = ENTITY_STATE_CONDITION_SCHEMA_ANY_ALL.extend(
     {
-        vol.Required("options"): {
-            vol.Required(_SLOT): vol.In(TOU_SLOT_CODES),
+        probatio.Required("options"): {
+            probatio.Required(_SLOT): probatio.In(TOU_SLOT_CODES),
         },
     }
 )
