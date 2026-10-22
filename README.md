@@ -8,9 +8,7 @@
 <h1 align="center">ENGIE (BE) - Home Assistant integration</h1>
 
 <p align="center">
-  <a href="https://github.com/hacs/integration"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=flat-square" alt="HACS Custom"></a>
   <a href="https://github.com/DaanVervacke/hass-engie-be/releases"><img src="https://img.shields.io/github/v/release/DaanVervacke/hass-engie-be?style=flat-square&label=version&sort=semver" alt="Latest release"></a>
-  <a href="https://github.com/DaanVervacke/hass-engie-be/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaanVervacke/hass-engie-be/validate.yml?style=flat-square&label=hacs%20%2F%20hassfest" alt="Validate"></a>
   <a href="https://github.com/DaanVervacke/hass-engie-be/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/DaanVervacke/hass-engie-be/test.yml?style=flat-square&label=tests" alt="Tests"></a>
   <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/dynamic/json?url=https://raw.githubusercontent.com/DaanVervacke/hass-engie-be/main/hacs.json&query=$.homeassistant&label=Home%20Assistant&prefix=%3E%3D&color=41BDF5&logo=home-assistant&logoColor=white&style=flat-square" alt="Home Assistant"></a>
   <a href="https://www.home-assistant.io/docs/quality_scale/"><img src="https://img.shields.io/badge/quality_scale-gold-gold.svg?style=flat-square" alt="Quality Scale"></a>
@@ -18,6 +16,24 @@
 </p>
 
 ---
+
+> [!IMPORTANT]
+> ## Repository archived
+>
+> This repository is archived. New installations are not supported. Starting with Home Assistant 2026.11, use the built-in ENGIE Belgium integration.
+>
+> The Marketplace may show a generic Repair notice saying that this repository was removed from the catalog. That notice does not migrate ENGIE. Follow the steps below.
+
+> ### Existing users
+>
+> 1. Go to **Settings** > **Devices & services**.
+> 2. Open **ENGIE Belgium** and delete the existing setup.
+> 3. Open the Marketplace and uninstall this repository. If it is not listed, delete the `custom_components/engie_be` folder manually.
+> 4. Restart Home Assistant.
+> 5. Add the built-in **ENGIE Belgium** integration.
+> 6. Enter your credentials again and recreate any dashboard or automation sensor selections.
+>
+> There is no automatic migration. Imported energy history does not move automatically. The archived files may keep an existing installation running for a short time, but they receive no further updates.
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
 [ENGIE Belgium](https://www.engie.be/). Retrieves your personal energy price
@@ -629,41 +645,17 @@ ENGIE has enabled that feature on your account.
 > (requires signing in to your ENGIE account) and grant it access to
 > your customer number.
 
-- Home Assistant **2026.8.0** or newer
+- Home Assistant **2026.11.0** or newer
 - A dedicated [ENGIE Belgium](https://www.engie.be/) account for this
   integration (see required callout above)
 - Access to SMS or email for two-factor authentication during setup
 
 ## Installation
 
-### HACS (recommended)
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=DaanVervacke&repository=hass-engie-be&category=integration)
-
-Click the badge above to open this repository in HACS, then select **Download**.
-After HACS finishes, restart Home Assistant.
-
-[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=engie_be)
-
-Click the badge above to open the **Add integration** dialog for ENGIE
-Belgium. The credential form opens directly. See [Configuration](#configuration)
-for what each field expects.
-
-#### Manual steps
-
-If the badges above do not work in your browser:
-
-1. Open HACS in your Home Assistant instance.
-2. Search for **ENGIE Belgium** in the HACS search bar and install it.
-3. Restart Home Assistant.
-4. Go to **Settings** > **Devices & services** > **Add integration** and search for **ENGIE Belgium**.
-
-If the search returns no results, add this repository as a custom repository
-first:
-
-1. Open HACS, click the three dots in the top right corner, and select **Custom repositories**.
-2. Add `https://github.com/DaanVervacke/hass-engie-be` with category **Integration**.
-3. Search for **ENGIE Belgium** in HACS and install it.
+The custom version in this repository is archived. Do not use this repository
+for a new installation. Upgrade Home Assistant to 2026.11.0 or newer, then add
+the built-in **ENGIE Belgium** integration from **Settings** >
+**Devices & services**.
 
 ## Configuration
 
@@ -672,10 +664,8 @@ accounts created via the [user management page](https://www.engie.be/nl/energied
 (requires signing in to your ENGIE account) have 2FA enabled by default. The integration only supports accounts
 where 2FA via SMS or email is enabled.
 
-If you haven't reached the credential form yet, use the **Add integration**
-badge in [Installation](#hacs-recommended) or open
-**Settings** > **Devices & services** > **Add integration** and search for
-**ENGIE Belgium**.
+If you are moving from the archived integration, follow the cleanup steps in
+[Installation](#installation) before adding the built-in integration.
 
 1. Enter your credentials:
    - **Email address**: your ENGIE email.

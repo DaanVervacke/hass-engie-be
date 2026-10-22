@@ -7,6 +7,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+- Documented the archived repository and the move to the built-in Home Assistant integration.
+
+## [0.17.0] - 2026-10-22
+
+Archived handoff release for Home Assistant 2026.11.
+
+### Changed
+
+- The minimum supported Home Assistant version is now 2026.11.0.
+- New installations must use the built-in ENGIE Belgium integration.
+- Existing users must remove the archived setup and add the built-in integration again.
+
 ## [0.16.0] - 2026-09-03
 
 Compatibility release for Home Assistant 2026.9.
@@ -1584,8 +1598,11 @@ No user-visible changes.
 [#80]: https://github.com/DaanVervacke/hass-engie-be/pull/80
 [#82]: https://github.com/DaanVervacke/hass-engie-be/pull/82
 
-[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0...HEAD
-[0.14.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.3...v0.14.0
+[Unreleased]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0...v0.15.0
+[0.14.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b7...v0.14.0
 [0.14.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b6...v0.14.0b7
 [0.14.0b6]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b5...v0.14.0b6
 [0.14.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.14.0b4...v0.14.0b5
@@ -1596,7 +1613,7 @@ No user-visible changes.
 [0.13.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0...v0.13.1
-[0.13.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.12.0...v0.13.0
+[0.13.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b5...v0.13.0
 [0.13.0b5]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b4...v0.13.0b5
 [0.13.0b4]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b3...v0.13.0b4
 [0.13.0b3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.13.0b2...v0.13.0b3
@@ -1617,7 +1634,7 @@ No user-visible changes.
 [0.12.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.11.0...v0.12.0b1
 [0.11.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0...v0.10.1
-[0.10.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0
+[0.10.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b9...v0.10.0
 [0.10.0b9]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b8...v0.10.0b9
 [0.10.0b8]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b7...v0.10.0b8
 [0.10.0b7]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b6...v0.10.0b7
@@ -1628,7 +1645,7 @@ No user-visible changes.
 [0.10.0b2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.10.0b1...v0.10.0b2
 [0.10.0b1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.9.0...v0.10.0b1
 [0.9.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.3...v0.9.0
-[0.8.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.2...v0.8.3
+[0.8.3]: https://github.com/DaanVervacke/hass-engie-be/compare/chore-improve-debug-logging...v0.8.3
 [0.8.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.7.1...v0.8.0
@@ -1638,14 +1655,14 @@ No user-visible changes.
 [0.6.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.1...v0.4.2
-[0.4.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.4.0...v0.4.1
+[0.4.1]: https://github.com/DaanVervacke/hass-engie-be/compare/improve-authorization-code-extraction...v0.4.1
 [0.4.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.3...v0.3.0
+[0.3.0]: https://github.com/DaanVervacke/hass-engie-be/compare/tri-rate-support...v0.3.0
 [0.2.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.3...v0.2.0
+[0.2.0]: https://github.com/DaanVervacke/hass-engie-be/compare/day-and-night-tariffs...v0.2.0
 [0.1.3]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/DaanVervacke/hass-engie-be/compare/v0.1.0...v0.1.1
