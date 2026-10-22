@@ -20,7 +20,9 @@
 > [!IMPORTANT]
 > ## Repository archived
 >
-> This repository is archived. New installations are not supported. Starting with Home Assistant 2026.11, use the built-in ENGIE Belgium integration.
+> This repository is archived. ENGIE Belgium is now part of Home Assistant Core from Home Assistant 2026.11 onward. New installations are not supported.
+>
+> The Core version may not include every feature on its first release. The remaining features are planned to move into Core over the following weeks. The archived custom version may still have features that Core does not have yet, but it receives no updates.
 >
 > The Marketplace may show a generic Repair notice saying that this repository was removed from the catalog. That notice does not migrate ENGIE. Follow the steps below.
 
@@ -34,6 +36,8 @@
 > 6. Enter your credentials again and recreate any dashboard or automation sensor selections.
 >
 > There is no automatic migration. Imported energy history does not move automatically. The archived files may keep an existing installation running for a short time, but they receive no further updates.
+>
+> If the Core version is missing a feature you need, you can keep your existing custom installation temporarily while that feature is ported. Do not configure the custom and Core versions at the same time. Remove the custom version before using the Core version.
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration for
 [ENGIE Belgium](https://www.engie.be/). Retrieves your personal energy price
@@ -653,9 +657,14 @@ ENGIE has enabled that feature on your account.
 ## Installation
 
 The custom version in this repository is archived. Do not use this repository
-for a new installation. Upgrade Home Assistant to 2026.11.0 or newer, then add
-the built-in **ENGIE Belgium** integration from **Settings** >
-**Devices & services**.
+for a new installation. ENGIE Belgium is part of Home Assistant Core from
+2026.11.0 onward. Upgrade Home Assistant to 2026.11.0 or newer, then add the
+built-in **ENGIE Belgium** integration from **Settings** > **Devices &
+services**.
+
+The Core version may gain the remaining custom features over the following
+weeks. If you still need a feature that has not moved yet, keep your existing
+custom installation temporarily. Do not configure both versions at once.
 
 ## Configuration
 
