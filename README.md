@@ -35,7 +35,11 @@
 > 5. Add the built-in **ENGIE Belgium** integration.
 > 6. Enter your credentials again and recreate any dashboard or automation sensor selections.
 >
-> There is no automatic migration. Imported energy history does not move automatically. The archived files may keep an existing installation running for a short time, but they receive no further updates.
+> Deleting the ENGIE setup removes the saved credentials, business agreements, ENGIE devices and entities, local peak history, and local Happy Hours history. It also deletes all imported Energy Dashboard statistics for those business agreements, including electricity consumption, electricity injection, gas consumption, and cost streams.
+>
+> Regular Home Assistant Recorder history is separate and may remain in the database until it is purged. The removed ENGIE entities cannot use that history. Back up Home Assistant before deleting the setup if you may need to restore it.
+>
+> There is no automatic migration. The archived files may keep an existing installation running for a short time, but they receive no further updates.
 >
 > If the Core version is missing a feature you need, you can keep your existing custom installation temporarily while that feature is ported. Do not configure the custom and Core versions at the same time. Remove the custom version before using the Core version.
 
